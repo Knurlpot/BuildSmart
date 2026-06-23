@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>BuildSmart Registration Wizard</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="app-shell min-h-screen lg:grid lg:grid-cols-[40%_60%]">
+      <section class="brand-panel">
+        <div class="voxel-logo" aria-label="BuildSmart block logo">
+          <div class="face face-left"></div>
+          <div class="face face-front"></div>
+          <div class="face face-right"></div>
+        </div>
+        <p class="watermark">Sign Up</p>
+      </section>
+
+      <section class="form-panel">
+        <div class="wizard-card">
+          <form id="registrationForm" novalidate>
+            <div class="steps-track" id="stepsTrack">
+              <section class="wizard-step" aria-labelledby="step-one-title">
+                <header class="step-header">
+                  <h1 id="step-one-title">WELCOME TO BUILDSMART!</h1>
+                </header>
+
+                <div class="divider"></div>
+
+                <label class="upload-zone" for="companyLogo">
+                  <input id="companyLogo" type="file" accept="image/png,image/jpeg" />
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path
+                      d="M20 5v14H4V5h16m0-2H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2Zm-9 11-2.5-3.01L5 15.5V18h14v-3l-4.5-6-3.5 5Z"
+                    />
+                  </svg>
+                  <span>Upload Company Logo</span>
+                  <small>PNG, JPG, up to 5MB</small>
+                </label>
+
+                <div class="field-grid">
+                  <label class="field">
+                    <span>Company Name <b>*</b></span>
+                    <input type="text" placeholder="Buildsmart Inc." required />
+                  </label>
+                  <label class="field">
+                    <span>Office Phone Number <b>*</b></span>
+                    <input type="tel" placeholder="[+63] 987 387 1577" required />
+                  </label>
+                  <label class="field field-full">
+                    <span>Company Address <b>*</b></span>
+                    <input type="text" placeholder="Fairview 123" required />
+                  </label>
+                  <label class="field">
+                    <span>City / Municipality <b>*</b></span>
+                    <input type="text" placeholder="City" required />
+                  </label>
+                  <label class="field">
+                    <span>Province / Region <b>*</b></span>
+                    <input type="text" placeholder="Province" required />
+                  </label>
+                </div>
+              </section>
+
+              <section class="wizard-step" aria-labelledby="step-two-title">
+                <header class="step-header compact">
+                  <h1 id="step-two-title">CONTACT AND ACCESS</h1>
+                  <p>How clients and the system will reach you</p>
+                </header>
+
+                <div class="divider"></div>
+
+                <div class="field-grid access-grid">
+                  <label class="field">
+                    <span>Email Address</span>
+                    <input type="email" placeholder="Buildsmart Inc." />
+                  </label>
+                  <label class="field">
+                    <span>Office Phone Number</span>
+                    <input type="tel" placeholder="Buildsmart Inc." />
+                  </label>
+                  <label class="field">
+                    <span>Password</span>
+                    <input type="password" placeholder="Buildsmart Inc." />
+                  </label>
+                  <label class="field">
+                    <span>Re-type Password</span>
+                    <input type="password" placeholder="Buildsmart Inc." />
+                  </label>
+                </div>
+              </section>
+
+              <section class="wizard-step" aria-labelledby="step-three-title">
+                <header class="step-header compact">
+                  <h1 id="step-three-title">SERVICE PROFILE</h1>
+                  <p>Tell us what your company does and where</p>
+                </header>
+
+                <div class="divider"></div>
+
+                <div class="chip-section">
+                  <div class="section-label">
+                    <h2>Service Price</h2>
+                    <span>Select all that apply</span>
+                  </div>
+                  <div class="chip-group" data-multi-select>
+                    <button type="button" class="chip">Metro Manila</button>
+                    <button type="button" class="chip">Luzon</button>
+                    <button type="button" class="chip">Visayas</button>
+                    <button type="button" class="chip">Mindanao</button>
+                    <button type="button" class="chip">Central Luzon</button>
+                  </div>
+                </div>
+
+                <div class="chip-section">
+                  <div class="section-label">
+                    <h2>Project Sector</h2>
+                    <span>Select all that apply</span>
+                  </div>
+                  <div class="chip-group" data-multi-select>
+                    <button type="button" class="chip">Industrial</button>
+                    <button type="button" class="chip">Residential</button>
+                    <button type="button" class="chip">Commercial</button>
+                    <button type="button" class="chip">Institutional</button>
+                    <button type="button" class="chip">Mixed-Use</button>
+                    <button type="button" class="chip">Renovation/Fit-out</button>
+                  </div>
+                </div>
+
+                <label class="field select-field">
+                  <span>Company Role</span>
+                  <select>
+                    <option value="">--Select your role--</option>
+                    <option>General Contractor</option>
+                    <option>Subcontractor</option>
+                    <option>Supplier</option>
+                    <option>Design and Build Firm</option>
+                    <option>Consultant</option>
+                  </select>
+                </label>
+
+                <div class="chip-section">
+                  <div class="section-label">
+                    <h2>Service Specialization</h2>
+                    <span>Select all that apply</span>
+                  </div>
+                  <div class="chip-group" data-multi-select>
+                    <button type="button" class="chip">Structural Works</button>
+                    <button type="button" class="chip">Electrical</button>
+                    <button type="button" class="chip">Architectural Finishes</button>
+                  </div>
+                </div>
+              </section>
+            </div>
+
+            <div class="form-footer">
+              <button type="button" class="back-button" id="backButton">Back</button>
+              <button type="button" class="primary-button" id="nextButton">
+                <span>Continue</span>
+                <span class="arrow" aria-hidden="true">&gt;</span>
+              </button>
+            </div>
+          </form>
+        </div>
+      </section>
+    </main>
+
+    <script src="script.js"></script>
+  </body>
+</html>
