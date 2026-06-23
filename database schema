@@ -1,0 +1,281 @@
+-- not yet final
+
+-- Create Database
+CREATE DATABASE IF NOT EXISTS buildsmart_db;
+USE buildsmart_db;
+
+-- --------------------------------------------------------
+-- 1. Company Table (Table 7.0)
+-- --------------------------------------------------------
+CREATE TABLE Company (
+    company_ID INT(11) AUTO_INCREMENT,
+    company_name VARCHAR(150) NOT NULL,
+    company_address VARCHAR(255) NOT NULL,
+    contact_email VARCHAR(150) NOT NULL UNIQUE,
+    contact_number VARCHAR(30) NOT NULL,
+    status VARCHAR(20) NOT NULL DEFAULT 'Active',
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT PK_Company PRIMARY KEY (company_ID)
+);
+
+-- --------------------------------------------------------
+-- 2. Users Table (Table 7.1)
+-- --------------------------------------------------------
+CREATE TABLE Users (
+    user_ID INT(11) AUTO_INCREMENT,
+    company_ID INT(11) NOT NULL,
+    last_name VARCHAR(50) NOT NULL,
+    first_name VARCHAR(50) NOT NULL,
+    middle_name VARCHAR(50) DEFAULT NULL,
+    email VARCHAR(150) NOT NULL UNIQUE,
+    password_hash VARCHAR(255) NOT NULL,
+    user_role VARCHAR(30) NOT NULL CHECK (user_role IN ('Owner', 'Admin', 'Estimator', 'Viewer')),
+    status VARCHAR(20) NOT NULL DEFAULT 'Active' CHECK (status IN ('Active', 'Inactive')),
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT PK_Users PRIMARY KEY (user_ID),
+    CONSTRAINT FK_Users_Company FOREIGN KEY (company_ID) REFERENCES Company(company_ID) ON DELETE CASCADE
+);
+
+-- --------------------------------------------------------
+-- 3. Suppliers Table (Table 7.2)
+-- --------------------------------------------------------
+CREATE TABLE Suppliers (
+    supplier_ID INT(11) AUTO_INCREMENT,
+    supplier_name VARCHAR(150) NOT NULL,
+    supplier_address VARCHAR(255) NOT NULL,
+    warehouse_loc VARCHAR(255) DEFAULT NULL,
+    city VARCHAR(80) DEFAULT NULL,
+    region VARCHAR(80) DEFAULT NULL,
+    contact_email VARCHAR(150) NOT NULL,
+    contact_number VARCHAR(30) NOT NULL,
+    supplier_type VARCHAR(50) NOT NULL CHECK (supplier_type IN ('Distributor', 'Warehouse', 'Retailer')),
+    status VARCHAR(20) NOT NULL DEFAULT 'Active' CHECK (status IN ('Active', 'Inactive')),
+    CONSTRAINT PK_Suppliers PRIMARY KEY (supplier_ID)
+);
+
+-- --------------------------------------------------------
+-- 4. Category Table (Table 7.3)
+-- --------------------------------------------------------
+CREATE TABLE Category (
+    category_ID INT(11) AUTO_INCREMENT,
+    category_type VARCHAR(80) NOT NULL,
+    category_desc VARCHAR(255) DEFAULT NULL,
+    CONSTRAINT PK_Category PRIMARY KEY (category_ID)
+);
+
+-- --------------------------------------------------------
+-- 5. Items Table (Table 7.4)
+-- --------------------------------------------------------
+CREATE TABLE Items (
+    item_code INT(11) AUTO_INCREMENT,
+    category_ID INT(11) NOT NULL,
+    item_name VARCHAR(150) NOT NULL,
+    material VARCHAR(100) NOT NULL,
+    brand VARCHAR(100) NOT NULL,
+    quality VARCHAR(50) DEFAULT NULL CHECK (quality IN ('Budget', 'Standard', 'Premium')),
+    unit VARCHAR(30) NOT NULL,
+    size_width DECIMAL(10,2) NOT NULL DEFAULT 0.00,
+    size_length DECIMAL(10,2) NOT NULL DEFAULT 0.00,
+    color VARCHAR(50) NOT NULL,
+    description VARCHAR(255) DEFAULT NULL,
+    CONSTRAINT PK_Items PRIMARY KEY (item_code),
+    CONSTRAINT FK_Items_Category FOREIGN KEY (category_ID) REFERENCES Category(category_ID)
+);
+
+-- --------------------------------------------------------
+-- 6. Quotation Table (Table 7.5)
+-- --------------------------------------------------------
+CREATE TABLE Quotation (
+    quote_ID INT(11) AUTO_INCREMENT,
+    company_ID INT(11) NOT NULL,
+    user_ID INT(11) NOT NULL,
+    project_name VARCHAR(150) NOT NULL,
+    project_location VARCHAR(255) NOT NULL,
+    project_region VARCHAR(80) NOT NULL,
+    input_method VARCHAR(50) NOT NULL,
+    status VARCHAR(30) NOT NULL,
+    total_material_cost DECIMAL(15,2) NOT NULL DEFAULT 0.00,
+    total_service_cost DECIMAL(15,2) NOT NULL DEFAULT 0.00,
+    grand_total DECIMAL(15,2) NOT NULL DEFAULT 0.00,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    CONSTRAINT PK_Quotation PRIMARY KEY (quote_ID),
+    CONSTRAINT FK_Quotation_Company FOREIGN KEY (company_ID) REFERENCES Company(company_ID),
+    CONSTRAINT FK_Quotation_Users FOREIGN KEY (user_ID) REFERENCES Users(user_ID)
+);
+
+-- --------------------------------------------------------
+-- 7. Quotations_Items Table (Table 7.6)
+-- --------------------------------------------------------
+CREATE TABLE Quotations_Items (
+    quote_item_ID INT(11) AUTO_INCREMENT,
+    quote_ID INT(11) NOT NULL,
+    item_code INT(11) NOT NULL,
+    quantity INT(11) NOT NULL,
+    unit_cost DECIMAL(12,2) NOT NULL,
+    markup_percentage DECIMAL(5,2) NOT NULL DEFAULT 0.00,
+    final_unit_price DECIMAL(12,2) NOT NULL,
+    total_cost DECIMAL(15,2) NOT NULL,
+    source_type VARCHAR(30) NOT NULL,
+    CONSTRAINT PK_Quotations_Items PRIMARY KEY (quote_item_ID),
+    CONSTRAINT FK_QuoteItems_Quotation FOREIGN KEY (quote_ID) REFERENCES Quotation(quote_ID) ON DELETE CASCADE,
+    CONSTRAINT FK_QuoteItems_Items FOREIGN KEY (item_code) REFERENCES Items(item_code)
+);
+
+-- --------------------------------------------------------
+-- 8. Quotation_Service_Cost Table (Table 7.7)
+-- --------------------------------------------------------
+CREATE TABLE Quotation_Service_Cost (
+    service_cost_ID INT(11) AUTO_INCREMENT,
+    quote_ID INT(11) NOT NULL,
+    service_type VARCHAR(100) NOT NULL,
+    description VARCHAR(255) DEFAULT NULL,
+    labor_cost DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+    equipment_cost DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+    contingency_cost DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+    other_cost DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+    subtotal DECIMAL(15,2) NOT NULL,
+    CONSTRAINT PK_Quotation_Service_Cost PRIMARY KEY (service_cost_ID),
+    CONSTRAINT FK_ServiceCost_Quotation FOREIGN KEY (quote_ID) REFERENCES Quotation(quote_ID) ON DELETE CASCADE
+);
+
+-- --------------------------------------------------------
+-- 9. Price_Upload_Batch Table (Table 7.8)
+-- --------------------------------------------------------
+CREATE TABLE Price_Upload_Batch (
+    upload_batch_ID INT(11) AUTO_INCREMENT,
+    company_ID INT(11) DEFAULT NULL,
+    user_ID INT(11) DEFAULT NULL,
+    supplier_ID INT(11) DEFAULT NULL,
+    file_name VARCHAR(255) NOT NULL,
+    file_type VARCHAR(20) NOT NULL CHECK (file_type IN ('csv', 'xlsx', 'pdf')),
+    source_type VARCHAR(30) NOT NULL CHECK (source_type IN ('Uploaded', 'Supplier', 'Government')),
+    source_name VARCHAR(150) NOT NULL,
+    region VARCHAR(80) NOT NULL,
+    upload_date DATE NOT NULL,
+    processing_status VARCHAR(30) NOT NULL CHECK (processing_status IN ('Pending', 'Processed', 'Failed', 'Needs Review')),
+    total_records INT(11) DEFAULT 0,
+    valid_records INT(11) DEFAULT 0,
+    error_notes VARCHAR(255) DEFAULT NULL,
+    file_path VARCHAR(255) DEFAULT NULL,
+    CONSTRAINT PK_Price_Upload_Batch PRIMARY KEY (upload_batch_ID),
+    CONSTRAINT FK_UploadBatch_Company FOREIGN KEY (company_ID) REFERENCES Company(company_ID),
+    CONSTRAINT FK_UploadBatch_Users FOREIGN KEY (user_ID) REFERENCES Users(user_ID),
+    CONSTRAINT FK_UploadBatch_Suppliers FOREIGN KEY (supplier_ID) REFERENCES Suppliers(supplier_ID)
+);
+
+-- --------------------------------------------------------
+-- 10. Price_Record Table (Table 7.9)
+-- --------------------------------------------------------
+CREATE TABLE Price_Record (
+    price_record_ID INT(11) AUTO_INCREMENT,
+    upload_batch_ID INT(11) NOT NULL,
+    item_code INT(11) NOT NULL,
+    collected_unit_price DECIMAL(12,2) NOT NULL,
+    currency VARCHAR(10) NOT NULL DEFAULT 'PHP',
+    is_active VARCHAR(5) NOT NULL DEFAULT 'Yes' CHECK (is_active IN ('Yes', 'No')),
+    effective_date DATE NOT NULL,
+    expiry_date DATE DEFAULT NULL,
+    CONSTRAINT PK_Price_Record PRIMARY KEY (price_record_ID),
+    CONSTRAINT FK_PriceRecord_Batch FOREIGN KEY (upload_batch_ID) REFERENCES Price_Upload_Batch(upload_batch_ID) ON DELETE CASCADE,
+    CONSTRAINT FK_PriceRecord_Items FOREIGN KEY (item_code) REFERENCES Items(item_code)
+);
+
+-- --------------------------------------------------------
+-- 11. Company_Rule Table (Table 7.10)
+-- --------------------------------------------------------
+CREATE TABLE Company_Rule (
+    rule_ID INT(11) AUTO_INCREMENT,
+    company_ID INT(11) NOT NULL,
+    fallback_rule VARCHAR(100) NOT NULL DEFAULT 'Lowest Equivalent' CHECK (fallback_rule IN ('Lowest Equivalent', 'Nearest', 'Manual')),
+    strategy_type VARCHAR(30) NOT NULL CHECK (strategy_type IN ('Practical', 'Standard', 'Premium')),
+    markup_percentage DECIMAL(5,2) DEFAULT NULL,
+    warranty_type VARCHAR(50) DEFAULT NULL CHECK (warranty_type IN ('None', 'Standard', 'Extended')),
+    payment_terms VARCHAR(80) DEFAULT NULL,
+    status VARCHAR(20) NOT NULL DEFAULT 'Active' CHECK (status IN ('Active', 'Inactive')),
+    date_created DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT PK_Company_Rule PRIMARY KEY (rule_ID),
+    CONSTRAINT FK_CompanyRule_Company FOREIGN KEY (company_ID) REFERENCES Company(company_ID) ON DELETE CASCADE
+);
+
+-- --------------------------------------------------------
+-- 12. Material_Preference Table (Table 7.11)
+-- --------------------------------------------------------
+CREATE TABLE Material_Preference (
+    preference_ID INT(11) AUTO_INCREMENT,
+    rule_ID INT(11) NOT NULL,
+    item_code INT(11) NOT NULL,
+    preferred_source_type VARCHAR(30) NOT NULL CHECK (preferred_source_type IN ('Uploaded', 'Supplier', 'Government')),
+    priority_level INT(11) NOT NULL CHECK (priority_level BETWEEN 1 AND 5),
+    preference_type VARCHAR(30) NOT NULL CHECK (preference_type IN ('Durability', 'Cost Efficiency', 'Eco-Friendly', 'Low Maintenance', 'Aesthetic Finish')),
+    notes VARCHAR(255) DEFAULT NULL,
+    CONSTRAINT PK_Material_Preference PRIMARY KEY (preference_ID),
+    CONSTRAINT FK_MaterialPref_Rule FOREIGN KEY (rule_ID) REFERENCES Company_Rule(rule_ID) ON DELETE CASCADE,
+    CONSTRAINT FK_MaterialPref_Items FOREIGN KEY (item_code) REFERENCES Items(item_code)
+);
+
+-- --------------------------------------------------------
+-- 13. Unit_Conversion_Rule Table (Table 7.12)
+-- --------------------------------------------------------
+CREATE TABLE Unit_Conversion_Rule (
+    conversion_ID INT(11) AUTO_INCREMENT,
+    item_code INT(11) NOT NULL,
+    unit_from VARCHAR(30) NOT NULL,
+    unit_to VARCHAR(30) NOT NULL,
+    conversion_factor DECIMAL(10,4) NOT NULL,
+    CONSTRAINT PK_Unit_Conversion_Rule PRIMARY KEY (conversion_ID),
+    CONSTRAINT FK_UnitConversion_Items FOREIGN KEY (item_code) REFERENCES Items(item_code) ON DELETE CASCADE
+);
+
+-- --------------------------------------------------------
+-- 14. Projects Table (Table 7.13)
+-- --------------------------------------------------------
+CREATE TABLE Projects (
+    project_ID INT(11) AUTO_INCREMENT,
+    company_ID INT(11) NOT NULL,
+    project_name VARCHAR(150) NOT NULL,
+    client_name VARCHAR(150) NOT NULL,
+    location VARCHAR(255) NOT NULL,
+    start_date DATE DEFAULT NULL,
+    end_date DATE DEFAULT NULL,
+    status VARCHAR(30) NOT NULL DEFAULT 'Planning',
+    CONSTRAINT PK_Projects PRIMARY KEY (project_ID),
+    CONSTRAINT FK_Projects_Company FOREIGN KEY (company_ID) REFERENCES Company(company_ID) ON DELETE CASCADE
+);
+
+-- --------------------------------------------------------
+-- 15. Project_Segments Table (Table 7.14)
+-- --------------------------------------------------------
+CREATE TABLE Project_Segments (
+    segment_ID INT(11) AUTO_INCREMENT,
+    project_ID INT(11) NOT NULL,
+    segment_name VARCHAR(150) NOT NULL,
+    area_sqm DECIMAL(10,2) NOT NULL DEFAULT 0.00,
+    scope_description VARCHAR(255) DEFAULT NULL,
+    CONSTRAINT PK_Project_Segments PRIMARY KEY (segment_ID),
+    CONSTRAINT FK_Segments_Projects FOREIGN KEY (project_ID) REFERENCES Projects(project_ID) ON DELETE CASCADE
+);
+
+-- --------------------------------------------------------
+-- 16. Segment_Client_Preference Table (Table 7.15)
+-- --------------------------------------------------------
+CREATE TABLE Segment_Client_Preference (
+    client_pref_ID INT(11) AUTO_INCREMENT,
+    segment_ID INT(11) NOT NULL,
+    preference_key VARCHAR(100) NOT NULL,
+    preference_value VARCHAR(255) NOT NULL,
+    CONSTRAINT PK_Segment_Client_Preference PRIMARY KEY (client_pref_ID),
+    CONSTRAINT FK_ClientPref_Segments FOREIGN KEY (segment_ID) REFERENCES Project_Segments(segment_ID) ON DELETE CASCADE
+);
+
+-- --------------------------------------------------------
+-- 17. Segment_Site_Condition Table (Table 7.16)
+-- --------------------------------------------------------
+CREATE TABLE Segment_Site_Condition (
+    condition_ID INT(11) AUTO_INCREMENT,
+    segment_ID INT(11) NOT NULL,
+    condition_key VARCHAR(100) NOT NULL,
+    condition_value VARCHAR(255) NOT NULL,
+    CONSTRAINT PK_Segment_Site_Condition PRIMARY KEY (condition_ID),
+    CONSTRAINT FK_SiteCondition_Segments FOREIGN KEY (segment_ID) REFERENCES Project_Segments(segment_ID) ON DELETE CASCADE
+);
