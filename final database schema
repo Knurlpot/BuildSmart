@@ -1,4 +1,6 @@
--- FINAL DATABASE FOR BUILDSMART
+-- Create Database
+CREATE DATABASE IF NOT EXISTS buildsmart_db;
+USE buildsmart_db;
 
 -- --------------------------------------------------------
 -- 1. Company Table
@@ -38,22 +40,18 @@ CREATE TABLE Users (
 
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
 
-
     CONSTRAINT PK_Users PRIMARY KEY(user_ID),
-
     CONSTRAINT FK_Users_Company
-    FOREIGN KEY(company_ID)
-    REFERENCES Company(company_ID)
-    ON DELETE CASCADE
+        FOREIGN KEY(company_ID)
+        REFERENCES Company(company_ID)
+        ON DELETE CASCADE
 );
 
 
-
 -- --------------------------------------------------------
--- 3. Suppliers
+-- 3. Suppliers Table
 -- --------------------------------------------------------
 CREATE TABLE Suppliers (
-
     supplier_ID INTEGER GENERATED ALWAYS AS IDENTITY,
 
     supplier_name VARCHAR(150) NOT NULL,
@@ -67,238 +65,243 @@ CREATE TABLE Suppliers (
     contact_number VARCHAR(30) NOT NULL,
 
     supplier_type VARCHAR(50)
-    CHECK(supplier_type IN
-    ('Distributor','Warehouse','Retailer')),
+        CHECK(supplier_type IN ('Distributor','Warehouse','Retailer')),
 
     status VARCHAR(20) DEFAULT 'Active'
-    CHECK(status IN ('Active','Inactive')),
-
+        CHECK(status IN ('Active','Inactive')),
 
     CONSTRAINT PK_Suppliers PRIMARY KEY(supplier_ID)
-
 );
 
 
+-- --------------------------------------------------------
+-- 4. Supplier Benchmark Table (New Addendum)
+-- --------------------------------------------------------
+CREATE TABLE Supplier_Benchmark (
+    supplier_id INTEGER NOT NULL,
+    average_price_score NUMERIC(5,2),
+    update_frequency_score NUMERIC(5,2),
+    reliability_score NUMERIC(5,2),
+    delivery_score NUMERIC(5,2),
+    overall_score NUMERIC(5,2), -- Composite field
+
+    CONSTRAINT PK_Supplier_Benchmark PRIMARY KEY (supplier_id),
+    CONSTRAINT FK_SupplierBenchmark_Suppliers 
+        FOREIGN KEY (supplier_id) 
+        REFERENCES Suppliers(supplier_ID) 
+        ON DELETE CASCADE
+);
+
 
 -- --------------------------------------------------------
--- 4. Category
+-- 5. Supplier Region Table (New Addendum)
+-- --------------------------------------------------------
+CREATE TABLE Supplier_Region (
+    supplier_id INTEGER NOT NULL,
+    region VARCHAR(80) NOT NULL,
+    province VARCHAR(80) NOT NULL,
+    city VARCHAR(80) NOT NULL,
+
+    CONSTRAINT PK_Supplier_Region PRIMARY KEY (supplier_id, region, province, city),
+    CONSTRAINT FK_SupplierRegion_Suppliers 
+        FOREIGN KEY (supplier_id) 
+        REFERENCES Suppliers(supplier_ID) 
+        ON DELETE CASCADE
+);
+
+
+-- --------------------------------------------------------
+-- 6. Supplier Discount Rule Table (New Addendum)
+-- --------------------------------------------------------
+CREATE TABLE Supplier_Discount_Rule (
+    id INTEGER GENERATED ALWAYS AS IDENTITY,
+    company_id INTEGER NOT NULL,
+    supplier_id INTEGER NOT NULL,
+    rule_type VARCHAR(50) NOT NULL
+        CHECK (rule_type IN ('bulk_discount', 'negotiated_price', 'minimum_order', 'preferred_supplier')),
+    minimum_order_amount NUMERIC(15,2),
+    discount_percentage NUMERIC(5,2),
+    fixed_discount_amount NUMERIC(15,2),
+    effective_date DATE NOT NULL,
+    expiration_date DATE,
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+
+    CONSTRAINT PK_Supplier_Discount_Rule PRIMARY KEY (id),
+    CONSTRAINT FK_SupplierDiscount_Company 
+        FOREIGN KEY (company_id) 
+        REFERENCES Company(company_ID) 
+        ON DELETE CASCADE,
+    CONSTRAINT FK_SupplierDiscount_Suppliers 
+        FOREIGN KEY (supplier_id) 
+        REFERENCES Suppliers(supplier_ID) 
+        ON DELETE CASCADE
+);
+
+
+-- --------------------------------------------------------
+-- 7. Category Table
 -- --------------------------------------------------------
 CREATE TABLE Category (
-
     category_ID INTEGER GENERATED ALWAYS AS IDENTITY,
-
     category_type VARCHAR(80) NOT NULL,
     category_desc VARCHAR(255),
 
-
     CONSTRAINT PK_Category PRIMARY KEY(category_ID)
-
 );
 
 
-
 -- --------------------------------------------------------
--- 5. Items
+-- 8. Items Table
 -- --------------------------------------------------------
 CREATE TABLE Items (
-
     item_code INTEGER GENERATED ALWAYS AS IDENTITY,
-
     category_ID INTEGER NOT NULL,
 
     item_name VARCHAR(150) NOT NULL,
     material VARCHAR(100) NOT NULL,
     brand VARCHAR(100) NOT NULL,
 
-
     quality VARCHAR(50)
-    CHECK(quality IN ('Budget','Standard','Premium')),
-
+        CHECK(quality IN ('Budget','Standard','Premium')),
 
     unit VARCHAR(30) NOT NULL,
-
 
     size_width NUMERIC(10,2) DEFAULT 0.00,
     size_length NUMERIC(10,2) DEFAULT 0.00,
 
-
     color VARCHAR(50) NOT NULL,
-
     description VARCHAR(255),
-
-
 
     CONSTRAINT PK_Items PRIMARY KEY(item_code),
-
-
     CONSTRAINT FK_Items_Category
-
-    FOREIGN KEY(category_ID)
-
-    REFERENCES Category(category_ID)
-
+        FOREIGN KEY(category_ID)
+        REFERENCES Category(category_ID)
 );
 
 
+-- --------------------------------------------------------
+-- 9. Historical Price Record Table (New Addendum)
+-- --------------------------------------------------------
+CREATE TABLE Historical_Price_Record (
+    id INTEGER GENERATED ALWAYS AS IDENTITY,
+    item_id INTEGER NOT NULL,
+    source VARCHAR(50) NOT NULL
+        CHECK (source IN ('dpwh', 'supplier_upload', 'psa')),
+    region VARCHAR(80), -- Nullable for national-level records
+    quarter VARCHAR(10) NOT NULL
+        CHECK (quarter IN ('Q1', 'Q2', 'Q3', 'Q4')),
+    year INTEGER NOT NULL,
+    price NUMERIC(12,2) NOT NULL,
+    recorded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+
+    CONSTRAINT PK_Historical_Price_Record PRIMARY KEY (id),
+    CONSTRAINT FK_HistoricalPrice_Items 
+        FOREIGN KEY (item_id) 
+        REFERENCES Items(item_code) 
+        ON DELETE CASCADE
+);
+
 
 -- --------------------------------------------------------
--- 6. Quotation
+-- 10. Material Price Variance Table (New Addendum)
+-- --------------------------------------------------------
+CREATE TABLE Material_Price_Variance (
+    id INTEGER GENERATED ALWAYS AS IDENTITY,
+    item_id INTEGER NOT NULL,
+    quarter VARCHAR(10) NOT NULL, -- The "to" quarter in comparison
+    year INTEGER NOT NULL,
+    percent_change NUMERIC(5,2) NOT NULL,
+    trend_direction VARCHAR(20) NOT NULL
+        CHECK (trend_direction IN ('up', 'down', 'stable')),
+    is_significant_spike BOOLEAN NOT NULL, -- Threshold >=15%
+
+    CONSTRAINT PK_Material_Price_Variance PRIMARY KEY (id),
+    CONSTRAINT FK_MaterialVariance_Items 
+        FOREIGN KEY (item_id) 
+        REFERENCES Items(item_code) 
+        ON DELETE CASCADE
+);
+
+
+-- --------------------------------------------------------
+-- 11. Quotation Table
 -- --------------------------------------------------------
 CREATE TABLE Quotation (
-
     quote_ID INTEGER GENERATED ALWAYS AS IDENTITY,
-
     company_ID INTEGER NOT NULL,
-
     user_ID INTEGER NOT NULL,
 
-
     project_name VARCHAR(150) NOT NULL,
-
     project_location VARCHAR(255) NOT NULL,
-
     project_region VARCHAR(80) NOT NULL,
 
-
     input_method VARCHAR(50) NOT NULL,
-
     status VARCHAR(30) NOT NULL,
 
-
-    total_material_cost NUMERIC(15,2)
-    DEFAULT 0.00,
-
-
-    total_service_cost NUMERIC(15,2)
-    DEFAULT 0.00,
-
-
-    grand_total NUMERIC(15,2)
-    DEFAULT 0.00,
-
+    total_material_cost NUMERIC(15,2) DEFAULT 0.00,
+    total_service_cost NUMERIC(15,2) DEFAULT 0.00,
+    grand_total NUMERIC(15,2) DEFAULT 0.00,
 
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 
-
     CONSTRAINT PK_Quotation PRIMARY KEY(quote_ID),
-
-
     CONSTRAINT FK_Quotation_Company
-
-    FOREIGN KEY(company_ID)
-
-    REFERENCES Company(company_ID),
-
-
-
+        FOREIGN KEY(company_ID)
+        REFERENCES Company(company_ID),
     CONSTRAINT FK_Quotation_User
-
-    FOREIGN KEY(user_ID)
-
-    REFERENCES Users(user_ID)
-
+        FOREIGN KEY(user_ID)
+        REFERENCES Users(user_ID)
 );
 
 
-
 -- --------------------------------------------------------
--- 7. Quotations Items
+-- 12. Quotations Items Table
 -- --------------------------------------------------------
 CREATE TABLE Quotations_Items (
-
     quote_item_ID INTEGER GENERATED ALWAYS AS IDENTITY,
-
-
     quote_ID INTEGER NOT NULL,
-
     item_code INTEGER NOT NULL,
 
-
     quantity INTEGER NOT NULL,
-
-
     unit_cost NUMERIC(12,2) NOT NULL,
-
-
-    markup_percentage NUMERIC(5,2)
-    DEFAULT 0.00,
-
+    markup_percentage NUMERIC(5,2) DEFAULT 0.00,
 
     final_unit_price NUMERIC(12,2) NOT NULL,
-
-
     total_cost NUMERIC(15,2) NOT NULL,
-
-
     source_type VARCHAR(30) NOT NULL,
 
-
-
-    CONSTRAINT PK_Quotation_Items
-    PRIMARY KEY(quote_item_ID),
-
-
-
+    CONSTRAINT PK_Quotation_Items PRIMARY KEY(quote_item_ID),
     CONSTRAINT FK_QuoteItems_Quotation
-
-    FOREIGN KEY(quote_ID)
-
-    REFERENCES Quotation(quote_ID)
-
-    ON DELETE CASCADE,
-
-
-
+        FOREIGN KEY(quote_ID)
+        REFERENCES Quotation(quote_ID)
+        ON DELETE CASCADE,
     CONSTRAINT FK_QuoteItems_Items
-
-    FOREIGN KEY(item_code)
-
-    REFERENCES Items(item_code)
-
+        FOREIGN KEY(item_code)
+        REFERENCES Items(item_code)
 );
 
 
-
 -- --------------------------------------------------------
--- 8. Quotation Service Cost
+-- 13. Quotation Service Cost Table
 -- --------------------------------------------------------
 CREATE TABLE Quotation_Service_Cost (
-
     service_cost_ID INTEGER GENERATED ALWAYS AS IDENTITY,
-
     quote_ID INTEGER NOT NULL,
 
-
     service_type VARCHAR(100) NOT NULL,
-
     description VARCHAR(255),
 
-
     labor_cost NUMERIC(12,2) DEFAULT 0.00,
-
     equipment_cost NUMERIC(12,2) DEFAULT 0.00,
-
     contingency_cost NUMERIC(12,2) DEFAULT 0.00,
-
     other_cost NUMERIC(12,2) DEFAULT 0.00,
-
 
     subtotal NUMERIC(15,2) NOT NULL,
 
-
-
-    CONSTRAINT PK_Service_Cost
-    PRIMARY KEY(service_cost_ID),
-
-
+    CONSTRAINT PK_Service_Cost PRIMARY KEY(service_cost_ID),
     CONSTRAINT FK_Service_Quotation
-
-    FOREIGN KEY(quote_ID)
-
-    REFERENCES Quotation(quote_ID)
-
-    ON DELETE CASCADE
-
+        FOREIGN KEY(quote_ID)
+        REFERENCES Quotation(quote_ID)
+        ON DELETE CASCADE
 );
