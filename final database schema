@@ -1,0 +1,304 @@
+-- FINAL DATABASE FOR BUILDSMART
+
+-- --------------------------------------------------------
+-- 1. Company Table
+-- --------------------------------------------------------
+CREATE TABLE Company (
+    company_ID INTEGER GENERATED ALWAYS AS IDENTITY,
+    company_name VARCHAR(150) NOT NULL,
+    company_address VARCHAR(255) NOT NULL,
+    contact_email VARCHAR(150) UNIQUE NOT NULL,
+    contact_number VARCHAR(30) NOT NULL,
+    status VARCHAR(20) DEFAULT 'Active' NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+
+    CONSTRAINT PK_Company PRIMARY KEY (company_ID)
+);
+
+
+-- --------------------------------------------------------
+-- 2. Users Table
+-- --------------------------------------------------------
+CREATE TABLE Users (
+    user_ID INTEGER GENERATED ALWAYS AS IDENTITY,
+    company_ID INTEGER NOT NULL,
+
+    last_name VARCHAR(50) NOT NULL,
+    first_name VARCHAR(50) NOT NULL,
+    middle_name VARCHAR(50),
+
+    email VARCHAR(150) UNIQUE NOT NULL,
+    password_hash VARCHAR(255) NOT NULL,
+
+    user_role VARCHAR(30) NOT NULL
+        CHECK (user_role IN ('Owner','Admin','Estimator','Viewer')),
+
+    status VARCHAR(20) DEFAULT 'Active'
+        CHECK (status IN ('Active','Inactive')),
+
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+
+
+    CONSTRAINT PK_Users PRIMARY KEY(user_ID),
+
+    CONSTRAINT FK_Users_Company
+    FOREIGN KEY(company_ID)
+    REFERENCES Company(company_ID)
+    ON DELETE CASCADE
+);
+
+
+
+-- --------------------------------------------------------
+-- 3. Suppliers
+-- --------------------------------------------------------
+CREATE TABLE Suppliers (
+
+    supplier_ID INTEGER GENERATED ALWAYS AS IDENTITY,
+
+    supplier_name VARCHAR(150) NOT NULL,
+    supplier_address VARCHAR(255) NOT NULL,
+
+    warehouse_loc VARCHAR(255),
+    city VARCHAR(80),
+    region VARCHAR(80),
+
+    contact_email VARCHAR(150) NOT NULL,
+    contact_number VARCHAR(30) NOT NULL,
+
+    supplier_type VARCHAR(50)
+    CHECK(supplier_type IN
+    ('Distributor','Warehouse','Retailer')),
+
+    status VARCHAR(20) DEFAULT 'Active'
+    CHECK(status IN ('Active','Inactive')),
+
+
+    CONSTRAINT PK_Suppliers PRIMARY KEY(supplier_ID)
+
+);
+
+
+
+-- --------------------------------------------------------
+-- 4. Category
+-- --------------------------------------------------------
+CREATE TABLE Category (
+
+    category_ID INTEGER GENERATED ALWAYS AS IDENTITY,
+
+    category_type VARCHAR(80) NOT NULL,
+    category_desc VARCHAR(255),
+
+
+    CONSTRAINT PK_Category PRIMARY KEY(category_ID)
+
+);
+
+
+
+-- --------------------------------------------------------
+-- 5. Items
+-- --------------------------------------------------------
+CREATE TABLE Items (
+
+    item_code INTEGER GENERATED ALWAYS AS IDENTITY,
+
+    category_ID INTEGER NOT NULL,
+
+    item_name VARCHAR(150) NOT NULL,
+    material VARCHAR(100) NOT NULL,
+    brand VARCHAR(100) NOT NULL,
+
+
+    quality VARCHAR(50)
+    CHECK(quality IN ('Budget','Standard','Premium')),
+
+
+    unit VARCHAR(30) NOT NULL,
+
+
+    size_width NUMERIC(10,2) DEFAULT 0.00,
+    size_length NUMERIC(10,2) DEFAULT 0.00,
+
+
+    color VARCHAR(50) NOT NULL,
+
+    description VARCHAR(255),
+
+
+
+    CONSTRAINT PK_Items PRIMARY KEY(item_code),
+
+
+    CONSTRAINT FK_Items_Category
+
+    FOREIGN KEY(category_ID)
+
+    REFERENCES Category(category_ID)
+
+);
+
+
+
+-- --------------------------------------------------------
+-- 6. Quotation
+-- --------------------------------------------------------
+CREATE TABLE Quotation (
+
+    quote_ID INTEGER GENERATED ALWAYS AS IDENTITY,
+
+    company_ID INTEGER NOT NULL,
+
+    user_ID INTEGER NOT NULL,
+
+
+    project_name VARCHAR(150) NOT NULL,
+
+    project_location VARCHAR(255) NOT NULL,
+
+    project_region VARCHAR(80) NOT NULL,
+
+
+    input_method VARCHAR(50) NOT NULL,
+
+    status VARCHAR(30) NOT NULL,
+
+
+    total_material_cost NUMERIC(15,2)
+    DEFAULT 0.00,
+
+
+    total_service_cost NUMERIC(15,2)
+    DEFAULT 0.00,
+
+
+    grand_total NUMERIC(15,2)
+    DEFAULT 0.00,
+
+
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+
+    CONSTRAINT PK_Quotation PRIMARY KEY(quote_ID),
+
+
+    CONSTRAINT FK_Quotation_Company
+
+    FOREIGN KEY(company_ID)
+
+    REFERENCES Company(company_ID),
+
+
+
+    CONSTRAINT FK_Quotation_User
+
+    FOREIGN KEY(user_ID)
+
+    REFERENCES Users(user_ID)
+
+);
+
+
+
+-- --------------------------------------------------------
+-- 7. Quotations Items
+-- --------------------------------------------------------
+CREATE TABLE Quotations_Items (
+
+    quote_item_ID INTEGER GENERATED ALWAYS AS IDENTITY,
+
+
+    quote_ID INTEGER NOT NULL,
+
+    item_code INTEGER NOT NULL,
+
+
+    quantity INTEGER NOT NULL,
+
+
+    unit_cost NUMERIC(12,2) NOT NULL,
+
+
+    markup_percentage NUMERIC(5,2)
+    DEFAULT 0.00,
+
+
+    final_unit_price NUMERIC(12,2) NOT NULL,
+
+
+    total_cost NUMERIC(15,2) NOT NULL,
+
+
+    source_type VARCHAR(30) NOT NULL,
+
+
+
+    CONSTRAINT PK_Quotation_Items
+    PRIMARY KEY(quote_item_ID),
+
+
+
+    CONSTRAINT FK_QuoteItems_Quotation
+
+    FOREIGN KEY(quote_ID)
+
+    REFERENCES Quotation(quote_ID)
+
+    ON DELETE CASCADE,
+
+
+
+    CONSTRAINT FK_QuoteItems_Items
+
+    FOREIGN KEY(item_code)
+
+    REFERENCES Items(item_code)
+
+);
+
+
+
+-- --------------------------------------------------------
+-- 8. Quotation Service Cost
+-- --------------------------------------------------------
+CREATE TABLE Quotation_Service_Cost (
+
+    service_cost_ID INTEGER GENERATED ALWAYS AS IDENTITY,
+
+    quote_ID INTEGER NOT NULL,
+
+
+    service_type VARCHAR(100) NOT NULL,
+
+    description VARCHAR(255),
+
+
+    labor_cost NUMERIC(12,2) DEFAULT 0.00,
+
+    equipment_cost NUMERIC(12,2) DEFAULT 0.00,
+
+    contingency_cost NUMERIC(12,2) DEFAULT 0.00,
+
+    other_cost NUMERIC(12,2) DEFAULT 0.00,
+
+
+    subtotal NUMERIC(15,2) NOT NULL,
+
+
+
+    CONSTRAINT PK_Service_Cost
+    PRIMARY KEY(service_cost_ID),
+
+
+    CONSTRAINT FK_Service_Quotation
+
+    FOREIGN KEY(quote_ID)
+
+    REFERENCES Quotation(quote_ID)
+
+    ON DELETE CASCADE
+
+);

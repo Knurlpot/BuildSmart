@@ -1,6 +1,0 @@
--- not yet final
-
--- Create Database
-CREATE DATABASE IF NOT EXISTS buildsmart_db;
-USE buildsmart_db;
-
