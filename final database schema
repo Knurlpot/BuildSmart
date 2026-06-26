@@ -1,5 +1,5 @@
 -- ========================================================
--- BuildSmart - Unified Database Schema
+-- BuildSmart - Unified Database Schema (Updated)
 -- ========================================================
 
 -- --------------------------------------------------------
@@ -11,6 +11,9 @@ CREATE TABLE Company (
     company_address VARCHAR(255) NOT NULL,
     contact_email VARCHAR(150) UNIQUE NOT NULL,
     contact_number VARCHAR(30) NOT NULL,
+        specialization_1 VARCHAR(100) NOT NULL,          -- Primary focus (Required)
+    specialization_2 VARCHAR(100),                   -- Secondary focus (Optional)
+    specialization_3 VARCHAR(100),                   -- Tertiary focus (Optional)
     status VARCHAR(20) DEFAULT 'Active' NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
 
@@ -18,21 +21,7 @@ CREATE TABLE Company (
 );
 
 -- --------------------------------------------------------
--- 2. Company Specialization Table 
--- --------------------------------------------------------
-CREATE TABLE Company_Specialization (
-    company_id INTEGER NOT NULL,
-    specialization_type VARCHAR(100) NOT NULL, 
-
-    CONSTRAINT PK_Company_Specialization PRIMARY KEY (company_id, specialization_type),
-    CONSTRAINT FK_Specialization_Company 
-        FOREIGN KEY (company_id) 
-        REFERENCES Company(company_id) 
-        ON DELETE CASCADE
-);
-
--- --------------------------------------------------------
--- 3. Users Table
+-- 2. Users Table
 -- --------------------------------------------------------
 CREATE TABLE Users (
     user_id INTEGER GENERATED ALWAYS AS IDENTITY,
@@ -56,7 +45,7 @@ CREATE TABLE Users (
 );
 
 -- --------------------------------------------------------
--- 4. Suppliers Table
+-- 3. Suppliers Table
 -- --------------------------------------------------------
 CREATE TABLE Suppliers (
     supplier_id INTEGER GENERATED ALWAYS AS IDENTITY,
@@ -76,7 +65,7 @@ CREATE TABLE Suppliers (
 );
 
 -- --------------------------------------------------------
--- 5. Supplier Benchmark Table
+-- 4. Supplier Benchmark Table
 -- --------------------------------------------------------
 CREATE TABLE Supplier_Benchmark (
     supplier_id INTEGER NOT NULL,
@@ -94,7 +83,7 @@ CREATE TABLE Supplier_Benchmark (
 );
 
 -- --------------------------------------------------------
--- 6. Supplier Region Table
+-- 5. Supplier Region Table
 -- --------------------------------------------------------
 CREATE TABLE Supplier_Region (
     supplier_id INTEGER NOT NULL,
@@ -110,7 +99,7 @@ CREATE TABLE Supplier_Region (
 );
 
 -- --------------------------------------------------------
--- 7. Supplier Discount Rule Table 
+-- 6. Supplier Discount Rule Table 
 -- --------------------------------------------------------
 CREATE TABLE Supplier_Discount_Rule (
     supplierdiscID INTEGER GENERATED ALWAYS AS IDENTITY, 
@@ -137,7 +126,7 @@ CREATE TABLE Supplier_Discount_Rule (
 );
 
 -- --------------------------------------------------------
--- 8. Category Table
+-- 7. Category Table
 -- --------------------------------------------------------
 CREATE TABLE Category (
     category_id INTEGER GENERATED ALWAYS AS IDENTITY,
@@ -148,7 +137,7 @@ CREATE TABLE Category (
 );
 
 -- --------------------------------------------------------
--- 9. Items Table
+-- 8. Items Table
 -- --------------------------------------------------------
 CREATE TABLE Items (
     item_code INTEGER GENERATED ALWAYS AS IDENTITY,
@@ -178,7 +167,7 @@ CREATE TABLE Items (
 );
 
 -- --------------------------------------------------------
--- 10. Historical Price Record Table
+-- 9. Historical Price Record Table
 -- --------------------------------------------------------
 CREATE TABLE Historical_Price_Record (
     id INTEGER GENERATED ALWAYS AS IDENTITY,
@@ -200,7 +189,7 @@ CREATE TABLE Historical_Price_Record (
 );
 
 -- --------------------------------------------------------
--- 11. Material Price Variance Table
+-- 10. Material Price Variance Table
 -- --------------------------------------------------------
 CREATE TABLE Material_Price_Variance (
     id INTEGER GENERATED ALWAYS AS IDENTITY,
@@ -221,7 +210,7 @@ CREATE TABLE Material_Price_Variance (
 );
 
 -- --------------------------------------------------------
--- 12. Quotation Table
+-- 11. Quotation Table
 -- --------------------------------------------------------
 CREATE TABLE Quotation (
     quote_id INTEGER GENERATED ALWAYS AS IDENTITY,
@@ -248,7 +237,7 @@ CREATE TABLE Quotation (
 );
 
 -- --------------------------------------------------------
--- 13. Quotations Items Table
+-- 12. Quotations Items Table
 -- --------------------------------------------------------
 CREATE TABLE Quotations_Items (
     quote_item_id INTEGER GENERATED ALWAYS AS IDENTITY,
@@ -274,7 +263,7 @@ CREATE TABLE Quotations_Items (
 );
 
 -- --------------------------------------------------------
--- 14. Quotation Service Cost Table
+-- 13. Quotation Service Cost Table
 -- --------------------------------------------------------
 CREATE TABLE Quotation_Service_Cost (
     service_cost_id INTEGER GENERATED ALWAYS AS IDENTITY,
