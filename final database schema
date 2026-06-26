@@ -1,5 +1,5 @@
 -- ========================================================
--- BuildSmart - Unified Database Schema (Updated)
+-- BuildSmart - Unified Database Schema (Updated ID Rules)
 -- ========================================================
 
 -- --------------------------------------------------------
@@ -11,9 +11,12 @@ CREATE TABLE Company (
     company_address VARCHAR(255) NOT NULL,
     contact_email VARCHAR(150) UNIQUE NOT NULL,
     contact_number VARCHAR(30) NOT NULL,
-        specialization_1 VARCHAR(100) NOT NULL,          -- Primary focus (Required)
-    specialization_2 VARCHAR(100),                   -- Secondary focus (Optional)
-    specialization_3 VARCHAR(100),                   -- Tertiary focus (Optional)
+    
+    -- Specializations (1 Required, 2 & 3 Optional)
+    specialization_1 VARCHAR(100) NOT NULL,
+    specialization_2 VARCHAR(100),
+    specialization_3 VARCHAR(100),
+    
     status VARCHAR(20) DEFAULT 'Active' NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
 
@@ -68,30 +71,33 @@ CREATE TABLE Suppliers (
 -- 4. Supplier Benchmark Table
 -- --------------------------------------------------------
 CREATE TABLE Supplier_Benchmark (
-    supplier_id INTEGER NOT NULL,
+    benchmark_id INTEGER GENERATED ALWAYS AS IDENTITY, 
+    supplier_id INTEGER NOT NULL,                      
     average_price_score NUMERIC(5,2),
     update_frequency_score NUMERIC(5,2),
     reliability_score NUMERIC(5,2),
     delivery_score NUMERIC(5,2),
     overall_score NUMERIC(5,2),
 
-    CONSTRAINT PK_Supplier_Benchmark PRIMARY KEY (supplier_id),
+    CONSTRAINT PK_Supplier_Benchmark PRIMARY KEY (benchmark_id),
     CONSTRAINT FK_SupplierBenchmark_Suppliers 
         FOREIGN KEY (supplier_id) 
         REFERENCES Suppliers(supplier_id) 
-        ON DELETE CASCADE
+        ON DELETE CASCADE,
+    CONSTRAINT UQ_Supplier_Benchmark_Supplier UNIQUE (supplier_id) -- Enforces 1:1 relationship
 );
 
 -- --------------------------------------------------------
 -- 5. Supplier Region Table
 -- --------------------------------------------------------
 CREATE TABLE Supplier_Region (
-    supplier_id INTEGER NOT NULL,
+    region_id INTEGER GENERATED ALWAYS AS IDENTITY,    
+    supplier_id INTEGER NOT NULL,                       
     region VARCHAR(80) NOT NULL,
     province VARCHAR(80) NOT NULL,
     city VARCHAR(80) NOT NULL,
 
-    CONSTRAINT PK_Supplier_Region PRIMARY KEY (supplier_id, region, province, city),
+    CONSTRAINT PK_Supplier_Region PRIMARY KEY (region_id),
     CONSTRAINT FK_SupplierRegion_Suppliers 
         FOREIGN KEY (supplier_id) 
         REFERENCES Suppliers(supplier_id) 
