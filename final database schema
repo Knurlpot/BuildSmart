@@ -18,7 +18,21 @@ CREATE TABLE Company (
 );
 
 -- --------------------------------------------------------
--- 2. Users Table
+-- 2. Company Specialization Table 
+-- --------------------------------------------------------
+CREATE TABLE Company_Specialization (
+    company_id INTEGER NOT NULL,
+    specialization_type VARCHAR(100) NOT NULL, 
+
+    CONSTRAINT PK_Company_Specialization PRIMARY KEY (company_id, specialization_type),
+    CONSTRAINT FK_Specialization_Company 
+        FOREIGN KEY (company_id) 
+        REFERENCES Company(company_id) 
+        ON DELETE CASCADE
+);
+
+-- --------------------------------------------------------
+-- 3. Users Table
 -- --------------------------------------------------------
 CREATE TABLE Users (
     user_id INTEGER GENERATED ALWAYS AS IDENTITY,
@@ -42,7 +56,7 @@ CREATE TABLE Users (
 );
 
 -- --------------------------------------------------------
--- 3. Suppliers Table
+-- 4. Suppliers Table
 -- --------------------------------------------------------
 CREATE TABLE Suppliers (
     supplier_id INTEGER GENERATED ALWAYS AS IDENTITY,
@@ -62,7 +76,7 @@ CREATE TABLE Suppliers (
 );
 
 -- --------------------------------------------------------
--- 4. Supplier Benchmark Table
+-- 5. Supplier Benchmark Table
 -- --------------------------------------------------------
 CREATE TABLE Supplier_Benchmark (
     supplier_id INTEGER NOT NULL,
@@ -80,7 +94,7 @@ CREATE TABLE Supplier_Benchmark (
 );
 
 -- --------------------------------------------------------
--- 5. Supplier Region Table
+-- 6. Supplier Region Table
 -- --------------------------------------------------------
 CREATE TABLE Supplier_Region (
     supplier_id INTEGER NOT NULL,
@@ -96,7 +110,7 @@ CREATE TABLE Supplier_Region (
 );
 
 -- --------------------------------------------------------
--- 6. Supplier Discount Rule Table 
+-- 7. Supplier Discount Rule Table 
 -- --------------------------------------------------------
 CREATE TABLE Supplier_Discount_Rule (
     supplierdiscID INTEGER GENERATED ALWAYS AS IDENTITY, 
@@ -123,7 +137,7 @@ CREATE TABLE Supplier_Discount_Rule (
 );
 
 -- --------------------------------------------------------
--- 7. Category Table
+-- 8. Category Table
 -- --------------------------------------------------------
 CREATE TABLE Category (
     category_id INTEGER GENERATED ALWAYS AS IDENTITY,
@@ -134,7 +148,7 @@ CREATE TABLE Category (
 );
 
 -- --------------------------------------------------------
--- 8. Items Table
+-- 9. Items Table
 -- --------------------------------------------------------
 CREATE TABLE Items (
     item_code INTEGER GENERATED ALWAYS AS IDENTITY,
@@ -164,7 +178,7 @@ CREATE TABLE Items (
 );
 
 -- --------------------------------------------------------
--- 9. Historical Price Record Table
+-- 10. Historical Price Record Table
 -- --------------------------------------------------------
 CREATE TABLE Historical_Price_Record (
     id INTEGER GENERATED ALWAYS AS IDENTITY,
@@ -186,7 +200,7 @@ CREATE TABLE Historical_Price_Record (
 );
 
 -- --------------------------------------------------------
--- 10. Material Price Variance Table
+-- 11. Material Price Variance Table
 -- --------------------------------------------------------
 CREATE TABLE Material_Price_Variance (
     id INTEGER GENERATED ALWAYS AS IDENTITY,
@@ -207,7 +221,7 @@ CREATE TABLE Material_Price_Variance (
 );
 
 -- --------------------------------------------------------
--- 11. Quotation Table
+-- 12. Quotation Table
 -- --------------------------------------------------------
 CREATE TABLE Quotation (
     quote_id INTEGER GENERATED ALWAYS AS IDENTITY,
@@ -234,7 +248,7 @@ CREATE TABLE Quotation (
 );
 
 -- --------------------------------------------------------
--- 12. Quotations Items Table (Updated with source_type Constraints)
+-- 13. Quotations Items Table
 -- --------------------------------------------------------
 CREATE TABLE Quotations_Items (
     quote_item_id INTEGER GENERATED ALWAYS AS IDENTITY,
@@ -260,7 +274,7 @@ CREATE TABLE Quotations_Items (
 );
 
 -- --------------------------------------------------------
--- 13. Quotation Service Cost Table
+-- 14. Quotation Service Cost Table
 -- --------------------------------------------------------
 CREATE TABLE Quotation_Service_Cost (
     service_cost_id INTEGER GENERATED ALWAYS AS IDENTITY,
