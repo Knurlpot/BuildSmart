@@ -1,5 +1,5 @@
 -- ========================================================
--- BuildSmart 
+-- BuildSmart - Unified Database Schema
 -- ========================================================
 
 -- --------------------------------------------------------
@@ -134,12 +134,12 @@ CREATE TABLE Category (
 );
 
 -- --------------------------------------------------------
--- 8. Items Table (Updated for Ownership and Origin)
+-- 8. Items Table
 -- --------------------------------------------------------
 CREATE TABLE Items (
     item_code INTEGER GENERATED ALWAYS AS IDENTITY,
     category_id INTEGER NOT NULL,
-    company_id INTEGER, -- NULL means Global/System-wide item; populated means company proprietary item
+    company_id INTEGER, 
     item_name VARCHAR(150) NOT NULL,
     material VARCHAR(100) NOT NULL,
     brand VARCHAR(100) NOT NULL,
@@ -150,7 +150,7 @@ CREATE TABLE Items (
     size_length NUMERIC(10,2) DEFAULT 0.00,
     color VARCHAR(50) NOT NULL,
     item_source VARCHAR(50) DEFAULT 'custom' NOT NULL
-        CHECK (item_source IN ('dpwh', 'psa', 'custom')), -- Directly categorizes structural item origin
+        CHECK (item_source IN ('dpwh', 'psa', 'custom')), 
     description VARCHAR(255),
 
     CONSTRAINT PK_Items PRIMARY KEY(item_code),
@@ -234,7 +234,7 @@ CREATE TABLE Quotation (
 );
 
 -- --------------------------------------------------------
--- 12. Quotations Items Table
+-- 12. Quotations Items Table (Updated with source_type Constraints)
 -- --------------------------------------------------------
 CREATE TABLE Quotations_Items (
     quote_item_id INTEGER GENERATED ALWAYS AS IDENTITY,
@@ -245,7 +245,8 @@ CREATE TABLE Quotations_Items (
     markup_percentage NUMERIC(5,2) DEFAULT 0.00,
     final_unit_price NUMERIC(12,2) NOT NULL,
     total_cost NUMERIC(15,2) NOT NULL,
-    source_type VARCHAR(30) NOT NULL, -- tracks where the price logic pulled from during generation (e.g., 'dpwh')
+    source_type VARCHAR(30) NOT NULL
+        CHECK (source_type IN ('DPWH', 'PSA', 'Internal', 'Supplier')),
 
     CONSTRAINT PK_Quotation_Items PRIMARY KEY(quote_item_id),
     CONSTRAINT FK_QuoteItems_Quotation
