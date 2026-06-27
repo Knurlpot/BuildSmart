@@ -1,7 +1,3 @@
-CREATE DATABASE IF NOT EXISTS buildsmart_db;
-USE buildsmart_db;
-
-
 -- =====================================================
 -- COMPANY
 -- =====================================================
@@ -11,15 +7,13 @@ CREATE TABLE company (
     company_address VARCHAR(255) NOT NULL,
     contact_email VARCHAR(100) UNIQUE NOT NULL,
     contact_number VARCHAR(20) NOT NULL,
-
     specialization_1 VARCHAR(50) NOT NULL,
     specialization_2 VARCHAR(50),
     specialization_3 VARCHAR(50),
-
+    company_logo VARCHAR(255),
     status ENUM('Active','Inactive') DEFAULT 'Active',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
-
 
 -- =====================================================
 -- USERS
@@ -27,26 +21,20 @@ CREATE TABLE company (
 -- =====================================================
 CREATE TABLE users (
     user_id INT AUTO_INCREMENT PRIMARY KEY,
-
     company_id INT NOT NULL,
-
     last_name VARCHAR(30) NOT NULL,
     first_name VARCHAR(30) NOT NULL,
     middle_name VARCHAR(30),
-
     email VARCHAR(100) UNIQUE NOT NULL,
     password VARCHAR(255) NOT NULL,
-
     user_role ENUM(
         'Owner',
         'Admin',
         'Estimator',
         'Viewer'
     ) NOT NULL,
-
     status ENUM('Active','Inactive')
     DEFAULT 'Active',
-
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 
     FOREIGN KEY(company_id)
@@ -54,152 +42,100 @@ CREATE TABLE users (
     ON DELETE CASCADE
 );
 
-
-
 -- =====================================================
 -- SUPPLIERS
 -- =====================================================
 CREATE TABLE suppliers (
-
     supplier_id INT AUTO_INCREMENT PRIMARY KEY,
-
     supplier_name VARCHAR(100) NOT NULL,
-
     supplier_address VARCHAR(255),
-
     warehouse_loc VARCHAR(100),
-
     city VARCHAR(50),
     region VARCHAR(50),
-
     contact_email VARCHAR(100),
     contact_number VARCHAR(20),
-
     supplier_type ENUM(
         'Distributor',
         'Warehouse',
         'Retailer'
     ),
-
     status ENUM('Active','Inactive')
     DEFAULT 'Active'
 );
-
-
 
 -- =====================================================
 -- SUPPLIER BENCHMARKS
 -- Supplier 1 ---- 1 Benchmark
 -- =====================================================
 CREATE TABLE supplier_benchmarks (
-
     benchmark_id INT AUTO_INCREMENT PRIMARY KEY,
-
     supplier_id INT NOT NULL,
-
     average_price_score DECIMAL(5,2),
     update_frequency_score DECIMAL(5,2),
     reliability_score DECIMAL(5,2),
     delivery_score DECIMAL(5,2),
-
     overall_score DECIMAL(5,2),
-
 
     FOREIGN KEY(supplier_id)
     REFERENCES suppliers(supplier_id)
     ON DELETE CASCADE
 );
-
-
 
 -- =====================================================
 -- SUPPLIER REGIONS
 -- Supplier 1 ---- M Regions
 -- =====================================================
 CREATE TABLE supplier_regions (
-
     region_id INT AUTO_INCREMENT PRIMARY KEY,
-
     supplier_id INT NOT NULL,
-
     region VARCHAR(50),
     province VARCHAR(50),
     city VARCHAR(50),
-
 
     FOREIGN KEY(supplier_id)
     REFERENCES suppliers(supplier_id)
     ON DELETE CASCADE
 );
-
-
 
 -- =====================================================
 -- SUPPLIER DISCOUNTS
 -- Company M ---- M Supplier
 -- =====================================================
 CREATE TABLE supplier_discount_rules (
-
     supplierdisc_id INT AUTO_INCREMENT PRIMARY KEY,
-
-
     company_id INT NOT NULL,
     supplier_id INT NOT NULL,
-
-
     rule_type ENUM(
         'Bulk discount',
         'Negotiated price',
         'Minimum order',
         'Preferred supplier'
     ),
-
-
     minimum_order_amount DECIMAL(15,2),
-
     discount_percentage DECIMAL(5,2),
-
     fixed_discount_amount DECIMAL(15,2),
-
-
     effective_date DATE NOT NULL,
-
     expiration_date DATE,
-
-
     is_active BOOLEAN DEFAULT TRUE,
-
 
     FOREIGN KEY(company_id)
     REFERENCES company(company_id)
     ON DELETE CASCADE,
-
 
     FOREIGN KEY(supplier_id)
     REFERENCES suppliers(supplier_id)
     ON DELETE CASCADE
 );
 
-
-
 -- =====================================================
 -- CATEGORIES
 -- Category 1 ---- M Items
 -- =====================================================
 CREATE TABLE categories (
-
     category_id INT AUTO_INCREMENT PRIMARY KEY,
-
     category_type VARCHAR(40) NOT NULL,
-
-    name VARCHAR(70) NOT NULL,
-
-    category_desc VARCHAR(255),
-
-    explanation TEXT
+    category_desc VARCHAR(255)
 );
-
-
 
 -- =====================================================
 -- ITEMS
@@ -207,133 +143,77 @@ CREATE TABLE categories (
 -- Company 1 ---- M Items
 -- =====================================================
 CREATE TABLE items (
-
     item_code INT AUTO_INCREMENT PRIMARY KEY,
-
-
     category_id INT NOT NULL,
-
     company_id INT,
-
-
     item_name VARCHAR(100) NOT NULL,
-
     material VARCHAR(100),
-
     brand VARCHAR(100),
-
     quality VARCHAR(50),
-
-
     unit VARCHAR(50),
-
-
     size_width DECIMAL(8,2),
-
     size_length DECIMAL(8,2),
-
-
     color VARCHAR(40),
-
-
     item_source ENUM(
         'DPWH',
         'PSA',
         'Others'
     ),
-
-
-    description TEXT,
-
+    description VARCHAR(255),
 
     FOREIGN KEY(category_id)
     REFERENCES categories(category_id)
     ON DELETE CASCADE,
-
 
     FOREIGN KEY(company_id)
     REFERENCES company(company_id)
     ON DELETE SET NULL
 );
 
-
-
 -- =====================================================
 -- HISTORICAL PRICE RECORDS
 -- Item 1 ---- M Price Records
 -- =====================================================
 CREATE TABLE historical_price_records (
-
     historicalrec_id INT AUTO_INCREMENT PRIMARY KEY,
-
-
     item_code INT NOT NULL,
-
-
     source ENUM(
         'DPWH',
         'PSA',
         'Supplier Upload'
     ),
-
-
     region VARCHAR(50),
-
-
     quarter VARCHAR(10),
-
     year YEAR,
-
-
     price DECIMAL(12,2),
-
-
     recorded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-
 
     FOREIGN KEY(item_code)
     REFERENCES items(item_code)
     ON DELETE CASCADE
 );
-
-
 
 -- =====================================================
 -- PRICE VARIANCE
 -- Item 1 ---- M Variance Records
 -- =====================================================
 CREATE TABLE material_price_variances (
-
     mpv_id INT AUTO_INCREMENT PRIMARY KEY,
-
-
     item_code INT NOT NULL,
-
-
     quarter VARCHAR(10),
-
     year YEAR,
-
-
     percent_change DECIMAL(5,2),
-
-
     trend_direction ENUM(
         'Up',
         'Down',
         'Stable'
     ),
-
-
     is_significant_spike BOOLEAN,
-
 
     FOREIGN KEY(item_code)
     REFERENCES items(item_code)
     ON DELETE CASCADE
 );
-
-
 
 -- =====================================================
 -- QUOTATIONS
@@ -341,57 +221,33 @@ CREATE TABLE material_price_variances (
 -- User 1 ---- M Quotations
 -- =====================================================
 CREATE TABLE quotations (
-
     quote_id INT AUTO_INCREMENT PRIMARY KEY,
-
-
     company_id INT NOT NULL,
-
     user_id INT NOT NULL,
-
-
     project_name VARCHAR(100),
-
     project_location VARCHAR(100),
-
     project_region VARCHAR(50),
-
-
     input_method VARCHAR(50),
-
-
     status ENUM(
         'Draft',
         'Final'
     )
     DEFAULT 'Draft',
-
-
     total_material_cost DECIMAL(15,2),
-
     total_service_cost DECIMAL(15,2),
-
     grand_total DECIMAL(15,2),
-
-
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     ON UPDATE CURRENT_TIMESTAMP,
-
-
 
     FOREIGN KEY(company_id)
     REFERENCES company(company_id)
     ON DELETE CASCADE,
 
-
     FOREIGN KEY(user_id)
     REFERENCES users(user_id)
     ON DELETE CASCADE
 );
-
-
 
 -- =====================================================
 -- QUOTATION ITEMS
@@ -399,32 +255,15 @@ CREATE TABLE quotations (
 -- Item 1 ---- M Quotations
 -- =====================================================
 CREATE TABLE quotation_items (
-
     quote_item_id INT AUTO_INCREMENT PRIMARY KEY,
-
-
     quote_id INT NOT NULL,
-
     item_code INT NOT NULL,
-
-
     quantity INT NOT NULL,
-
-
     unit_cost DECIMAL(12,2),
-
-
     markup_percentage DECIMAL(5,2)
     CHECK(markup_percentage BETWEEN 0 AND 100),
-
-
     final_unit_price DECIMAL(15,2),
-
-
     total_cost DECIMAL(15,2),
-
-
-
     source_type ENUM(
         'DPWH',
         'PSA',
@@ -432,50 +271,29 @@ CREATE TABLE quotation_items (
         'Supplier'
     ),
 
-
-
     FOREIGN KEY(quote_id)
     REFERENCES quotations(quote_id)
     ON DELETE CASCADE,
-
 
     FOREIGN KEY(item_code)
     REFERENCES items(item_code)
     ON DELETE CASCADE
 );
 
-
-
 -- =====================================================
 -- QUOTATION SERVICE COSTS
 -- Quotation 1 ---- M Services
 -- =====================================================
 CREATE TABLE quotation_service_costs (
-
     service_cost_id INT AUTO_INCREMENT PRIMARY KEY,
-
-
     quote_id INT NOT NULL,
-
-
     service_type VARCHAR(100),
-
-
-    description TEXT,
-
-
+    description VARCHAR(255),
     labor_cost DECIMAL(15,2),
-
     equipment_cost DECIMAL(15,2),
-
     contingency_cost DECIMAL(15,2),
-
     other_cost DECIMAL(15,2),
-
-
     subtotal DECIMAL(15,2),
-
-
 
     FOREIGN KEY(quote_id)
     REFERENCES quotations(quote_id)
