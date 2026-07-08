@@ -1,3 +1,3 @@
 export default function PricelistPage() {
-  return <div>Pricelist (placeholder)</div>;
+  return <p className="text-sm text-gray-400">Coming soon.</p>;
 }

@@ -6,6 +6,7 @@ import Link from "next/link";
 import { Check, ChevronRight, Eye, EyeOff, Upload, X } from "lucide-react";
 import { AuthBrandPanel } from "@/components/auth/AuthBrandPanel";
 import { useAuth } from "@/providers/AuthProvider";
+import { resolveOnboardingRoute } from "@/lib/onboarding";
 
 const REGIONS = ["Metro Manila", "North Luzon", "South Luzon", "Visayas", "Mindanao"];
 const SECTORS = ["Residential", "Commercial", "Industrial", "Institutional", "Infrastructure"];
@@ -235,7 +236,7 @@ export default function SignUpPage() {
           company_logo: form.logoDataUrl || undefined,
         },
       });
-      router.push(user.onboardingStep < 2 ? "/pricelist" : "/dashboard");
+      router.push(resolveOnboardingRoute(user.onboardingStep));
     } catch (err) {
       setApiError(err instanceof Error ? err.message : "Registration failed. Please try again.");
       setSubmitting(false);

@@ -1,3 +1,9 @@
+import { RequireOnboardingStep } from "@/components/auth/RequireOnboardingStep";
+
 export default function QuotationsPage() {
-  return <div>Quotations (placeholder)</div>;
+  return (
+    <RequireOnboardingStep minStep={2}>
+      <p className="text-sm text-gray-400">Coming soon.</p>
+    </RequireOnboardingStep>
+  );
 }
