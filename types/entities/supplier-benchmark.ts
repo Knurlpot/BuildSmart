@@ -1,6 +1,8 @@
-// 1:1 with Suppliers — supplier_ID is both PK and FK here, no separate identity column
+// Mirrors supplier_benchmarks in the authoritative SQL. Wire format (snake_case vs camelCase)
+// UNVERIFIED against the backend — confirm before trusting at runtime.
 export interface SupplierBenchmark {
-  supplier_ID: number;
+  benchmark_id: number;
+  supplier_id: number;
   average_price_score: number;
   update_frequency_score: number;
   reliability_score: number;

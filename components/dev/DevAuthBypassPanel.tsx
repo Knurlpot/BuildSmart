@@ -1,11 +1,13 @@
 "use client";
 
 /**
- * DEV-ONLY AUTH BYPASS PANEL
+ * DEV-ONLY AUTH BYPASS + MOCK DATA PANEL
  * ─────────────────────────────────────────────────────────────────────────
- * Floating widget for clicking through gated pages without a backend.
- * Only mounted from app/layout.tsx when process.env.NODE_ENV === "development"
- * (see providers/dev-auth-bypass.ts for the full removal checklist).
+ * Floating widget for clicking through gated pages, and viewing them fully
+ * populated, without a backend. Only mounted from app/layout.tsx when
+ * process.env.NODE_ENV === "development" (see providers/dev-auth-bypass.ts
+ * and lib/dev/mock-toggle.ts for the full removal checklists — they're
+ * independent features, each removable on its own).
  * ─────────────────────────────────────────────────────────────────────────
  */
 import { useEffect, useState } from "react";
@@ -16,6 +18,7 @@ import {
   setDevBypassEnabled,
   setDevBypassStep,
 } from "@/providers/dev-auth-bypass";
+import { isDevMockEnabled, setDevMockEnabled } from "@/lib/dev/mock-toggle";
 
 const STEPS: { step: number; label: string }[] = [
   { step: 0, label: "Step 0 — New account (Pricelist)" },
@@ -26,11 +29,13 @@ const STEPS: { step: number; label: string }[] = [
 export function DevAuthBypassPanel() {
   const [enabled, setEnabled] = useState(false);
   const [step, setStep] = useState(0);
+  const [mockEnabled, setMockEnabled] = useState(false);
 
   useEffect(() => {
     const sync = () => {
       setEnabled(isDevBypassEnabled());
       setStep(getDevBypassStep());
+      setMockEnabled(isDevMockEnabled());
     };
     sync();
     window.addEventListener(DEV_BYPASS_CHANGE_EVENT, sync);
@@ -68,6 +73,27 @@ export function DevAuthBypassPanel() {
           </button>
         ))}
       </div>
+
+      <div className="my-3 border-t border-dashed border-yellow-400" />
+
+      <p className="mb-2 font-bold uppercase tracking-wide text-yellow-800">
+        ⚠ Mock Payload Data
+      </p>
+      <label className="flex items-center gap-2 font-medium text-yellow-900">
+        <input
+          type="checkbox"
+          checked={mockEnabled}
+          onChange={(e) => {
+            setDevMockEnabled(e.target.checked);
+            setMockEnabled(e.target.checked);
+          }}
+        />
+        Simulate backend data (mock)
+      </label>
+      <p className="mt-1 text-[10px] text-yellow-700">
+        Populates charts/tables/forms from fixtures for visual review. Reload or navigate
+        after toggling.
+      </p>
 
       <p className="mt-2 text-[10px] text-yellow-700">
         Dev-only — never renders in production.
