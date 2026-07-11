@@ -46,6 +46,9 @@ export function useMarketIntelligence(
   const historical = useFetch<HistoricalPriceRecordRow[]>(
     `/api/historical-price-records${regionQuery}`
   );
+  // Assumed to return both variance_source values mixed together — 'Internal' (per-item)
+  // and 'PSA' (per-commodity-group index, analytics-only). PriceTrendsPanel splits and
+  // labels them; this hook does no filtering itself.
   const variances = useFetch<MaterialPriceVariance[]>(
     `/api/material-price-variances${regionQuery}`
   );

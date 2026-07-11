@@ -1,6 +1,7 @@
 // DEV-ONLY fixture — see lib/dev/mock-toggle.ts. Matches Quotation exactly
-// (types/entities/quotation.ts), same field casing, including the PROPOSED
-// `is_archived` column that fixture backs for the Projects "Show archived" toggle.
+// (types/entities/quotation.ts), same field casing. No is_archived — that column
+// is dead per schema v3; Open Projects' Hide is a client-only session filter that
+// needs no fixture support.
 import type { Quotation } from "@/types/entities";
 
 export const quotationsFixture: Quotation[] = [
@@ -11,7 +12,7 @@ export const quotationsFixture: Quotation[] = [
     project_name: "Rivercrest Residence Renovation",
     project_location: "Quezon City",
     project_region: "NCR",
-    input_method: "Blueprint Upload",
+    input_method: "Blueprint",
     status: "Final",
     total_material_cost: 482300,
     total_service_cost: 96400,
@@ -26,7 +27,7 @@ export const quotationsFixture: Quotation[] = [
     project_name: "Northline Warehouse Roof Retrofit",
     project_location: "Malolos",
     project_region: "Region III",
-    input_method: "Quick Measurement",
+    input_method: "Manual",
     status: "Draft",
     total_material_cost: 210500,
     total_service_cost: 48200,
@@ -40,8 +41,8 @@ export const quotationsFixture: Quotation[] = [
     user_id: 1001,
     project_name: "Terra Bright Office Fit-out",
     project_location: "Calamba",
-    project_region: "CALABARZON",
-    input_method: "Blueprint Upload",
+    project_region: "Region IV-A",
+    input_method: "Blueprint",
     status: "Final",
     total_material_cost: 654200,
     total_service_cost: 132100,
@@ -56,14 +57,13 @@ export const quotationsFixture: Quotation[] = [
     project_name: "Harborview Condominium Exterior Repaint",
     project_location: "Cebu City",
     project_region: "Region VII",
-    input_method: "Quick Measurement",
+    input_method: "Manual",
     status: "Final",
     total_material_cost: 145800,
     total_service_cost: 39200,
     grand_total: 185000,
     created_at: "2025-06-18T13:30:00.000Z",
     updated_at: "2025-06-22T09:10:00.000Z",
-    is_archived: true,
   },
   {
     quote_id: 3005,
@@ -72,7 +72,7 @@ export const quotationsFixture: Quotation[] = [
     project_name: "Pinnacle Storage Facility Waterproofing",
     project_location: "Pasig",
     project_region: "NCR",
-    input_method: "Blueprint Upload",
+    input_method: "Blueprint",
     status: "Draft",
     total_material_cost: 322400,
     total_service_cost: 71800,
@@ -87,13 +87,12 @@ export const quotationsFixture: Quotation[] = [
     project_name: "Coastal Bridge Access Road Drainage",
     project_location: "Davao City",
     project_region: "Region XI",
-    input_method: "Quick Measurement",
+    input_method: "Manual",
     status: "Final",
     total_material_cost: 98700,
     total_service_cost: 21300,
     grand_total: 120000,
     created_at: "2025-04-02T10:00:00.000Z",
     updated_at: "2025-04-10T16:45:00.000Z",
-    is_archived: true,
   },
 ];
