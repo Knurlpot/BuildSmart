@@ -1,13 +1,17 @@
 // DEV-ONLY fixture — see lib/dev/mock-toggle.ts. Matches MaterialPriceVariance exactly
-// (types/entities/material-price-variance.ts), same field casing (note: that file still
-// uses `variance_ID`, not yet aligned to lowercase `_id` — this fixture mirrors it as-is
-// rather than silently "fixing" the casing here).
+// (types/entities/material-price-variance.ts), same field casing.
+//
+// Mixes 'Internal' (per-item) and 'PSA' (per-commodity-group index, analytics-only)
+// rows in one list, same as the assumed /api/material-price-variances response —
+// PriceTrendsPanel is responsible for splitting/labeling them, not this fixture.
 import type { MaterialPriceVariance } from "@/types/entities";
 
 export const materialPriceVariancesFixture: MaterialPriceVariance[] = [
   {
-    variance_ID: 1,
+    mpv_id: 1,
     item_code: 201,
+    variance_source: "Internal",
+    commodity_group: null,
     quarter: "Q1",
     year: 2026,
     percent_change: 3.4,
@@ -15,8 +19,10 @@ export const materialPriceVariancesFixture: MaterialPriceVariance[] = [
     is_significant_spike: false,
   },
   {
-    variance_ID: 2,
+    mpv_id: 2,
     item_code: 202,
+    variance_source: "Internal",
+    commodity_group: null,
     quarter: "Q1",
     year: 2026,
     percent_change: 4.8,
@@ -24,8 +30,10 @@ export const materialPriceVariancesFixture: MaterialPriceVariance[] = [
     is_significant_spike: false,
   },
   {
-    variance_ID: 3,
+    mpv_id: 3,
     item_code: 203,
+    variance_source: "Internal",
+    commodity_group: null,
     quarter: "Q1",
     year: 2026,
     percent_change: -1.5,
@@ -33,11 +41,35 @@ export const materialPriceVariancesFixture: MaterialPriceVariance[] = [
     is_significant_spike: false,
   },
   {
-    variance_ID: 4,
+    mpv_id: 4,
     item_code: 204,
+    variance_source: "Internal",
+    commodity_group: null,
     quarter: "Q1",
     year: 2026,
     percent_change: 22.7,
+    trend_direction: "Up",
+    is_significant_spike: true,
+  },
+  {
+    mpv_id: 5,
+    item_code: null,
+    variance_source: "PSA",
+    commodity_group: "Cement",
+    quarter: "Q1",
+    year: 2026,
+    percent_change: 6.2,
+    trend_direction: "Up",
+    is_significant_spike: false,
+  },
+  {
+    mpv_id: 6,
+    item_code: null,
+    variance_source: "PSA",
+    commodity_group: "Steel & Metal Products",
+    quarter: "Q1",
+    year: 2026,
+    percent_change: 18.4,
     trend_direction: "Up",
     is_significant_spike: true,
   },

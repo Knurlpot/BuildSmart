@@ -35,16 +35,20 @@ const ITEMS: { item_code: number; item_name: string; material: string; prices: n
 let nextId = 1;
 
 export const historicalPriceRecordsFixture: HistoricalPriceRecordRow[] = ITEMS.flatMap((item) =>
-  QUARTERS.map(({ quarter, year }, i) => ({
-    historicalrec_id: nextId++,
-    item_code: item.item_code,
-    item_name: item.item_name,
-    material: item.material,
-    source: i % 2 === 0 ? "DPWH" : "Supplier Upload",
-    region: "NCR",
-    quarter,
-    year,
-    price: item.prices[i],
-    recorded_at: `${year}-${quarter === "Q1" ? "01" : quarter === "Q2" ? "04" : quarter === "Q3" ? "07" : "10"}-15T00:00:00.000Z`,
-  }))
+  QUARTERS.map(({ quarter, year }, i) => {
+    const priceSource = i % 2 === 0 ? "DPWH" : "Supplier";
+    return {
+      historicalrec_id: nextId++,
+      item_code: item.item_code,
+      item_name: item.item_name,
+      material: item.material,
+      supplier_id: priceSource === "Supplier" ? 501 : null,
+      price_source: priceSource,
+      region: "NCR",
+      quarter,
+      year,
+      price: item.prices[i],
+      recorded_at: `${year}-${quarter === "Q1" ? "01" : quarter === "Q2" ? "04" : quarter === "Q3" ? "07" : "10"}-15T00:00:00.000Z`,
+    };
+  })
 );
