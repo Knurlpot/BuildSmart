@@ -24,3 +24,25 @@ export type PhRegion =
   | 'NCR'
   | 'NIR'
   | 'BARMM';
+
+/** Runtime companion to PhRegion — for real data-entry dropdowns needing all 18 values (not lib/regions.ts's filter shortlist). */
+export const PH_REGIONS: PhRegion[] = [
+  'Region I',
+  'Region II',
+  'Region III',
+  'Region IV-A',
+  'Region IV-B',
+  'Region V',
+  'Region VI',
+  'Region VII',
+  'Region VIII',
+  'Region IX',
+  'Region X',
+  'Region XI',
+  'Region XII',
+  'Region XIII',
+  'CAR',
+  'NCR',
+  'NIR',
+  'BARMM',
+];

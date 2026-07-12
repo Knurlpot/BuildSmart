@@ -1,3 +1,10 @@
+import { RequireOnboardingStep } from "@/components/auth/RequireOnboardingStep";
+import { CompanyRulesShell } from "@/features/company-rules/components";
+
 export default function ManagementPage() {
-  return <p className="text-sm text-gray-400">Coming soon.</p>;
+  return (
+    <RequireOnboardingStep minStep={1}>
+      <CompanyRulesShell />
+    </RequireOnboardingStep>
+  );
 }

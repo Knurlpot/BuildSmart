@@ -24,6 +24,17 @@ import { dpwhCatalogFixture } from "./fixtures/dpwhCatalog";
 import { dpwhVersionStatusFixture, psaVersionStatusFixture } from "./fixtures/versionStatus";
 import { sourcePriorityFixture } from "./fixtures/sourcePriority";
 import { savedCatalogFixture } from "./fixtures/savedCatalog";
+import {
+  existingRulesFixture,
+  laborRulesFixture,
+  laborTradeOptionsFixture,
+  materialRulesFixture,
+  materialsByCategoryFixture,
+  pricingStrategyFixture,
+  RULE_ID_IN_USE,
+  scopeTemplatesFixture,
+  unitRulesFixture,
+} from "./provisional/companyRulesFixtures";
 
 function pathnameOf(endpoint: string): string {
   const i = endpoint.indexOf("?");
@@ -72,6 +83,33 @@ export function resolveMockFetch(endpoint: string): unknown {
   }
   if (pathname === "/api/pricelist/source-priority") return sourcePriorityFixture;
   if (pathname === "/api/pricelist/catalog") return savedCatalogFixture;
+
+  // --- Company Preferences & Rules (CPRM) — PROVISIONAL, see lib/dev/provisional/. ---
+  // Create endpoints use a distinct `/new` suffix (not the same path as the GET list) —
+  // see lib/dev/provisional/useCompanyRulesProvisional.ts for why. POST responses below
+  // return a fixture-shaped stub purely to satisfy the mutate<T>() type contract in mock
+  // mode; the forms construct their own optimistic list entries from what the user
+  // actually typed rather than reading these back (this mock has no real persistence).
+  if (pathname === "/api/company-rules/scope-templates/new") return scopeTemplatesFixture[0];
+  if (pathname === "/api/company-rules/scope-templates") return scopeTemplatesFixture;
+  if (pathname === "/api/company-rules/material-rules/new") return materialRulesFixture[0];
+  if (pathname === "/api/company-rules/material-rules") return materialRulesFixture;
+  if (pathname === "/api/company-rules/labor-rules/new") return laborRulesFixture[0];
+  if (pathname === "/api/company-rules/labor-rules") return laborRulesFixture;
+  if (pathname === "/api/company-rules/pricing-strategies/new") return pricingStrategyFixture[0];
+  if (pathname === "/api/company-rules/pricing-strategies") return pricingStrategyFixture;
+  if (pathname === "/api/company-rules/unit-rules/new") return unitRulesFixture[0];
+  if (pathname === "/api/company-rules/unit-rules") return unitRulesFixture;
+  if (pathname === "/api/company-rules/existing") return existingRulesFixture;
+  if (pathname === "/api/company-rules/labor-trades") return laborTradeOptionsFixture;
+  if (pathname === "/api/company-rules/materials-by-category") return materialsByCategoryFixture;
+  if (pathname.startsWith("/api/company-rules/existing/") && pathname.endsWith("/check-usage")) {
+    const ruleId = pathname.split("/").slice(-2, -1)[0];
+    return { in_use: ruleId === RULE_ID_IN_USE };
+  }
+  if (pathname.startsWith("/api/company-rules/existing/") && pathname.endsWith("/disable")) {
+    return { disabled: true };
+  }
 
   return undefined;
 }
