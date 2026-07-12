@@ -417,36 +417,42 @@ export default function SignUpPage() {
                   </p>
                 </div>
 
-                <div className="flex flex-col gap-1.5">
-                  <div className="flex items-center justify-between gap-2">
-                    <label className="text-xs font-semibold uppercase tracking-wide text-gray-600">
-                      Specialization 1 *
-                    </label>
-                    {specializationCount === 1 && (
-                      <button
-                        type="button"
-                        onClick={addSpecialization}
-                        className="flex items-center gap-1.5 rounded-full border-2 border-primary bg-orange-50/60 px-3 py-1 text-xs font-bold text-primary transition hover:bg-primary hover:text-primary-foreground"
-                      >
-                        <Plus className="h-3.5 w-3.5" /> Add Specialization
-                      </button>
-                    )}
+                {/* One field that visually divides as more are added — all three end up
+                    equal-width in a single row, rather than 1 living apart from 2/3. */}
+                <div
+                  className={`grid grid-cols-1 gap-4 ${
+                    specializationCount === 2 ? "sm:grid-cols-2" : specializationCount === 3 ? "sm:grid-cols-3" : ""
+                  }`}
+                >
+                  <div className="flex flex-col gap-1.5">
+                    <div className="flex items-center justify-between gap-2">
+                      <label className="text-xs font-semibold uppercase tracking-wide text-gray-600">
+                        Specialization 1 *
+                      </label>
+                      {specializationCount === 1 && (
+                        <button
+                          type="button"
+                          onClick={addSpecialization}
+                          className="flex items-center gap-1.5 rounded-full border-2 border-primary bg-orange-50/60 px-3 py-1 text-xs font-bold text-primary transition hover:bg-primary hover:text-primary-foreground"
+                        >
+                          <Plus className="h-3.5 w-3.5" /> Add Specialization
+                        </button>
+                      )}
+                    </div>
+                    <input
+                      value={form.specialization1}
+                      onChange={(e) => set("specialization1", e.target.value)}
+                      maxLength={MAX.specialization}
+                      placeholder="e.g. Waterproofing Systems"
+                      className={inputCls("specialization1")}
+                    />
+                    {errors.specialization1 && <p className="text-xs text-red-500">{errors.specialization1}</p>}
                   </div>
-                  <input
-                    value={form.specialization1}
-                    onChange={(e) => set("specialization1", e.target.value)}
-                    maxLength={MAX.specialization}
-                    placeholder="e.g. Waterproofing Systems"
-                    className={inputCls("specialization1")}
-                  />
-                  {errors.specialization1 && <p className="text-xs text-red-500">{errors.specialization1}</p>}
-                </div>
 
-                {specializationCount >= 2 && (
-                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  {specializationCount >= 2 && (
                     <div className="flex flex-col gap-1.5">
                       <div className="flex items-center justify-between gap-2">
-                        <label className="text-xs font-semibold uppercase tracking-wide text-gray-600">
+                        <label className="whitespace-nowrap text-xs font-semibold uppercase tracking-wide text-gray-600">
                           Specialization 2 <span className="font-normal normal-case text-gray-400">(optional)</span>
                         </label>
                         {specializationCount === 2 && (
@@ -479,34 +485,34 @@ export default function SignUpPage() {
                         autoFocus
                       />
                     </div>
+                  )}
 
-                    {specializationCount === 3 && (
-                      <div className="flex flex-col gap-1.5">
-                        <div className="flex items-center justify-between gap-2">
-                          <label className="text-xs font-semibold uppercase tracking-wide text-gray-600">
-                            Specialization 3 <span className="font-normal normal-case text-gray-400">(optional)</span>
-                          </label>
-                          <button
-                            type="button"
-                            onClick={removeLastSpecialization}
-                            title="Remove specialization 3"
-                            className="text-gray-300 hover:text-red-500"
-                          >
-                            <X className="h-3.5 w-3.5" />
-                          </button>
-                        </div>
-                        <input
-                          value={form.specialization3}
-                          onChange={(e) => set("specialization3", e.target.value)}
-                          maxLength={MAX.specialization}
-                          placeholder="Optional"
-                          className={inputCls("specialization3")}
-                          autoFocus
-                        />
+                  {specializationCount === 3 && (
+                    <div className="flex flex-col gap-1.5">
+                      <div className="flex items-center justify-between gap-2">
+                        <label className="whitespace-nowrap text-xs font-semibold uppercase tracking-wide text-gray-600">
+                          Specialization 3 <span className="font-normal normal-case text-gray-400">(optional)</span>
+                        </label>
+                        <button
+                          type="button"
+                          onClick={removeLastSpecialization}
+                          title="Remove specialization 3"
+                          className="text-gray-300 hover:text-red-500"
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </button>
                       </div>
-                    )}
-                  </div>
-                )}
+                      <input
+                        value={form.specialization3}
+                        onChange={(e) => set("specialization3", e.target.value)}
+                        maxLength={MAX.specialization}
+                        placeholder="Optional"
+                        className={inputCls("specialization3")}
+                        autoFocus
+                      />
+                    </div>
+                  )}
+                </div>
 
                 <div className="flex flex-col gap-1.5">
                   <label className="text-xs font-semibold uppercase tracking-wide text-gray-600">
