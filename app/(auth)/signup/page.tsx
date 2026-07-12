@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Check, ChevronRight, Eye, EyeOff } from "lucide-react";
+import { Check, ChevronRight, Eye, EyeOff, Plus, X } from "lucide-react";
 import { AuthBrandPanel } from "@/components/auth/AuthBrandPanel";
 import { useAuth } from "@/providers/AuthProvider";
 import { resolveOnboardingRoute } from "@/lib/onboarding";
@@ -141,6 +141,12 @@ export default function SignUpPage() {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
   const [apiError, setApiError] = useState("");
+  // Progressive disclosure for the optional specialization_2/3 columns — schema has exactly
+  // three slots, specialization_1 required, 2 and 3 nullable. Only the LAST visible optional
+  // field is ever removable: removal always happens from the tail, so a gap (e.g. clearing
+  // specialization_2 while specialization_3 still holds a value) can never occur — simpler
+  // than shifting values up, and just as correct.
+  const [specializationCount, setSpecializationCount] = useState<1 | 2 | 3>(1);
 
   const filledCount = useMemo(() => countValidFields(form), [form]);
 
@@ -151,6 +157,18 @@ export default function SignUpPage() {
       delete n[field as string];
       return n;
     });
+  };
+
+  const addSpecialization = () => setSpecializationCount((c) => (c < 3 ? ((c + 1) as 1 | 2 | 3) : c));
+
+  const removeLastSpecialization = () => {
+    if (specializationCount === 3) {
+      set("specialization3", "");
+      setSpecializationCount(2);
+    } else if (specializationCount === 2) {
+      set("specialization2", "");
+      setSpecializationCount(1);
+    }
   };
 
   const validateStep1 = () => {
@@ -206,8 +224,10 @@ export default function SignUpPage() {
           contact_email: form.companyContactEmail,
           contact_number: form.companyContactNumber,
           specialization_1: form.specialization1,
-          specialization_2: form.specialization2 || undefined,
-          specialization_3: form.specialization3 || undefined,
+          // Keyed off specializationCount, not just the raw form value: a hidden field is
+          // guaranteed undefined regardless of any stray state, never an empty string.
+          specialization_2: specializationCount >= 2 ? form.specialization2 || undefined : undefined,
+          specialization_3: specializationCount >= 3 ? form.specialization3 || undefined : undefined,
           company_logo: form.companyLogo || undefined,
         },
       });
@@ -244,7 +264,7 @@ export default function SignUpPage() {
       />
 
       <div className="flex flex-1 flex-col items-center justify-center overflow-y-auto bg-white px-6 py-8">
-        <div className="w-full max-w-md">
+        <div className="w-full max-w-xl">
           <div className="mb-4">
             <h2 className="text-xl font-extrabold tracking-tight text-gray-900">
               Create your account
@@ -272,46 +292,48 @@ export default function SignUpPage() {
                   Owner of the company in the next step.
                 </p>
 
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-xs font-semibold uppercase tracking-wide text-gray-600">
-                    First Name *
-                  </label>
-                  <input
-                    value={form.firstName}
-                    onChange={(e) => set("firstName", e.target.value)}
-                    maxLength={MAX.firstName}
-                    placeholder="Juan"
-                    className={inputCls("firstName")}
-                    autoFocus
-                  />
-                  {errors.firstName && <p className="text-xs text-red-500">{errors.firstName}</p>}
-                </div>
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-xs font-semibold uppercase tracking-wide text-gray-600">
+                      First Name *
+                    </label>
+                    <input
+                      value={form.firstName}
+                      onChange={(e) => set("firstName", e.target.value)}
+                      maxLength={MAX.firstName}
+                      placeholder="Juan"
+                      className={inputCls("firstName")}
+                      autoFocus
+                    />
+                    {errors.firstName && <p className="text-xs text-red-500">{errors.firstName}</p>}
+                  </div>
 
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-xs font-semibold uppercase tracking-wide text-gray-600">
-                    Last Name *
-                  </label>
-                  <input
-                    value={form.lastName}
-                    onChange={(e) => set("lastName", e.target.value)}
-                    maxLength={MAX.lastName}
-                    placeholder="Dela Cruz"
-                    className={inputCls("lastName")}
-                  />
-                  {errors.lastName && <p className="text-xs text-red-500">{errors.lastName}</p>}
-                </div>
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-xs font-semibold uppercase tracking-wide text-gray-600">
+                      Middle Name <span className="font-normal normal-case text-gray-400">(optional)</span>
+                    </label>
+                    <input
+                      value={form.middleName}
+                      onChange={(e) => set("middleName", e.target.value)}
+                      maxLength={MAX.middleName}
+                      placeholder="Santos"
+                      className={inputCls("middleName")}
+                    />
+                  </div>
 
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-xs font-semibold uppercase tracking-wide text-gray-600">
-                    Middle Name <span className="font-normal normal-case text-gray-400">(optional)</span>
-                  </label>
-                  <input
-                    value={form.middleName}
-                    onChange={(e) => set("middleName", e.target.value)}
-                    maxLength={MAX.middleName}
-                    placeholder="Santos"
-                    className={inputCls("middleName")}
-                  />
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-xs font-semibold uppercase tracking-wide text-gray-600">
+                      Last Name *
+                    </label>
+                    <input
+                      value={form.lastName}
+                      onChange={(e) => set("lastName", e.target.value)}
+                      maxLength={MAX.lastName}
+                      placeholder="Dela Cruz"
+                      className={inputCls("lastName")}
+                    />
+                    {errors.lastName && <p className="text-xs text-red-500">{errors.lastName}</p>}
+                  </div>
                 </div>
 
                 <button
@@ -356,45 +378,60 @@ export default function SignUpPage() {
                 </div>
 
                 <div className="flex flex-col gap-1.5">
-                  <label className="text-xs font-semibold uppercase tracking-wide text-gray-600">
-                    Company Contact Email *
-                  </label>
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                    <div className="flex flex-col gap-1.5">
+                      <label className="text-xs font-semibold uppercase tracking-wide text-gray-600">
+                        Company Contact Email *
+                      </label>
+                      <input
+                        type="email"
+                        value={form.companyContactEmail}
+                        onChange={(e) => set("companyContactEmail", e.target.value)}
+                        maxLength={MAX.companyContactEmail}
+                        placeholder="info@company.com"
+                        className={inputCls("companyContactEmail")}
+                      />
+                      {errors.companyContactEmail && (
+                        <p className="text-xs text-red-500">{errors.companyContactEmail}</p>
+                      )}
+                    </div>
+
+                    <div className="flex flex-col gap-1.5">
+                      <label className="text-xs font-semibold uppercase tracking-wide text-gray-600">
+                        Company Contact Number *
+                      </label>
+                      <input
+                        value={form.companyContactNumber}
+                        onChange={(e) => set("companyContactNumber", e.target.value)}
+                        maxLength={MAX.companyContactNumber}
+                        placeholder="+63 917 123 4567"
+                        className={inputCls("companyContactNumber")}
+                      />
+                      {errors.companyContactNumber && (
+                        <p className="text-xs text-red-500">{errors.companyContactNumber}</p>
+                      )}
+                    </div>
+                  </div>
                   <p className="text-[11px] text-gray-400">
                     The company&apos;s public contact email — not your login email (that comes next).
                   </p>
-                  <input
-                    type="email"
-                    value={form.companyContactEmail}
-                    onChange={(e) => set("companyContactEmail", e.target.value)}
-                    maxLength={MAX.companyContactEmail}
-                    placeholder="info@company.com"
-                    className={inputCls("companyContactEmail")}
-                  />
-                  {errors.companyContactEmail && (
-                    <p className="text-xs text-red-500">{errors.companyContactEmail}</p>
-                  )}
                 </div>
 
                 <div className="flex flex-col gap-1.5">
-                  <label className="text-xs font-semibold uppercase tracking-wide text-gray-600">
-                    Company Contact Number *
-                  </label>
-                  <input
-                    value={form.companyContactNumber}
-                    onChange={(e) => set("companyContactNumber", e.target.value)}
-                    maxLength={MAX.companyContactNumber}
-                    placeholder="+63 917 123 4567"
-                    className={inputCls("companyContactNumber")}
-                  />
-                  {errors.companyContactNumber && (
-                    <p className="text-xs text-red-500">{errors.companyContactNumber}</p>
-                  )}
-                </div>
-
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-xs font-semibold uppercase tracking-wide text-gray-600">
-                    Specialization 1 *
-                  </label>
+                  <div className="flex items-center justify-between gap-2">
+                    <label className="text-xs font-semibold uppercase tracking-wide text-gray-600">
+                      Specialization 1 *
+                    </label>
+                    {specializationCount === 1 && (
+                      <button
+                        type="button"
+                        onClick={addSpecialization}
+                        className="flex items-center gap-1.5 rounded-full border-2 border-primary bg-orange-50/60 px-3 py-1 text-xs font-bold text-primary transition hover:bg-primary hover:text-primary-foreground"
+                      >
+                        <Plus className="h-3.5 w-3.5" /> Add Specialization
+                      </button>
+                    )}
+                  </div>
                   <input
                     value={form.specialization1}
                     onChange={(e) => set("specialization1", e.target.value)}
@@ -405,32 +442,71 @@ export default function SignUpPage() {
                   {errors.specialization1 && <p className="text-xs text-red-500">{errors.specialization1}</p>}
                 </div>
 
-                <div className="flex gap-3">
-                  <div className="flex flex-1 flex-col gap-1.5">
-                    <label className="text-xs font-semibold uppercase tracking-wide text-gray-600">
-                      Specialization 2 <span className="font-normal normal-case text-gray-400">(optional)</span>
-                    </label>
-                    <input
-                      value={form.specialization2}
-                      onChange={(e) => set("specialization2", e.target.value)}
-                      maxLength={MAX.specialization}
-                      placeholder="Optional"
-                      className={inputCls("specialization2")}
-                    />
+                {specializationCount >= 2 && (
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                    <div className="flex flex-col gap-1.5">
+                      <div className="flex items-center justify-between gap-2">
+                        <label className="text-xs font-semibold uppercase tracking-wide text-gray-600">
+                          Specialization 2 <span className="font-normal normal-case text-gray-400">(optional)</span>
+                        </label>
+                        {specializationCount === 2 && (
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={addSpecialization}
+                              title="Add specialization 3"
+                              className="text-primary hover:text-(--primary-hover)"
+                            >
+                              <Plus className="h-3.5 w-3.5" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={removeLastSpecialization}
+                              title="Remove specialization 2"
+                              className="text-gray-300 hover:text-red-500"
+                            >
+                              <X className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                      <input
+                        value={form.specialization2}
+                        onChange={(e) => set("specialization2", e.target.value)}
+                        maxLength={MAX.specialization}
+                        placeholder="Optional"
+                        className={inputCls("specialization2")}
+                        autoFocus
+                      />
+                    </div>
+
+                    {specializationCount === 3 && (
+                      <div className="flex flex-col gap-1.5">
+                        <div className="flex items-center justify-between gap-2">
+                          <label className="text-xs font-semibold uppercase tracking-wide text-gray-600">
+                            Specialization 3 <span className="font-normal normal-case text-gray-400">(optional)</span>
+                          </label>
+                          <button
+                            type="button"
+                            onClick={removeLastSpecialization}
+                            title="Remove specialization 3"
+                            className="text-gray-300 hover:text-red-500"
+                          >
+                            <X className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                        <input
+                          value={form.specialization3}
+                          onChange={(e) => set("specialization3", e.target.value)}
+                          maxLength={MAX.specialization}
+                          placeholder="Optional"
+                          className={inputCls("specialization3")}
+                          autoFocus
+                        />
+                      </div>
+                    )}
                   </div>
-                  <div className="flex flex-1 flex-col gap-1.5">
-                    <label className="text-xs font-semibold uppercase tracking-wide text-gray-600">
-                      Specialization 3 <span className="font-normal normal-case text-gray-400">(optional)</span>
-                    </label>
-                    <input
-                      value={form.specialization3}
-                      onChange={(e) => set("specialization3", e.target.value)}
-                      maxLength={MAX.specialization}
-                      placeholder="Optional"
-                      className={inputCls("specialization3")}
-                    />
-                  </div>
-                </div>
+                )}
 
                 <div className="flex flex-col gap-1.5">
                   <label className="text-xs font-semibold uppercase tracking-wide text-gray-600">
