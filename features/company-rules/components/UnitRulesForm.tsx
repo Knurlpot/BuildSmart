@@ -1,85 +1,161 @@
 "use client";
 
-import { useState } from "react";
-import { AlertTriangle, CheckCircle2, X } from "lucide-react";
+import { useEffect, useState } from "react";
+import { AlertTriangle, CheckCircle2, ChevronRight, Pencil, X } from "lucide-react";
 import { RuleListDetailPanel } from "./RuleListDetailPanel";
-import { useUnitRules, stagingId } from "@/lib/dev/provisional/useCompanyRulesProvisional";
-import { isNonEmpty, isPercent, isPositiveNumber } from "@/lib/dev/provisional/ruleValidation";
-import type { UnitRule } from "@/lib/dev/provisional/companyRulesTypes";
+import { useUnitRules, useCheckRuleUsage, stagingId } from "@/lib/dev/provisional/useCompanyRulesProvisional";
+import { useEditableRuleList } from "@/lib/dev/provisional/useEditableRuleList";
+import { isPercent, isPositiveNumber } from "@/lib/dev/provisional/ruleValidation";
+import { unitRuleTargetKind, type UnitRule, type UnitRuleTargetKind } from "@/lib/dev/provisional/companyRulesTypes";
+import { useItemsCatalog } from "@/hooks/useItemsCatalog";
 import { CATEGORY_TYPES, type CategoryType } from "@/types/entities/category";
+import type { ScopeWizardState } from "./CompanyRulesShell";
 
 const inputCls =
   "w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm outline-none transition focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/20";
 
-export function UnitRulesForm() {
-  const { rules, isLoading, error, refetch, save, isSaving, saveError, resetSave } = useUnitRules();
-  const [localExtra, setLocalExtra] = useState<UnitRule[]>([]);
-  const allRules = [...localExtra, ...rules];
+interface UnitRulesFormProps {
+  focusRuleId?: string | null;
+  onFocusHandled?: () => void;
+  /** Part A — optional third wizard step; the category choices narrow to the template's
+   * own categories, and the user can finish without configuring anything. */
+  wizard?: Pick<ScopeWizardState, "categories"> | null;
+  onWizardFinish?: () => void;
+}
 
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [adding, setAdding] = useState(false);
+export function UnitRulesForm({ focusRuleId, onFocusHandled, wizard, onWizardFinish }: UnitRulesFormProps) {
+  const { rules, isLoading, error, refetch, save, isSaving, saveError, resetSave, update, supersede } = useUnitRules();
+  const { checkUsage } = useCheckRuleUsage();
+  const editable = useEditableRuleList<UnitRule>({ checkUsage, update, supersede, idPrefix: "ur" });
+  const { items, isLoading: itemsLoading, itemsInCategory } = useItemsCatalog();
+  const allRules = editable.applyOverrides([...editable.localExtra, ...rules]);
+
+  // Part C — seeded from the prop at construction, not synced via effect: a jump always
+  // remounts this component fresh (see ScopeTemplatesForm for the full reasoning).
+  const [selectedId, setSelectedId] = useState<string | null>(focusRuleId ?? null);
+  const [mode, setMode] = useState<"idle" | "add" | "edit">("idle");
+  const [targetKind, setTargetKind] = useState<UnitRuleTargetKind>("category");
   const [category, setCategory] = useState<CategoryType | "">("");
-  const [conversionLabel, setConversionLabel] = useState("");
+  const [itemSearch, setItemSearch] = useState("");
+  const [itemCode, setItemCode] = useState("");
   const [conversionFactor, setConversionFactor] = useState<number | "">("");
   const [wastage, setWastage] = useState<number | "">("");
   const [touched, setTouched] = useState(false);
   const [savedMessage, setSavedMessage] = useState(false);
 
+  useEffect(() => {
+    if (focusRuleId) onFocusHandled?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const categoryOptions = wizard ? wizard.categories : CATEGORY_TYPES;
   const categoryValid = category !== "";
-  const labelValid = isNonEmpty(conversionLabel);
+  const itemValid = targetKind === "category" || itemCode !== "";
   const factorValid = conversionFactor !== "" && isPositiveNumber(Number(conversionFactor));
   const wastageValid = wastage !== "" && isPercent(Number(wastage));
-  const formValid = categoryValid && labelValid && factorValid && wastageValid;
+  const formValid = categoryValid && itemValid && factorValid && wastageValid;
 
-  const startAdd = () => {
-    setAdding(true);
-    setSelectedId(null);
+  const categoryItems = category !== "" ? itemsInCategory(category) : [];
+
+  const resetForm = () => {
+    setTargetKind("category");
     setCategory("");
-    setConversionLabel("");
+    setItemSearch("");
+    setItemCode("");
     setConversionFactor("");
     setWastage("");
     setTouched(false);
+  };
+
+  const startAdd = () => {
+    setMode("add");
+    setSelectedId(null);
+    resetForm();
     setSavedMessage(false);
     resetSave();
   };
 
+  const startEdit = (r: UnitRule) => {
+    setMode("edit");
+    setTargetKind(unitRuleTargetKind(r));
+    setCategory(r.category ?? "");
+    setItemCode(r.item_code ?? "");
+    setItemSearch(r.item_name ?? "");
+    setConversionFactor(r.conversion_factor);
+    setWastage(r.wastage_allowance_percentage);
+    setTouched(false);
+    setSavedMessage(false);
+  };
+
+  const buildPayload = () => ({
+    category: targetKind === "category" ? (category as CategoryType) : null,
+    item_code: targetKind === "item" ? itemCode : null,
+    item_name: targetKind === "item" ? itemSearch : null,
+    conversion_factor: Number(conversionFactor),
+    wastage_allowance_percentage: Number(wastage),
+  });
+
   const handleSave = async () => {
     setTouched(true);
     if (!formValid) return;
+
+    if (mode === "edit" && selectedId) {
+      const resultId = await editable.saveEdit(selectedId, buildPayload());
+      if (resultId) {
+        setMode("idle");
+        setSelectedId(resultId);
+        setSavedMessage(true);
+      }
+      return;
+    }
+
     try {
-      await save({
-        category: category as CategoryType,
-        conversion_label: conversionLabel,
-        conversion_factor: Number(conversionFactor),
-        wastage_allowance_percentage: Number(wastage),
-      });
+      await save(buildPayload());
       const optimistic: UnitRule = {
-        unit_rule_id: stagingId("ur"),
-        category: category as CategoryType,
-        conversion_label: conversionLabel,
-        conversion_factor: Number(conversionFactor),
-        wastage_allowance_percentage: Number(wastage),
-        status: "Active",
+        rule_id: stagingId("ur"),
+        ...buildPayload(),
+        is_active: true,
+        effective_date: new Date().toISOString().slice(0, 10),
       };
-      setLocalExtra((prev) => [optimistic, ...prev]);
-      setAdding(false);
-      setSelectedId(optimistic.unit_rule_id);
+      editable.addCreated(optimistic);
+      setMode("idle");
+      setSelectedId(optimistic.rule_id);
       setSavedMessage(true);
     } catch {
       // surfaced via saveError below — no fabricated success
     }
   };
 
-  const selected = allRules.find((r) => r.unit_rule_id === selectedId) ?? null;
+  const selected = allRules.find((r) => r.rule_id === selectedId) ?? null;
 
   return (
     <div className="flex flex-col gap-4">
       <div>
         <h2 className="text-base font-bold text-gray-900">Unit Rules</h2>
         <p className="text-xs text-gray-500">
-          Define unit conversion factors and wastage allowances per material category.
+          Define unit conversion factors and wastage allowances — per material category, or
+          for one specific catalog item.
         </p>
       </div>
+
+      {wizard && (
+        <div className="flex items-center justify-between gap-3 rounded-xl border border-primary/30 bg-orange-50/60 px-4 py-3">
+          <div>
+            <p className="text-xs font-bold uppercase tracking-wider text-primary">Step 3 of 3 — Unit Rules (optional)</p>
+            <p className="text-sm text-gray-700">
+              Optionally set conversion factors and wastage allowances for this template&apos;s
+              categories, or for specific items within them. You can finish without configuring any.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onWizardFinish}
+            className="flex shrink-0 items-center gap-1.5 rounded-xl bg-primary px-4 py-2.5 text-sm font-bold text-primary-foreground shadow-sm transition hover:bg-(--primary-hover)"
+          >
+            Finish Setup <ChevronRight className="h-4 w-4" />
+          </button>
+        </div>
+      )}
 
       <RuleListDetailPanel
         title="Unit Rules"
@@ -87,55 +163,133 @@ export function UnitRulesForm() {
         isLoading={isLoading}
         error={error}
         onRetry={refetch}
-        getId={(r) => r.unit_rule_id}
+        getId={(r) => r.rule_id}
         selectedId={selectedId}
         onSelect={(id) => {
           setSelectedId(id);
-          setAdding(false);
+          setMode("idle");
         }}
         onAdd={startAdd}
         emptyHint="Add a unit rule to define a conversion factor and wastage allowance."
         renderListItem={(r) => (
           <div className="flex flex-col gap-0.5">
-            <span className="text-sm font-semibold text-gray-800">{r.category}</span>
-            <span className="text-xs text-gray-400">{r.conversion_label}</span>
+            <span className="text-sm font-semibold text-gray-800">{r.item_name ?? r.category}</span>
+            <span className="text-xs text-gray-400">{r.item_name ? `Item override — ${r.category ?? ""}` : "Category default"}</span>
             <span className="text-[10px] text-gray-400">{r.wastage_allowance_percentage}% wastage</span>
           </div>
         )}
         detail={
-          adding ? (
+          mode === "add" || mode === "edit" ? (
             <div className="flex flex-col gap-4">
               <div className="flex items-center justify-between">
-                <p className="text-sm font-bold text-gray-900">New Unit Rule</p>
-                <button type="button" onClick={() => setAdding(false)} className="text-gray-300 hover:text-gray-500">
+                <p className="text-sm font-bold text-gray-900">{mode === "edit" ? "Edit Unit Rule" : "New Unit Rule"}</p>
+                <button type="button" onClick={() => setMode("idle")} className="text-gray-300 hover:text-gray-500">
                   <X className="h-4 w-4" />
                 </button>
               </div>
 
+              {mode === "edit" && (
+                <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                  <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                  <span>
+                    If this rule is used by existing quotations, saving will create a new
+                    version — existing quotations keep their original values.
+                  </span>
+                </div>
+              )}
+
+              <div className="flex flex-col gap-1.5">
+                <label className="text-xs font-semibold text-gray-600">Applies To</label>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setTargetKind("category")}
+                    className={`flex-1 rounded-lg border px-3 py-2 text-xs font-semibold transition ${
+                      targetKind === "category"
+                        ? "border-primary bg-orange-50 text-primary"
+                        : "border-gray-200 bg-white text-gray-500 hover:border-gray-300"
+                    }`}
+                  >
+                    A whole category
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setTargetKind("item")}
+                    className={`flex-1 rounded-lg border px-3 py-2 text-xs font-semibold transition ${
+                      targetKind === "item"
+                        ? "border-primary bg-orange-50 text-primary"
+                        : "border-gray-200 bg-white text-gray-500 hover:border-gray-300"
+                    }`}
+                  >
+                    One specific item
+                  </button>
+                </div>
+                <p className="text-[11px] text-gray-400">
+                  An item-level rule overrides its category&apos;s rule. Example: a 10% wastage
+                  rule on all Finishing materials, with one high-end finish set to 5% — that
+                  item uses 5%, everything else in the category still uses 10%.
+                </p>
+              </div>
+
               <div className="flex flex-col gap-1.5">
                 <label className="text-xs font-semibold text-gray-600">
-                  Material Category <span className="text-red-500">*</span>
+                  {targetKind === "category" ? "Material Category" : "Item's Category"} <span className="text-red-500">*</span>
                 </label>
-                <select value={category} onChange={(e) => setCategory(e.target.value as CategoryType)} className={inputCls}>
+                <select
+                  value={category}
+                  onChange={(e) => {
+                    setCategory(e.target.value as CategoryType);
+                    setItemCode("");
+                    setItemSearch("");
+                  }}
+                  className={inputCls}
+                >
                   <option value="">Select…</option>
-                  {CATEGORY_TYPES.map((c) => (
+                  {categoryOptions.map((c) => (
                     <option key={c}>{c}</option>
                   ))}
                 </select>
                 {touched && !categoryValid && <p className="text-xs text-red-500">Select a category.</p>}
               </div>
 
+              {targetKind === "item" && category !== "" && (
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-xs font-semibold text-gray-600">
+                    Item <span className="text-red-500">*</span>
+                  </label>
+                  {itemsLoading ? (
+                    <p className="text-xs text-gray-400">Loading catalog…</p>
+                  ) : items.length === 0 ? (
+                    <p className="text-xs text-amber-600">No items in your catalog yet — upload a pricelist first.</p>
+                  ) : (
+                    <>
+                      <input
+                        list="unit-rule-items"
+                        value={itemSearch}
+                        onChange={(e) => {
+                          const typed = e.target.value;
+                          setItemSearch(typed);
+                          const match = categoryItems.find((i) => i.item_name === typed);
+                          setItemCode(match ? String(match.item_code) : "");
+                        }}
+                        placeholder="Search or select an item…"
+                        className={inputCls}
+                      />
+                      <datalist id="unit-rule-items">
+                        {categoryItems.map((i) => (
+                          <option key={i.item_code} value={i.item_name} />
+                        ))}
+                      </datalist>
+                    </>
+                  )}
+                  {touched && !itemValid && <p className="text-xs text-red-500">Select an item.</p>}
+                </div>
+              )}
+
               <div className="flex flex-col gap-1.5">
                 <label className="text-xs font-semibold text-gray-600">
                   Conversion Factor <span className="text-red-500">*</span>
                 </label>
-                <input
-                  value={conversionLabel}
-                  onChange={(e) => setConversionLabel(e.target.value)}
-                  placeholder="e.g. bag -> kg"
-                  className={inputCls}
-                />
-                {touched && !labelValid && <p className="text-xs text-red-500">Describe what this factor converts.</p>}
                 <input
                   type="number"
                   min={0}
@@ -167,31 +321,47 @@ export function UnitRulesForm() {
                 {touched && !wastageValid && <p className="text-xs text-red-500">Enter a value between 0 and 100.</p>}
               </div>
 
-              {saveError && (
+              {(saveError || editable.saveError) && (
                 <div className="flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
-                  <AlertTriangle className="h-3.5 w-3.5 shrink-0" /> Couldn&apos;t save: {saveError.message}
+                  <AlertTriangle className="h-3.5 w-3.5 shrink-0" /> Couldn&apos;t save:{" "}
+                  {(saveError ?? editable.saveError)?.message}
                 </div>
               )}
 
               <button
                 type="button"
                 onClick={handleSave}
-                disabled={isSaving}
+                disabled={isSaving || editable.isSaving}
                 className="w-fit rounded-xl bg-primary px-5 py-2.5 text-sm font-bold text-primary-foreground shadow-sm transition hover:bg-(--primary-hover) disabled:opacity-60"
               >
-                {isSaving ? "Saving…" : "Save Unit Rule"}
+                {isSaving || editable.isSaving ? "Saving…" : mode === "edit" ? "Save Changes" : "Save Unit Rule"}
               </button>
             </div>
           ) : selected ? (
             <div className="flex flex-col gap-4">
               {savedMessage && (
                 <div className="flex items-center gap-2 rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-xs text-green-700">
-                  <CheckCircle2 className="h-3.5 w-3.5 shrink-0" /> Company preferences updated successfully.
+                  <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
+                  {editable.supersededNotice
+                    ? "A new version of this rule was created — the previous version is preserved for existing quotations."
+                    : "Company preferences updated successfully."}
                 </div>
               )}
-              <div className="rounded-xl border border-gray-100 bg-gray-50/60 p-4">
-                <p className="text-lg font-bold text-gray-900">{selected.category}</p>
-                <p className="text-sm text-gray-500">{selected.conversion_label}</p>
+              <div className="flex items-start justify-between gap-3 rounded-xl border border-gray-100 bg-gray-50/60 p-4">
+                <div>
+                  <p className="text-lg font-bold text-gray-900">{selected.item_name ?? selected.category}</p>
+                  <p className="text-sm text-gray-500">
+                    {selected.item_name ? `Item-level override (${selected.category ?? "—"})` : "Category-level default"}
+                  </p>
+                  <p className="mt-1 text-[11px] text-gray-400">Effective {selected.effective_date}</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => startEdit(selected)}
+                  className="flex shrink-0 items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-gray-600 transition hover:border-primary hover:text-primary"
+                >
+                  <Pencil className="h-3.5 w-3.5" /> Edit
+                </button>
               </div>
               <dl className="grid grid-cols-2 gap-4 text-sm">
                 <div>
