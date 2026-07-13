@@ -42,6 +42,9 @@ interface DataTableProps<TData> {
   selectable?: SelectableConfig<TData>;
   /** Optional per-row extra class (e.g. outcome highlighting). Return "" for no change. */
   rowClassName?: (row: TData) => string;
+  /** Opt-in whole-row click target (e.g. "open this record"). Off by default. Row-level
+   * action buttons should call stopPropagation so they don't also trigger this. */
+  onRowClick?: (row: TData) => void;
 }
 
 export function DataTable<TData>({
@@ -54,6 +57,7 @@ export function DataTable<TData>({
   compact = false,
   selectable,
   rowClassName,
+  onRowClick,
 }: DataTableProps<TData>) {
   const [sorting, setSorting] = useState<SortingState>(initialSorting);
   const [pagination, setPagination] = useState({ pageIndex: 0, pageSize });
@@ -138,9 +142,10 @@ export function DataTable<TData>({
           {table.getRowModel().rows.map((row) => (
             <tr
               key={row.id}
+              onClick={onRowClick ? () => onRowClick(row.original) : undefined}
               className={`border-b border-gray-50 transition-colors hover:bg-gray-50/60 ${
-                rowClassName ? rowClassName(row.original) : ""
-              }`}
+                onRowClick ? "cursor-pointer" : ""
+              } ${rowClassName ? rowClassName(row.original) : ""}`}
             >
               {row.getVisibleCells().map((cell) => (
                 <td key={cell.id} className={bodyCellCls}>

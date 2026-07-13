@@ -24,12 +24,13 @@ import { dpwhCatalogFixture } from "./fixtures/dpwhCatalog";
 import { dpwhVersionStatusFixture, psaVersionStatusFixture } from "./fixtures/versionStatus";
 import { sourcePriorityFixture } from "./fixtures/sourcePriority";
 import { savedCatalogFixture } from "./fixtures/savedCatalog";
+import { categoriesFixture } from "./fixtures/categories";
+import { itemsCatalogFixture } from "./fixtures/itemsCatalog";
 import {
   existingRulesFixture,
   laborRulesFixture,
   laborTradeOptionsFixture,
   materialRulesFixture,
-  materialsByCategoryFixture,
   pricingStrategyFixture,
   RULE_ID_IN_USE,
   scopeTemplatesFixture,
@@ -85,25 +86,37 @@ export function resolveMockFetch(endpoint: string): unknown {
   if (pathname === "/api/pricelist/source-priority") return sourcePriorityFixture;
   if (pathname === "/api/pricelist/catalog") return savedCatalogFixture;
 
+  if (pathname === "/api/categories") return categoriesFixture;
+  if (pathname === "/api/items") return itemsCatalogFixture;
+
   // --- Company Preferences & Rules (CPRM) — PROVISIONAL, see lib/dev/provisional/. ---
-  // Create endpoints use a distinct `/new` suffix (not the same path as the GET list) —
-  // see lib/dev/provisional/useCompanyRulesProvisional.ts for why. POST responses below
-  // return a fixture-shaped stub purely to satisfy the mutate<T>() type contract in mock
-  // mode; the forms construct their own optimistic list entries from what the user
-  // actually typed rather than reading these back (this mock has no real persistence).
-  if (pathname === "/api/company-rules/scope-templates/new") return scopeTemplatesFixture[0];
-  if (pathname === "/api/company-rules/scope-templates") return scopeTemplatesFixture;
-  if (pathname === "/api/company-rules/material-rules/new") return materialRulesFixture[0];
-  if (pathname === "/api/company-rules/material-rules") return materialRulesFixture;
-  if (pathname === "/api/company-rules/labor-rules/new") return laborRulesFixture[0];
-  if (pathname === "/api/company-rules/labor-rules") return laborRulesFixture;
-  if (pathname === "/api/company-rules/pricing-strategies/new") return pricingStrategyFixture[0];
-  if (pathname === "/api/company-rules/pricing-strategies") return pricingStrategyFixture;
-  if (pathname === "/api/company-rules/unit-rules/new") return unitRulesFixture[0];
-  if (pathname === "/api/company-rules/unit-rules") return unitRulesFixture;
+  // Create/update/supersede responses below all return a fixture-shaped stub purely to
+  // satisfy the mutate<T>() type contract in mock mode; the forms construct their own
+  // optimistic list entries from what the user actually typed rather than reading these
+  // back (this mock has no real persistence). check-usage is intentionally the ONE
+  // endpoint shared across every rule type (keyed only by rule_id, not by resource) since
+  // v5's company_rule envelope makes rule_id a universal spine id — see
+  // useCompanyRulesProvisional.ts.
+  const RULE_RESOURCES: Record<string, { list: unknown; single: unknown }> = {
+    "scope-templates": { list: scopeTemplatesFixture, single: scopeTemplatesFixture[0] },
+    "material-rules": { list: materialRulesFixture, single: materialRulesFixture[0] },
+    "labor-rules": { list: laborRulesFixture, single: laborRulesFixture[0] },
+    "pricing-strategies": { list: pricingStrategyFixture, single: pricingStrategyFixture[0] },
+    "unit-rules": { list: unitRulesFixture, single: unitRulesFixture[0] },
+  };
+  for (const [resource, { list, single }] of Object.entries(RULE_RESOURCES)) {
+    const base = `/api/company-rules/${resource}`;
+    if (pathname === base) return list;
+    if (pathname === `${base}/new`) return single;
+    if (pathname.startsWith(`${base}/`)) {
+      const rest = pathname.slice(base.length + 1);
+      if (rest.endsWith("/supersede")) return single; // POST .../:id/supersede
+      if (rest !== "new" && !rest.includes("/")) return single; // PATCH .../:id (edit in place)
+    }
+  }
+
   if (pathname === "/api/company-rules/existing") return existingRulesFixture;
   if (pathname === "/api/company-rules/labor-trades") return laborTradeOptionsFixture;
-  if (pathname === "/api/company-rules/materials-by-category") return materialsByCategoryFixture;
   if (pathname.startsWith("/api/company-rules/existing/") && pathname.endsWith("/check-usage")) {
     const ruleId = pathname.split("/").slice(-2, -1)[0];
     return { in_use: ruleId === RULE_ID_IN_USE };
