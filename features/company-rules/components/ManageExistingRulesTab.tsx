@@ -20,7 +20,13 @@ function StatusBadge({ status }: { status: ExistingRuleSummary["status"] }) {
   );
 }
 
-export function ManageExistingRulesTab() {
+interface ManageExistingRulesTabProps {
+  /** Part C — clicking a row (anywhere but the Disable button) jumps to that rule's
+   * owning tab with the rule pre-selected, instead of leaving the user to hunt for it. */
+  onOpenRule: (rule: ExistingRuleSummary) => void;
+}
+
+export function ManageExistingRulesTab({ onOpenRule }: ManageExistingRulesTabProps) {
   const { rules, isLoading, error, refetch, checkUsage, isCheckingUsage, disable, isDisabling, disableError } =
     useExistingRules();
 
@@ -58,6 +64,7 @@ export function ManageExistingRulesTab() {
       { accessorKey: "rule_kind", header: "Rule Type", enableGlobalFilter: false },
       { accessorKey: "label", header: "Rule" },
       { accessorKey: "detail", header: "Detail", enableGlobalFilter: false },
+      { accessorKey: "effective_date", header: "Effective", enableGlobalFilter: false },
       {
         accessorKey: "status",
         header: "Status",
@@ -76,7 +83,11 @@ export function ManageExistingRulesTab() {
             <button
               type="button"
               disabled={busy}
-              onClick={() => handleDisable(rule)}
+              onClick={(e) => {
+                // Don't also trigger the row's own "open in owning tab" click.
+                e.stopPropagation();
+                handleDisable(rule);
+              }}
               className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-xs font-medium text-gray-500 transition hover:border-red-300 hover:text-red-600 disabled:opacity-50"
             >
               <Ban className="h-3.5 w-3.5" /> {busy ? "Checking…" : "Disable"}
@@ -94,8 +105,9 @@ export function ManageExistingRulesTab() {
       <div>
         <h2 className="text-base font-bold text-gray-900">Manage Existing Rules</h2>
         <p className="text-xs text-gray-500">
-          Select a rule and disable it. Rules referenced in active quotations can&apos;t be
-          disabled until that reference is cleared.
+          Click a rule to open and edit it in its own tab, or disable it here. Rules
+          referenced in active quotations can&apos;t be disabled until that reference is
+          cleared.
         </p>
       </div>
 
@@ -125,7 +137,7 @@ export function ManageExistingRulesTab() {
           emptyHint="Configured rules across all categories will appear here once saved."
           minHeight={220}
         >
-          <DataTable columns={columns} data={displayRules} enablePagination pageSize={50} />
+          <DataTable columns={columns} data={displayRules} enablePagination pageSize={50} onRowClick={onOpenRule} />
         </QueryState>
       </div>
 
