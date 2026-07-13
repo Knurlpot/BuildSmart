@@ -13,6 +13,8 @@ export interface RegisterPayload {
   middle_name?: string;
   email: string;
   password: string;
+  user_role?: string;
+  role?: string;
   company: {
     company_name: string;
     company_address: string;

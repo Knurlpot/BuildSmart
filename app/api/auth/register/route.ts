@@ -10,6 +10,8 @@ type RegisterBody = {
   middle_name?: string;
   email?: string;
   password?: string;
+  user_role?: string;
+  role?: string;
   company?: {
     company_name?: string;
     company_address?: string;
@@ -30,6 +32,9 @@ export async function POST(request: NextRequest) {
   const email = body.email?.trim().toLowerCase();
   const password = body.password ?? "";
   const company = body.company;
+  const allowedUserRoles = new Set(["Owner", "Admin", "Estimator", "Viewer"]);
+  const requestedUserRole = (body.user_role ?? body.role ?? "Owner").toString().trim();
+  const userRole = allowedUserRoles.has(requestedUserRole) ? requestedUserRole : "Owner";
 
   if (
     !firstName ||
@@ -88,7 +93,7 @@ export async function POST(request: NextRequest) {
         status
       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
       RETURNING *`,
-      [companyId, lastName, firstName, middleName, email, hashedPassword, "Owner", "Active"]
+      [companyId, lastName, firstName, middleName, email, hashedPassword, userRole, "Active"]
     );
 
     await client.query("COMMIT");

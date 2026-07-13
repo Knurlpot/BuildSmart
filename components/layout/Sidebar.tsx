@@ -5,7 +5,9 @@ import { usePathname, useRouter } from "next/navigation";
 import Image from "next/image";
 import { LogOut, Lock } from "lucide-react";
 import { useAuth } from "@/providers/AuthProvider";
+import { useFetch } from "@/hooks/useFetch";
 import { logoFrame } from "@/components/logo-frames";
+import type { Users } from "@/types/entities";
 import { NAV_ITEMS, type NavItem } from "./nav-items";
 
 function NavRow({ item, onboardingStep, active }: { item: NavItem; onboardingStep: number; active: boolean }) {
@@ -45,7 +47,19 @@ export default function Sidebar() {
   const router = useRouter();
   const onboardingStep = currentUser?.onboardingStep ?? 0;
 
-  const initials = currentUser?.email ? currentUser.email.slice(0, 2).toUpperCase() : "BS";
+  // Same "/api/auth/me" contract UserSection on the Account page already relies on
+  // (app/(app)/account/page.tsx) — reused here for the fuller Users fields (name, role)
+  // that the minimal AuthUser shape from AuthProvider deliberately doesn't carry.
+  const { data: profile } = useFetch<Users>("/api/auth/me");
+
+  const fullName = profile
+    ? [profile.first_name, profile.middle_name, profile.last_name].filter(Boolean).join(" ")
+    : currentUser?.email?.split("@")[0] ?? "User";
+  const initials = profile
+    ? `${profile.first_name?.[0] ?? ""}${profile.last_name?.[0] ?? ""}`.toUpperCase() || "BS"
+    : currentUser?.email
+      ? currentUser.email.slice(0, 2).toUpperCase()
+      : "BS";
 
   const handleLogout = async () => {
     await logout();
@@ -83,11 +97,9 @@ export default function Sidebar() {
             {initials}
           </div>
           <div className="min-w-0 flex-1">
-            <p className="truncate text-xs font-semibold text-gray-700">
-              {currentUser?.email?.split("@")[0] ?? "User"}
-            </p>
+            <p className="truncate text-xs font-semibold text-gray-700">{fullName}</p>
             <p className="truncate text-[10px] text-gray-400">
-              {onboardingStep >= 2 ? "Active" : "Setting up…"}
+              {profile?.user_role ?? (onboardingStep >= 2 ? "Active" : "Setting up…")}
             </p>
           </div>
           <button
