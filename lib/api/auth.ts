@@ -8,17 +8,19 @@ export interface AuthUser {
 }
 
 export interface RegisterPayload {
+  first_name: string;
+  last_name: string;
+  middle_name?: string;
   email: string;
   password: string;
   company: {
-    name: string;
+    company_name: string;
     company_address: string;
+    contact_email: string;
     contact_number: string;
-    city: string;
-    region: string;
-    project_sector: string[];
-    company_role: string;
-    specialization: string[];
+    specialization_1: string;
+    specialization_2?: string;
+    specialization_3?: string;
     company_logo?: string;
   };
 }

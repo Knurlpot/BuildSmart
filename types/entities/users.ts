@@ -10,5 +10,6 @@ export interface Users {
   // password intentionally omitted — never expose this on the frontend type
   user_role: 'Owner' | 'Admin' | 'Estimator' | 'Viewer';
   status: 'Active' | 'Inactive';
+  onboarding_step?: number;
   created_at: string;
 }

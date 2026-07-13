@@ -1,120 +1,98 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Check, ChevronRight, Eye, EyeOff, Upload, X } from "lucide-react";
+import { Check, ChevronRight, Eye, EyeOff, Plus, X } from "lucide-react";
 import { AuthBrandPanel } from "@/components/auth/AuthBrandPanel";
 import { useAuth } from "@/providers/AuthProvider";
 import { resolveOnboardingRoute } from "@/lib/onboarding";
 
-const REGIONS = ["Metro Manila", "North Luzon", "South Luzon", "Visayas", "Mindanao"];
-const SECTORS = ["Residential", "Commercial", "Industrial", "Institutional", "Infrastructure"];
-const ROLES = ["Main Contractor", "Subcontractor", "Developer", "Consultant", "Supplier", "Owner-Builder"];
-const SPECIALIZATIONS = ["Waterproofing", "Tile Works", "Painting", "Structural", "MEP", "Civil Works", "Roofing", "Facade"];
+// Schema v3 VARCHAR lengths — enforced as maxLength on the matching inputs below.
+const MAX = {
+  firstName: 30,
+  lastName: 30,
+  middleName: 30,
+  companyName: 75,
+  companyAddress: 255,
+  companyContactEmail: 100,
+  companyContactNumber: 20,
+  specialization: 50,
+  companyLogo: 255,
+  email: 100,
+} as const;
+
+const PASSWORD_MIN_LENGTH = 6;
 
 type Step = 1 | 2 | 3;
 
 interface FormData {
-  logoFile: File | null;
-  logoDataUrl: string;
+  // Step 1 -> users
+  firstName: string;
+  lastName: string;
+  middleName: string;
+  // Step 2 -> company
   companyName: string;
-  phone: string;
-  address: string;
-  city: string;
-  province: string;
+  companyAddress: string;
+  companyContactEmail: string;
+  companyContactNumber: string;
+  specialization1: string;
+  specialization2: string;
+  specialization3: string;
+  companyLogo: string;
+  // Step 3 -> users credentials
   email: string;
   password: string;
   confirmPassword: string;
-  serviceRegions: string[];
-  projectSectors: string[];
-  companyRole: string;
-  specializations: string[];
 }
 
 const INIT: FormData = {
-  logoFile: null,
-  logoDataUrl: "",
+  firstName: "",
+  lastName: "",
+  middleName: "",
   companyName: "",
-  phone: "",
-  address: "",
-  city: "",
-  province: "",
+  companyAddress: "",
+  companyContactEmail: "",
+  companyContactNumber: "",
+  specialization1: "",
+  specialization2: "",
+  specialization3: "",
+  companyLogo: "",
   email: "",
   password: "",
   confirmPassword: "",
-  serviceRegions: [],
-  projectSectors: [],
-  companyRole: "",
-  specializations: [],
 };
 
+function isValidEmail(v: string) {
+  return v.includes("@") && v.includes(".");
+}
+
+// 13 checks (required + optional) map onto the 14 logo frames (0-13), same convention the
+// prior version of this page used.
 function countValidFields(d: FormData): number {
   const checks = [
-    Boolean(d.logoFile || d.logoDataUrl),
+    d.firstName.trim().length > 0,
+    d.lastName.trim().length > 0,
+    d.middleName.trim().length > 0,
     d.companyName.trim().length > 0,
-    d.phone.trim().length > 0,
-    d.address.trim().length > 0,
-    d.city.trim().length > 0,
-    d.province.trim().length > 0,
-    d.email.includes("@") && d.email.includes("."),
-    d.password.length >= 6,
-    d.confirmPassword.length > 0 && d.password === d.confirmPassword,
-    d.serviceRegions.length > 0,
-    d.projectSectors.length > 0,
-    Boolean(d.companyRole),
-    d.specializations.length > 0,
+    d.companyAddress.trim().length > 0,
+    isValidEmail(d.companyContactEmail),
+    d.companyContactNumber.trim().length > 0,
+    d.specialization1.trim().length > 0,
+    d.specialization2.trim().length > 0,
+    d.specialization3.trim().length > 0,
+    d.companyLogo.trim().length > 0,
+    isValidEmail(d.email),
+    d.password.length >= PASSWORD_MIN_LENGTH && d.password === d.confirmPassword,
   ];
   return checks.filter(Boolean).length;
 }
 
-function PillSelect({
-  options,
-  selected,
-  onChange,
-  max,
-}: {
-  options: string[];
-  selected: string[];
-  onChange: (v: string[]) => void;
-  max?: number;
-}) {
-  const toggle = (opt: string) => {
-    if (selected.includes(opt)) {
-      onChange(selected.filter((s) => s !== opt));
-    } else if (!max || selected.length < max) {
-      onChange([...selected, opt]);
-    }
-  };
-  return (
-    <div className="flex flex-wrap gap-2">
-      {options.map((opt) => {
-        const active = selected.includes(opt);
-        return (
-          <button
-            key={opt}
-            type="button"
-            onClick={() => toggle(opt)}
-            className={`flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
-              active
-                ? "border-primary bg-primary text-primary-foreground"
-                : "border-gray-200 bg-gray-50 text-gray-600 hover:border-primary hover:text-primary"
-            }`}
-          >
-            {active && <Check className="h-3 w-3" />}
-            {opt}
-          </button>
-        );
-      })}
-    </div>
-  );
-}
-
 function ProgressBar({ step }: { step: Step }) {
   const steps: { n: Step; label: string }[] = [
-    { n: 1, label: "Company Info" },
-    { n: 2, label: "Account Setup" },
-    { n: 3, label: "Service Profile" },
+    { n: 1, label: "User Details" },
+    { n: 2, label: "Company Details" },
+    { n: 3, label: "Account Credentials" },
   ];
   return (
     <div className="flex items-center gap-2">
@@ -163,7 +141,12 @@ export default function SignUpPage() {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
   const [apiError, setApiError] = useState("");
-  const fileRef = useRef<HTMLInputElement>(null);
+  // Progressive disclosure for the optional specialization_2/3 columns — schema has exactly
+  // three slots, specialization_1 required, 2 and 3 nullable. Only the LAST visible optional
+  // field is ever removable: removal always happens from the tail, so a gap (e.g. clearing
+  // specialization_2 while specialization_3 still holds a value) can never occur — simpler
+  // than shifting values up, and just as correct.
+  const [specializationCount, setSpecializationCount] = useState<1 | 2 | 3>(1);
 
   const filledCount = useMemo(() => countValidFields(form), [form]);
 
@@ -176,36 +159,43 @@ export default function SignUpPage() {
     });
   };
 
-  const handleLogo = (file: File) => {
-    const reader = new FileReader();
-    reader.onload = (e) => set("logoDataUrl", (e.target?.result as string) ?? "");
-    reader.readAsDataURL(file);
-    set("logoFile", file);
+  const addSpecialization = () => setSpecializationCount((c) => (c < 3 ? ((c + 1) as 1 | 2 | 3) : c));
+
+  const removeLastSpecialization = () => {
+    if (specializationCount === 3) {
+      set("specialization3", "");
+      setSpecializationCount(2);
+    } else if (specializationCount === 2) {
+      set("specialization2", "");
+      setSpecializationCount(1);
+    }
   };
 
   const validateStep1 = () => {
     const e: Record<string, string> = {};
-    if (!form.companyName.trim()) e.companyName = "Company name is required";
-    if (!form.phone.trim()) e.phone = "Phone number is required";
-    if (!form.address.trim()) e.address = "Address is required";
-    if (!form.city.trim()) e.city = "City is required";
-    if (!form.province.trim()) e.province = "Province / Region is required";
+    if (!form.firstName.trim()) e.firstName = "First name is required";
+    if (!form.lastName.trim()) e.lastName = "Last name is required";
     setErrors(e);
     return Object.keys(e).length === 0;
   };
 
   const validateStep2 = () => {
     const e: Record<string, string> = {};
-    if (!form.email || !form.email.includes("@")) e.email = "Enter a valid email address";
-    if (form.password.length < 6) e.password = "Password must be at least 6 characters";
-    if (form.password !== form.confirmPassword) e.confirmPassword = "Passwords do not match";
+    if (!form.companyName.trim()) e.companyName = "Company name is required";
+    if (!form.companyAddress.trim()) e.companyAddress = "Company address is required";
+    if (!isValidEmail(form.companyContactEmail)) e.companyContactEmail = "Enter a valid company contact email";
+    if (!form.companyContactNumber.trim()) e.companyContactNumber = "Contact number is required";
+    if (!form.specialization1.trim()) e.specialization1 = "At least one specialization is required";
     setErrors(e);
     return Object.keys(e).length === 0;
   };
 
   const validateStep3 = () => {
     const e: Record<string, string> = {};
-    if (!form.companyRole) e.companyRole = "Please select your company role";
+    if (!isValidEmail(form.email)) e.email = "Enter a valid email address";
+    if (form.password.length < PASSWORD_MIN_LENGTH)
+      e.password = `Password must be at least ${PASSWORD_MIN_LENGTH} characters`;
+    if (form.password !== form.confirmPassword) e.confirmPassword = "Passwords do not match";
     setErrors(e);
     return Object.keys(e).length === 0;
   };
@@ -222,22 +212,28 @@ export default function SignUpPage() {
     setApiError("");
     try {
       const user = await register({
+        first_name: form.firstName,
+        last_name: form.lastName,
+        middle_name: form.middleName || undefined,
         email: form.email,
         password: form.password,
         company: {
-          name: form.companyName,
-          company_address: form.address,
-          contact_number: form.phone,
-          city: form.city,
-          region: form.province,
-          project_sector: form.projectSectors,
-          company_role: form.companyRole,
-          specialization: form.specializations,
-          company_logo: form.logoDataUrl || undefined,
+          company_name: form.companyName,
+          company_address: form.companyAddress,
+          contact_email: form.companyContactEmail,
+          contact_number: form.companyContactNumber,
+          specialization_1: form.specialization1,
+          // Keyed off specializationCount, not just the raw form value: a hidden field is
+          // guaranteed undefined regardless of any stray state, never an empty string.
+          specialization_2: specializationCount >= 2 ? form.specialization2 || undefined : undefined,
+          specialization_3: specializationCount >= 3 ? form.specialization3 || undefined : undefined,
+          company_logo: form.companyLogo || undefined,
         },
       });
       router.push(resolveOnboardingRoute(user.onboardingStep));
     } catch (err) {
+      // No fabricated success — surface the real error and keep everything the user
+      // entered so far (form state is untouched on failure, no wizard reset).
       setApiError(err instanceof Error ? err.message : "Registration failed. Please try again.");
       setSubmitting(false);
     }
@@ -267,7 +263,7 @@ export default function SignUpPage() {
       />
 
       <div className="flex flex-1 flex-col items-center justify-center overflow-y-auto bg-white px-6 py-8">
-        <div className="w-full max-w-md">
+        <div className="w-full max-w-xl">
           <div className="mb-4">
             <h2 className="text-xl font-extrabold tracking-tight text-gray-900">
               Create your account
@@ -290,121 +286,52 @@ export default function SignUpPage() {
           <form onSubmit={handleSubmit} className="flex flex-col gap-4">
             {step === 1 && (
               <>
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-xs font-semibold uppercase tracking-wide text-gray-600">
-                    Company Logo (optional)
-                  </label>
-                  {form.logoDataUrl ? (
-                    <div className="flex items-center gap-3">
-                      {/* eslint-disable-next-line @next/next/no-img-element -- user-provided data: URL, not an optimizable static asset */}
-                      <img
-                        src={form.logoDataUrl}
-                        alt="Logo"
-                        className="h-14 w-14 rounded-xl border border-gray-200 object-cover"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => {
-                          set("logoFile", null);
-                          set("logoDataUrl", "");
-                        }}
-                        className="flex items-center gap-1 text-xs font-medium text-red-500 hover:text-red-700"
-                      >
-                        <X className="h-3 w-3" /> Remove
-                      </button>
-                    </div>
-                  ) : (
-                    <div
-                      onClick={() => fileRef.current?.click()}
-                      onDragOver={(e) => e.preventDefault()}
-                      onDrop={(e) => {
-                        e.preventDefault();
-                        const f = e.dataTransfer.files[0];
-                        if (f?.type.startsWith("image/")) handleLogo(f);
-                      }}
-                      className="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-gray-200 bg-gray-50 py-5 transition hover:border-primary hover:bg-orange-50/30"
-                    >
-                      <Upload className="h-5 w-5 text-gray-400" />
-                      <p className="text-xs text-gray-500">
-                        Drop logo here or <span className="font-semibold text-primary">browse</span>
-                      </p>
-                    </div>
-                  )}
-                  <input
-                    ref={fileRef}
-                    type="file"
-                    accept="image/*"
-                    className="hidden"
-                    onChange={(e) => {
-                      const f = e.target.files?.[0];
-                      if (f) handleLogo(f);
-                    }}
-                  />
-                </div>
+                <p className="text-xs text-gray-400">
+                  This is you — the person creating the account. You&apos;ll be set up as the
+                  Owner of the company in the next step.
+                </p>
 
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-xs font-semibold uppercase tracking-wide text-gray-600">
-                    Company Name *
-                  </label>
-                  <input
-                    value={form.companyName}
-                    onChange={(e) => set("companyName", e.target.value)}
-                    placeholder="e.g. JC Waterproofing Inc."
-                    className={inputCls("companyName")}
-                  />
-                  {errors.companyName && <p className="text-xs text-red-500">{errors.companyName}</p>}
-                </div>
-
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-xs font-semibold uppercase tracking-wide text-gray-600">
-                    Office Phone *
-                  </label>
-                  <input
-                    value={form.phone}
-                    onChange={(e) => set("phone", e.target.value)}
-                    placeholder="+63 917 123 4567"
-                    className={inputCls("phone")}
-                  />
-                  {errors.phone && <p className="text-xs text-red-500">{errors.phone}</p>}
-                </div>
-
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-xs font-semibold uppercase tracking-wide text-gray-600">
-                    Company Address *
-                  </label>
-                  <input
-                    value={form.address}
-                    onChange={(e) => set("address", e.target.value)}
-                    placeholder="Unit/Floor, Building, Street"
-                    className={inputCls("address")}
-                  />
-                  {errors.address && <p className="text-xs text-red-500">{errors.address}</p>}
-                </div>
-
-                <div className="flex gap-3">
-                  <div className="flex flex-1 flex-col gap-1.5">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                  <div className="flex flex-col gap-1.5">
                     <label className="text-xs font-semibold uppercase tracking-wide text-gray-600">
-                      City *
+                      First Name *
                     </label>
                     <input
-                      value={form.city}
-                      onChange={(e) => set("city", e.target.value)}
-                      placeholder="Quezon City"
-                      className={inputCls("city")}
+                      value={form.firstName}
+                      onChange={(e) => set("firstName", e.target.value)}
+                      maxLength={MAX.firstName}
+                      placeholder="Juan"
+                      className={inputCls("firstName")}
+                      autoFocus
                     />
-                    {errors.city && <p className="text-xs text-red-500">{errors.city}</p>}
+                    {errors.firstName && <p className="text-xs text-red-500">{errors.firstName}</p>}
                   </div>
-                  <div className="flex flex-1 flex-col gap-1.5">
+
+                  <div className="flex flex-col gap-1.5">
                     <label className="text-xs font-semibold uppercase tracking-wide text-gray-600">
-                      Province *
+                      Middle Name <span className="font-normal normal-case text-gray-400">(optional)</span>
                     </label>
                     <input
-                      value={form.province}
-                      onChange={(e) => set("province", e.target.value)}
-                      placeholder="NCR"
-                      className={inputCls("province")}
+                      value={form.middleName}
+                      onChange={(e) => set("middleName", e.target.value)}
+                      maxLength={MAX.middleName}
+                      placeholder="Santos"
+                      className={inputCls("middleName")}
                     />
-                    {errors.province && <p className="text-xs text-red-500">{errors.province}</p>}
+                  </div>
+
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-xs font-semibold uppercase tracking-wide text-gray-600">
+                      Last Name *
+                    </label>
+                    <input
+                      value={form.lastName}
+                      onChange={(e) => set("lastName", e.target.value)}
+                      maxLength={MAX.lastName}
+                      placeholder="Dela Cruz"
+                      className={inputCls("lastName")}
+                    />
+                    {errors.lastName && <p className="text-xs text-red-500">{errors.lastName}</p>}
                   </div>
                 </div>
 
@@ -422,12 +349,220 @@ export default function SignUpPage() {
               <>
                 <div className="flex flex-col gap-1.5">
                   <label className="text-xs font-semibold uppercase tracking-wide text-gray-600">
-                    Email Address *
+                    Company Name *
                   </label>
+                  <input
+                    value={form.companyName}
+                    onChange={(e) => set("companyName", e.target.value)}
+                    maxLength={MAX.companyName}
+                    placeholder="e.g. JC Waterproofing Inc."
+                    className={inputCls("companyName")}
+                    autoFocus
+                  />
+                  {errors.companyName && <p className="text-xs text-red-500">{errors.companyName}</p>}
+                </div>
+
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-xs font-semibold uppercase tracking-wide text-gray-600">
+                    Company Address *
+                  </label>
+                  <input
+                    value={form.companyAddress}
+                    onChange={(e) => set("companyAddress", e.target.value)}
+                    maxLength={MAX.companyAddress}
+                    placeholder="Unit/Floor, Building, Street, City"
+                    className={inputCls("companyAddress")}
+                  />
+                  {errors.companyAddress && <p className="text-xs text-red-500">{errors.companyAddress}</p>}
+                </div>
+
+                <div className="flex flex-col gap-1.5">
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                    <div className="flex flex-col gap-1.5">
+                      <label className="text-xs font-semibold uppercase tracking-wide text-gray-600">
+                        Company Contact Email *
+                      </label>
+                      <input
+                        type="email"
+                        value={form.companyContactEmail}
+                        onChange={(e) => set("companyContactEmail", e.target.value)}
+                        maxLength={MAX.companyContactEmail}
+                        placeholder="info@company.com"
+                        className={inputCls("companyContactEmail")}
+                      />
+                      {errors.companyContactEmail && (
+                        <p className="text-xs text-red-500">{errors.companyContactEmail}</p>
+                      )}
+                    </div>
+
+                    <div className="flex flex-col gap-1.5">
+                      <label className="text-xs font-semibold uppercase tracking-wide text-gray-600">
+                        Company Contact Number *
+                      </label>
+                      <input
+                        value={form.companyContactNumber}
+                        onChange={(e) => set("companyContactNumber", e.target.value)}
+                        maxLength={MAX.companyContactNumber}
+                        placeholder="+63 917 123 4567"
+                        className={inputCls("companyContactNumber")}
+                      />
+                      {errors.companyContactNumber && (
+                        <p className="text-xs text-red-500">{errors.companyContactNumber}</p>
+                      )}
+                    </div>
+                  </div>
+                  <p className="text-[11px] text-gray-400">
+                    The company&apos;s public contact email — not your login email (that comes next).
+                  </p>
+                </div>
+
+                {/* One field that visually divides as more are added — all three end up
+                    equal-width in a single row, rather than 1 living apart from 2/3. */}
+                <div
+                  className={`grid grid-cols-1 gap-4 ${
+                    specializationCount === 2 ? "sm:grid-cols-2" : specializationCount === 3 ? "sm:grid-cols-3" : ""
+                  }`}
+                >
+                  <div className="flex flex-col gap-1.5">
+                    <div className="flex items-center justify-between gap-2">
+                      <label className="text-xs font-semibold uppercase tracking-wide text-gray-600">
+                        Specialization 1 *
+                      </label>
+                      {specializationCount === 1 && (
+                        <button
+                          type="button"
+                          onClick={addSpecialization}
+                          className="flex items-center gap-1.5 rounded-full border-2 border-primary bg-orange-50/60 px-3 py-1 text-xs font-bold text-primary transition hover:bg-primary hover:text-primary-foreground"
+                        >
+                          <Plus className="h-3.5 w-3.5" /> Add Specialization
+                        </button>
+                      )}
+                    </div>
+                    <input
+                      value={form.specialization1}
+                      onChange={(e) => set("specialization1", e.target.value)}
+                      maxLength={MAX.specialization}
+                      placeholder="e.g. Waterproofing Systems"
+                      className={inputCls("specialization1")}
+                    />
+                    {errors.specialization1 && <p className="text-xs text-red-500">{errors.specialization1}</p>}
+                  </div>
+
+                  {specializationCount >= 2 && (
+                    <div className="flex flex-col gap-1.5">
+                      <div className="flex items-center justify-between gap-2">
+                        <label className="whitespace-nowrap text-xs font-semibold uppercase tracking-wide text-gray-600">
+                          Specialization 2 <span className="font-normal normal-case text-gray-400">(optional)</span>
+                        </label>
+                        {specializationCount === 2 && (
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={addSpecialization}
+                              title="Add specialization 3"
+                              className="text-primary hover:text-(--primary-hover)"
+                            >
+                              <Plus className="h-3.5 w-3.5" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={removeLastSpecialization}
+                              title="Remove specialization 2"
+                              className="text-gray-300 hover:text-red-500"
+                            >
+                              <X className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                      <input
+                        value={form.specialization2}
+                        onChange={(e) => set("specialization2", e.target.value)}
+                        maxLength={MAX.specialization}
+                        placeholder="Optional"
+                        className={inputCls("specialization2")}
+                        autoFocus
+                      />
+                    </div>
+                  )}
+
+                  {specializationCount === 3 && (
+                    <div className="flex flex-col gap-1.5">
+                      <div className="flex items-center justify-between gap-2">
+                        <label className="whitespace-nowrap text-xs font-semibold uppercase tracking-wide text-gray-600">
+                          Specialization 3 <span className="font-normal normal-case text-gray-400">(optional)</span>
+                        </label>
+                        <button
+                          type="button"
+                          onClick={removeLastSpecialization}
+                          title="Remove specialization 3"
+                          className="text-gray-300 hover:text-red-500"
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                      <input
+                        value={form.specialization3}
+                        onChange={(e) => set("specialization3", e.target.value)}
+                        maxLength={MAX.specialization}
+                        placeholder="Optional"
+                        className={inputCls("specialization3")}
+                        autoFocus
+                      />
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-xs font-semibold uppercase tracking-wide text-gray-600">
+                    Company Logo <span className="font-normal normal-case text-gray-400">(optional)</span>
+                  </label>
+                  <input
+                    value={form.companyLogo}
+                    onChange={(e) => set("companyLogo", e.target.value)}
+                    maxLength={MAX.companyLogo}
+                    placeholder="https://…"
+                    className={inputCls("companyLogo")}
+                  />
+                  <p className="text-[11px] text-gray-400">
+                    Paste a URL for now — file upload isn&apos;t wired here yet.
+                  </p>
+                </div>
+
+                <div className="mt-1 flex gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setStep(1)}
+                    className="flex-1 rounded-xl border border-gray-200 px-4 py-3.5 text-sm font-bold text-gray-600 transition hover:bg-gray-50"
+                  >
+                    Back
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleNext}
+                    className="flex flex-2 items-center justify-center gap-2 rounded-xl bg-primary px-6 py-3.5 text-sm font-bold text-primary-foreground shadow-sm transition hover:bg-(--primary-hover)"
+                  >
+                    Continue <ChevronRight className="h-4 w-4" />
+                  </button>
+                </div>
+              </>
+            )}
+
+            {step === 3 && (
+              <>
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-xs font-semibold uppercase tracking-wide text-gray-600">
+                    Login Email *
+                  </label>
+                  <p className="text-[11px] text-gray-400">
+                    This is what you&apos;ll use to sign in — different from the company contact
+                    email you entered earlier.
+                  </p>
                   <input
                     type="email"
                     value={form.email}
                     onChange={(e) => set("email", e.target.value)}
+                    maxLength={MAX.email}
                     placeholder="you@company.com"
                     className={inputCls("email")}
                     autoFocus
@@ -444,7 +579,7 @@ export default function SignUpPage() {
                       type={showPw ? "text" : "password"}
                       value={form.password}
                       onChange={(e) => set("password", e.target.value)}
-                      placeholder="At least 6 characters"
+                      placeholder={`At least ${PASSWORD_MIN_LENGTH} characters`}
                       className={`${inputCls("password")} pr-11`}
                     />
                     <button
@@ -461,7 +596,7 @@ export default function SignUpPage() {
                       <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-gray-100">
                         <div
                           className={`h-full rounded-full transition-all ${
-                            form.password.length < 6
+                            form.password.length < PASSWORD_MIN_LENGTH
                               ? "w-1/4 bg-red-400"
                               : form.password.length < 10
                                 ? "w-1/2 bg-yellow-400"
@@ -471,14 +606,18 @@ export default function SignUpPage() {
                       </div>
                       <span
                         className={`text-[10px] font-semibold ${
-                          form.password.length < 6
+                          form.password.length < PASSWORD_MIN_LENGTH
                             ? "text-red-400"
                             : form.password.length < 10
                               ? "text-yellow-500"
                               : "text-green-600"
                         }`}
                       >
-                        {form.password.length < 6 ? "Weak" : form.password.length < 10 ? "Good" : "Strong"}
+                        {form.password.length < PASSWORD_MIN_LENGTH
+                          ? "Weak"
+                          : form.password.length < 10
+                            ? "Good"
+                            : "Strong"}
                       </span>
                     </div>
                   )}
@@ -512,83 +651,6 @@ export default function SignUpPage() {
                       <Check className="h-3 w-3" /> Passwords match
                     </p>
                   )}
-                </div>
-
-                <div className="mt-1 flex gap-3">
-                  <button
-                    type="button"
-                    onClick={() => setStep(1)}
-                    className="flex-1 rounded-xl border border-gray-200 px-4 py-3.5 text-sm font-bold text-gray-600 transition hover:bg-gray-50"
-                  >
-                    Back
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleNext}
-                    className="flex flex-2 items-center justify-center gap-2 rounded-xl bg-primary px-6 py-3.5 text-sm font-bold text-primary-foreground shadow-sm transition hover:bg-(--primary-hover)"
-                  >
-                    Continue <ChevronRight className="h-4 w-4" />
-                  </button>
-                </div>
-              </>
-            )}
-
-            {step === 3 && (
-              <>
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-xs font-semibold uppercase tracking-wide text-gray-600">
-                    Service Regions{" "}
-                    <span className="font-normal normal-case text-gray-400">(select all that apply)</span>
-                  </label>
-                  <PillSelect
-                    options={REGIONS}
-                    selected={form.serviceRegions}
-                    onChange={(v) => set("serviceRegions", v)}
-                  />
-                </div>
-
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-xs font-semibold uppercase tracking-wide text-gray-600">
-                    Project Sectors <span className="font-normal normal-case text-gray-400">(up to 3)</span>
-                  </label>
-                  <PillSelect
-                    options={SECTORS}
-                    selected={form.projectSectors}
-                    onChange={(v) => set("projectSectors", v)}
-                    max={3}
-                  />
-                </div>
-
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-xs font-semibold uppercase tracking-wide text-gray-600">
-                    Company Role *
-                  </label>
-                  <select
-                    value={form.companyRole}
-                    onChange={(e) => set("companyRole", e.target.value)}
-                    className={inputCls("companyRole")}
-                  >
-                    <option value="">Select your role…</option>
-                    {ROLES.map((r) => (
-                      <option key={r} value={r}>
-                        {r}
-                      </option>
-                    ))}
-                  </select>
-                  {errors.companyRole && <p className="text-xs text-red-500">{errors.companyRole}</p>}
-                </div>
-
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-xs font-semibold uppercase tracking-wide text-gray-600">
-                    Service Specialization{" "}
-                    <span className="font-normal normal-case text-gray-400">(up to 3)</span>
-                  </label>
-                  <PillSelect
-                    options={SPECIALIZATIONS}
-                    selected={form.specializations}
-                    onChange={(v) => set("specializations", v)}
-                    max={3}
-                  />
                 </div>
 
                 <div className="mt-1 flex gap-3">
