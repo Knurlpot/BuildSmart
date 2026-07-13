@@ -17,6 +17,8 @@ import { LaborRulesForm } from "./LaborRulesForm";
 import { PricingStrategyForm } from "./PricingStrategyForm";
 import { UnitRulesForm } from "./UnitRulesForm";
 import { ManageExistingRulesTab } from "./ManageExistingRulesTab";
+import { RULE_KIND_TAB, type ExistingRuleSummary } from "@/lib/dev/provisional/companyRulesTypes";
+import type { CategoryType } from "@/types/entities/category";
 
 // Mirrors the CPRM activity diagram's "Rule Action?" fork: six Configure-X branches plus
 // the separate Manage Existing Rules branch. Supplier Rules is schema-backed
@@ -35,8 +37,40 @@ const TABS = [
 
 type TabId = (typeof TABS)[number]["id"];
 
+// Part A — guided creation flow: after a NEW Scope Template is saved, the shell drives the
+// user through Material Rules (for that template's categories) then an optional Unit Rules
+// step, before dropping back into normal tab browsing. Lifted here (not local to any one
+// form) because it spans three different tab components.
+export interface ScopeWizardState {
+  step: 2 | 3;
+  scopeRuleId: string;
+  templateName: string;
+  categories: CategoryType[];
+}
+
 export default function CompanyRulesShell() {
   const [activeTab, setActiveTab] = useState<TabId>("scope-templates");
+  // Part C — "Manage Existing Rules" rows jump to the rule's owning tab with that rule
+  // pre-selected, instead of dumping the user on the tab with no idea what to look for.
+  const [focusRuleId, setFocusRuleId] = useState<string | null>(null);
+  const [wizard, setWizard] = useState<ScopeWizardState | null>(null);
+
+  const openExistingRule = (rule: ExistingRuleSummary) => {
+    setActiveTab(RULE_KIND_TAB[rule.rule_kind] as TabId);
+    setFocusRuleId(rule.rule_id);
+  };
+
+  const startWizardAfterScopeSave = (scopeRuleId: string, templateName: string, categories: CategoryType[]) => {
+    setWizard({ step: 2, scopeRuleId, templateName, categories });
+    setActiveTab("material-rules");
+  };
+
+  const advanceWizardToUnitRules = () => {
+    setWizard((w) => (w ? { ...w, step: 3 } : null));
+    setActiveTab("unit-rules");
+  };
+
+  const finishWizard = () => setWizard(null);
 
   return (
     <div className="flex flex-col gap-5">
@@ -61,13 +95,35 @@ export default function CompanyRulesShell() {
         })}
       </div>
 
-      {activeTab === "scope-templates" && <ScopeTemplatesForm />}
-      {activeTab === "material-rules" && <MaterialRulesForm />}
+      {activeTab === "scope-templates" && (
+        <ScopeTemplatesForm
+          focusRuleId={focusRuleId}
+          onFocusHandled={() => setFocusRuleId(null)}
+          onCreated={startWizardAfterScopeSave}
+        />
+      )}
+      {activeTab === "material-rules" && (
+        <MaterialRulesForm
+          wizard={wizard && wizard.step === 2 ? wizard : null}
+          onWizardAdvance={advanceWizardToUnitRules}
+        />
+      )}
       {activeTab === "supplier-rules" && <SupplierRulesPlaceholder />}
-      {activeTab === "labor-rules" && <LaborRulesForm />}
-      {activeTab === "pricing-strategy" && <PricingStrategyForm />}
-      {activeTab === "unit-rules" && <UnitRulesForm />}
-      {activeTab === "manage-existing" && <ManageExistingRulesTab />}
+      {activeTab === "labor-rules" && (
+        <LaborRulesForm focusRuleId={focusRuleId} onFocusHandled={() => setFocusRuleId(null)} />
+      )}
+      {activeTab === "pricing-strategy" && (
+        <PricingStrategyForm focusRuleId={focusRuleId} onFocusHandled={() => setFocusRuleId(null)} />
+      )}
+      {activeTab === "unit-rules" && (
+        <UnitRulesForm
+          focusRuleId={focusRuleId}
+          onFocusHandled={() => setFocusRuleId(null)}
+          wizard={wizard && wizard.step === 3 ? wizard : null}
+          onWizardFinish={finishWizard}
+        />
+      )}
+      {activeTab === "manage-existing" && <ManageExistingRulesTab onOpenRule={openExistingRule} />}
     </div>
   );
 }
