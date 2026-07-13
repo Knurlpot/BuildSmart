@@ -60,6 +60,7 @@ export function resolveMockFetch(endpoint: string): unknown {
 
   if (pathname === "/api/auth/me") return userProfileFixture;
   if (pathname.startsWith("/api/company/")) return companyFixture;
+  if (pathname === "/api/uploads/company-logo") return { url: companyFixture.company_logo };
   if (pathname === "/api/quotations") return quotationsFixture;
 
   if (pathname === "/api/pricelist/upload") {

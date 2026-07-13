@@ -21,9 +21,8 @@ import { RequireAuth } from "@/components/auth/RequireAuth";
 import { useFetch } from "@/hooks/useFetch";
 import { useMutation } from "@/hooks/useMutation";
 import { useAuth } from "@/providers/AuthProvider";
-import type { Company, Users } from "@/types/entities";
+import { USER_ROLES, type Company, type Users } from "@/types/entities";
 
-const USER_ROLES: Users["user_role"][] = ["Owner", "Admin", "Estimator", "Viewer"];
 const STATUSES: Company["status"][] = ["Active", "Inactive"];
 
 const EMPTY_COMPANY: Company = {

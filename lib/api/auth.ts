@@ -1,4 +1,5 @@
 import { apiClient } from "./client";
+import type { Users } from "@/types/entities";
 
 export interface AuthUser {
   id: unknown;
@@ -11,14 +12,13 @@ export interface AuthUser {
 // trusting at runtime. Field names below match the schema v3 column names for `users` and
 // `company` directly (snake_case) as a starting assumption.
 //
-// user_role is fixed to 'Owner' by the frontend, not user-selectable: on self-signup there
-// is nobody else to assign a role, and the person creating the company IS the owner. This
-// is a FRONTEND ASSUMPTION the backend must confirm — schema v3 gives user_role no DEFAULT
+// user_role is a user-selectable dropdown on signup (defaulting to 'Owner', since the
+// person creating the company usually is its owner, but editable — self-signup can still
+// be filling a seat someone else already owns). Schema v3 gives user_role no DEFAULT
 // (unlike status, which defaults to 'Active' at the DB level), so something has to supply
-// it, and this is our best guess at what that should be for the register endpoint
-// specifically. status (users + company) and company_id are never sent — company_id is
-// backend-generated when the company row is created and is treated as opaque; status
-// defaults itself at the DB level.
+// it; this is our best guess at what the register endpoint expects. status (users +
+// company) and company_id are never sent — company_id is backend-generated when the
+// company row is created and is treated as opaque; status defaults itself at the DB level.
 export interface RegisterPayload {
   // -> users
   first_name: string;
@@ -26,7 +26,7 @@ export interface RegisterPayload {
   middle_name?: string;
   email: string; // the user's LOGIN email — distinct from company.contact_email below
   password: string;
-  user_role: 'Owner';
+  user_role: Users['user_role'];
   // -> company
   company: {
     company_name: string;

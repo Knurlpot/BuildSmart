@@ -12,3 +12,5 @@ export interface Users {
   status: 'Active' | 'Inactive';
   created_at: string;
 }
+
+export const USER_ROLES: Users['user_role'][] = ['Owner', 'Admin', 'Estimator', 'Viewer'];
