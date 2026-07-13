@@ -6,6 +6,9 @@ export interface Company {
   company_address: string;
   contact_email: string;
   contact_number: string;
+  city?: string;
+  region?: string;
+  company_role?: string;
   specialization_1: string;
   specialization_2?: string;
   specialization_3?: string;

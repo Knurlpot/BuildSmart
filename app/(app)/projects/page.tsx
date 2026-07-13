@@ -1,26 +1,21 @@
 "use client";
 
-// Assumed endpoints — UNVERIFIED, confirm with the backend team:
-//   GET   /api/quotations         (company-scoped, per session)
-//   PATCH /api/quotations/:id     { is_archived: true }   (archive — see STOP note below)
+// Assumed endpoint — UNVERIFIED, confirm with the backend team:
+//   GET /api/quotations   (company-scoped, per session)
 //
-// ⚠️ STOP — SCHEMA CHANGE REQUEST, not just an unconfirmed path:
-// CLAUDE.md documents quotations.status as ONLY 'Draft' | 'Final' — there is no archived
-// state anywhere in the authoritative 13-table SQL. "Archive" here assumes a NEW
-// `is_archived` boolean column (added to types/entities/quotation.ts, flagged there as
-// PROPOSED). This is a schema-change request the backend team must accept and add to the
-// SQL — Archive cannot actually work until that column exists. This is not resolved by
-// confirming an endpoint path; it requires a human decision on the schema itself.
+// Hide is a CLIENT-SIDE, SESSION-ONLY display filter (eye icon) — schema v3 explicitly
+// documents there is no is_archived column and none should be added. Plain component
+// state satisfies "session-only" on its own (it's gone on reload already), so there's
+// nothing to persist and no endpoint call here.
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import type { ColumnDef } from "@tanstack/react-table";
-import { Archive, Plus, Search } from "lucide-react";
+import { Eye, EyeOff, Plus, Search } from "lucide-react";
 import { RequireOnboardingStep } from "@/components/auth/RequireOnboardingStep";
 import { QueryState } from "@/components/feedback/QueryState";
 import { DataTable } from "@/components/data-table/DataTable";
 import { useFetch } from "@/hooks/useFetch";
-import { useMutation } from "@/hooks/useMutation";
 import type { Quotation } from "@/types/entities";
 
 const STATUS_FILTERS: ("All" | Quotation["status"])[] = ["All", "Draft", "Final"];
@@ -54,36 +49,27 @@ function OpenProjectsContent() {
 
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<"All" | Quotation["status"]>("All");
-  const [showArchived, setShowArchived] = useState(false);
+  const [showHidden, setShowHidden] = useState(false);
+
+  // Session-only, client-side hide — never sent to the backend, gone on reload.
+  // Not localStorage/sessionStorage either: "session" here means "this page visit."
+  const [hiddenIds, setHiddenIds] = useState<Set<Quotation["quote_id"]>>(new Set());
+  const toggleHidden = (id: Quotation["quote_id"]) =>
+    setHiddenIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
 
   const filteredRows = useMemo(
     () =>
       rows.filter((r) => {
-        if (!showArchived && r.is_archived) return false;
+        if (!showHidden && hiddenIds.has(r.quote_id)) return false;
         if (statusFilter !== "All" && r.status !== statusFilter) return false;
         return true;
       }),
-    [rows, statusFilter, showArchived]
-  );
-
-  const archive = useMutation<Quotation>();
-  const [confirmId, setConfirmId] = useState<Quotation["quote_id"] | null>(null);
-  const [archivingId, setArchivingId] = useState<Quotation["quote_id"] | null>(null);
-
-  const handleArchive = useCallback(
-    async (id: Quotation["quote_id"]) => {
-      setArchivingId(id);
-      try {
-        await archive.mutate(`/api/quotations/${id}`, { is_archived: true }, "PATCH");
-        refetch();
-      } catch {
-        // surfaced via archive.error below — no fabricated success
-      } finally {
-        setArchivingId(null);
-        setConfirmId(null);
-      }
-    },
-    [archive, refetch]
+    [rows, statusFilter, showHidden, hiddenIds]
   );
 
   const columns = useMemo<ColumnDef<Quotation>[]>(
@@ -98,9 +84,9 @@ function OpenProjectsContent() {
         cell: ({ row }) => (
           <div className="flex items-center gap-1.5">
             <StatusBadge status={row.original.status} />
-            {row.original.is_archived && (
+            {hiddenIds.has(row.original.quote_id) && (
               <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-bold text-gray-500">
-                Archived
+                Hidden
               </span>
             )}
           </div>
@@ -128,8 +114,7 @@ function OpenProjectsContent() {
         enableGlobalFilter: false,
         cell: ({ row }) => {
           const id = row.original.quote_id;
-          const confirming = confirmId === id;
-          const archiving = archivingId === id;
+          const hidden = hiddenIds.has(id);
           return (
             <div className="flex items-center gap-2">
               <Link
@@ -138,40 +123,21 @@ function OpenProjectsContent() {
               >
                 Open
               </Link>
-              {row.original.is_archived ? null : confirming ? (
-                <span className="flex items-center gap-1.5">
-                  <span className="text-xs text-gray-500">Archive?</span>
-                  <button
-                    type="button"
-                    onClick={() => handleArchive(id)}
-                    disabled={archiving}
-                    className="rounded-lg bg-red-600 px-2 py-1 text-xs font-semibold text-white hover:bg-red-700 disabled:opacity-60"
-                  >
-                    {archiving ? "…" : "Confirm"}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setConfirmId(null)}
-                    className="rounded-lg border border-gray-200 px-2 py-1 text-xs text-gray-500 hover:bg-gray-50"
-                  >
-                    Cancel
-                  </button>
-                </span>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => setConfirmId(id)}
-                  className="flex items-center gap-1 rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-xs font-medium text-gray-400 transition hover:border-red-300 hover:text-red-500"
-                >
-                  <Archive className="h-3 w-3" /> Archive
-                </button>
-              )}
+              <button
+                type="button"
+                onClick={() => toggleHidden(id)}
+                title={hidden ? "Unhide this project" : "Hide this project (this view only)"}
+                className="flex items-center gap-1 rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-xs font-medium text-gray-400 transition hover:border-gray-300 hover:text-gray-600"
+              >
+                {hidden ? <Eye className="h-3 w-3" /> : <EyeOff className="h-3 w-3" />}
+                {hidden ? "Unhide" : "Hide"}
+              </button>
             </div>
           );
         },
       },
     ],
-    [confirmId, archivingId, handleArchive]
+    [hiddenIds]
   );
 
   return (
@@ -214,19 +180,13 @@ function OpenProjectsContent() {
         <label className="flex items-center gap-2 text-sm text-gray-600">
           <input
             type="checkbox"
-            checked={showArchived}
-            onChange={(e) => setShowArchived(e.target.checked)}
+            checked={showHidden}
+            onChange={(e) => setShowHidden(e.target.checked)}
             className="h-4 w-4 rounded border-gray-300 accent-primary"
           />
-          Show archived
+          Show hidden
         </label>
       </div>
-
-      {archive.error && (
-        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          Couldn&apos;t archive that project: {archive.error.message}
-        </div>
-      )}
 
       <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
         <QueryState
