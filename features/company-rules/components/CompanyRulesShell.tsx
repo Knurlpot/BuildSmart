@@ -27,13 +27,18 @@ import {
 } from "@/lib/dev/provisional/useCompanyRulesProvisional";
 import { useAuth } from "@/providers/AuthProvider";
 import { advanceOnboardingStep, hasCompletedCompanyRulesStep } from "@/lib/onboarding";
-import type { CategoryType } from "@/types/entities/category";
 
 // Mirrors the CPRM activity diagram's "Rule Action?" fork: six Configure-X branches plus
 // the separate Manage Existing Rules branch. Supplier Rules is schema-backed
 // (supplier_discount_rule) but deliberately deferred this pass — see
 // SupplierRulesPlaceholder.tsx. The other five have no confirmed schema yet; their forms
 // are presentation-only against PROVISIONAL local shapes (lib/dev/provisional/).
+//
+// v6 Correction 2: there is no guided wizard here anymore. Scope Templates is an
+// optional, advisory feature (client: "no packages as no two areas are the same") — saving
+// one does not drive, gate, or pre-populate Material/Unit Rules. Each tab is fully
+// independent; the only cross-tab behavior left is Manage Existing Rules jumping to a
+// rule's owning tab, which is a navigation convenience, not a forced flow.
 const TABS = [
   { id: "scope-templates", label: "Scope Templates", icon: ClipboardList },
   { id: "material-rules", label: "Material Rules", icon: ListChecks },
@@ -46,46 +51,21 @@ const TABS = [
 
 type TabId = (typeof TABS)[number]["id"];
 
-// Part A — guided creation flow: after a NEW Scope Template is saved, the shell drives the
-// user through Material Rules (for that template's categories) then an optional Unit Rules
-// step, before dropping back into normal tab browsing. Lifted here (not local to any one
-// form) because it spans three different tab components.
-export interface ScopeWizardState {
-  step: 2 | 3;
-  scopeRuleId: string;
-  templateName: string;
-  categories: CategoryType[];
-}
-
 export default function CompanyRulesShell() {
   const [activeTab, setActiveTab] = useState<TabId>("scope-templates");
-  // Part C — "Manage Existing Rules" rows jump to the rule's owning tab with that rule
+  // "Manage Existing Rules" rows jump to the rule's owning tab with that rule
   // pre-selected, instead of dumping the user on the tab with no idea what to look for.
   const [focusRuleId, setFocusRuleId] = useState<string | null>(null);
-  const [wizard, setWizard] = useState<ScopeWizardState | null>(null);
 
   const openExistingRule = (rule: ExistingRuleSummary) => {
     setActiveTab(RULE_KIND_TAB[rule.rule_kind] as TabId);
     setFocusRuleId(rule.rule_id);
   };
 
-  const startWizardAfterScopeSave = (scopeRuleId: string, templateName: string, categories: CategoryType[]) => {
-    setWizard({ step: 2, scopeRuleId, templateName, categories });
-    setActiveTab("material-rules");
-  };
-
-  const advanceWizardToUnitRules = () => {
-    setWizard((w) => (w ? { ...w, step: 3 } : null));
-    setActiveTab("unit-rules");
-  };
-
-  const finishWizard = () => setWizard(null);
-
-  // Part E — "needs configuration" dots, driven by the same real fetched lists each form
-  // already uses (not a hardcoded list of "which tabs matter"). Supplier Rules is excluded
-  // (still a deferred placeholder — there's no save flow yet, so a dot there could never
-  // clear) and so is Manage Existing Rules (a management/utility tab, not a "configure
-  // this" one).
+  // "needs configuration" dots, driven by the same real fetched lists each form already
+  // uses (not a hardcoded list of "which tabs matter"). Supplier Rules is excluded (still
+  // a deferred placeholder — there's no save flow yet, so a dot there could never clear)
+  // and so is Manage Existing Rules (a management/utility tab, not a "configure this" one).
   const { currentUser, updateOnboardingStep } = useAuth();
   const { templates } = useScopeTemplates();
   const { rules: materialRules } = useMaterialRules();
@@ -101,8 +81,10 @@ export default function CompanyRulesShell() {
     "unit-rules": unitRules.length === 0,
   };
 
-  // Part D — Step 1 -> 2 gate (see lib/onboarding.ts's hasCompletedCompanyRulesStep for
-  // the flagged decision this reads).
+  // Step 1 -> 2 onboarding gate (see lib/onboarding.ts's hasCompletedCompanyRulesStep for
+  // the flagged decision this reads). Correction 2: deliberately does NOT factor in
+  // scopeTemplateCount — a specialty contractor may never create one, and Scope Templates
+  // must not gate anything.
   const rulesConfigured = hasCompletedCompanyRulesStep({
     scopeTemplateCount: templates.length,
     materialRuleCount: materialRules.length,
@@ -147,17 +129,10 @@ export default function CompanyRulesShell() {
       </div>
 
       {activeTab === "scope-templates" && (
-        <ScopeTemplatesForm
-          focusRuleId={focusRuleId}
-          onFocusHandled={() => setFocusRuleId(null)}
-          onCreated={startWizardAfterScopeSave}
-        />
+        <ScopeTemplatesForm focusRuleId={focusRuleId} onFocusHandled={() => setFocusRuleId(null)} />
       )}
       {activeTab === "material-rules" && (
-        <MaterialRulesForm
-          wizard={wizard && wizard.step === 2 ? wizard : null}
-          onWizardAdvance={advanceWizardToUnitRules}
-        />
+        <MaterialRulesForm focusRuleId={focusRuleId} onFocusHandled={() => setFocusRuleId(null)} />
       )}
       {activeTab === "supplier-rules" && <SupplierRulesPlaceholder />}
       {activeTab === "labor-rules" && (
@@ -167,12 +142,7 @@ export default function CompanyRulesShell() {
         <PricingStrategyForm focusRuleId={focusRuleId} onFocusHandled={() => setFocusRuleId(null)} />
       )}
       {activeTab === "unit-rules" && (
-        <UnitRulesForm
-          focusRuleId={focusRuleId}
-          onFocusHandled={() => setFocusRuleId(null)}
-          wizard={wizard && wizard.step === 3 ? wizard : null}
-          onWizardFinish={finishWizard}
-        />
+        <UnitRulesForm focusRuleId={focusRuleId} onFocusHandled={() => setFocusRuleId(null)} />
       )}
       {activeTab === "manage-existing" && <ManageExistingRulesTab onOpenRule={openExistingRule} />}
     </div>

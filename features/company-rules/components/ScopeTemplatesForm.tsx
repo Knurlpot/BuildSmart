@@ -33,12 +33,9 @@ function useCompanySpecializations(): string[] {
 interface ScopeTemplatesFormProps {
   focusRuleId?: string | null;
   onFocusHandled?: () => void;
-  /** Part A — fires only after a brand-new template is saved (not on edit), so the shell
-   * can hand off into the guided Material Rules -> Unit Rules flow. */
-  onCreated?: (scopeRuleId: string, templateName: string, categories: CategoryType[]) => void;
 }
 
-export function ScopeTemplatesForm({ focusRuleId, onFocusHandled, onCreated }: ScopeTemplatesFormProps) {
+export function ScopeTemplatesForm({ focusRuleId, onFocusHandled }: ScopeTemplatesFormProps) {
   const { templates, isLoading, error, refetch, save, isSaving, saveError, resetSave, update, supersede } =
     useScopeTemplates();
   const { checkUsage } = useCheckRuleUsage();
@@ -132,7 +129,6 @@ export function ScopeTemplatesForm({ focusRuleId, onFocusHandled, onCreated }: S
       setMode("idle");
       setSelectedId(optimistic.rule_id);
       setSavedMessage(true);
-      onCreated?.(optimistic.rule_id, optimistic.template_name, optimistic.material_categories);
     } catch {
       // surfaced via saveError below — no fabricated success
     }
@@ -143,10 +139,16 @@ export function ScopeTemplatesForm({ focusRuleId, onFocusHandled, onCreated }: S
   return (
     <div className="flex flex-col gap-4">
       <div>
-        <h2 className="text-base font-bold text-gray-900">Scope Templates</h2>
+        <div className="flex items-center gap-2">
+          <h2 className="text-base font-bold text-gray-900">Scope Templates</h2>
+          <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-gray-500">
+            Optional · Advisory
+          </span>
+        </div>
         <p className="text-xs text-gray-500">
-          Configure Scope Templates → Select Service Specialization. A template groups the
-          material categories relevant to one service line.
+          A saved reference of the material categories you&apos;d typically expect for a kind
+          of job — a memory aid, not an enforced package. Every job still starts from its
+          own site assessment; nothing here locks in materials or blocks any other tab.
         </p>
       </div>
 
@@ -163,7 +165,7 @@ export function ScopeTemplatesForm({ focusRuleId, onFocusHandled, onCreated }: S
           setMode("idle");
         }}
         onAdd={startAdd}
-        emptyHint="Add a template to define which material categories a service line uses."
+        emptyHint="Optional — add one only if it's useful as a reference. Skip it entirely if every job you take is different."
         renderListItem={(t) => (
           <div className="flex flex-col gap-0.5">
             <span className="text-sm font-semibold text-gray-800">{t.template_name}</span>
