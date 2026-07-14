@@ -1,9 +1,11 @@
 "use client";
 
-import { usePathname } from "next/navigation";
+import { useEffect, useRef, useState } from "react";
+import { usePathname, useRouter } from "next/navigation";
+import { ChevronDown, LogOut } from "lucide-react";
 import { useAuth } from "@/providers/AuthProvider";
 import { useFetch } from "@/hooks/useFetch";
-import type { Company } from "@/types/entities";
+import type { Company, Users } from "@/types/entities";
 import { NAV_ITEMS } from "./nav-items";
 
 const STATIC_TITLES: Record<string, { title: string; subtitle?: string }> = {
@@ -22,20 +24,47 @@ function resolveTitle(pathname: string) {
   return { title: "BuildSmart" };
 }
 
+// Part B — the ONE profile widget in the app (the sidebar's copy was removed). Logo as
+// avatar, user's name as the primary line, company name underneath, Logout lives in the
+// dropdown this opens.
 export default function Header() {
   const pathname = usePathname();
-  const { currentUser } = useAuth();
+  const router = useRouter();
+  const { currentUser, logout } = useAuth();
   const { title, subtitle } = resolveTitle(pathname);
 
   // Same endpoint/contract CompanySection on the Account page already relies on
   // (app/(app)/account/page.tsx) — reused here rather than guessing at a new
   // "company summary embedded in /api/auth/me" shape.
   const companyId = currentUser?.companyId;
-  const endpoint = companyId !== undefined && companyId !== null ? `/api/company/${companyId}` : null;
-  const { data: company } = useFetch<Company>(endpoint);
+  const companyEndpoint = companyId !== undefined && companyId !== null ? `/api/company/${companyId}` : null;
+  const { data: company } = useFetch<Company>(companyEndpoint);
+  // Same "/api/auth/me" contract the Account page's UserSection relies on — the minimal
+  // AuthUser shape from AuthProvider deliberately doesn't carry name/role.
+  const { data: profile } = useFetch<Users>("/api/auth/me");
 
   const companyName = company?.company_name || "BuildSmart";
-  const initials = companyName.slice(0, 2).toUpperCase();
+  const companyInitials = companyName.slice(0, 2).toUpperCase();
+  const fullName = profile
+    ? [profile.first_name, profile.middle_name, profile.last_name].filter(Boolean).join(" ")
+    : (currentUser?.email?.split("@")[0] ?? "User");
+
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuOpen(false);
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [menuOpen]);
+
+  const handleLogout = async () => {
+    await logout();
+    router.push("/login");
+  };
 
   return (
     <header className="flex h-16 shrink-0 items-center justify-between border-b border-gray-200 bg-white px-6 shadow-sm">
@@ -43,23 +72,43 @@ export default function Header() {
         <h1 className="text-base font-bold text-gray-900">{title}</h1>
         {subtitle && <p className="text-xs text-gray-500">{subtitle}</p>}
       </div>
-      <div className="flex items-center gap-2">
-        {company?.company_logo ? (
-          // eslint-disable-next-line @next/next/no-img-element -- arbitrary external URL, not a static asset
-          <img
-            src={company.company_logo}
-            alt=""
-            className="h-9 w-9 rounded-full border border-gray-100 object-cover"
-          />
-        ) : (
-          <div className="flex h-9 w-9 items-center justify-center rounded-full bg-primary text-sm font-bold text-primary-foreground">
-            {initials}
+
+      <div ref={menuRef} className="relative">
+        <button
+          type="button"
+          onClick={() => setMenuOpen((v) => !v)}
+          className="flex items-center gap-2 rounded-xl px-2 py-1.5 transition hover:bg-gray-50"
+        >
+          {company?.company_logo ? (
+            // eslint-disable-next-line @next/next/no-img-element -- arbitrary external URL, not a static asset
+            <img
+              src={company.company_logo}
+              alt=""
+              className="h-9 w-9 shrink-0 rounded-full border border-gray-100 object-cover"
+            />
+          ) : (
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary text-sm font-bold text-primary-foreground">
+              {companyInitials}
+            </div>
+          )}
+          <div className="text-left">
+            <p className="text-xs font-semibold leading-tight text-gray-800">{fullName}</p>
+            <p className="text-[10px] text-gray-500">{companyName}</p>
+          </div>
+          <ChevronDown className={`h-3.5 w-3.5 shrink-0 text-gray-400 transition-transform ${menuOpen ? "rotate-180" : ""}`} />
+        </button>
+
+        {menuOpen && (
+          <div className="absolute right-0 top-full z-10 mt-2 w-44 overflow-hidden rounded-xl border border-gray-200 bg-white shadow-lg">
+            <button
+              type="button"
+              onClick={handleLogout}
+              className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm text-gray-600 transition hover:bg-red-50 hover:text-red-600"
+            >
+              <LogOut className="h-4 w-4" /> Log out
+            </button>
           </div>
         )}
-        <div>
-          <p className="text-xs font-semibold leading-tight text-gray-800">{companyName}</p>
-          <p className="text-[10px] text-gray-500">{company?.contact_email ?? ""}</p>
-        </div>
       </div>
     </header>
   );
