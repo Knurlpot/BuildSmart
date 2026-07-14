@@ -10,14 +10,8 @@ import {
   stagingId,
 } from "@/lib/dev/provisional/useCompanyRulesProvisional";
 import { useEditableRuleList } from "@/lib/dev/provisional/useEditableRuleList";
-import { isNonEmpty, isPositiveNumber } from "@/lib/dev/provisional/ruleValidation";
-import {
-  LABOR_FALLBACK_RULES,
-  laborRuleScope,
-  type LaborFallbackRule,
-  type LaborRule,
-  type LaborRuleScope,
-} from "@/lib/dev/provisional/companyRulesTypes";
+import { isNonEmpty, isPercent, isPositiveNumber } from "@/lib/dev/provisional/ruleValidation";
+import { laborRuleScope, type LaborRule, type LaborRuleScope } from "@/lib/dev/provisional/companyRulesTypes";
 import { PH_REGIONS, type PhRegion } from "@/types/entities/common";
 
 const inputCls =
@@ -25,6 +19,14 @@ const inputCls =
 
 function fmt(n: number) {
   return "₱" + n.toLocaleString("en-PH", { minimumFractionDigits: 2 });
+}
+
+// Treatment-scoped rules are billed per area (client: "₱500/sqm" example); trade-scoped
+// rules are billed as a day rate; a General/fallback rule has no single implied unit.
+function rateUnit(scope: LaborRuleScope): string {
+  if (scope === "Treatment") return "/sqm";
+  if (scope === "Trade") return "/day";
+  return "";
 }
 
 interface LaborRulesFormProps {
@@ -40,17 +42,21 @@ export function LaborRulesForm({ focusRuleId, onFocusHandled }: LaborRulesFormPr
   const { options: laborTradeOptions } = useLaborTradeOptions();
   const allRules = editable.applyOverrides([...editable.localExtra, ...rules]);
 
-  // Part C — seeded from the prop at construction, not synced via effect: a jump always
-  // remounts this component fresh (see ScopeTemplatesForm for the full reasoning).
+  // seeded from the prop at construction, not synced via effect: a jump always remounts
+  // this component fresh (see ScopeTemplatesForm for the full reasoning).
   const [selectedId, setSelectedId] = useState<string | null>(focusRuleId ?? null);
   const [mode, setMode] = useState<"idle" | "add" | "edit">("idle");
-  // Part E: General (both null, one static rate) vs Specific (region+trade required).
-  const [scope, setScope] = useState<LaborRuleScope>("Specific");
+  // v6 Correction 1: THREE scopes, not two — a specialty subcontractor keys on the
+  // TREATMENT they're applying (one crew, one region); a general contractor keys on TRADE
+  // (+ optional region). Exactly one of the three is ever set (matches the schema's
+  // chk_rule_labor_scope CHECK).
+  const [scope, setScope] = useState<LaborRuleScope>("Treatment");
+  const [treatmentType, setTreatmentType] = useState("");
   const [region, setRegion] = useState<PhRegion | "">("");
   const [trade, setTrade] = useState("");
   const [rate, setRate] = useState<number | "">("");
+  const [rushMultiplier, setRushMultiplier] = useState<number | "">("");
   const [productivity, setProductivity] = useState<number | "">("");
-  const [fallback, setFallback] = useState<LaborFallbackRule | "">("");
   const [touched, setTouched] = useState(false);
   const [savedMessage, setSavedMessage] = useState(false);
 
@@ -59,20 +65,21 @@ export function LaborRulesForm({ focusRuleId, onFocusHandled }: LaborRulesFormPr
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const regionValid = scope === "General" || region !== "";
-  const tradeValid = scope === "General" || isNonEmpty(trade);
+  const treatmentValid = scope !== "Treatment" || isNonEmpty(treatmentType);
+  const tradeValid = scope !== "Trade" || isNonEmpty(trade);
   const rateValid = rate !== "" && isPositiveNumber(Number(rate));
-  const productivityValid = scope === "General" || (productivity !== "" && isPositiveNumber(Number(productivity)));
-  const fallbackValid = scope === "General" || fallback !== "";
-  const formValid = regionValid && tradeValid && rateValid && productivityValid && fallbackValid;
+  const rushValid = rushMultiplier === "" || isPercent(Number(rushMultiplier));
+  const productivityValid = productivity === "" || isPositiveNumber(Number(productivity));
+  const formValid = treatmentValid && tradeValid && rateValid && rushValid && productivityValid;
 
   const resetForm = () => {
-    setScope("Specific");
+    setScope("Treatment");
+    setTreatmentType("");
     setRegion("");
     setTrade("");
     setRate("");
+    setRushMultiplier("");
     setProductivity("");
-    setFallback("");
     setTouched(false);
   };
 
@@ -87,21 +94,23 @@ export function LaborRulesForm({ focusRuleId, onFocusHandled }: LaborRulesFormPr
   const startEdit = (r: LaborRule) => {
     setMode("edit");
     setScope(laborRuleScope(r));
+    setTreatmentType(r.treatment_type ?? "");
     setRegion(r.region ?? "");
     setTrade(r.labor_trade ?? "");
     setRate(r.labor_rate);
+    setRushMultiplier(r.rush_multiplier_percentage ?? "");
     setProductivity(r.productivity_index ?? "");
-    setFallback(r.fallback_rule ?? "");
     setTouched(false);
     setSavedMessage(false);
   };
 
   const buildPayload = () => ({
-    region: scope === "General" ? null : (region as PhRegion),
-    labor_trade: scope === "General" ? null : trade,
+    treatment_type: scope === "Treatment" ? treatmentType : null,
+    labor_trade: scope === "Trade" ? trade : null,
+    region: scope === "Trade" ? (region === "" ? null : (region as PhRegion)) : null,
     labor_rate: Number(rate),
-    productivity_index: scope === "General" ? null : Number(productivity),
-    fallback_rule: scope === "General" ? undefined : (fallback as LaborFallbackRule),
+    rush_multiplier_percentage: rushMultiplier === "" ? null : Number(rushMultiplier),
+    productivity_index: productivity === "" ? null : Number(productivity),
   });
 
   const handleSave = async () => {
@@ -137,11 +146,21 @@ export function LaborRulesForm({ focusRuleId, onFocusHandled }: LaborRulesFormPr
 
   const selected = allRules.find((r) => r.rule_id === selectedId) ?? null;
 
+  const rushPreview =
+    rate !== "" && rushMultiplier !== ""
+      ? `e.g. a ₱${Number(rate).toLocaleString()}${rateUnit(scope)} base becomes ₱${Math.round(
+          Number(rate) * (1 + Number(rushMultiplier) / 100)
+        ).toLocaleString()}${rateUnit(scope)} when the job is rushed.`
+      : "Extra charged when a job is rushed — e.g. 25% means a ₱500/sqm base becomes ₱625/sqm.";
+
   return (
     <div className="flex flex-col gap-4">
       <div>
         <h2 className="text-base font-bold text-gray-900">Labor Rules</h2>
-        <p className="text-xs text-gray-500">Set labor rates and productivity by region and trade.</p>
+        <p className="text-xs text-gray-500">
+          Set a base labor rate — by treatment type (specialty subcontractor) or by trade
+          (general contractor) — plus an optional rush uplift.
+        </p>
       </div>
 
       <RuleListDetailPanel
@@ -157,20 +176,27 @@ export function LaborRulesForm({ focusRuleId, onFocusHandled }: LaborRulesFormPr
           setMode("idle");
         }}
         onAdd={startAdd}
-        emptyHint="Add a labor rule to set a rate for a region and trade, or a general fallback rate."
-        renderListItem={(r) => (
-          <div className="flex flex-col gap-0.5">
-            {laborRuleScope(r) === "General" ? (
-              <span className="text-sm font-semibold text-gray-800">General Labor Rule</span>
-            ) : (
-              <>
-                <span className="text-sm font-semibold text-gray-800">{r.labor_trade}</span>
-                <span className="text-xs text-gray-400">{r.region}</span>
-              </>
-            )}
-            <span className="text-[10px] text-gray-400">{fmt(r.labor_rate)}/day</span>
-          </div>
-        )}
+        emptyHint="Add a labor rule scoped by treatment, by trade, or a general fallback rate."
+        renderListItem={(r) => {
+          const s = laborRuleScope(r);
+          return (
+            <div className="flex flex-col gap-0.5">
+              {s === "Treatment" && <span className="text-sm font-semibold text-gray-800">{r.treatment_type}</span>}
+              {s === "Trade" && (
+                <span className="text-sm font-semibold text-gray-800">
+                  {r.labor_trade}
+                  {r.region && ` · ${r.region}`}
+                </span>
+              )}
+              {s === "General" && <span className="text-sm font-semibold text-gray-800">General</span>}
+              <span className="text-[10px] text-gray-400">
+                {fmt(r.labor_rate)}
+                {rateUnit(s)}
+                {r.rush_multiplier_percentage !== null && ` (+${r.rush_multiplier_percentage}% rush)`}
+              </span>
+            </div>
+          );
+        }}
         detail={
           mode === "add" || mode === "edit" ? (
             <div className="flex flex-col gap-4">
@@ -196,14 +222,25 @@ export function LaborRulesForm({ focusRuleId, onFocusHandled }: LaborRulesFormPr
                 <div className="flex gap-2">
                   <button
                     type="button"
-                    onClick={() => setScope("Specific")}
+                    onClick={() => setScope("Treatment")}
                     className={`flex-1 rounded-lg border px-3 py-2 text-xs font-semibold transition ${
-                      scope === "Specific"
+                      scope === "Treatment"
                         ? "border-primary bg-orange-50 text-primary"
                         : "border-gray-200 bg-white text-gray-500 hover:border-gray-300"
                     }`}
                   >
-                    Specific rule (choose region + trade)
+                    By Treatment
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setScope("Trade")}
+                    className={`flex-1 rounded-lg border px-3 py-2 text-xs font-semibold transition ${
+                      scope === "Trade"
+                        ? "border-primary bg-orange-50 text-primary"
+                        : "border-gray-200 bg-white text-gray-500 hover:border-gray-300"
+                    }`}
+                  >
+                    By Trade
                   </button>
                   <button
                     type="button"
@@ -214,29 +251,36 @@ export function LaborRulesForm({ focusRuleId, onFocusHandled }: LaborRulesFormPr
                         : "border-gray-200 bg-white text-gray-500 hover:border-gray-300"
                     }`}
                   >
-                    General rule (applies to all regions and trades)
+                    General
                   </button>
                 </div>
                 <p className="text-[11px] text-gray-400">
-                  Specific rules take precedence. The general rule is used when no specific
-                  rule matches.
+                  {scope === "Treatment" &&
+                    "For a specialty subcontractor — the rate varies by which system you're applying (e.g. cementitious vs elastomeric), not by region or trade."}
+                  {scope === "Trade" &&
+                    "For a general contractor — the rate varies by trade, optionally by region."}
+                  {scope === "General" &&
+                    "Applies to everything else. A treatment or trade rule always takes precedence over this when one matches."}
                 </p>
               </div>
 
-              {scope === "Specific" && (
+              {scope === "Treatment" && (
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-xs font-semibold text-gray-600">
+                    Treatment Type <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    value={treatmentType}
+                    onChange={(e) => setTreatmentType(e.target.value)}
+                    placeholder="e.g. Cementitious Waterproofing"
+                    className={inputCls}
+                  />
+                  {touched && !treatmentValid && <p className="text-xs text-red-500">Treatment type is required.</p>}
+                </div>
+              )}
+
+              {scope === "Trade" && (
                 <div className="grid grid-cols-2 gap-4">
-                  <div className="flex flex-col gap-1.5">
-                    <label className="text-xs font-semibold text-gray-600">
-                      Region <span className="text-red-500">*</span>
-                    </label>
-                    <select value={region} onChange={(e) => setRegion(e.target.value as PhRegion)} className={inputCls}>
-                      <option value="">Select…</option>
-                      {PH_REGIONS.map((r) => (
-                        <option key={r}>{r}</option>
-                      ))}
-                    </select>
-                    {touched && !regionValid && <p className="text-xs text-red-500">Select a region.</p>}
-                  </div>
                   <div className="flex flex-col gap-1.5">
                     <label className="text-xs font-semibold text-gray-600">
                       Labor Trade <span className="text-red-500">*</span>
@@ -251,53 +295,67 @@ export function LaborRulesForm({ focusRuleId, onFocusHandled }: LaborRulesFormPr
                   </div>
                   <div className="flex flex-col gap-1.5">
                     <label className="text-xs font-semibold text-gray-600">
-                      Productivity Index <span className="text-red-500">*</span>
+                      Region <span className="font-normal normal-case text-gray-400">(optional)</span>
                     </label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      min={0}
-                      value={productivity}
-                      onChange={(e) => setProductivity(e.target.value === "" ? "" : Number(e.target.value))}
-                      className={inputCls}
-                    />
-                    {touched && !productivityValid && <p className="text-xs text-red-500">Must be greater than 0.</p>}
+                    <select value={region} onChange={(e) => setRegion(e.target.value as PhRegion)} className={inputCls}>
+                      <option value="">Any region</option>
+                      {PH_REGIONS.map((r) => (
+                        <option key={r}>{r}</option>
+                      ))}
+                    </select>
                   </div>
                 </div>
               )}
 
-              <div className="flex flex-col gap-1.5">
-                <label className="text-xs font-semibold text-gray-600">
-                  Labor Rate (₱/day) <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="number"
-                  min={0}
-                  value={rate}
-                  onChange={(e) => setRate(e.target.value === "" ? "" : Number(e.target.value))}
-                  className={inputCls}
-                />
-                {touched && !rateValid && <p className="text-xs text-red-500">Must be greater than 0.</p>}
-              </div>
-
-              {scope === "Specific" && (
+              <div className="grid grid-cols-2 gap-4">
                 <div className="flex flex-col gap-1.5">
                   <label className="text-xs font-semibold text-gray-600">
-                    Fallback Rule <span className="text-red-500">*</span>
+                    Labor Rate (₱{rateUnit(scope) || " — unit depends on how you bill"}) <span className="text-red-500">*</span>
                   </label>
-                  <select
-                    value={fallback}
-                    onChange={(e) => setFallback(e.target.value as LaborFallbackRule)}
+                  <input
+                    type="number"
+                    min={0}
+                    value={rate}
+                    onChange={(e) => setRate(e.target.value === "" ? "" : Number(e.target.value))}
                     className={inputCls}
-                  >
-                    <option value="">Select…</option>
-                    {LABOR_FALLBACK_RULES.map((f) => (
-                      <option key={f}>{f}</option>
-                    ))}
-                  </select>
-                  {touched && !fallbackValid && <p className="text-xs text-red-500">Select a fallback rule.</p>}
+                  />
+                  {touched && !rateValid && <p className="text-xs text-red-500">Must be greater than 0.</p>}
                 </div>
-              )}
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-xs font-semibold text-gray-600">
+                    Productivity Index <span className="font-normal normal-case text-gray-400">(optional)</span>
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min={0}
+                    value={productivity}
+                    onChange={(e) => setProductivity(e.target.value === "" ? "" : Number(e.target.value))}
+                    className={inputCls}
+                  />
+                  {touched && !productivityValid && <p className="text-xs text-red-500">Must be greater than 0.</p>}
+                </div>
+              </div>
+
+              <div className="flex flex-col gap-1.5">
+                <label className="text-xs font-semibold text-gray-600">
+                  Rush Multiplier <span className="font-normal normal-case text-gray-400">(optional)</span>
+                </label>
+                <div className="relative">
+                  <input
+                    type="number"
+                    min={0}
+                    max={100}
+                    step="0.1"
+                    value={rushMultiplier}
+                    onChange={(e) => setRushMultiplier(e.target.value === "" ? "" : Number(e.target.value))}
+                    className={`${inputCls} pr-8`}
+                  />
+                  <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400">%</span>
+                </div>
+                {touched && !rushValid && <p className="text-xs text-red-500">Enter a value between 0 and 100.</p>}
+                <p className="text-[11px] text-gray-400">{rushPreview}</p>
+              </div>
 
               {(saveError || editable.saveError) && (
                 <div className="flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
@@ -328,9 +386,13 @@ export function LaborRulesForm({ focusRuleId, onFocusHandled }: LaborRulesFormPr
               <div className="flex items-start justify-between gap-3 rounded-xl border border-gray-100 bg-gray-50/60 p-4">
                 <div>
                   <p className="text-lg font-bold text-gray-900">
-                    {laborRuleScope(selected) === "General" ? "General Labor Rule" : selected.labor_trade}
+                    {laborRuleScope(selected) === "Treatment" && selected.treatment_type}
+                    {laborRuleScope(selected) === "Trade" && selected.labor_trade}
+                    {laborRuleScope(selected) === "General" && "General Labor Rule"}
                   </p>
-                  {laborRuleScope(selected) === "Specific" && <p className="text-sm text-gray-500">{selected.region}</p>}
+                  {laborRuleScope(selected) === "Trade" && (
+                    <p className="text-sm text-gray-500">{selected.region ?? "Any region"}</p>
+                  )}
                   <p className="mt-1 text-[11px] text-gray-400">Effective {selected.effective_date}</p>
                 </div>
                 <button
@@ -344,18 +406,21 @@ export function LaborRulesForm({ focusRuleId, onFocusHandled }: LaborRulesFormPr
               <dl className="grid grid-cols-2 gap-4 text-sm">
                 <div>
                   <dt className="text-xs font-semibold uppercase tracking-wide text-gray-400">Rate</dt>
-                  <dd className="text-gray-700">{fmt(selected.labor_rate)}/day</dd>
+                  <dd className="text-gray-700">
+                    {fmt(selected.labor_rate)}
+                    {rateUnit(laborRuleScope(selected))}
+                  </dd>
                 </div>
+                {selected.rush_multiplier_percentage !== null && (
+                  <div>
+                    <dt className="text-xs font-semibold uppercase tracking-wide text-gray-400">Rush Multiplier</dt>
+                    <dd className="text-gray-700">+{selected.rush_multiplier_percentage}%</dd>
+                  </div>
+                )}
                 {selected.productivity_index !== null && (
                   <div>
                     <dt className="text-xs font-semibold uppercase tracking-wide text-gray-400">Productivity Index</dt>
                     <dd className="text-gray-700">{selected.productivity_index}</dd>
-                  </div>
-                )}
-                {selected.fallback_rule && (
-                  <div className="col-span-2">
-                    <dt className="text-xs font-semibold uppercase tracking-wide text-gray-400">Fallback Rule</dt>
-                    <dd className="text-gray-700">{selected.fallback_rule}</dd>
                   </div>
                 )}
               </dl>
