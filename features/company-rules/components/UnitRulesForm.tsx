@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { AlertTriangle, CheckCircle2, ChevronRight, Pencil, X } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Pencil, X } from "lucide-react";
 import { RuleListDetailPanel } from "./RuleListDetailPanel";
 import { useUnitRules, useCheckRuleUsage, stagingId } from "@/lib/dev/provisional/useCompanyRulesProvisional";
 import { useEditableRuleList } from "@/lib/dev/provisional/useEditableRuleList";
@@ -9,7 +9,6 @@ import { isPercent, isPositiveNumber } from "@/lib/dev/provisional/ruleValidatio
 import { unitRuleTargetKind, type UnitRule, type UnitRuleTargetKind } from "@/lib/dev/provisional/companyRulesTypes";
 import { useItemsCatalog } from "@/hooks/useItemsCatalog";
 import { CATEGORY_TYPES, type CategoryType } from "@/types/entities/category";
-import type { ScopeWizardState } from "./CompanyRulesShell";
 
 const inputCls =
   "w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm outline-none transition focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/20";
@@ -17,13 +16,9 @@ const inputCls =
 interface UnitRulesFormProps {
   focusRuleId?: string | null;
   onFocusHandled?: () => void;
-  /** Part A — optional third wizard step; the category choices narrow to the template's
-   * own categories, and the user can finish without configuring anything. */
-  wizard?: Pick<ScopeWizardState, "categories"> | null;
-  onWizardFinish?: () => void;
 }
 
-export function UnitRulesForm({ focusRuleId, onFocusHandled, wizard, onWizardFinish }: UnitRulesFormProps) {
+export function UnitRulesForm({ focusRuleId, onFocusHandled }: UnitRulesFormProps) {
   const { rules, isLoading, error, refetch, save, isSaving, saveError, resetSave, update, supersede } = useUnitRules();
   const { checkUsage } = useCheckRuleUsage();
   const editable = useEditableRuleList<UnitRule>({ checkUsage, update, supersede, idPrefix: "ur" });
@@ -48,7 +43,7 @@ export function UnitRulesForm({ focusRuleId, onFocusHandled, wizard, onWizardFin
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const categoryOptions = wizard ? wizard.categories : CATEGORY_TYPES;
+  const categoryOptions = CATEGORY_TYPES;
   const categoryValid = category !== "";
   const itemValid = targetKind === "category" || itemCode !== "";
   const factorValid = conversionFactor !== "" && isPositiveNumber(Number(conversionFactor));
@@ -137,25 +132,6 @@ export function UnitRulesForm({ focusRuleId, onFocusHandled, wizard, onWizardFin
           for one specific catalog item.
         </p>
       </div>
-
-      {wizard && (
-        <div className="flex items-center justify-between gap-3 rounded-xl border border-primary/30 bg-orange-50/60 px-4 py-3">
-          <div>
-            <p className="text-xs font-bold uppercase tracking-wider text-primary">Step 3 of 3 — Unit Rules (optional)</p>
-            <p className="text-sm text-gray-700">
-              Optionally set conversion factors and wastage allowances for this template&apos;s
-              categories, or for specific items within them. You can finish without configuring any.
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={onWizardFinish}
-            className="flex shrink-0 items-center gap-1.5 rounded-xl bg-primary px-4 py-2.5 text-sm font-bold text-primary-foreground shadow-sm transition hover:bg-(--primary-hover)"
-          >
-            Finish Setup <ChevronRight className="h-4 w-4" />
-          </button>
-        </div>
-      )}
 
       <RuleListDetailPanel
         title="Unit Rules"
