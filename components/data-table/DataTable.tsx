@@ -13,13 +13,7 @@ import {
 } from "@tanstack/react-table";
 import { ArrowUpDown, ChevronLeft, ChevronRight } from "lucide-react";
 
-/**
- * Fully controlled by the caller — DataTable holds no selection state of its own, the
- * same pattern globalFilter already uses. `getRowId` must be stable per row (survives
- * sort/filter/pagination) so bulk actions elsewhere can map ids back to real records.
- * `onToggleAll` receives only the ids currently visible on the page (respecting
- * pagination/sorting/filtering), matching a "select all on this page" checkbox.
- */
+
 interface SelectableConfig<TData> {
   getRowId: (row: TData) => string;
   selectedIds: Set<string>;
@@ -31,16 +25,11 @@ interface DataTableProps<TData> {
   columns: ColumnDef<TData>[];
   data: TData[];
   initialSorting?: SortingState;
-  /** Free-text filter applied across columns with enableGlobalFilter !== false. */
   globalFilter?: string;
-  /** Opt-in pagination — off by default, existing callers are unaffected. */
   enablePagination?: boolean;
   pageSize?: number;
-  /** Denser rows/headers/font for tables that may show thousands of rows. Off by default. */
   compact?: boolean;
-  /** Opt-in leading checkbox column + header "select all on page". Off by default. */
   selectable?: SelectableConfig<TData>;
-  /** Optional per-row extra class (e.g. outcome highlighting). Return "" for no change. */
   rowClassName?: (row: TData) => string;
 }
 
