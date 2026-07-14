@@ -1,14 +1,9 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { AlertTriangle, CheckCircle2, ChevronRight } from "lucide-react";
-import { QueryState } from "@/components/feedback/QueryState";
-import {
-  useMaterialRules,
-  useCheckRuleUsage,
-  useScopeTemplates,
-  stagingId,
-} from "@/lib/dev/provisional/useCompanyRulesProvisional";
+import { useEffect, useState } from "react";
+import { AlertTriangle, CheckCircle2, Pencil, Search, X } from "lucide-react";
+import { RuleListDetailPanel } from "./RuleListDetailPanel";
+import { useMaterialRules, useCheckRuleUsage, stagingId } from "@/lib/dev/provisional/useCompanyRulesProvisional";
 import { useEditableRuleList } from "@/lib/dev/provisional/useEditableRuleList";
 import { isPositiveNumber } from "@/lib/dev/provisional/ruleValidation";
 import {
@@ -17,313 +12,478 @@ import {
   type MaterialRuleEntry,
 } from "@/lib/dev/provisional/companyRulesTypes";
 import { useItemsCatalog } from "@/hooks/useItemsCatalog";
-import type { CategoryType } from "@/types/entities/category";
-import type { ScopeWizardState } from "./CompanyRulesShell";
+import { useCategories } from "@/hooks/useCategories";
+import { CATEGORY_TYPES, type CategoryType } from "@/types/entities/category";
+import type { Items } from "@/types/entities/items";
 
 const inputCls =
-  "w-full rounded-lg border border-gray-200 bg-gray-50 px-2.5 py-1.5 text-xs outline-none transition focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/20";
+  "w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm outline-none transition focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/20";
 
-interface MaterialRulesFormProps {
-  /** Part A — when set, the template dropdown is pre-locked to this template and a step
-   * banner + "Continue to Unit Rules" replace the normal free-browsing header. */
-  wizard?: Pick<ScopeWizardState, "scopeRuleId" | "templateName" | "categories"> | null;
-  onWizardAdvance?: () => void;
+interface ItemConfig {
+  priority: number | "";
+  fallback: MaterialFallbackRule | "";
 }
 
-export function MaterialRulesForm({ wizard, onWizardAdvance }: MaterialRulesFormProps) {
-  const { templates, isLoading: templatesLoading, error: templatesError } = useScopeTemplates();
-  const { rules, isLoading: rulesLoading, error: rulesError, save, update, supersede } = useMaterialRules();
+interface MaterialRulesFormProps {
+  focusRuleId?: string | null;
+  onFocusHandled?: () => void;
+}
+
+// v6 Correction 3 — REBUILT as a catalog picker. A category contains many materials used
+// TOGETHER (a waterproofing system needs primer AND membrane AND topcoat), not
+// alternatives chosen one-per-category from a dropdown — so this is now a flat,
+// standalone list of "preferred item + fallback" records, added by searching/checking
+// items straight from the catalog. Category is filtering metadata on the picker, not the
+// organizing structure of the list itself (see RuleListDetailPanel below, same
+// select+detail pattern every other rule type already uses).
+export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRulesFormProps) {
+  const { rules, isLoading, error, refetch, save, update, supersede } = useMaterialRules();
   const { checkUsage } = useCheckRuleUsage();
   const editable = useEditableRuleList<MaterialRuleEntry>({ checkUsage, update, supersede, idPrefix: "mr" });
-  const { items, isLoading: itemsLoading, itemsInCategory } = useItemsCatalog();
+  const { items, isLoading: itemsLoading, error: itemsError } = useItemsCatalog();
+  const { categories } = useCategories();
 
-  // Not memoized: applyOverrides closes over per-render state, so it isn't a stable
-  // reference anyway — recomputing this small, fixture-sized list every render is cheap.
   const allRules = editable.applyOverrides([...editable.localExtra, ...rules]);
 
-  const [scopeTemplateId, setScopeTemplateId] = useState(wizard?.scopeRuleId ?? "");
-  const template = wizard
-    ? { rule_id: wizard.scopeRuleId, template_name: wizard.templateName, material_categories: wizard.categories }
-    : (templates.find((t) => t.rule_id === scopeTemplateId) ?? null);
+  const categoryTypeOf = (item: Items): CategoryType | undefined =>
+    categories.find((c) => c.category_id === item.category_id)?.category_type;
 
-  const [editingCategory, setEditingCategory] = useState<CategoryType | null>(null);
-  const [editingRuleId, setEditingRuleId] = useState<string | null>(null);
-  const [materialSearch, setMaterialSearch] = useState("");
-  const [material, setMaterial] = useState("");
-  const [priority, setPriority] = useState<number | "">("");
-  const [fallback, setFallback] = useState<MaterialFallbackRule | "">("");
+  // seeded from the prop at construction, not synced via effect: a jump always remounts
+  // this component fresh (see ScopeTemplatesForm for the full reasoning).
+  const [selectedId, setSelectedId] = useState<string | null>(focusRuleId ?? null);
+  const [mode, setMode] = useState<"idle" | "browse" | "configure" | "edit">("idle");
+  const [search, setSearch] = useState("");
+  const [categoryFilter, setCategoryFilter] = useState<CategoryType | "">("");
+  const [checkedItemCodes, setCheckedItemCodes] = useState<Set<string>>(new Set());
+  const [perItemConfig, setPerItemConfig] = useState<Record<string, ItemConfig>>({});
+  const [editPriority, setEditPriority] = useState<number | "">("");
+  const [editFallback, setEditFallback] = useState<MaterialFallbackRule | "">("");
   const [touched, setTouched] = useState(false);
+  const [savedMessage, setSavedMessage] = useState(false);
 
-  const rulesForTemplate = useMemo(
-    () => allRules.filter((r) => r.scope_rule_id === (wizard?.scopeRuleId ?? scopeTemplateId)),
-    [allRules, wizard, scopeTemplateId]
-  );
+  useEffect(() => {
+    if (focusRuleId) onFocusHandled?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  // Not memoized: in wizard mode `template` is a fresh literal every render (cheap to
-  // recompute against), so memoizing here would just recompute every time anyway.
-  const missingCategories = template
-    ? template.material_categories.filter((c) => !rulesForTemplate.some((r) => r.category === c))
-    : [];
-  const allConfigured = !!template && missingCategories.length === 0;
+  const filteredItems = items.filter((item) => {
+    const matchesSearch = search.trim() === "" || item.item_name.toLowerCase().includes(search.trim().toLowerCase());
+    const matchesCategory = categoryFilter === "" || categoryTypeOf(item) === categoryFilter;
+    return matchesSearch && matchesCategory;
+  });
 
-  const startEdit = (category: CategoryType) => {
-    const configured = rulesForTemplate.find((r) => r.category === category);
-    setEditingCategory(category);
-    setEditingRuleId(configured?.rule_id ?? null);
-    setMaterial(configured?.preferred_item_code ?? "");
-    setMaterialSearch(configured?.preferred_item_name ?? "");
-    setPriority(configured?.material_priority ?? "");
-    setFallback(configured?.fallback_rule ?? "");
-    setTouched(false);
+  const checkedItems = items.filter((i) => checkedItemCodes.has(String(i.item_code)));
+
+  const toggleChecked = (itemCode: string) => {
+    setCheckedItemCodes((prev) => {
+      const next = new Set(prev);
+      if (next.has(itemCode)) next.delete(itemCode);
+      else next.add(itemCode);
+      return next;
+    });
   };
 
-  const materialValid = material.trim().length > 0;
-  const priorityValid = priority !== "" && isPositiveNumber(Number(priority));
-  const fallbackValid = fallback !== "";
-  const rowValid = materialValid && priorityValid && fallbackValid;
+  const startAdd = () => {
+    setMode("browse");
+    setSelectedId(null);
+    setSearch("");
+    setCategoryFilter("");
+    setCheckedItemCodes(new Set());
+    setPerItemConfig({});
+    setTouched(false);
+    setSavedMessage(false);
+  };
 
-  const handleSaveRow = async (category: CategoryType) => {
+  const goToConfigure = () => {
+    setPerItemConfig((prev) => {
+      const next = { ...prev };
+      for (const item of checkedItems) {
+        const code = String(item.item_code);
+        if (!next[code]) next[code] = { priority: 1, fallback: "" };
+      }
+      return next;
+    });
+    setTouched(false);
+    setMode("configure");
+  };
+
+  const startEdit = (r: MaterialRuleEntry) => {
+    setMode("edit");
+    setEditPriority(r.material_priority);
+    setEditFallback(r.fallback_rule);
+    setTouched(false);
+    setSavedMessage(false);
+  };
+
+  const configValid = (code: string) => {
+    const cfg = perItemConfig[code];
+    return !!cfg && cfg.priority !== "" && isPositiveNumber(Number(cfg.priority)) && cfg.fallback !== "";
+  };
+  const allConfigValid = checkedItems.length > 0 && checkedItems.every((i) => configValid(String(i.item_code)));
+
+  const handleSaveAll = async () => {
     setTouched(true);
-    if (!rowValid) return;
-    const payload = {
-      scope_rule_id: wizard?.scopeRuleId ?? scopeTemplateId,
-      category,
-      preferred_item_code: material,
-      preferred_item_name: materialSearch,
-      material_priority: Number(priority),
-      fallback_rule: fallback as MaterialFallbackRule,
-    };
-    if (editingRuleId) {
-      const resultId = await editable.saveEdit(editingRuleId, payload);
-      if (resultId) setEditingCategory(null);
-      return;
-    }
+    if (!allConfigValid) return;
     try {
-      await save(payload);
-      editable.addCreated({
-        rule_id: stagingId("mr"),
-        ...payload,
-        is_active: true,
-        effective_date: new Date().toISOString().slice(0, 10),
-      });
-      setEditingCategory(null);
+      for (const item of checkedItems) {
+        const code = String(item.item_code);
+        const category = categoryTypeOf(item);
+        if (!category) continue; // shouldn't happen — every catalog item has a resolvable category
+        const cfg = perItemConfig[code];
+        const payload = {
+          category,
+          preferred_item_code: code,
+          preferred_item_name: item.item_name,
+          material_priority: Number(cfg.priority),
+          fallback_rule: cfg.fallback as MaterialFallbackRule,
+        };
+        await save(payload);
+        editable.addCreated({
+          rule_id: stagingId("mr"),
+          ...payload,
+          is_active: true,
+          effective_date: new Date().toISOString().slice(0, 10),
+        });
+      }
+      setMode("idle");
+      setSavedMessage(true);
     } catch {
       // surfaced via editable.saveError below — no fabricated success
     }
   };
+
+  const editValid = editPriority !== "" && isPositiveNumber(Number(editPriority)) && editFallback !== "";
+
+  const handleSaveEdit = async () => {
+    setTouched(true);
+    if (!editValid || !selectedId) return;
+    const current = allRules.find((r) => r.rule_id === selectedId);
+    if (!current) return;
+    const payload = {
+      category: current.category,
+      preferred_item_code: current.preferred_item_code,
+      preferred_item_name: current.preferred_item_name,
+      material_priority: Number(editPriority),
+      fallback_rule: editFallback as MaterialFallbackRule,
+    };
+    const resultId = await editable.saveEdit(selectedId, payload);
+    if (resultId) {
+      setMode("idle");
+      setSelectedId(resultId);
+      setSavedMessage(true);
+    }
+  };
+
+  const selected = allRules.find((r) => r.rule_id === selectedId) ?? null;
 
   return (
     <div className="flex flex-col gap-4">
       <div>
         <h2 className="text-base font-bold text-gray-900">Material Rules</h2>
         <p className="text-xs text-gray-500">
-          Select a scope template, then configure a preferred material for every category it uses.
+          Preferred materials picked straight from your catalog, each with a priority rank
+          and a fallback for when the supplier runs out. Category is just a filter here —
+          a real job usually needs several materials together, not one per category.
         </p>
       </div>
 
-      {wizard && (
-        <div className="flex items-center justify-between gap-3 rounded-xl border border-primary/30 bg-orange-50/60 px-4 py-3">
-          <div>
-            <p className="text-xs font-bold uppercase tracking-wider text-primary">Step 2 of 3 — Material Rules</p>
-            <p className="text-sm text-gray-700">
-              You&apos;ve selected {wizard.categories.length} categor{wizard.categories.length === 1 ? "y" : "ies"} for{" "}
-              <strong>{wizard.templateName}</strong>. Configure a preferred material for each.
-            </p>
+      <RuleListDetailPanel
+        title="Material Rules"
+        items={allRules}
+        isLoading={isLoading}
+        error={error}
+        onRetry={refetch}
+        getId={(r) => r.rule_id}
+        selectedId={selectedId}
+        onSelect={(id) => {
+          setSelectedId(id);
+          setMode("idle");
+        }}
+        onAdd={startAdd}
+        emptyHint="Add materials from your catalog to set a preference and fallback for each."
+        renderListItem={(r) => (
+          <div className="flex flex-col gap-0.5">
+            <span className="text-sm font-semibold text-gray-800">{r.preferred_item_name}</span>
+            <span className="text-xs text-gray-400">{r.category}</span>
+            <span className="text-[10px] text-gray-400">Priority {r.material_priority}</span>
           </div>
-          <button
-            type="button"
-            onClick={onWizardAdvance}
-            className="flex shrink-0 items-center gap-1.5 rounded-xl bg-primary px-4 py-2.5 text-sm font-bold text-primary-foreground shadow-sm transition hover:bg-(--primary-hover)"
-          >
-            Continue to Unit Rules <ChevronRight className="h-4 w-4" />
-          </button>
-        </div>
-      )}
+        )}
+        detail={
+          mode === "browse" ? (
+            <div className="flex flex-col gap-3">
+              <div className="flex items-center justify-between">
+                <p className="text-sm font-bold text-gray-900">Add Materials</p>
+                <button type="button" onClick={() => setMode("idle")} className="text-gray-300 hover:text-gray-500">
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
 
-      {!wizard && (
-        <div className="rounded-2xl border border-gray-200 bg-white p-4">
-          <label className="mb-1.5 block text-xs font-semibold text-gray-600">Scope Template</label>
-          <QueryState
-            isLoading={templatesLoading}
-            error={templatesError}
-            isEmpty={templates.length === 0}
-            emptyTitle="No scope templates yet"
-            emptyHint="Configure a Scope Template first — Material Rules build on top of it."
-            minHeight={60}
-          >
-            <select
-              value={scopeTemplateId}
-              onChange={(e) => {
-                setScopeTemplateId(e.target.value);
-                setEditingCategory(null);
-              }}
-              className={inputCls}
-            >
-              <option value="">Select a scope template…</option>
-              {templates.map((t) => (
-                <option key={t.rule_id} value={t.rule_id}>
-                  {t.template_name}
-                </option>
-              ))}
-            </select>
-          </QueryState>
-        </div>
-      )}
+              <div className="flex gap-2">
+                <div className="relative flex-1">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+                  <input
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    placeholder="Search the catalog…"
+                    className={`${inputCls} pl-9`}
+                  />
+                </div>
+                <select
+                  value={categoryFilter}
+                  onChange={(e) => setCategoryFilter(e.target.value as CategoryType | "")}
+                  className={`${inputCls} w-44 shrink-0`}
+                >
+                  <option value="">All categories</option>
+                  {CATEGORY_TYPES.map((c) => (
+                    <option key={c}>{c}</option>
+                  ))}
+                </select>
+              </div>
 
-      {template && (
-        <>
-          {allConfigured ? (
-            <div className="flex items-center gap-2 rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">
-              <CheckCircle2 className="h-4 w-4 shrink-0" /> All required materials configured for this template.
-            </div>
-          ) : (
-            <div className="flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
-              <AlertTriangle className="h-4 w-4 shrink-0" />
-              {missingCategories.length} of {template.material_categories.length} categories still need a material rule.
-            </div>
-          )}
-
-          {editable.saveError && (
-            <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-              Couldn&apos;t save that material rule: {editable.saveError.message}
-            </div>
-          )}
-
-          <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
-            <QueryState
-              isLoading={rulesLoading}
-              error={rulesError}
-              isEmpty={false}
-              emptyTitle="No material rules yet"
-              minHeight={0}
-            >
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-gray-100 bg-gray-50/60 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
-                    <th className="px-4 py-2.5">Category</th>
-                    <th className="px-4 py-2.5">Preferred Material</th>
-                    <th className="px-4 py-2.5">Priority</th>
-                    <th className="px-4 py-2.5">Fallback Rule</th>
-                    <th className="px-4 py-2.5">Status</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {template.material_categories.map((category) => {
-                    const configured = rulesForTemplate.find((r) => r.category === category);
-                    const editing = editingCategory === category;
-                    const categoryItems = itemsInCategory(category);
-
-                    if (editing) {
-                      return (
-                        <tr key={category} className="border-b border-gray-50 bg-amber-50/30">
-                          <td className="px-4 py-2.5 font-medium text-gray-800">{category}</td>
-                          <td className="px-4 py-2.5">
-                            {itemsLoading ? (
-                              <p className="text-[11px] text-gray-400">Loading catalog…</p>
-                            ) : items.length === 0 ? (
-                              <p className="text-[11px] text-amber-600">
-                                No items in your catalog yet — upload a pricelist first.
-                              </p>
-                            ) : (
-                              <>
-                                <input
-                                  list={`materials-${category}`}
-                                  value={materialSearch}
-                                  onChange={(e) => {
-                                    const typed = e.target.value;
-                                    setMaterialSearch(typed);
-                                    const match = categoryItems.find((i) => i.item_name === typed);
-                                    setMaterial(match ? String(match.item_code) : "");
-                                  }}
-                                  placeholder="Search or select a material…"
-                                  className={inputCls}
-                                />
-                                <datalist id={`materials-${category}`}>
-                                  {categoryItems.map((i) => (
-                                    <option key={i.item_code} value={i.item_name} />
-                                  ))}
-                                </datalist>
-                              </>
-                            )}
-                            {touched && !materialValid && <p className="mt-1 text-[11px] text-red-500">Required</p>}
-                          </td>
-                          <td className="px-4 py-2.5">
-                            <input
-                              type="number"
-                              min={1}
-                              value={priority}
-                              onChange={(e) => setPriority(e.target.value === "" ? "" : Number(e.target.value))}
-                              className={`${inputCls} w-16`}
-                            />
-                            {touched && !priorityValid && <p className="mt-1 text-[11px] text-red-500">&gt; 0</p>}
-                          </td>
-                          <td className="px-4 py-2.5">
-                            <select
-                              value={fallback}
-                              onChange={(e) => setFallback(e.target.value as MaterialFallbackRule)}
-                              className={inputCls}
-                            >
-                              <option value="">Select…</option>
-                              {MATERIAL_FALLBACK_RULES.map((f) => (
-                                <option key={f}>{f}</option>
-                              ))}
-                            </select>
-                            {touched && !fallbackValid && <p className="mt-1 text-[11px] text-red-500">Required</p>}
-                          </td>
-                          <td className="px-4 py-2.5">
-                            <div className="flex gap-1.5">
-                              <button
-                                type="button"
-                                disabled={editable.isSaving}
-                                onClick={() => handleSaveRow(category)}
-                                className="rounded-lg bg-primary px-2.5 py-1 text-xs font-bold text-primary-foreground disabled:opacity-60"
-                              >
-                                {editable.isSaving ? "Saving…" : "Save"}
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => setEditingCategory(null)}
-                                className="rounded-lg border border-gray-200 px-2.5 py-1 text-xs text-gray-500"
-                              >
-                                Cancel
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    }
-
-                    // Part C: the whole row is the click target, not just the far-right control.
+              {itemsLoading ? (
+                <p className="text-xs text-gray-400">Loading catalog…</p>
+              ) : itemsError ? (
+                <p className="text-xs text-red-500">Couldn&apos;t load your catalog: {itemsError.message}</p>
+              ) : items.length === 0 ? (
+                <p className="text-xs text-amber-600">No items in your catalog yet — upload a pricelist first.</p>
+              ) : filteredItems.length === 0 ? (
+                <p className="text-xs text-gray-400">No catalog items match that search.</p>
+              ) : (
+                <div className="max-h-72 overflow-y-auto rounded-lg border border-gray-200">
+                  {filteredItems.map((item) => {
+                    const code = String(item.item_code);
                     return (
-                      <tr
-                        key={category}
-                        onClick={() => startEdit(category)}
-                        className="cursor-pointer border-b border-gray-50 transition hover:bg-gray-50/60"
+                      <label
+                        key={code}
+                        className="flex cursor-pointer items-center gap-3 border-b border-gray-50 px-3 py-2 last:border-b-0 hover:bg-gray-50"
                       >
-                        <td className="px-4 py-2.5 font-medium text-gray-800">{category}</td>
-                        <td className="px-4 py-2.5 text-gray-600">{configured?.preferred_item_name ?? "—"}</td>
-                        <td className="px-4 py-2.5 text-gray-600">{configured?.material_priority ?? "—"}</td>
-                        <td className="px-4 py-2.5 text-gray-600">{configured?.fallback_rule ?? "—"}</td>
-                        <td className="px-4 py-2.5">
-                          {configured ? (
-                            <span className="rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-bold text-green-700">
-                              Configured
-                            </span>
-                          ) : (
-                            <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-700">
-                              Needs attention — Configure
-                            </span>
-                          )}
-                        </td>
-                      </tr>
+                        <input
+                          type="checkbox"
+                          checked={checkedItemCodes.has(code)}
+                          onChange={() => toggleChecked(code)}
+                          className="h-4 w-4 shrink-0 rounded border-gray-300 text-primary focus:ring-2 focus:ring-primary/30"
+                        />
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm font-medium text-gray-800">{item.item_name}</p>
+                          <p className="truncate text-[11px] text-gray-400">
+                            {categoryTypeOf(item) ?? "Uncategorized"} · {item.brand} · {item.unit}
+                          </p>
+                        </div>
+                      </label>
                     );
                   })}
-                </tbody>
-              </table>
-            </QueryState>
-          </div>
-        </>
-      )}
+                </div>
+              )}
+
+              <button
+                type="button"
+                disabled={checkedItems.length === 0}
+                onClick={goToConfigure}
+                className="w-fit rounded-xl bg-primary px-5 py-2.5 text-sm font-bold text-primary-foreground shadow-sm transition hover:bg-(--primary-hover) disabled:opacity-60"
+              >
+                Continue with {checkedItems.length} selected
+              </button>
+            </div>
+          ) : mode === "configure" ? (
+            <div className="flex flex-col gap-3">
+              <div className="flex items-center justify-between">
+                <p className="text-sm font-bold text-gray-900">Set Priority &amp; Fallback</p>
+                <button type="button" onClick={() => setMode("idle")} className="text-gray-300 hover:text-gray-500">
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+
+              <div className="flex flex-col gap-3">
+                {checkedItems.map((item) => {
+                  const code = String(item.item_code);
+                  const cfg = perItemConfig[code] ?? { priority: "", fallback: "" };
+                  const invalid = touched && !configValid(code);
+                  return (
+                    <div key={code} className="rounded-xl border border-gray-100 bg-gray-50/60 p-3">
+                      <p className="mb-2 text-sm font-semibold text-gray-800">{item.item_name}</p>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="flex flex-col gap-1">
+                          <label className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+                            Priority
+                          </label>
+                          <input
+                            type="number"
+                            min={1}
+                            value={cfg.priority}
+                            onChange={(e) =>
+                              setPerItemConfig((prev) => ({
+                                ...prev,
+                                [code]: { ...cfg, priority: e.target.value === "" ? "" : Number(e.target.value) },
+                              }))
+                            }
+                            className={inputCls}
+                          />
+                        </div>
+                        <div className="flex flex-col gap-1">
+                          <label className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+                            Fallback Rule
+                          </label>
+                          <select
+                            value={cfg.fallback}
+                            onChange={(e) =>
+                              setPerItemConfig((prev) => ({
+                                ...prev,
+                                [code]: { ...cfg, fallback: e.target.value as MaterialFallbackRule },
+                              }))
+                            }
+                            className={inputCls}
+                          >
+                            <option value="">Select…</option>
+                            {MATERIAL_FALLBACK_RULES.map((f) => (
+                              <option key={f}>{f}</option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
+                      {invalid && <p className="mt-1.5 text-[11px] text-red-500">Set both a priority and a fallback rule.</p>}
+                    </div>
+                  );
+                })}
+              </div>
+
+              {editable.saveError && (
+                <div className="flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+                  <AlertTriangle className="h-3.5 w-3.5 shrink-0" /> Couldn&apos;t save: {editable.saveError.message}
+                </div>
+              )}
+
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => setMode("browse")}
+                  className="flex-1 rounded-xl border border-gray-200 px-4 py-2.5 text-sm font-bold text-gray-600 transition hover:bg-gray-50"
+                >
+                  Back
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSaveAll}
+                  disabled={editable.isSaving}
+                  className="flex flex-2 items-center justify-center rounded-xl bg-primary px-5 py-2.5 text-sm font-bold text-primary-foreground shadow-sm transition hover:bg-(--primary-hover) disabled:opacity-60"
+                >
+                  {editable.isSaving ? "Saving…" : `Save ${checkedItems.length} Material Rule${checkedItems.length === 1 ? "" : "s"}`}
+                </button>
+              </div>
+            </div>
+          ) : mode === "edit" && selected ? (
+            <div className="flex flex-col gap-4">
+              <div className="flex items-center justify-between">
+                <p className="text-sm font-bold text-gray-900">Edit Material Rule</p>
+                <button type="button" onClick={() => setMode("idle")} className="text-gray-300 hover:text-gray-500">
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+
+              <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                <span>
+                  If this rule is used by existing quotations, saving will create a new
+                  version — those quotations keep their original values.
+                </span>
+              </div>
+
+              <div className="rounded-xl border border-gray-100 bg-gray-50/60 p-3">
+                <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Material</p>
+                <p className="text-sm font-semibold text-gray-800">{selected.preferred_item_name}</p>
+                <p className="text-xs text-gray-400">{selected.category}</p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-xs font-semibold text-gray-600">
+                    Priority <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="number"
+                    min={1}
+                    value={editPriority}
+                    onChange={(e) => setEditPriority(e.target.value === "" ? "" : Number(e.target.value))}
+                    className={inputCls}
+                  />
+                  {touched && !(editPriority !== "" && isPositiveNumber(Number(editPriority))) && (
+                    <p className="text-xs text-red-500">Must be greater than 0.</p>
+                  )}
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-xs font-semibold text-gray-600">
+                    Fallback Rule <span className="text-red-500">*</span>
+                  </label>
+                  <select
+                    value={editFallback}
+                    onChange={(e) => setEditFallback(e.target.value as MaterialFallbackRule)}
+                    className={inputCls}
+                  >
+                    <option value="">Select…</option>
+                    {MATERIAL_FALLBACK_RULES.map((f) => (
+                      <option key={f}>{f}</option>
+                    ))}
+                  </select>
+                  {touched && editFallback === "" && <p className="text-xs text-red-500">Required.</p>}
+                </div>
+              </div>
+
+              {editable.saveError && (
+                <div className="flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+                  <AlertTriangle className="h-3.5 w-3.5 shrink-0" /> Couldn&apos;t save: {editable.saveError.message}
+                </div>
+              )}
+
+              <button
+                type="button"
+                onClick={handleSaveEdit}
+                disabled={editable.isSaving}
+                className="w-fit rounded-xl bg-primary px-5 py-2.5 text-sm font-bold text-primary-foreground shadow-sm transition hover:bg-(--primary-hover) disabled:opacity-60"
+              >
+                {editable.isSaving ? "Saving…" : "Save Changes"}
+              </button>
+            </div>
+          ) : selected ? (
+            <div className="flex flex-col gap-4">
+              {savedMessage && (
+                <div className="flex items-center gap-2 rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-xs text-green-700">
+                  <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
+                  {editable.supersededNotice
+                    ? "A new version of this rule was created — the previous version is preserved for existing quotations."
+                    : "Company preferences updated successfully."}
+                </div>
+              )}
+              <div className="flex items-start justify-between gap-3 rounded-xl border border-gray-100 bg-gray-50/60 p-4">
+                <div>
+                  <p className="text-lg font-bold text-gray-900">{selected.preferred_item_name}</p>
+                  <p className="text-sm text-gray-500">{selected.category}</p>
+                  <p className="mt-1 text-[11px] text-gray-400">Effective {selected.effective_date}</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => startEdit(selected)}
+                  className="flex shrink-0 items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-gray-600 transition hover:border-primary hover:text-primary"
+                >
+                  <Pencil className="h-3.5 w-3.5" /> Edit
+                </button>
+              </div>
+              <dl className="grid grid-cols-2 gap-4 text-sm">
+                <div>
+                  <dt className="text-xs font-semibold uppercase tracking-wide text-gray-400">Priority</dt>
+                  <dd className="text-gray-700">{selected.material_priority}</dd>
+                </div>
+                <div>
+                  <dt className="text-xs font-semibold uppercase tracking-wide text-gray-400">Fallback Rule</dt>
+                  <dd className="text-gray-700">{selected.fallback_rule}</dd>
+                </div>
+              </dl>
+            </div>
+          ) : (
+            <div className="flex h-full flex-col items-center justify-center gap-2 text-center text-gray-400">
+              <p className="text-sm">Select a material rule to view it, or add materials from your catalog.</p>
+            </div>
+          )
+        }
+      />
     </div>
   );
 }
