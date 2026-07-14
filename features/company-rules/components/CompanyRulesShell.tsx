@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   ClipboardList,
   ListChecks,
@@ -18,6 +18,15 @@ import { PricingStrategyForm } from "./PricingStrategyForm";
 import { UnitRulesForm } from "./UnitRulesForm";
 import { ManageExistingRulesTab } from "./ManageExistingRulesTab";
 import { RULE_KIND_TAB, type ExistingRuleSummary } from "@/lib/dev/provisional/companyRulesTypes";
+import {
+  useScopeTemplates,
+  useMaterialRules,
+  useLaborRules,
+  usePricingStrategies,
+  useUnitRules,
+} from "@/lib/dev/provisional/useCompanyRulesProvisional";
+import { useAuth } from "@/providers/AuthProvider";
+import { advanceOnboardingStep, hasCompletedCompanyRulesStep } from "@/lib/onboarding";
 import type { CategoryType } from "@/types/entities/category";
 
 // Mirrors the CPRM activity diagram's "Rule Action?" fork: six Configure-X branches plus
@@ -72,6 +81,45 @@ export default function CompanyRulesShell() {
 
   const finishWizard = () => setWizard(null);
 
+  // Part E — "needs configuration" dots, driven by the same real fetched lists each form
+  // already uses (not a hardcoded list of "which tabs matter"). Supplier Rules is excluded
+  // (still a deferred placeholder — there's no save flow yet, so a dot there could never
+  // clear) and so is Manage Existing Rules (a management/utility tab, not a "configure
+  // this" one).
+  const { currentUser, updateOnboardingStep } = useAuth();
+  const { templates } = useScopeTemplates();
+  const { rules: materialRules } = useMaterialRules();
+  const { rules: laborRules } = useLaborRules();
+  const { strategies } = usePricingStrategies();
+  const { rules: unitRules } = useUnitRules();
+
+  const needsAttention: Partial<Record<TabId, boolean>> = {
+    "scope-templates": templates.length === 0,
+    "material-rules": materialRules.length === 0,
+    "labor-rules": laborRules.length === 0,
+    "pricing-strategy": strategies.length === 0,
+    "unit-rules": unitRules.length === 0,
+  };
+
+  // Part D — Step 1 -> 2 gate (see lib/onboarding.ts's hasCompletedCompanyRulesStep for
+  // the flagged decision this reads).
+  const rulesConfigured = hasCompletedCompanyRulesStep({
+    scopeTemplateCount: templates.length,
+    materialRuleCount: materialRules.length,
+    laborRuleCount: laborRules.length,
+    pricingStrategyCount: strategies.length,
+    unitRuleCount: unitRules.length,
+  });
+
+  useEffect(() => {
+    if (currentUser && rulesConfigured) {
+      advanceOnboardingStep(currentUser.onboardingStep, 2, updateOnboardingStep);
+    }
+    // updateOnboardingStep is recreated every AuthProvider render; advanceOnboardingStep
+    // no-ops once past the target step, so omitting it here can't miss or double-fire.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentUser, rulesConfigured]);
+
   return (
     <div className="flex flex-col gap-5">
       <div className="flex shrink-0 gap-1 overflow-x-auto border-b border-gray-200">
@@ -89,6 +137,9 @@ export default function CompanyRulesShell() {
             >
               <Icon className="h-4 w-4" />
               {tab.label}
+              {needsAttention[tab.id] && (
+                <span className="h-1.5 w-1.5 rounded-full bg-amber-500" aria-label="Needs configuration" />
+              )}
               {active && <span className="absolute inset-x-0 bottom-0 h-0.5 bg-primary" />}
             </button>
           );
