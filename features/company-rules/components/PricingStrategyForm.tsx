@@ -303,13 +303,14 @@ export function PricingStrategyForm({ focusRuleId, onFocusHandled }: PricingStra
                     onChange={(e) => setVatEnabled(e.target.checked)}
                     className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-2 focus:ring-primary/30"
                   />
-                  Apply 12% VAT
+                  Apply VAT
                 </label>
                 {vatEnabled && (
                   <SliderPercentField label="VAT Rate" value={vatPercentage} onChange={setVatPercentage} touched={touched} warn={warnVat} />
                 )}
                 <p className="text-[11px] text-gray-400">
-                  This sets the strategy&apos;s VAT rate. Whether VAT is actually applied to a
+                  VAT is added as a separate line at the bottom of the quotation — it is
+                  never folded into the per-sqm price. Whether VAT is actually applied to a
                   given quote is a separate, per-quotation decision — some clients decline
                   VAT because they don&apos;t require an official receipt.
                 </p>
