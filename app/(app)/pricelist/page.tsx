@@ -1,10 +1,14 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Database, ListOrdered, LibraryBig, TrendingUp, Upload } from "lucide-react";
 import { RequireAuth } from "@/components/auth/RequireAuth";
 import { PriceTrendsPanel } from "@/components/market-intelligence/PriceTrendsPanel";
 import { PriceCatalogTab, PublishedSourceTab, SourcePriorityTab, UploadPricelistTab } from "@/features/pricelist/components";
+import { usePricelistCatalog } from "@/hooks/usePricelistCatalog";
+import { usePricelistPublishedSource } from "@/hooks/usePricelistPublishedSource";
+import { useAuth } from "@/providers/AuthProvider";
+import { advanceOnboardingStep, hasCompletedPricelistStep } from "@/lib/onboarding";
 
 const TABS = [
   { id: "upload", label: "Upload Pricelist", icon: Upload },
@@ -19,6 +23,31 @@ type TabId = (typeof TABS)[number]["id"];
 export default function PricelistPage() {
   const [activeTab, setActiveTab] = useState<TabId>("upload");
   const goToCatalog = () => setActiveTab("catalog");
+  const { currentUser, updateOnboardingStep } = useAuth();
+  const supplierCatalog = usePricelistCatalog();
+  const { dpwhCatalog } = usePricelistPublishedSource();
+
+
+  useEffect(() => {
+    supplierCatalog.load();
+    dpwhCatalog.load();
+  }, []);
+
+   const pricelistDone = hasCompletedPricelistStep({
+    uploadCatalogCount: supplierCatalog.records.length,
+    dpwhCatalogCount: dpwhCatalog.records.length,
+  });
+
+  useEffect(() => {
+    if (currentUser && pricelistDone) {
+      advanceOnboardingStep(currentUser.onboardingStep, 1, updateOnboardingStep);
+    }
+  }, [currentUser, pricelistDone]);
+
+   const needsAttention: Partial<Record<TabId, boolean>> = {
+    upload: !pricelistDone,
+    published: !pricelistDone,
+  };
 
   return (
     <RequireAuth>
@@ -38,6 +67,9 @@ export default function PricelistPage() {
               >
                 <Icon className="h-4 w-4" />
                 {tab.label}
+                {needsAttention[tab.id] && (
+                  <span className="h-1.5 w-1.5 rounded-full bg-amber-500" aria-label="Needs configuration" />
+                )}
                 {active && <span className="absolute inset-x-0 bottom-0 h-0.5 bg-primary" />}
               </button>
             );

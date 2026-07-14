@@ -9,8 +9,8 @@ export default function DashboardPage() {
       <div className="flex items-center gap-4 rounded-2xl bg-linear-to-r from-primary to-(--primary-hover) p-6 text-white shadow-md">
         <Zap className="h-10 w-10 shrink-0 opacity-90" />
         <div className="flex-1">
-          <p className="text-lg font-bold">Ready to Generate a Quotation?</p>
-          <p className="text-sm opacity-80">Upload a blueprint or use quick measurement to get started</p>
+          <p className="text-lg font-bold">Setup complete — all features are now unlocked</p>
+          <p className="text-sm opacity-80">Ready to generate your first quotation? Upload a blueprint or use quick measurement to get started.</p>
         </div>
         <Link
           href="/quotations"
