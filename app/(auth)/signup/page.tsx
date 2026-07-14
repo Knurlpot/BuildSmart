@@ -3,17 +3,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import {
-  Check,
-  ChevronDown,
-  ChevronRight,
-  Eye,
-  EyeOff,
-  Link as LinkIcon,
-  Plus,
-  Upload,
-  X,
-} from "lucide-react";
+import {Check, ChevronDown, ChevronRight, Eye, EyeOff, Link as LinkIcon, Plus, Upload, X} from "lucide-react";
 import { AuthBrandPanel } from "@/components/auth/AuthBrandPanel";
 import { TermsModal } from "@/components/auth/TermsModal";
 import { useAuth } from "@/providers/AuthProvider";
@@ -21,7 +11,6 @@ import { useMutation } from "@/hooks/useMutation";
 import { resolveOnboardingRoute } from "@/lib/onboarding";
 import { USER_ROLES, type Users } from "@/types/entities";
 
-// Schema v3 VARCHAR lengths — enforced as maxLength on the matching inputs below.
 const MAX = {
   firstName: 30,
   lastName: 30,
@@ -1053,7 +1042,7 @@ export default function SignUpPage() {
           <p className="mt-6 text-center text-sm text-gray-500">
             Already have an account?{" "}
             <Link href="/login" className="font-semibold text-primary hover:underline">
-              Sign in →
+              Log in →
             </Link>
           </p>
         </div>

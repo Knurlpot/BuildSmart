@@ -4,7 +4,6 @@ export type CompanyRow = {
   company_address: string;
   contact_email: string;
   contact_number: string;
-  company_role: string | null;
   specialization_1: string;
   specialization_2: string | null;
   specialization_3: string | null;

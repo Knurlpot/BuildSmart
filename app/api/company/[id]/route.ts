@@ -32,7 +32,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   }
 
   const result = await pool.query<CompanyRow>(
-    `SELECT company_id, company_name, company_address, contact_email, contact_number, company_role, specialization_1, specialization_2, specialization_3, company_logo, status, created_at
+    `SELECT company_id, company_name, company_address, contact_email, contact_number, specialization_1, specialization_2, specialization_3, company_logo, status, created_at
      FROM company
      WHERE company_id = $1
      LIMIT 1`,
@@ -66,20 +66,18 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
          company_address = COALESCE($2, company_address),
          contact_email = COALESCE($3, contact_email),
          contact_number = COALESCE($4, contact_number),
-         company_role = COALESCE($5, company_role),
-         specialization_1 = COALESCE($6, specialization_1),
-         specialization_2 = $7,
-         specialization_3 = $8,
-         company_logo = $9,
-         status = COALESCE($10, status)
-     WHERE company_id = $11
-     RETURNING company_id, company_name, company_address, contact_email, contact_number, company_role, specialization_1, specialization_2, specialization_3, company_logo, status, created_at`,
+         specialization_1 = COALESCE($5, specialization_1),
+         specialization_2 = $6,
+         specialization_3 = $7,
+         company_logo = $8,
+         status = COALESCE($9, status)
+     WHERE company_id = $10
+     RETURNING company_id, company_name, company_address, contact_email, contact_number, specialization_1, specialization_2, specialization_3, company_logo, status, created_at`,
     [
       body.company_name ?? null,
       body.company_address ?? null,
       body.contact_email ?? null,
       body.contact_number ?? null,
-      body.company_role ?? null,
       body.specialization_1 ?? null,
       body.specialization_2 ?? null,
       body.specialization_3 ?? null,
