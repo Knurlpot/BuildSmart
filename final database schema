@@ -89,15 +89,8 @@ CREATE TABLE supplier_discount_rule (
     effective_date DATE NOT NULL,
     expiration_date DATE,
     is_active BOOLEAN NOT NULL DEFAULT TRUE,
-<<<<<<< HEAD
     CONSTRAINT fk_supplier_discount_company FOREIGN KEY (company_id) REFERENCES company(company_id) ON DELETE CASCADE,
     CONSTRAINT fk_supplier_discount_supplier FOREIGN KEY (supplier_id) REFERENCES suppliers(supplier_id) ON DELETE CASCADE
-=======
-    rule_id INT, 
-    CONSTRAINT fk_supplier_discount_company FOREIGN KEY (company_id) REFERENCES company(company_id) ON DELETE CASCADE,
-    CONSTRAINT fk_supplier_discount_supplier FOREIGN KEY (supplier_id) REFERENCES suppliers(supplier_id) ON DELETE CASCADE,
-    CONSTRAINT fk_supplier_discount_rule FOREIGN KEY (rule_id) REFERENCES company_rule(rule_id) ON DELETE CASCADE
->>>>>>> backend/clean-no-mock
 );
 
 -- =====================================================
