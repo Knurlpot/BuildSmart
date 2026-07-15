@@ -34,7 +34,6 @@ export default function Header() {
   const companyEndpoint = companyId !== undefined && companyId !== null ? `/api/company/${companyId}` : null;
   const { data: company } = useFetch<Company>(companyEndpoint);
   const { data: profile } = useFetch<Users>("/api/auth/me");
-
   const companyName = company?.company_name || "BuildSmart";
   const companyInitials = companyName.slice(0, 2).toUpperCase();
   const fullName = profile
@@ -72,6 +71,7 @@ export default function Header() {
           className="flex items-center gap-2 rounded-xl px-2 py-1.5 transition hover:bg-gray-50"
         >
           {company?.company_logo ? (
+            // eslint-disable-next-line @next/next/no-img-element -- arbitrary external URL, not a static asset
             <img
               src={company.company_logo}
               alt=""

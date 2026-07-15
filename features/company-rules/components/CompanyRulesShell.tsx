@@ -27,7 +27,6 @@ import {
 } from "@/lib/dev/provisional/useCompanyRulesProvisional";
 import { useAuth } from "@/providers/AuthProvider";
 import { advanceOnboardingStep, hasCompletedCompanyRulesStep } from "@/lib/onboarding";
-import type { CategoryType } from "@/types/entities/category";
 
 const TABS = [
   { id: "scope-templates", label: "Scope Templates", icon: ClipboardList },
@@ -41,34 +40,21 @@ const TABS = [
 
 type TabId = (typeof TABS)[number]["id"];
 
-export interface ScopeWizardState {
-  step: 2 | 3;
-  scopeRuleId: string;
-  templateName: string;
-  categories: CategoryType[];
-}
-
 export default function CompanyRulesShell() {
   const [activeTab, setActiveTab] = useState<TabId>("scope-templates");
+  // "Manage Existing Rules" rows jump to the rule's owning tab with that rule
+  // pre-selected, instead of dumping the user on the tab with no idea what to look for.
   const [focusRuleId, setFocusRuleId] = useState<string | null>(null);
-  const [wizard, setWizard] = useState<ScopeWizardState | null>(null);
 
   const openExistingRule = (rule: ExistingRuleSummary) => {
     setActiveTab(RULE_KIND_TAB[rule.rule_kind] as TabId);
     setFocusRuleId(rule.rule_id);
   };
 
-  const startWizardAfterScopeSave = (scopeRuleId: string, templateName: string, categories: CategoryType[]) => {
-    setWizard({ step: 2, scopeRuleId, templateName, categories });
-    setActiveTab("material-rules");
-  };
-
-  const advanceWizardToUnitRules = () => {
-    setWizard((w) => (w ? { ...w, step: 3 } : null));
-    setActiveTab("unit-rules");
-  };
-
-  const finishWizard = () => setWizard(null);
+  // "needs configuration" dots, driven by the same real fetched lists each form already
+  // uses (not a hardcoded list of "which tabs matter"). Supplier Rules is excluded (still
+  // a deferred placeholder — there's no save flow yet, so a dot there could never clear)
+  // and so is Manage Existing Rules (a management/utility tab, not a "configure this" one).
   const { currentUser, updateOnboardingStep } = useAuth();
   const { templates } = useScopeTemplates();
   const { rules: materialRules } = useMaterialRules();
@@ -84,6 +70,10 @@ export default function CompanyRulesShell() {
     "unit-rules": unitRules.length === 0,
   };
 
+  // Step 1 -> 2 onboarding gate (see lib/onboarding.ts's hasCompletedCompanyRulesStep for
+  // the flagged decision this reads). Correction 2: deliberately does NOT factor in
+  // scopeTemplateCount — a specialty contractor may never create one, and Scope Templates
+  // must not gate anything.
   const rulesConfigured = hasCompletedCompanyRulesStep({
     scopeTemplateCount: templates.length,
     materialRuleCount: materialRules.length,
@@ -96,6 +86,9 @@ export default function CompanyRulesShell() {
     if (currentUser && rulesConfigured) {
       advanceOnboardingStep(currentUser.onboardingStep, 2, updateOnboardingStep);
     }
+    // updateOnboardingStep is recreated every AuthProvider render; advanceOnboardingStep
+    // no-ops once past the target step, so omitting it here can't miss or double-fire.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentUser, rulesConfigured]);
 
   return (
@@ -125,17 +118,10 @@ export default function CompanyRulesShell() {
       </div>
 
       {activeTab === "scope-templates" && (
-        <ScopeTemplatesForm
-          focusRuleId={focusRuleId}
-          onFocusHandled={() => setFocusRuleId(null)}
-          onCreated={startWizardAfterScopeSave}
-        />
+        <ScopeTemplatesForm focusRuleId={focusRuleId} onFocusHandled={() => setFocusRuleId(null)} />
       )}
       {activeTab === "material-rules" && (
-        <MaterialRulesForm
-          wizard={wizard && wizard.step === 2 ? wizard : null}
-          onWizardAdvance={advanceWizardToUnitRules}
-        />
+        <MaterialRulesForm focusRuleId={focusRuleId} onFocusHandled={() => setFocusRuleId(null)} />
       )}
       {activeTab === "supplier-rules" && <SupplierRulesPlaceholder />}
       {activeTab === "labor-rules" && (
@@ -145,12 +131,7 @@ export default function CompanyRulesShell() {
         <PricingStrategyForm focusRuleId={focusRuleId} onFocusHandled={() => setFocusRuleId(null)} />
       )}
       {activeTab === "unit-rules" && (
-        <UnitRulesForm
-          focusRuleId={focusRuleId}
-          onFocusHandled={() => setFocusRuleId(null)}
-          wizard={wizard && wizard.step === 3 ? wizard : null}
-          onWizardFinish={finishWizard}
-        />
+        <UnitRulesForm focusRuleId={focusRuleId} onFocusHandled={() => setFocusRuleId(null)} />
       )}
       {activeTab === "manage-existing" && <ManageExistingRulesTab onOpenRule={openExistingRule} />}
     </div>
