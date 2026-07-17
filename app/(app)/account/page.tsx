@@ -464,9 +464,6 @@ function PasswordSection() {
       <div className="flex items-center justify-between">
         <div>
           <p className="font-bold text-gray-900">Password</p>
-          <p className="text-xs text-gray-400">
-            Handled entirely by the auth backend — never stored, forwarded, or logged here.
-          </p>
         </div>
         {!open && (
           <button
