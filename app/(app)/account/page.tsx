@@ -9,6 +9,11 @@
 //         team (hashing, current-password verification, session invalidation). This
 //         file only builds the form and calls it; it never stores, forwards, or logs
 //         a password anywhere else.
+//   POST  /api/account/deactivate    ⚠️ UNCONFIRMED name and shape. Whether this flips
+//         users.status, company.status, or both is a BACKEND decision, not assumed
+//         here — deactivating an Owner effectively pauses the whole company, so the
+//         backend may cascade this itself rather than expecting two separate calls.
+//         This page only calls the endpoint and renders whatever it returns.
 //
 // NOTE: lib/api/auth.ts already calls GET /api/auth/me from AuthProvider, but types its
 // response as the minimal AuthUser shape (id/email/companyId/onboardingStep) — that's
@@ -16,13 +21,24 @@
 // the fuller Users fields (first_name, last_name, user_role, status) needed for the
 // profile form. That assumption may be wrong — a dedicated GET /api/users/:id might be
 // the real contract. Confirm with backend before trusting either shape.
-import { useState } from "react";
-import { Pencil } from "lucide-react";
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { AlertTriangle, Pencil } from "lucide-react";
 import { RequireAuth } from "@/components/auth/RequireAuth";
 import { useFetch } from "@/hooks/useFetch";
 import { useMutation } from "@/hooks/useMutation";
 import { useAuth } from "@/providers/AuthProvider";
 import { USER_ROLES, type Company, type Users } from "@/types/entities";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { SpecializationSelect } from "@/components/forms/SpecializationSelect";
+import { columnsToSpecializations, formatSpecializations, specializationsToColumns } from "@/lib/specializations";
 
 const STATUSES: Company["status"][] = ["Active", "Inactive"];
 
@@ -33,8 +49,8 @@ const EMPTY_COMPANY: Company = {
   contact_email: "",
   contact_number: "",
   specialization_1: "",
-  specialization_2: "",
-  specialization_3: "",
+  specialization_2: null,
+  specialization_3: null,
   company_logo: "",
   status: "Active",
   created_at: "",
@@ -144,16 +160,23 @@ function CompanySection() {
   // unsaved edits and restores the last-known-good values (the fetched/saved record, not
   // whatever was mid-typed).
   const [editing, setEditing] = useState(false);
+  const [specializationError, setSpecializationError] = useState("");
 
   const handleCancel = () => {
     if (data) setForm(data);
     update.reset();
+    setSpecializationError("");
     setEditing(false);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!endpoint) return;
+    if (columnsToSpecializations(form).length === 0) {
+      setSpecializationError("At least one specialization is required");
+      return;
+    }
+    setSpecializationError("");
     // company_id lives in the URL, not the body — never send an id back, invented or not.
     const body: Partial<Company> = { ...form };
     delete body.company_id;
@@ -199,9 +222,7 @@ function CompanySection() {
           <dl className="grid grid-cols-2 gap-4 sm:grid-cols-3">
             <ReadOnlyRow label="Contact Email" value={form.contact_email} />
             <ReadOnlyRow label="Contact Number" value={form.contact_number} />
-            <ReadOnlyRow label="Specialization 1" value={form.specialization_1} />
-            <ReadOnlyRow label="Specialization 2" value={form.specialization_2} />
-            <ReadOnlyRow label="Specialization 3" value={form.specialization_3} />
+            <ReadOnlyRow label="Specialization" value={formatSpecializations(columnsToSpecializations(form))} />
             <ReadOnlyRow label="Status" value={form.status} />
           </dl>
         </div>
@@ -241,28 +262,16 @@ function CompanySection() {
                 className={inputCls}
               />
             </Field>
-            <Field label="Specialization 1">
-              <input
-                required
-                value={form.specialization_1}
-                onChange={(e) => setForm({ ...form, specialization_1: e.target.value })}
-                className={inputCls}
+            <div className="sm:col-span-2">
+              <SpecializationSelect
+                selected={columnsToSpecializations(form)}
+                onChange={(next) => {
+                  setForm({ ...form, ...specializationsToColumns(next) });
+                  if (next.length > 0) setSpecializationError("");
+                }}
+                error={specializationError}
               />
-            </Field>
-            <Field label="Specialization 2">
-              <input
-                value={form.specialization_2 ?? ""}
-                onChange={(e) => setForm({ ...form, specialization_2: e.target.value })}
-                className={inputCls}
-              />
-            </Field>
-            <Field label="Specialization 3">
-              <input
-                value={form.specialization_3 ?? ""}
-                onChange={(e) => setForm({ ...form, specialization_3: e.target.value })}
-                className={inputCls}
-              />
-            </Field>
+            </div>
             <Field label="Status">
               <select
                 value={form.status}
@@ -410,17 +419,6 @@ function UserSection() {
               >
                 {USER_ROLES.map((r) => (
                   <option key={r}>{r}</option>
-                ))}
-              </select>
-            </Field>
-            <Field label="Status">
-              <select
-                value={form.status}
-                onChange={(e) => setForm({ ...form, status: e.target.value as Users["status"] })}
-                className={inputCls}
-              >
-                {STATUSES.map((s) => (
-                  <option key={s}>{s}</option>
                 ))}
               </select>
             </Field>
@@ -574,6 +572,139 @@ function PasswordSection() {
   );
 }
 
+const DEACTIVATE_COUNTDOWN_SECONDS = 5;
+// Read as "signed out N ms after the success message renders" — long enough to read the
+// confirmation, short enough not to feel stuck.
+const DEACTIVATE_SIGNOUT_DELAY_MS = 1800;
+
+function DeactivateAccountDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
+  const { logout } = useAuth();
+  const router = useRouter();
+  const deactivate = useMutation<unknown>();
+  const [countdown, setCountdown] = useState(DEACTIVATE_COUNTDOWN_SECONDS);
+  const [deactivated, setDeactivated] = useState(false);
+
+  // Countdown resets fresh every time the dialog opens — closing and reopening doesn't
+  // let a stale countdown carry a head start into a new confirmation. Adjusted during
+  // render (React's documented pattern for this) rather than as a setState call inside
+  // the effect body below.
+  const [syncedOpen, setSyncedOpen] = useState(open);
+  if (open !== syncedOpen) {
+    setSyncedOpen(open);
+    if (open) setCountdown(DEACTIVATE_COUNTDOWN_SECONDS);
+  }
+
+  useEffect(() => {
+    if (!open) return;
+    const id = setInterval(() => setCountdown((c) => Math.max(0, c - 1)), 1000);
+    return () => clearInterval(id);
+  }, [open]);
+
+  const handleOpenChange = (next: boolean) => {
+    if (deactivate.isLoading) return; // no closing mid-request
+    onOpenChange(next);
+    if (!next) {
+      deactivate.reset();
+      setDeactivated(false);
+    }
+  };
+
+  const handleConfirm = async () => {
+    try {
+      // See the "Assumed endpoints" comment at the top of this file — endpoint name,
+      // request shape, and which status column(s) it flips are all unconfirmed.
+      await deactivate.mutate("/api/account/deactivate", {}, "POST");
+      setDeactivated(true);
+    } catch {
+      // surfaced via deactivate.error below — no fabricated success
+    }
+  };
+
+  // On confirmed success, the account is paused server-side — staying on an
+  // authenticated page for it would be misleading, so this clears the local session and
+  // returns to login once the confirmation message has had a moment to be read.
+  useEffect(() => {
+    if (!deactivated) return;
+    const t = setTimeout(() => {
+      logout().finally(() => router.push("/login"));
+    }, DEACTIVATE_SIGNOUT_DELAY_MS);
+    return () => clearTimeout(t);
+  }, [deactivated, logout, router]);
+
+  return (
+    <Dialog open={open} onOpenChange={handleOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Deactivate your account?</DialogTitle>
+          <DialogDescription>
+            This pauses your account — nothing is deleted. Your account, projects,
+            pricelists, and company rules are paused too and stay exactly as they are.
+            You (or your team) can reactivate and pick up right where you left off,
+            whenever you&apos;re ready.
+          </DialogDescription>
+        </DialogHeader>
+
+        {deactivated ? (
+          <p className="text-sm text-green-700">
+            Your account has been deactivated. Signing you out…
+          </p>
+        ) : (
+          <>
+            {deactivate.error && (
+              <p className="flex items-start gap-1.5 text-xs text-red-600">
+                <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                Couldn&apos;t deactivate your account: {deactivate.error.message}
+              </p>
+            )}
+            <DialogFooter>
+              <button
+                type="button"
+                onClick={() => handleOpenChange(false)}
+                className={cancelBtnCls}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={countdown > 0 || deactivate.isLoading}
+                onClick={handleConfirm}
+                className="w-fit rounded-xl bg-red-600 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {deactivate.isLoading ? "Deactivating…" : countdown > 0 ? `Confirm (${countdown})` : "Confirm"}
+              </button>
+            </DialogFooter>
+          </>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// Deliberately separated from the Save/Cancel controls above (own section, muted-red
+// "danger zone" styling) so it can't be clicked by accident while editing a profile.
+function DeactivateAccountSection() {
+  const [dialogOpen, setDialogOpen] = useState(false);
+
+  return (
+    <section className="rounded-2xl border border-red-200 bg-red-50/50 p-6">
+      <p className="font-bold text-red-900">Danger Zone</p>
+      <p className="mt-1 text-sm text-red-700/80">
+        Pause your account when you&apos;re stepping away — it can always be reactivated
+        later.
+      </p>
+      <button
+        type="button"
+        onClick={() => setDialogOpen(true)}
+        className="mt-4 w-fit rounded-xl border border-red-300 bg-white px-4 py-2.5 text-sm font-bold text-red-600 transition hover:bg-red-100"
+      >
+        Deactivate Account
+      </button>
+
+      <DeactivateAccountDialog open={dialogOpen} onOpenChange={setDialogOpen} />
+    </section>
+  );
+}
+
 export default function AccountPage() {
   return (
     <RequireAuth>
@@ -581,6 +712,7 @@ export default function AccountPage() {
         <CompanySection />
         <UserSection />
         <PasswordSection />
+        <DeactivateAccountSection />
       </div>
     </RequireAuth>
   );

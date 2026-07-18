@@ -63,6 +63,9 @@ export function resolveMockFetch(endpoint: string): unknown {
   if (pathname.startsWith("/api/company/")) return companyFixture;
   if (pathname === "/api/uploads/company-logo") return { url: companyFixture.company_logo };
   if (pathname === "/api/quotations") return quotationsFixture;
+  // Shape unconfirmed (see app/(app)/account/page.tsx's "Assumed endpoints" comment) —
+  // just enough for the deactivate dialog's success state to render in mock mode.
+  if (pathname === "/api/account/deactivate") return { status: "Inactive" };
 
   if (pathname === "/api/pricelist/upload") {
     return {
