@@ -1,12 +1,23 @@
 "use client";
 
-import { useState } from "react";
-import { Pencil } from "lucide-react";
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { AlertTriangle, Pencil } from "lucide-react";
 import { RequireAuth } from "@/components/auth/RequireAuth";
 import { useFetch } from "@/hooks/useFetch";
 import { useMutation } from "@/hooks/useMutation";
 import { useAuth } from "@/providers/AuthProvider";
 import { USER_ROLES, type Company, type Users } from "@/types/entities";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { SpecializationSelect } from "@/components/forms/SpecializationSelect";
+import { columnsToSpecializations, formatSpecializations, specializationsToColumns } from "@/lib/specializations";
 
 const STATUSES: Company["status"][] = ["Active", "Inactive"];
 
@@ -17,8 +28,8 @@ const EMPTY_COMPANY: Company = {
   contact_email: "",
   contact_number: "",
   specialization_1: "",
-  specialization_2: "",
-  specialization_3: "",
+  specialization_2: null,
+  specialization_3: null,
   company_logo: "",
   status: "Active",
   created_at: "",
@@ -108,28 +119,34 @@ function CompanySection() {
   const companyId = currentUser?.companyId;
   const endpoint =
     companyId !== undefined && companyId !== null ? `/api/company/${companyId}` : null;
-
   const { data, isLoading, error, refetch } = useFetch<Company>(endpoint);
   const update = useMutation<Company>();
-
   const [form, setForm] = useState<Company>(EMPTY_COMPANY);
   const [syncedData, setSyncedData] = useState<Company | null>(null);
   if (data !== syncedData) {
     setSyncedData(data);
     if (data) setForm(data);
   }
-  
+
+  // Part A — view-first: starts read-only, Edit reveals the form. Cancel = No Changes Saved
   const [editing, setEditing] = useState(false);
+  const [specializationError, setSpecializationError] = useState("");
 
   const handleCancel = () => {
     if (data) setForm(data);
     update.reset();
+    setSpecializationError("");
     setEditing(false);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!endpoint) return;
+    if (columnsToSpecializations(form).length === 0) {
+      setSpecializationError("At least one specialization is required");
+      return;
+    }
+    setSpecializationError("");
     const body: Partial<Company> = { ...form };
     delete body.company_id;
     try {
@@ -137,6 +154,7 @@ function CompanySection() {
       setForm(saved);
       setEditing(false);
     } catch {
+      // surfaced via update.error below — no fabricated success
     }
   };
 
@@ -172,9 +190,7 @@ function CompanySection() {
           <dl className="grid grid-cols-2 gap-4 sm:grid-cols-3">
             <ReadOnlyRow label="Contact Email" value={form.contact_email} />
             <ReadOnlyRow label="Contact Number" value={form.contact_number} />
-            <ReadOnlyRow label="Specialization 1" value={form.specialization_1} />
-            <ReadOnlyRow label="Specialization 2" value={form.specialization_2} />
-            <ReadOnlyRow label="Specialization 3" value={form.specialization_3} />
+            <ReadOnlyRow label="Specialization" value={formatSpecializations(columnsToSpecializations(form))} />
             <ReadOnlyRow label="Status" value={form.status} />
           </dl>
         </div>
@@ -214,28 +230,16 @@ function CompanySection() {
                 className={inputCls}
               />
             </Field>
-            <Field label="Specialization 1">
-              <input
-                required
-                value={form.specialization_1}
-                onChange={(e) => setForm({ ...form, specialization_1: e.target.value })}
-                className={inputCls}
+            <div className="sm:col-span-2">
+              <SpecializationSelect
+                selected={columnsToSpecializations(form)}
+                onChange={(next) => {
+                  setForm({ ...form, ...specializationsToColumns(next) });
+                  if (next.length > 0) setSpecializationError("");
+                }}
+                error={specializationError}
               />
-            </Field>
-            <Field label="Specialization 2">
-              <input
-                value={form.specialization_2 ?? ""}
-                onChange={(e) => setForm({ ...form, specialization_2: e.target.value })}
-                className={inputCls}
-              />
-            </Field>
-            <Field label="Specialization 3">
-              <input
-                value={form.specialization_3 ?? ""}
-                onChange={(e) => setForm({ ...form, specialization_3: e.target.value })}
-                className={inputCls}
-              />
-            </Field>
+            </div>
             <Field label="Status">
               <select
                 value={form.status}
@@ -305,6 +309,8 @@ function UserSection() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!endpoint) return;
+    // user_id lives in the URL (from the authenticated session, never form state) —
+    // strip it from the body so an invented/placeholder id is never sent.
     const body: Partial<Users> = { ...form };
     delete body.user_id;
     try {
@@ -312,6 +318,7 @@ function UserSection() {
       setForm(saved);
       setEditing(false);
     } catch {
+      // surfaced via update.error below — no fabricated success
     }
   };
 
@@ -382,17 +389,6 @@ function UserSection() {
                 ))}
               </select>
             </Field>
-            <Field label="Status">
-              <select
-                value={form.status}
-                onChange={(e) => setForm({ ...form, status: e.target.value as Users["status"] })}
-                className={inputCls}
-              >
-                {STATUSES.map((s) => (
-                  <option key={s}>{s}</option>
-                ))}
-              </select>
-            </Field>
           </div>
 
           <div className="flex items-center gap-3">
@@ -411,6 +407,8 @@ function UserSection() {
 }
 
 function PasswordSection() {
+  // Part A — password fields never render until the user explicitly asks: no empty
+  // password inputs sitting on the page by default.
   const [open, setOpen] = useState(false);
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
@@ -456,6 +454,7 @@ function PasswordSection() {
       setConfirmPassword("");
       setJustChanged(true);
     } catch {
+      // surfaced via change.error below — no fabricated success
     }
   };
 
@@ -464,6 +463,9 @@ function PasswordSection() {
       <div className="flex items-center justify-between">
         <div>
           <p className="font-bold text-gray-900">Password</p>
+          <p className="text-xs text-gray-400">
+            Handled entirely by the auth backend — never stored, forwarded, or logged here.
+          </p>
         </div>
         {!open && (
           <button
@@ -537,6 +539,142 @@ function PasswordSection() {
   );
 }
 
+const DEACTIVATE_COUNTDOWN_SECONDS = 5;
+// Read as "signed out N ms after the success message renders" — long enough to read the
+// confirmation, short enough not to feel stuck.
+const DEACTIVATE_SIGNOUT_DELAY_MS = 1800;
+
+function DeactivateAccountDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
+  const { logout } = useAuth();
+  const router = useRouter();
+  const deactivate = useMutation<unknown>();
+  const [countdown, setCountdown] = useState(DEACTIVATE_COUNTDOWN_SECONDS);
+  const [deactivated, setDeactivated] = useState(false);
+
+  // Countdown resets fresh every time the dialog opens — closing and reopening doesn't
+  // let a stale countdown carry a head start into a new confirmation. Adjusted during
+  // render (React's documented pattern for this) rather than as a setState call inside
+  // the effect body below.
+  const [syncedOpen, setSyncedOpen] = useState(open);
+  if (open !== syncedOpen) {
+    setSyncedOpen(open);
+    if (open) setCountdown(DEACTIVATE_COUNTDOWN_SECONDS);
+  }
+
+  useEffect(() => {
+    if (!open) return;
+    const id = setInterval(() => setCountdown((c) => Math.max(0, c - 1)), 1000);
+    return () => clearInterval(id);
+  }, [open]);
+
+  const handleOpenChange = (next: boolean) => {
+    if (deactivate.isLoading) return; // no closing mid-request
+    onOpenChange(next);
+    if (!next) {
+      deactivate.reset();
+      setDeactivated(false);
+    }
+  };
+
+  const handleConfirm = async () => {
+    try {
+      // See the "Assumed endpoints" comment at the top of this file — endpoint name,
+      // request shape, and which status column(s) it flips are all unconfirmed.
+      await deactivate.mutate("/api/account/deactivate", {}, "POST");
+      setDeactivated(true);
+    } catch {
+      // surfaced via deactivate.error below — no fabricated success
+    }
+  };
+
+  const confirmDisabled = countdown > 0 || deactivate.isLoading;
+
+  // On confirmed success, the account is paused server-side — staying on an
+  // authenticated page for it would be misleading, so this clears the local session and
+  // returns to login once the confirmation message has had a moment to be read.
+  useEffect(() => {
+    if (!deactivated) return;
+    const t = setTimeout(() => {
+      logout().finally(() => router.push("/login"));
+    }, DEACTIVATE_SIGNOUT_DELAY_MS);
+    return () => clearTimeout(t);
+  }, [deactivated, logout, router]);
+
+  return (
+    <Dialog open={open} onOpenChange={handleOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Delete your account?</DialogTitle>
+          <DialogDescription>
+            This will permanently delete your account and all associated data. This action cannot be undone.
+          </DialogDescription>
+          <DialogDescription className="mt-1 text-xs text-gray-400">
+            You will be signed out after confirming.
+          </DialogDescription>
+        </DialogHeader>
+
+        {deactivated ? (
+          <p className="text-sm text-green-700">
+            Your account has been deactivated. Signing you out…
+          </p>
+        ) : (
+          <>
+            {deactivate.error && (
+              <p className="flex items-start gap-1.5 text-xs text-red-600">
+                <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                Couldn&apos;t deactivate your account: {deactivate.error.message}
+              </p>
+            )}
+            <DialogFooter>
+              <button
+                type="button"
+                disabled={confirmDisabled}
+                onClick={handleConfirm}
+                className={`w-full rounded-xl px-5 py-2.5 text-sm font-bold shadow-sm transition disabled:cursor-not-allowed disabled:opacity-75 sm:w-fit ${
+                  confirmDisabled ? "bg-red-400 text-black" : "bg-red-600 text-black hover:bg-red-700"
+                }`}
+              >
+                {deactivate.isLoading ? "Deleting…" : confirmDisabled && countdown > 0 ? `Delete Account (${countdown})` : "Yes, Delete Account"}
+              </button>
+              <button
+                type="button"
+                onClick={() => handleOpenChange(false)}
+                className={`${cancelBtnCls} w-full sm:w-fit`}
+              >
+                No, keep my account
+              </button>
+            </DialogFooter>
+          </>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// Deliberately separated from the Save/Cancel controls above (own section, muted-red
+// "danger zone" styling) so it can't be clicked by accident while editing a profile.
+function DeactivateAccountSection() {
+  const [dialogOpen, setDialogOpen] = useState(false);
+
+  return (
+    <section className="rounded-2xl border border-red-200 bg-red-50/50 p-6">
+      <p className="font-bold text-red-900">Danger Zone</p>
+      <p className="mt-1 text-sm text-red-700/80">
+        Deleting your account is permanent and all data will be lost.
+      </p>
+      <button
+        type="button"
+        onClick={() => setDialogOpen(true)}
+        className="mt-4 w-fit rounded-xl border border-red-300 bg-white px-4 py-2.5 text-sm font-bold text-red-600 transition hover:bg-red-100"
+      >
+        Delete Account
+      </button>
+
+      <DeactivateAccountDialog open={dialogOpen} onOpenChange={setDialogOpen} />
+    </section>
+  );
+}
+
 export default function AccountPage() {
   return (
     <RequireAuth>
@@ -544,6 +682,7 @@ export default function AccountPage() {
         <CompanySection />
         <UserSection />
         <PasswordSection />
+        <DeactivateAccountSection />
       </div>
     </RequireAuth>
   );

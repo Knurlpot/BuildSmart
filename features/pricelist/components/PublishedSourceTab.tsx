@@ -23,7 +23,7 @@ import {
   type FlaggedPriceDeviation,
   type PsaIndexEntry,
 } from "@/hooks/usePricelistPublishedSource";
-import { REGIONS } from "@/lib/regions";
+import { ALL_REGIONS } from "@/lib/regions";
 
 function fmt(n: number) {
   return "₱" + n.toLocaleString("en-PH", { minimumFractionDigits: 2 });
@@ -112,9 +112,6 @@ export function PublishedSourceTab({ onViewCatalog }: { onViewCatalog?: () => vo
     catalogLoad();
   }, [catalogLoad]);
 
-  // Prune selection down to ids still present in `flagged` during render (rows resolved
-  // individually, or replaced by a fresh fetch, drop out of the set automatically) —
-  // adjusting derived state during render rather than syncing via an effect.
   const flaggedKeys = useMemo(() => new Set(flagged.map(deviationKey)), [flagged]);
   const validSelectedIds = useMemo(
     () => new Set([...selectedIds].filter((id) => flaggedKeys.has(id))),
@@ -159,7 +156,6 @@ export function PublishedSourceTab({ onViewCatalog }: { onViewCatalog?: () => vo
         revealCatalog();
       } catch {
         // surfaced via resolveError below — no fabricated success
-      }
     },
     [resolve, revealCatalog]
   );
@@ -299,9 +295,12 @@ export function PublishedSourceTab({ onViewCatalog }: { onViewCatalog?: () => vo
               <select
                 value={region}
                 onChange={(e) => setRegion(e.target.value)}
-                className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm outline-none focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/20"
+                className="max-h-60 overflow-y-auto rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm outline-none focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/20"
               >
-                {REGIONS.filter((r) => r !== "All").map((r) => (
+                {/* DPWH-CMPD publishes for every region — the full 18-value set (not the
+                    short analytics filter list), so the dropdown never silently excludes
+                    one the user actually needs to fetch. */}
+                {ALL_REGIONS.map((r) => (
                   <option key={r}>{r}</option>
                 ))}
               </select>

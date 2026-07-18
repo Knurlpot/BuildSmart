@@ -3,12 +3,14 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import {Check, ChevronDown, ChevronRight, Eye, EyeOff, Link as LinkIcon, Plus, Upload, X} from "lucide-react";
+import { Check, ChevronRight, Eye, EyeOff, Upload, X } from "lucide-react";
 import { AuthBrandPanel } from "@/components/auth/AuthBrandPanel";
 import { TermsModal } from "@/components/auth/TermsModal";
+import { SpecializationSelect } from "@/components/forms/SpecializationSelect";
 import { useAuth } from "@/providers/AuthProvider";
 import { useMutation } from "@/hooks/useMutation";
 import { resolveOnboardingRoute } from "@/lib/onboarding";
+import { specializationsToColumns } from "@/lib/specializations";
 import { USER_ROLES, type Users } from "@/types/entities";
 
 const MAX = {
@@ -18,7 +20,6 @@ const MAX = {
   companyName: 75,
   companyAddress: 255,
   companyContactEmail: 100,
-  specialization: 50,
   companyLogo: 255,
   email: 100,
 } as const;
@@ -40,12 +41,8 @@ interface FormData {
   companyName: string;
   companyAddress: string;
   companyContactEmail: string;
-  // PH mobile national number, digits only (no "+63", no spaces, max 10) — see
-  // formatPhNationalNumber/formatPhDisplayNumber below for how this is rendered/submitted.
   companyContactNumber: string;
-  specialization1: string;
-  specialization2: string;
-  specialization3: string;
+  specializations: string[];
   companyLogo: string;
 }
 
@@ -61,9 +58,7 @@ const INIT: FormData = {
   companyAddress: "",
   companyContactEmail: "",
   companyContactNumber: "",
-  specialization1: "",
-  specialization2: "",
-  specialization3: "",
+  specializations: [],
   companyLogo: "",
 };
 
@@ -73,9 +68,6 @@ function isValidEmail(v: string) {
 
 const PH_NATIONAL_NUMBER_LENGTH = 10;
 
-// Strips everything but digits, then unwraps a redundant country code or trunk-prefix 0
-// if present — lets a pasted "+63 917 123 4567" or "0917 123 4567" still land on the
-// right 10-digit national number instead of getting truncated from the wrong end.
 function normalizePhDigits(raw: string): string {
   let d = raw.replace(/\D/g, "");
   if (d.startsWith("63") && d.length > PH_NATIONAL_NUMBER_LENGTH) d = d.slice(2);
@@ -84,7 +76,6 @@ function normalizePhDigits(raw: string): string {
 }
 
 // "9171234567" -> "917 123 4567". Grouping is capped at 10 digits by normalizePhDigits
-// before this ever runs, so the 3-3-4 spacing can never overflow/collapse.
 function formatPhNationalNumber(digits: string): string {
   return [digits.slice(0, 3), digits.slice(3, 6), digits.slice(6, 10)].filter(Boolean).join(" ");
 }
@@ -95,10 +86,7 @@ function formatPhDisplayNumber(digits: string): string {
   return national ? `+63 ${national}` : "";
 }
 
-// 14 checks (13 fields + terms acceptance) map onto the 14 logo frames (0-13).
-// Scaled rather than counted 1:1, so the cube only reaches the fully-filled
-// frame once every check — including agreeing to the Terms — is true.
-const TOTAL_FIELD_CHECKS = 14;
+const TOTAL_FIELD_CHECKS = 12;
 
 function countValidFields(d: FormData, termsAccepted: boolean): number {
   const checks = [
@@ -111,9 +99,7 @@ function countValidFields(d: FormData, termsAccepted: boolean): number {
     d.companyAddress.trim().length > 0,
     isValidEmail(d.companyContactEmail),
     d.companyContactNumber.length === PH_NATIONAL_NUMBER_LENGTH,
-    d.specialization1.trim().length > 0,
-    d.specialization2.trim().length > 0,
-    d.specialization3.trim().length > 0,
+    d.specializations.length > 0,
     d.companyLogo.trim().length > 0,
     termsAccepted,
   ];
@@ -178,16 +164,6 @@ export default function SignUpPage() {
   const [apiError, setApiError] = useState("");
   const [termsAccepted, setTermsAccepted] = useState(false);
   const [termsModalOpen, setTermsModalOpen] = useState(false);
-  // Progressive disclosure for the optional specialization_2/3 columns — schema has exactly
-  // three slots, specialization_1 required, 2 and 3 nullable. Only the LAST visible optional
-  // field is ever removable: removal always happens from the tail, so a gap (e.g. clearing
-  // specialization_2 while specialization_3 still holds a value) can never occur — simpler
-  // than shifting values up, and just as correct.
-  const [specializationCount, setSpecializationCount] = useState<1 | 2 | 3>(1);
-
-  // The contact-number input is fully reformatted (spaces inserted/removed) on every
-  // keystroke, which resets the browser's cursor unless we put it back ourselves —
-  // otherwise editing anywhere but the very end scrambles the digit order.
   const phoneInputRef = useRef<HTMLInputElement>(null);
   const pendingPhoneCursorRef = useRef<number | null>(null);
   useLayoutEffect(() => {
@@ -197,14 +173,6 @@ export default function SignUpPage() {
     }
   });
 
-  // Assumed endpoint — UNVERIFIED, confirm with the backend team:
-  //   POST /api/uploads/company-logo (multipart FormData, one `file` entry)
-  //     -> { url: string }
-  // No company row exists yet at this point in the flow (signup creates it), so this can't
-  // be scoped under /api/company/:id/logo — it has to be a standalone upload that hands back
-  // a public URL, which then just rides along as company.company_logo on the register call.
-  // Actually talking to Supabase Storage (or whatever storage backs this) is backend-owned —
-  // this hook only posts the file and renders whatever URL comes back.
   type LogoStep = "idle" | "menu" | "upload" | "url";
   const [logoStep, setLogoStep] = useState<LogoStep>("idle");
   const [logoFileName, setLogoFileName] = useState("");
@@ -235,8 +203,7 @@ export default function SignUpPage() {
       set("companyLogo", url);
       setLogoStep("idle");
     } catch {
-      // Wizard stays open with logoUpload.error shown so the user can retry —
-      // no fabricated success.
+      // No fabricated success
     }
   };
 
@@ -316,18 +283,6 @@ export default function SignUpPage() {
     set("companyContactNumber", digits);
   };
 
-  const addSpecialization = () => setSpecializationCount((c) => (c < 3 ? ((c + 1) as 1 | 2 | 3) : c));
-
-  const removeLastSpecialization = () => {
-    if (specializationCount === 3) {
-      set("specialization3", "");
-      setSpecializationCount(2);
-    } else if (specializationCount === 2) {
-      set("specialization2", "");
-      setSpecializationCount(1);
-    }
-  };
-
   const validateStep1 = () => {
     const e: Record<string, string> = {};
     if (!form.firstName.trim()) e.firstName = "First name is required";
@@ -350,7 +305,7 @@ export default function SignUpPage() {
         form.companyContactNumber.length === 0
           ? "Contact number is required"
           : `Enter a complete ${PH_NATIONAL_NUMBER_LENGTH}-digit number`;
-    if (!form.specialization1.trim()) e.specialization1 = "At least one specialization is required";
+    if (form.specializations.length === 0) e.specializations = "At least one specialization is required";
     if (!termsAccepted) e.terms = "You must agree to the Terms and Conditions to continue";
     setErrors(e);
     return Object.keys(e).length === 0;
@@ -378,11 +333,7 @@ export default function SignUpPage() {
           company_address: form.companyAddress,
           contact_email: form.companyContactEmail,
           contact_number: formatPhDisplayNumber(form.companyContactNumber),
-          specialization_1: form.specialization1,
-          // Keyed off specializationCount, not just the raw form value: a hidden field is
-          // guaranteed undefined regardless of any stray state, never an empty string.
-          specialization_2: specializationCount >= 2 ? form.specialization2 || undefined : undefined,
-          specialization_3: specializationCount >= 3 ? form.specialization3 || undefined : undefined,
+          ...specializationsToColumns(form.specializations),
           company_logo: form.companyLogo || undefined,
         },
       });
@@ -721,102 +672,11 @@ export default function SignUpPage() {
                   </p>
                 </div>
 
-                {/* One field that visually divides as more are added — all three end up
-                    equal-width in a single row, rather than 1 living apart from 2/3. */}
-                <div
-                  className={`grid grid-cols-1 gap-4 ${
-                    specializationCount === 2 ? "sm:grid-cols-2" : specializationCount === 3 ? "sm:grid-cols-3" : ""
-                  }`}
-                >
-                  <div className="flex flex-col gap-1.5">
-                    <div className="flex items-center justify-between gap-2">
-                      <label className="text-xs font-semibold uppercase tracking-wide text-gray-600">
-                        Specialization 1 *
-                      </label>
-                      {specializationCount === 1 && (
-                        <button
-                          type="button"
-                          onClick={addSpecialization}
-                          className="flex items-center gap-1.5 rounded-full border-2 border-primary bg-orange-50/60 px-3 py-1 text-xs font-bold text-primary transition hover:bg-primary hover:text-primary-foreground"
-                        >
-                          <Plus className="h-3.5 w-3.5" /> Add Specialization
-                        </button>
-                      )}
-                    </div>
-                    <input
-                      value={form.specialization1}
-                      onChange={(e) => set("specialization1", e.target.value)}
-                      maxLength={MAX.specialization}
-                      placeholder="e.g. Waterproofing Systems"
-                      className={inputCls("specialization1")}
-                    />
-                    {errors.specialization1 && <p className="text-xs text-red-500">{errors.specialization1}</p>}
-                  </div>
-
-                  {specializationCount >= 2 && (
-                    <div className="flex flex-col gap-1.5">
-                      <div className="flex items-center justify-between gap-2">
-                        <label className="whitespace-nowrap text-xs font-semibold uppercase tracking-wide text-gray-600">
-                          Specialization 2 <span className="font-normal normal-case text-gray-400">(optional)</span>
-                        </label>
-                        {specializationCount === 2 && (
-                          <div className="flex items-center gap-2">
-                            <button
-                              type="button"
-                              onClick={addSpecialization}
-                              title="Add specialization 3"
-                              className="text-primary hover:text-(--primary-hover)"
-                            >
-                              <Plus className="h-3.5 w-3.5" />
-                            </button>
-                            <button
-                              type="button"
-                              onClick={removeLastSpecialization}
-                              title="Remove specialization 2"
-                              className="text-gray-300 hover:text-red-500"
-                            >
-                              <X className="h-3.5 w-3.5" />
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                      <input
-                        value={form.specialization2}
-                        onChange={(e) => set("specialization2", e.target.value)}
-                        maxLength={MAX.specialization}
-                        placeholder="Optional"
-                        className={inputCls("specialization2")}
-                        autoFocus
-                      />
-                    </div>
-                  )}
-
-                  {specializationCount === 3 && (
-                    <div className="flex flex-col gap-1.5">
-                      <div className="flex items-center justify-between gap-2">
-                        <label className="whitespace-nowrap text-xs font-semibold uppercase tracking-wide text-gray-600">
-                          Specialization 3 <span className="font-normal normal-case text-gray-400">(optional)</span>
-                        </label>
-                        <button
-                          type="button"
-                          onClick={removeLastSpecialization}
-                          title="Remove specialization 3"
-                          className="text-gray-300 hover:text-red-500"
-                        >
-                          <X className="h-3.5 w-3.5" />
-                        </button>
-                      </div>
-                      <input
-                        value={form.specialization3}
-                        onChange={(e) => set("specialization3", e.target.value)}
-                        maxLength={MAX.specialization}
-                        placeholder="Optional"
-                        className={inputCls("specialization3")}
-                        autoFocus
-                      />
-                    </div>
-                  )}
-                </div>
+                <SpecializationSelect
+                  selected={form.specializations}
+                  onChange={(next) => set("specializations", next)}
+                  error={errors.specializations}
+                />
 
                 <div ref={logoFieldRef} className="flex flex-col gap-1.5">
                   <label className="text-xs font-semibold uppercase tracking-wide text-gray-600">
@@ -834,155 +694,47 @@ export default function SignUpPage() {
                       <span className="flex-1 truncate text-sm text-gray-700">
                         {logoFileName || form.companyLogo}
                       </span>
-                      <button
-                        type="button"
-                        onClick={removeLogo}
-                        title="Remove logo"
-                        className="shrink-0 text-gray-400 transition hover:text-red-500"
-                      >
-                        <X className="h-4 w-4" />
-                      </button>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => logoInputRef.current?.click()}
+                          className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm font-semibold text-gray-700 transition hover:bg-gray-100"
+                        >
+                          {logoUpload.isLoading ? "Uploading..." : "Upload Company Logo"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={removeLogo}
+                          title="Remove logo"
+                          className="shrink-0 text-gray-400 transition hover:text-red-500"
+                        >
+                          <X className="h-4 w-4" />
+                        </button>
+                      </div>
                     </div>
                   ) : (
-                    <>
+                    <div className="flex flex-col gap-2">
                       <button
                         type="button"
-                        onClick={() => setLogoStep((s) => (s === "idle" ? "menu" : "idle"))}
-                        className={`flex w-full items-center justify-between rounded-xl border px-4 py-2.5 text-sm transition ${
-                          logoStep !== "idle"
-                            ? "border-primary bg-white ring-2 ring-primary/20"
-                            : "border-gray-200 bg-gray-50 hover:bg-gray-100"
-                        }`}
+                        onClick={() => logoInputRef.current?.click()}
+                        className="flex w-full items-center justify-center gap-2 rounded-xl border border-gray-200 bg-gray-50 px-4 py-2.5 text-sm font-semibold text-gray-700 transition hover:bg-gray-100"
                       >
-                        <span className="font-semibold text-gray-700">Add Company Logo</span>
-                        <ChevronDown
-                          className={`h-4 w-4 text-gray-400 transition-transform ${
-                            logoStep !== "idle" ? "rotate-180" : ""
-                          }`}
-                        />
+                        <Upload className="h-4 w-4" />
+                        Upload Company Logo
                       </button>
-
-                      {logoStep === "menu" && (
-                        <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
-                          <button
-                            type="button"
-                            onClick={() => setLogoStep("upload")}
-                            className="flex w-full items-center gap-3 px-4 py-3 text-left transition hover:bg-gray-50"
-                          >
-                            <Upload className="h-4 w-4 shrink-0 text-gray-400" />
-                            <span>
-                              <span className="block text-sm font-semibold text-gray-800">
-                                Upload Company Logo
-                              </span>
-                              <span className="block text-xs text-gray-400">
-                                Drag &amp; drop or browse your computer
-                              </span>
-                            </span>
-                          </button>
-                          <div className="border-t border-gray-100" />
-                          <button
-                            type="button"
-                            onClick={() => setLogoStep("url")}
-                            className="flex w-full items-center gap-3 px-4 py-3 text-left transition hover:bg-gray-50"
-                          >
-                            <LinkIcon className="h-4 w-4 shrink-0 text-gray-400" />
-                            <span>
-                              <span className="block text-sm font-semibold text-gray-800">
-                                Paste Image URL
-                              </span>
-                              <span className="block text-xs text-gray-400">
-                                Link to an image already hosted online
-                              </span>
-                            </span>
-                          </button>
-                        </div>
+                      <input
+                        ref={logoInputRef}
+                        type="file"
+                        accept="image/*"
+                        onChange={handleLogoFileChange}
+                        className="hidden"
+                      />
+                      {logoUpload.error && (
+                        <p className="text-xs text-red-500">
+                          Couldn&apos;t upload logo: {logoUpload.error.message}
+                        </p>
                       )}
-
-                      {logoStep === "upload" && (
-                        <div className="flex flex-col gap-1.5">
-                          <div
-                            onClick={() => logoInputRef.current?.click()}
-                            onDragOver={(e) => {
-                              e.preventDefault();
-                              setLogoDragOver(true);
-                            }}
-                            onDragLeave={() => setLogoDragOver(false)}
-                            onDrop={handleLogoDrop}
-                            className={`flex cursor-pointer flex-col items-center gap-2 rounded-xl border-2 border-dashed px-4 py-8 text-center transition ${
-                              logoDragOver ? "border-primary bg-orange-50/60" : "border-gray-200 bg-gray-50"
-                            }`}
-                          >
-                            {logoUpload.isLoading ? (
-                              <>
-                                <span className="h-5 w-5 animate-spin rounded-full border-2 border-gray-300 border-t-primary" />
-                                <p className="text-xs text-gray-500">Uploading…</p>
-                              </>
-                            ) : (
-                              <>
-                                <Upload className="h-6 w-6 text-gray-400" />
-                                <p className="text-sm font-semibold text-gray-700">
-                                  Drag &amp; drop your logo here
-                                </p>
-                                <p className="text-xs text-gray-400">or click to browse your computer</p>
-                              </>
-                            )}
-                          </div>
-                          <input
-                            ref={logoInputRef}
-                            type="file"
-                            accept="image/*"
-                            onChange={handleLogoFileChange}
-                            className="hidden"
-                          />
-                          {logoUpload.error && (
-                            <p className="text-xs text-red-500">
-                              Couldn&apos;t upload logo: {logoUpload.error.message}
-                            </p>
-                          )}
-                          <button
-                            type="button"
-                            onClick={() => setLogoStep("idle")}
-                            className="self-start text-xs font-semibold text-gray-400 transition hover:text-gray-600"
-                          >
-                            ← Back
-                          </button>
-                        </div>
-                      )}
-
-                      {logoStep === "url" && (
-                        <div className="flex flex-col gap-1.5">
-                          <div className="flex gap-2">
-                            <input
-                              type="url"
-                              value={logoUrlDraft}
-                              onChange={(e) => setLogoUrlDraft(e.target.value)}
-                              maxLength={MAX.companyLogo}
-                              placeholder="https://…"
-                              className={inputCls("companyLogo")}
-                              autoFocus
-                            />
-                            <button
-                              type="button"
-                              disabled={!logoUrlDraft.trim()}
-                              onClick={confirmLogoUrl}
-                              className="shrink-0 rounded-xl bg-primary px-4 py-2.5 text-sm font-bold text-primary-foreground transition hover:bg-(--primary-hover) disabled:opacity-50"
-                            >
-                              Use This URL
-                            </button>
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setLogoStep("idle");
-                              setLogoUrlDraft("");
-                            }}
-                            className="self-start text-xs font-semibold text-gray-400 transition hover:text-gray-600"
-                          >
-                            ← Back
-                          </button>
-                        </div>
-                      )}
-                    </>
+                    </div>
                   )}
                 </div>
 
@@ -1042,7 +794,7 @@ export default function SignUpPage() {
           <p className="mt-6 text-center text-sm text-gray-500">
             Already have an account?{" "}
             <Link href="/login" className="font-semibold text-primary hover:underline">
-              Log in →
+              Sign in →
             </Link>
           </p>
         </div>

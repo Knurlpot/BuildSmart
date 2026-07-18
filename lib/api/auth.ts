@@ -1,4 +1,5 @@
 import { apiClient } from "./client";
+import type { Users } from "@/types/entities";
 
 export interface AuthUser {
   id: unknown;
@@ -8,21 +9,21 @@ export interface AuthUser {
 }
 
 export interface RegisterPayload {
+  // users
   first_name: string;
   last_name: string;
   middle_name?: string;
-  email: string;
+  email: string; 
   password: string;
-  user_role?: string;
-  role?: string;
+  user_role: Users['user_role'];
+  // company
   company: {
     company_name: string;
     company_address: string;
-    contact_email: string;
-    contact_number: string;
+    contact_email: string; 
     specialization_1: string;
-    specialization_2?: string;
-    specialization_3?: string;
+    specialization_2: string | null;
+    specialization_3: string | null;
     company_logo?: string;
   };
 }
