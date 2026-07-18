@@ -10,15 +10,16 @@ import {
   Eye,
   EyeOff,
   Link as LinkIcon,
-  Plus,
   Upload,
   X,
 } from "lucide-react";
 import { AuthBrandPanel } from "@/components/auth/AuthBrandPanel";
 import { TermsModal } from "@/components/auth/TermsModal";
+import { SpecializationSelect } from "@/components/forms/SpecializationSelect";
 import { useAuth } from "@/providers/AuthProvider";
 import { useMutation } from "@/hooks/useMutation";
 import { resolveOnboardingRoute } from "@/lib/onboarding";
+import { specializationsToColumns } from "@/lib/specializations";
 import { USER_ROLES, type Users } from "@/types/entities";
 
 // Schema v3 VARCHAR lengths — enforced as maxLength on the matching inputs below.
@@ -29,7 +30,6 @@ const MAX = {
   companyName: 75,
   companyAddress: 255,
   companyContactEmail: 100,
-  specialization: 50,
   companyLogo: 255,
   email: 100,
 } as const;
@@ -54,9 +54,9 @@ interface FormData {
   // PH mobile national number, digits only (no "+63", no spaces, max 10) — see
   // formatPhNationalNumber/formatPhDisplayNumber below for how this is rendered/submitted.
   companyContactNumber: string;
-  specialization1: string;
-  specialization2: string;
-  specialization3: string;
+  // Selection order is meaningful (index 0 -> specialization_1, ...) — see
+  // lib/specializations.ts's specializationsToColumns, used at submit time below.
+  specializations: string[];
   companyLogo: string;
 }
 
@@ -72,9 +72,7 @@ const INIT: FormData = {
   companyAddress: "",
   companyContactEmail: "",
   companyContactNumber: "",
-  specialization1: "",
-  specialization2: "",
-  specialization3: "",
+  specializations: [],
   companyLogo: "",
 };
 
@@ -106,10 +104,12 @@ function formatPhDisplayNumber(digits: string): string {
   return national ? `+63 ${national}` : "";
 }
 
-// 14 checks (13 fields + terms acceptance) map onto the 14 logo frames (0-13).
-// Scaled rather than counted 1:1, so the cube only reaches the fully-filled
-// frame once every check — including agreeing to the Terms — is true.
-const TOTAL_FIELD_CHECKS = 14;
+// 12 checks (11 fields + terms acceptance) map onto the 13 logo frames (0-13). Scaled
+// rather than counted 1:1, so the cube only reaches the fully-filled frame once every
+// check — including agreeing to the Terms — is true. Specialization collapsed from 3
+// separate checks (one per text field) to 1 (the multi-select has at least one pick),
+// since it's now a single control, not three.
+const TOTAL_FIELD_CHECKS = 12;
 
 function countValidFields(d: FormData, termsAccepted: boolean): number {
   const checks = [
@@ -122,9 +122,7 @@ function countValidFields(d: FormData, termsAccepted: boolean): number {
     d.companyAddress.trim().length > 0,
     isValidEmail(d.companyContactEmail),
     d.companyContactNumber.length === PH_NATIONAL_NUMBER_LENGTH,
-    d.specialization1.trim().length > 0,
-    d.specialization2.trim().length > 0,
-    d.specialization3.trim().length > 0,
+    d.specializations.length > 0,
     d.companyLogo.trim().length > 0,
     termsAccepted,
   ];
@@ -189,12 +187,6 @@ export default function SignUpPage() {
   const [apiError, setApiError] = useState("");
   const [termsAccepted, setTermsAccepted] = useState(false);
   const [termsModalOpen, setTermsModalOpen] = useState(false);
-  // Progressive disclosure for the optional specialization_2/3 columns — schema has exactly
-  // three slots, specialization_1 required, 2 and 3 nullable. Only the LAST visible optional
-  // field is ever removable: removal always happens from the tail, so a gap (e.g. clearing
-  // specialization_2 while specialization_3 still holds a value) can never occur — simpler
-  // than shifting values up, and just as correct.
-  const [specializationCount, setSpecializationCount] = useState<1 | 2 | 3>(1);
 
   // The contact-number input is fully reformatted (spaces inserted/removed) on every
   // keystroke, which resets the browser's cursor unless we put it back ourselves —
@@ -327,18 +319,6 @@ export default function SignUpPage() {
     set("companyContactNumber", digits);
   };
 
-  const addSpecialization = () => setSpecializationCount((c) => (c < 3 ? ((c + 1) as 1 | 2 | 3) : c));
-
-  const removeLastSpecialization = () => {
-    if (specializationCount === 3) {
-      set("specialization3", "");
-      setSpecializationCount(2);
-    } else if (specializationCount === 2) {
-      set("specialization2", "");
-      setSpecializationCount(1);
-    }
-  };
-
   const validateStep1 = () => {
     const e: Record<string, string> = {};
     if (!form.firstName.trim()) e.firstName = "First name is required";
@@ -361,7 +341,7 @@ export default function SignUpPage() {
         form.companyContactNumber.length === 0
           ? "Contact number is required"
           : `Enter a complete ${PH_NATIONAL_NUMBER_LENGTH}-digit number`;
-    if (!form.specialization1.trim()) e.specialization1 = "At least one specialization is required";
+    if (form.specializations.length === 0) e.specializations = "At least one specialization is required";
     if (!termsAccepted) e.terms = "You must agree to the Terms and Conditions to continue";
     setErrors(e);
     return Object.keys(e).length === 0;
@@ -389,11 +369,7 @@ export default function SignUpPage() {
           company_address: form.companyAddress,
           contact_email: form.companyContactEmail,
           contact_number: formatPhDisplayNumber(form.companyContactNumber),
-          specialization_1: form.specialization1,
-          // Keyed off specializationCount, not just the raw form value: a hidden field is
-          // guaranteed undefined regardless of any stray state, never an empty string.
-          specialization_2: specializationCount >= 2 ? form.specialization2 || undefined : undefined,
-          specialization_3: specializationCount >= 3 ? form.specialization3 || undefined : undefined,
+          ...specializationsToColumns(form.specializations),
           company_logo: form.companyLogo || undefined,
         },
       });
@@ -732,102 +708,11 @@ export default function SignUpPage() {
                   </p>
                 </div>
 
-                {/* One field that visually divides as more are added — all three end up
-                    equal-width in a single row, rather than 1 living apart from 2/3. */}
-                <div
-                  className={`grid grid-cols-1 gap-4 ${
-                    specializationCount === 2 ? "sm:grid-cols-2" : specializationCount === 3 ? "sm:grid-cols-3" : ""
-                  }`}
-                >
-                  <div className="flex flex-col gap-1.5">
-                    <div className="flex items-center justify-between gap-2">
-                      <label className="text-xs font-semibold uppercase tracking-wide text-gray-600">
-                        Specialization 1 *
-                      </label>
-                      {specializationCount === 1 && (
-                        <button
-                          type="button"
-                          onClick={addSpecialization}
-                          className="flex items-center gap-1.5 rounded-full border-2 border-primary bg-orange-50/60 px-3 py-1 text-xs font-bold text-primary transition hover:bg-primary hover:text-primary-foreground"
-                        >
-                          <Plus className="h-3.5 w-3.5" /> Add Specialization
-                        </button>
-                      )}
-                    </div>
-                    <input
-                      value={form.specialization1}
-                      onChange={(e) => set("specialization1", e.target.value)}
-                      maxLength={MAX.specialization}
-                      placeholder="e.g. Waterproofing Systems"
-                      className={inputCls("specialization1")}
-                    />
-                    {errors.specialization1 && <p className="text-xs text-red-500">{errors.specialization1}</p>}
-                  </div>
-
-                  {specializationCount >= 2 && (
-                    <div className="flex flex-col gap-1.5">
-                      <div className="flex items-center justify-between gap-2">
-                        <label className="whitespace-nowrap text-xs font-semibold uppercase tracking-wide text-gray-600">
-                          Specialization 2 <span className="font-normal normal-case text-gray-400">(optional)</span>
-                        </label>
-                        {specializationCount === 2 && (
-                          <div className="flex items-center gap-2">
-                            <button
-                              type="button"
-                              onClick={addSpecialization}
-                              title="Add specialization 3"
-                              className="text-primary hover:text-(--primary-hover)"
-                            >
-                              <Plus className="h-3.5 w-3.5" />
-                            </button>
-                            <button
-                              type="button"
-                              onClick={removeLastSpecialization}
-                              title="Remove specialization 2"
-                              className="text-gray-300 hover:text-red-500"
-                            >
-                              <X className="h-3.5 w-3.5" />
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                      <input
-                        value={form.specialization2}
-                        onChange={(e) => set("specialization2", e.target.value)}
-                        maxLength={MAX.specialization}
-                        placeholder="Optional"
-                        className={inputCls("specialization2")}
-                        autoFocus
-                      />
-                    </div>
-                  )}
-
-                  {specializationCount === 3 && (
-                    <div className="flex flex-col gap-1.5">
-                      <div className="flex items-center justify-between gap-2">
-                        <label className="whitespace-nowrap text-xs font-semibold uppercase tracking-wide text-gray-600">
-                          Specialization 3 <span className="font-normal normal-case text-gray-400">(optional)</span>
-                        </label>
-                        <button
-                          type="button"
-                          onClick={removeLastSpecialization}
-                          title="Remove specialization 3"
-                          className="text-gray-300 hover:text-red-500"
-                        >
-                          <X className="h-3.5 w-3.5" />
-                        </button>
-                      </div>
-                      <input
-                        value={form.specialization3}
-                        onChange={(e) => set("specialization3", e.target.value)}
-                        maxLength={MAX.specialization}
-                        placeholder="Optional"
-                        className={inputCls("specialization3")}
-                        autoFocus
-                      />
-                    </div>
-                  )}
-                </div>
+                <SpecializationSelect
+                  selected={form.specializations}
+                  onChange={(next) => set("specializations", next)}
+                  error={errors.specializations}
+                />
 
                 <div ref={logoFieldRef} className="flex flex-col gap-1.5">
                   <label className="text-xs font-semibold uppercase tracking-wide text-gray-600">

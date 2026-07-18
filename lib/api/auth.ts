@@ -34,8 +34,10 @@ export interface RegisterPayload {
     contact_email: string; // the company's own contact email — distinct from the login email above
     contact_number: string;
     specialization_1: string;
-    specialization_2?: string;
-    specialization_3?: string;
+    // null (not omitted/empty-string) when the user picked fewer than 3 — see
+    // lib/specializations.ts's specializationsToColumns.
+    specialization_2: string | null;
+    specialization_3: string | null;
     company_logo?: string;
   };
 }
