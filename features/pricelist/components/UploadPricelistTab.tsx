@@ -72,6 +72,8 @@ export function UploadPricelistTab({ onViewCatalog }: { onViewCatalog?: () => vo
     isCommitting,
     commitError,
     commitResult,
+    confidence,
+    requiresConfirmation,
     reset,
   } = usePricelistUpload();
   const [step, setStep] = useState<1 | 2 | 3>(1);
@@ -243,6 +245,8 @@ export function UploadPricelistTab({ onViewCatalog }: { onViewCatalog?: () => vo
           onApprove={() => approve().catch(() => {})}
           isCommitting={isCommitting}
           commitError={commitError}
+          confidence={confidence}
+          requiresConfirmation={requiresConfirmation}
         />
       )}
     </div>

@@ -1,47 +1,15 @@
-// Assumed endpoints — UNVERIFIED, confirm with the backend team:
-//   POST /api/pricelist/upload (multipart FormData: one or more `files` entries)
-//        -> { columns: DetectedColumn[], item_rows: ExtractedItemRow[], supplier_rows: ExtractedSupplierRow[] }
-//        Multiple files are sent in ONE request and pooled: `columns` is the deduped set of
-//        raw columns detected across every file, so mapping happens once for the whole batch.
-//   POST /api/pricelist/commit
-//        (body: { columns: DetectedColumn[], item_rows: ExtractedItemRow[], supplier_rows: ExtractedSupplierRow[] })
-//        -> { saved_count: number }
-//        A row feeds TWO tables (schema v3): the material definition -> items, and its price
-//        observation -> historical_price_record. Supplier attribution is BATCH-level, not
-//        per-row: schema v3's "one supplier per upload batch" shape means the backend creates
-//        (or matches) ONE supplier from `supplier_rows[0]` and stamps that resulting
-//        supplier_id onto every historical_price_record row this batch commits. If
-//        `supplier_rows` is empty (no supplier file/columns mapped), the backend presumably
-//        commits item rows with a null supplier_id — matches historical_price_record's
-//        nullable supplier_id (schema v3 change A).
-//
-// Extraction (pandas/pdfplumber) and column detection are entirely backend work — this hook
-// only posts the files and renders whatever comes back. `columns` lets the user correct a
-// mis-detected column-to-field mapping before confirming; the (possibly edited) mapping is
-// sent back alongside the rows on commit so the backend can reconcile it. Whether the backend
-// actually returns a confidence score is unconfirmed, so there is no confidence field here and
-// none should be added without backend confirmation.
-//
-// `ExtractedItemRow`/`ExtractedSupplierRow` are FRONTEND STAGING shapes, not table mirrors:
-// these rows aren't persisted until commit, so they carry no item_code/historicalrec_id/
-// supplier_id yet — those are database-generated and read back from the commit response only.
 import { useState } from 'react';
 import { useMutation } from './useMutation';
 
-// "price" is grouped into the Items mapping section for UX (it lives on the same row as the
-// material's other columns in a real spreadsheet) even though it lands in
-// historical_price_record, not items, at commit time. "region" is intentionally NOT a
-// per-item field here: schema v3 doesn't force a per-row region when the batch's single
-// supplier already implies one — the mapped supplier's region is what the backend should use
-// for every historical_price_record row in this batch. See ExtractedSupplierRow.region.
 export type ItemSystemField =
   | 'item_name'
   | 'material'
   | 'brand'
   | 'unit'
-  | 'category_id'
+  | 'category_type'
   | 'item_source'
   | 'price'
+  | 'recorded_at'
   | 'quality'
   | 'size_width'
   | 'size_length'
@@ -65,27 +33,14 @@ export const ITEM_REQUIRED_FIELDS: ItemSystemField[] = [
   'material',
   'brand',
   'unit',
-  'category_id',
-  'item_source',
   'price',
 ];
-export const ITEM_OPTIONAL_FIELDS: ItemSystemField[] = [
-  'quality',
-  'size_width',
-  'size_length',
-  'color',
-  'description',
-];
+export const ITEM_OPTIONAL_FIELDS: ItemSystemField[] = [];
 export const SUPPLIER_REQUIRED_FIELDS: SupplierSystemField[] = [
   'supplier_name',
-  'supplier_address',
-  'city',
   'region',
-  'contact_email',
-  'contact_number',
-  'supplier_type',
 ];
-export const SUPPLIER_OPTIONAL_FIELDS: SupplierSystemField[] = ['warehouse_loc'];
+export const SUPPLIER_OPTIONAL_FIELDS: SupplierSystemField[] = [];
 
 export const SYSTEM_FIELDS: SystemField[] = [
   ...ITEM_REQUIRED_FIELDS,
@@ -136,6 +91,8 @@ export interface UploadResponse {
   columns: DetectedColumn[];
   item_rows: ExtractedItemRow[];
   supplier_rows: ExtractedSupplierRow[];
+  confidence?: number;
+  requires_confirmation?: boolean;
 }
 
 export interface CommitResponse {
@@ -160,7 +117,6 @@ export function supplierRowNeedsAttention(row: ExtractedSupplierRow): boolean {
     row.needs_mapping ||
     !row.supplier_name.trim() ||
     !row.supplier_address.trim() ||
-    !row.city.trim() ||
     !row.region.trim() ||
     !row.contact_email.trim() ||
     !row.contact_number.trim() ||
@@ -175,6 +131,8 @@ export function usePricelistUpload() {
   const [itemRows, setItemRows] = useState<ExtractedItemRow[]>([]);
   const [supplierRows, setSupplierRows] = useState<ExtractedSupplierRow[]>([]);
   const [columns, setColumns] = useState<DetectedColumn[]>([]);
+  const [confidence, setConfidence] = useState<number | null>(null);
+  const [requiresConfirmation, setRequiresConfirmation] = useState(false);
   const upload = useMutation<UploadResponse>();
   const commit = useMutation<CommitResponse>();
 
@@ -185,6 +143,8 @@ export function usePricelistUpload() {
     setColumns(res.columns ?? []);
     setItemRows(res.item_rows ?? []);
     setSupplierRows(res.supplier_rows ?? []);
+    setConfidence(typeof res.confidence === 'number' ? res.confidence : null);
+    setRequiresConfirmation(Boolean(res.requires_confirmation));
     return res;
   };
 
@@ -204,12 +164,26 @@ export function usePricelistUpload() {
     setSupplierRows((prev) => prev.map((r) => (r.row_key === rowKey ? { ...r, ...patch } : r)));
   };
 
-  const approve = () => commit.mutate('/api/pricelist/commit', { columns, item_rows: itemRows, supplier_rows: supplierRows }, 'POST');
+  const approve = () =>
+    commit.mutate(
+      '/api/pricelist/commit',
+      {
+        columns,
+        item_rows: itemRows,
+        supplier_rows: supplierRows,
+        confidence,
+        requires_confirmation: requiresConfirmation,
+        confirmed: true,
+      },
+      'POST'
+    );
 
   const reset = () => {
     setItemRows([]);
     setSupplierRows([]);
     setColumns([]);
+    setConfidence(null);
+    setRequiresConfirmation(false);
     upload.reset();
     commit.reset();
   };
@@ -226,6 +200,8 @@ export function usePricelistUpload() {
     isUploading: upload.isLoading,
     uploadError: upload.error,
     approve,
+    confidence,
+    requiresConfirmation,
     isCommitting: commit.isLoading,
     commitError: commit.error,
     commitResult: commit.data,

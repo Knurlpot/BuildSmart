@@ -22,6 +22,8 @@ interface RowReviewStepProps {
   onApprove: () => void;
   isCommitting: boolean;
   commitError: Error | null;
+  confidence?: number | null;
+  requiresConfirmation?: boolean;
 }
 
 export function RowReviewStep({
@@ -34,9 +36,12 @@ export function RowReviewStep({
   onApprove,
   isCommitting,
   commitError,
+  confidence,
+  requiresConfirmation = false,
 }: RowReviewStepProps) {
   const [view, setView] = useState<"items" | "suppliers">("items");
   const [attentionOnly, setAttentionOnly] = useState(false);
+  const [userConfirmed, setUserConfirmed] = useState(!requiresConfirmation);
 
   const itemAttentionCount = useMemo(() => itemRows.filter(itemRowNeedsAttention).length, [itemRows]);
   const visibleItemRows = useMemo(
@@ -133,26 +138,53 @@ export function RowReviewStep({
         </div>
       )}
 
-      <div className="flex items-center gap-3">
-        <button
-          type="button"
-          onClick={onApprove}
-          disabled={isCommitting || totalAttentionCount > 0}
-          className="w-fit rounded-xl bg-primary px-6 py-3 text-sm font-bold text-primary-foreground shadow-sm transition hover:bg-(--primary-hover) disabled:opacity-60"
-        >
-          {isCommitting ? "Saving…" : `Approve & Save ${itemRows.length} Records`}
-        </button>
-        {totalAttentionCount > 0 && (
-          <p className="text-xs text-gray-400">
-            Resolve all flagged rows before approving
-            {supplierAttentionCount > 0 && itemAttentionCount > 0
-              ? " (in both Items and Suppliers)"
-              : supplierAttentionCount > 0
-                ? " (see Suppliers)"
-                : ""}
-            .
+      {typeof confidence === "number" && (
+        <div className={`rounded-xl border px-4 py-3 text-sm ${requiresConfirmation ? "border-amber-200 bg-amber-50 text-amber-700" : "border-green-200 bg-green-50 text-green-700"}`}>
+          <p className="font-semibold">
+            AI confidence: {confidence.toFixed(1)}%
           </p>
+          <p className="mt-1 text-xs">
+            {requiresConfirmation
+              ? "This upload needs your review before it can be stored because the confidence score is below 85%."
+              : "The normalized records are ready to be saved."}
+          </p>
+        </div>
+      )}
+
+      <div className="flex flex-col gap-3">
+        {requiresConfirmation && (
+          <label className="flex items-center gap-2 text-sm text-gray-600">
+            <input
+              type="checkbox"
+              checked={userConfirmed}
+              onChange={(e) => setUserConfirmed(e.target.checked)}
+              className="h-4 w-4 rounded border-gray-300 accent-primary"
+            />
+            I confirm these normalized records are correct and should be saved.
+          </label>
         )}
+
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={onApprove}
+            disabled={isCommitting || totalAttentionCount > 0 || (requiresConfirmation && !userConfirmed)}
+            className="w-fit rounded-xl bg-primary px-6 py-3 text-sm font-bold text-primary-foreground shadow-sm transition hover:bg-(--primary-hover) disabled:opacity-60"
+          >
+            {isCommitting ? "Saving…" : `Approve & Save ${itemRows.length} Records`}
+          </button>
+          {totalAttentionCount > 0 && (
+            <p className="text-xs text-gray-400">
+              Resolve all flagged rows before approving
+              {supplierAttentionCount > 0 && itemAttentionCount > 0
+                ? " (in both Items and Suppliers)"
+                : supplierAttentionCount > 0
+                  ? " (see Suppliers)"
+                  : ""}
+              .
+            </p>
+          )}
+        </div>
       </div>
     </div>
   );

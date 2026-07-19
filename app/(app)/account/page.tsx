@@ -540,8 +540,7 @@ function PasswordSection() {
 }
 
 const DEACTIVATE_COUNTDOWN_SECONDS = 5;
-// Read as "signed out N ms after the success message renders" — long enough to read the
-// confirmation, short enough not to feel stuck.
+// confirmation, not to feel stuck.
 const DEACTIVATE_SIGNOUT_DELAY_MS = 1800;
 
 function DeactivateAccountDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
@@ -550,11 +549,6 @@ function DeactivateAccountDialog({ open, onOpenChange }: { open: boolean; onOpen
   const deactivate = useMutation<unknown>();
   const [countdown, setCountdown] = useState(DEACTIVATE_COUNTDOWN_SECONDS);
   const [deactivated, setDeactivated] = useState(false);
-
-  // Countdown resets fresh every time the dialog opens — closing and reopening doesn't
-  // let a stale countdown carry a head start into a new confirmation. Adjusted during
-  // render (React's documented pattern for this) rather than as a setState call inside
-  // the effect body below.
   const [syncedOpen, setSyncedOpen] = useState(open);
   if (open !== syncedOpen) {
     setSyncedOpen(open);
@@ -665,7 +659,7 @@ function DeactivateAccountSection() {
       <button
         type="button"
         onClick={() => setDialogOpen(true)}
-        className="mt-4 w-fit rounded-xl border border-red-300 bg-white px-4 py-2.5 text-sm font-bold text-red-600 transition hover:bg-red-100"
+        className="mt-4 w-fit rounded-xl border border-red-300 bg-white px-4 py-2.5 text-sm font-bold text-red-600 transition hover:bg-light-red-100"
       >
         Delete Account
       </button>

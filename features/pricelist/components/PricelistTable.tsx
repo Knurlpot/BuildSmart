@@ -5,6 +5,7 @@ import type { ColumnDef } from "@tanstack/react-table";
 import { X } from "lucide-react";
 import { DataTable } from "@/components/data-table/DataTable";
 import { itemRowNeedsAttention, type ExtractedItemRow } from "@/hooks/usePricelistUpload";
+import { useCategories } from "@/hooks/useCategories";
 
 const cellInputCls =
   "w-full rounded-md border border-amber-300 bg-amber-50 px-1.5 py-0.5 text-xs outline-none transition focus:border-primary focus:ring-1 focus:ring-primary/20";
@@ -48,6 +49,7 @@ function EditableCell({
 }
 
 export default function PricelistTable({ rows, onUpdateRow, onRemoveRow }: PricelistTableProps) {
+  const { categories } = useCategories();
   // Optional fields (quality, size_width, size_length, color, description) aren't shown as
   // columns here — this compact view surfaces the required item + price fields only, matching
   // what actually gates approval. No Supplier column: supplier attribution is batch-level (one
@@ -99,22 +101,31 @@ export default function PricelistTable({ rows, onUpdateRow, onRemoveRow }: Price
         ),
       },
       {
-        accessorKey: "category_id",
+        accessorKey: "category_type",
         header: "Category",
-        cell: ({ row }) => (
-          <EditableCell
-            type="number"
-            placeholder="Category ID"
-            value={row.original.category_id ?? ""}
-            missing={row.original.category_id === null}
-            onChange={(v) =>
-              onUpdateRow(row.original.row_key, {
-                category_id: v === "" ? null : Number(v),
-                needs_mapping: v === "",
-              })
-            }
-          />
-        ),
+        cell: ({ row }) => {
+          const missing = row.original.category_type === null;
+
+          return (
+            <select
+              value={row.original.category_type ?? ""}
+              onChange={(e) =>
+                onUpdateRow(row.original.row_key, {
+                  category_type: e.target.value === "" ? null : e.target.value,
+                  needs_mapping: e.target.value === "",
+                })
+              }
+              className={missing ? cellInputCls : "w-full text-gray-700"}
+            >
+              <option value="">— Select Category —</option>
+              {categories.map((c) => (
+                <option key={c.category_id} value={c.category_type}>
+                  {c.category_type}
+                </option>
+              ))}
+            </select>
+          );
+        },
       },
       {
         accessorKey: "item_source",
@@ -165,7 +176,7 @@ export default function PricelistTable({ rows, onUpdateRow, onRemoveRow }: Price
         ),
       },
     ],
-    [onUpdateRow, onRemoveRow]
+    [onUpdateRow, onRemoveRow, categories]
   );
 
   return <DataTable columns={columns} data={rows} enablePagination pageSize={50} compact />;
