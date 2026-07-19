@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { Database, ListOrdered, LibraryBig, TrendingUp, Upload } from "lucide-react";
 import { RequireAuth } from "@/components/auth/RequireAuth";
 import { PriceTrendsPanel } from "@/components/market-intelligence/PriceTrendsPanel";
-import { PriceCatalogTab, PublishedSourceTab, SourcePriorityTab, UploadPricelistTab } from "@/features/pricelist/components";
+import { AiNormalizationPanel, PriceCatalogTab, PublishedSourceTab, SourcePriorityTab } from "@/features/pricelist/components";
 import { usePricelistCatalog } from "@/hooks/usePricelistCatalog";
 import { usePricelistPublishedSource } from "@/hooks/usePricelistPublishedSource";
 import { useAuth } from "@/providers/AuthProvider";
@@ -76,7 +76,7 @@ export default function PricelistPage() {
           })}
         </div>
 
-        {activeTab === "upload" && <UploadPricelistTab onViewCatalog={goToCatalog} />}
+        {activeTab === "upload" && <AiNormalizationPanel />}
         {activeTab === "published" && <PublishedSourceTab onViewCatalog={goToCatalog} />}
         {activeTab === "priority" && <SourcePriorityTab />}
         {activeTab === "trends" && <PriceTrendsPanel compact />}
