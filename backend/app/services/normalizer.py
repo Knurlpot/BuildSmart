@@ -1,15 +1,8 @@
 import os
 
 from app.schemas.normalization import MaterialMatch
+from app.services.normalizer_gemini import normalize_material_gemini
 from app.services.normalizer_mock import ItemCandidate, normalize_material_mock
-
-
-def normalize_material_gemini(
-    raw_name: str,
-    raw_unit: str,
-    candidates: list[ItemCandidate],
-) -> MaterialMatch:
-    raise NotImplementedError("Gemini normalization is not wired up yet")
 
 
 def normalize_material(
