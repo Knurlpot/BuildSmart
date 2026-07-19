@@ -1,3 +1,15 @@
+import os
+
+# Force mock routing for the whole test session before any app.* module is
+# imported. Without this, collecting test_normalizer_gemini.py (even when its
+# gemini_live-marked tests are deselected) still executes normalizer_gemini.py's
+# module-level load_dotenv(), which sets USE_MOCK_AI from .env — currently
+# "false". python-dotenv's load_dotenv() doesn't override an already-set var,
+# so setting it here first keeps every other test on the mock path regardless
+# of .env, as they assume. The gemini_live tests call normalize_material_gemini()
+# directly, bypassing the router, so this doesn't affect them.
+os.environ["USE_MOCK_AI"] = "true"
+
 import pytest
 from sqlalchemy.orm import Session
 
@@ -46,7 +58,7 @@ def db_session():
     session.add_all(categories.values())
     session.flush()
 
-    session.add_all(
+    seeded_items = [
         Items(
             category_id=categories[row["category_type"]].category_id,
             item_name=row["item_name"],
@@ -56,8 +68,17 @@ def db_session():
             item_source="Internal",
         )
         for row in SEED_ITEMS
-    )
+    ]
+    session.add_all(seeded_items)
     session.flush()
+
+    # The real dev DB this connects to accumulates permanent rows from actual
+    # usage (read-committed, so visible here too) — get_item_candidates() will
+    # keep returning more than just what this fixture seeded as that grows.
+    # Exposing the seeded item_codes lets tests that need a fixed, known
+    # candidate set filter down to exactly these, instead of assuming the full
+    # catalog is only what this fixture created.
+    session.seeded_item_codes = {item.item_code for item in seeded_items}
 
     yield session
 

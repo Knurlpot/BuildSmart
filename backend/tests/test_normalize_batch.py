@@ -8,7 +8,12 @@ FIXTURE = Path(__file__).parent / "fixtures" / "sample_pricelist.csv"
 
 
 def test_normalize_pricelist_against_seeded_candidates(db_session):
-    candidates = get_item_candidates(db_session)
+    # Scoped to just this fixture's own rows — the real dev DB this connects to
+    # accumulates permanent items from actual usage, and get_item_candidates()
+    # correctly returns all of them, not just what this test seeded.
+    candidates = [
+        c for c in get_item_candidates(db_session) if c["item_code"] in db_session.seeded_item_codes
+    ]
     df = parse_pricelist_file(str(FIXTURE))
 
     results = normalize_pricelist(df, candidates)

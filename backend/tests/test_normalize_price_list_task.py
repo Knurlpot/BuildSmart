@@ -2,13 +2,15 @@ from pathlib import Path
 
 from sqlalchemy import select
 
+import app.tasks.normalize_price_list as normalize_price_list_module
 from app.models import HistoricalPriceRecord, Items, PriceListReviewItem
+from app.services.candidates import get_item_candidates
 from app.tasks.normalize_price_list import normalize_price_list
 
 FIXTURE = Path(__file__).parent / "fixtures" / "sample_pricelist.csv"
 
 
-def test_normalize_price_list_writes_matched_rows_and_flags_new_items(db_session):
+def test_normalize_price_list_writes_matched_rows_and_flags_new_items(db_session, monkeypatch):
     # Snapshot existing ids first — the dev DB this connects to now holds real,
     # permanent rows from actual usage (not just this test's own uncommitted
     # data), since it's read-committed and shared with the running app. Diffing
@@ -21,6 +23,15 @@ def test_normalize_price_list_writes_matched_rows_and_flags_new_items(db_session
     existing_review_ids = {
         r.review_id for r in db_session.execute(select(PriceListReviewItem)).scalars()
     }
+
+    # The task fetches candidates internally, and get_item_candidates() correctly
+    # returns every real item in the (shared, growing) dev DB — not just this
+    # fixture's 3 rows. Scope it down so this test's expected 6/4 match split
+    # stays correct regardless of what real usage has added to the catalog.
+    def scoped_get_item_candidates(db):
+        return [c for c in get_item_candidates(db) if c["item_code"] in db_session.seeded_item_codes]
+
+    monkeypatch.setattr(normalize_price_list_module, "get_item_candidates", scoped_get_item_candidates)
 
     result = normalize_price_list(
         file_path=str(FIXTURE),

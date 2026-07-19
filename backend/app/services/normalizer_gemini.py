@@ -1,10 +1,11 @@
 import os
+import time
 from pathlib import Path
 
 from dotenv import load_dotenv
 from google import genai
 from google.genai import types
-from tenacity import retry, stop_after_attempt, wait_exponential
+from tenacity import RetryError, retry, stop_after_attempt, wait_exponential
 
 from app.schemas.normalization import MaterialMatch
 from app.services.normalizer_mock import ItemCandidate
@@ -26,7 +27,15 @@ MODEL = "gemini-flash-latest"
 # outgrows this in practice.
 MAX_CANDIDATES_IN_PROMPT = 50
 
+# A live batch run hit 429s after ~6 rapid sequential calls (normalize_pricelist
+# processes rows back-to-back with no pacing). This project's exact free-tier
+# RPM isn't published anywhere I could confirm, so 4s is a conservative guess
+# at safe spacing, not a number derived from official docs — revisit if 429s
+# still occur, or once the actual quota tier is known.
+MIN_SECONDS_BETWEEN_CALLS = 4.0
+
 _client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
+_last_call_at = 0.0
 
 CATEGORY_TYPES = (
     "Structural",
@@ -41,7 +50,7 @@ CATEGORY_TYPES = (
 
 
 @retry(wait=wait_exponential(multiplier=1, min=1, max=10), stop=stop_after_attempt(3))
-def _call_gemini(prompt: str) -> MaterialMatch:
+def _call_gemini_once(prompt: str) -> MaterialMatch:
     response = _client.models.generate_content(
         model=MODEL,
         contents=prompt,
@@ -51,6 +60,25 @@ def _call_gemini(prompt: str) -> MaterialMatch:
         ),
     )
     return response.parsed
+
+
+def _call_gemini(prompt: str) -> MaterialMatch:
+    global _last_call_at
+    elapsed = time.monotonic() - _last_call_at
+    if elapsed < MIN_SECONDS_BETWEEN_CALLS:
+        time.sleep(MIN_SECONDS_BETWEEN_CALLS - elapsed)
+
+    try:
+        return _call_gemini_once(prompt)
+    except RetryError as exc:
+        # RetryError wraps a concurrent.futures.Future, which Celery can't
+        # pickle to report through its result backend (surfaces as an opaque
+        # UnpickleableExceptionWrapper instead of the real cause). Re-raise a
+        # plain, picklable exception with the underlying error's message.
+        underlying = exc.last_attempt.exception()
+        raise RuntimeError(f"Gemini normalization failed after retries: {underlying}") from None
+    finally:
+        _last_call_at = time.monotonic()
 
 
 def _build_prompt(raw_name: str, raw_unit: str, candidates: list[ItemCandidate]) -> str:
