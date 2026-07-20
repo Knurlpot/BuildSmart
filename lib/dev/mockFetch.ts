@@ -36,6 +36,7 @@ import {
   scopeTemplatesFixture,
   unitRulesFixture,
 } from "./provisional/companyRulesFixtures";
+import { clientsFixture, blueprintExtractionFixture } from "./provisional/quotationGenerationFixtures";
 
 function pathnameOf(endpoint: string): string {
   const i = endpoint.indexOf("?");
@@ -66,6 +67,25 @@ export function resolveMockFetch(endpoint: string): unknown {
   // Shape unconfirmed (see app/(app)/account/page.tsx's "Assumed endpoints" comment) —
   // just enough for the deactivate dialog's success state to render in mock mode.
   if (pathname === "/api/account/deactivate") return { status: "Inactive" };
+
+  // --- Quotation Generation, Part 1 — PROVISIONAL, see lib/dev/provisional/. ---
+  // Client is fully provisional (no client table in the consolidated schema — see
+  // quotationGenerationTypes.ts). Quotation create/update and segment endpoints are
+  // real-schema-shaped but their exact paths are unconfirmed guesses, same convention as
+  // CPRM above: `/new` for create, to avoid colliding with the GET list at the bare path.
+  if (pathname === "/api/clients") return clientsFixture;
+  if (pathname === "/api/clients/new") return clientsFixture[0];
+  if (pathname === "/api/quotations/new") return { ...quotationsFixture[1], quote_id: 9001, status: "Draft" };
+  if (pathname.startsWith("/api/quotations/")) {
+    const rest = pathname.slice("/api/quotations/".length);
+    if (rest.endsWith("/blueprint-extract")) return blueprintExtractionFixture;
+    if (rest.endsWith("/segments")) {
+      return { saved_count: blueprintExtractionFixture.floors.flatMap((f) => f.segments).length };
+    }
+    // PATCH /api/quotations/:id — general update (used here only to correct input_method
+    // to 'Hybrid' if a manual segment gets added on top of a blueprint extraction).
+    if (rest !== "new" && !rest.includes("/")) return { ...quotationsFixture[1], quote_id: 9001 };
+  }
 
   if (pathname === "/api/pricelist/upload") {
     return {
