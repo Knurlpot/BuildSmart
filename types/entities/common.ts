@@ -5,22 +5,25 @@
 //
 // Distinct from lib/regions.ts: that file is a UI filter shortlist (a handful of
 // regions the dev fixtures cover), not the full schema enum — don't conflate them.
-export type PhRegion =
-  | 'Region I'
-  | 'Region II'
-  | 'Region III'
-  | 'Region IV-A'
-  | 'Region IV-B'
-  | 'Region V'
-  | 'Region VI'
-  | 'Region VII'
-  | 'Region VIII'
-  | 'Region IX'
-  | 'Region X'
-  | 'Region XI'
-  | 'Region XII'
-  | 'Region XIII'
-  | 'CAR'
-  | 'NCR'
-  | 'NIR'
-  | 'BARMM';
+export const PH_REGIONS = [
+  'Region I',
+  'Region II',
+  'Region III',
+  'Region IV-A',
+  'Region IV-B',
+  'Region V',
+  'Region VI',
+  'Region VII',
+  'Region VIII',
+  'Region IX',
+  'Region X',
+  'Region XI',
+  'Region XII',
+  'Region XIII',
+  'CAR',
+  'NCR',
+  'NIR',
+  'BARMM',
+] as const;
+
+export type PhRegion = (typeof PH_REGIONS)[number];

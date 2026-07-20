@@ -20,7 +20,8 @@ export interface RegisterPayload {
   company: {
     company_name: string;
     company_address: string;
-    contact_email: string; 
+    contact_email: string;
+    contact_number: string;
     specialization_1: string;
     specialization_2: string | null;
     specialization_3: string | null;

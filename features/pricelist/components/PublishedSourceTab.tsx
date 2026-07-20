@@ -156,6 +156,7 @@ export function PublishedSourceTab({ onViewCatalog }: { onViewCatalog?: () => vo
         revealCatalog();
       } catch {
         // surfaced via resolveError below — no fabricated success
+      }
     },
     [resolve, revealCatalog]
   );

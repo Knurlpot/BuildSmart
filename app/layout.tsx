@@ -1,18 +1,12 @@
 import type { Metadata } from "next";
-import { Poppins, Geist_Mono } from "next/font/google";
+import type { CSSProperties } from "react";
 import { AuthProvider } from "@/providers/AuthProvider";
 import "./globals.css";
 
-const poppins = Poppins({
-  variable: "--font-sans",
-  subsets: ["latin"],
-  weight: ["300", "400", "500", "600", "700", "800"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
+const fontVariables = {
+  "--font-sans": '"Avenir Next", "Segoe UI", "Helvetica Neue", Arial, sans-serif',
+  "--font-geist-mono": '"SFMono-Regular", "SF Mono", Consolas, "Liberation Mono", Menlo, monospace',
+} as CSSProperties;
 
 export const metadata: Metadata = {
   title: "Create Next App",
@@ -28,7 +22,8 @@ export default function RootLayout({
     <html
       lang="en"
       suppressHydrationWarning
-      className={`${poppins.variable} ${geistMono.variable} h-full antialiased`}
+      className="h-full antialiased"
+      style={fontVariables}
     >
       <body suppressHydrationWarning className="min-h-full flex flex-col">
         <AuthProvider>{children}</AuthProvider>

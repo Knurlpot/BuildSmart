@@ -1,152 +1,86 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import type { ColumnDef } from "@tanstack/react-table";
-import { AlertTriangle, Ban, CheckCircle2 } from "lucide-react";
+import type { ReactNode } from "react";
 import { QueryState } from "@/components/feedback/QueryState";
-import { DataTable } from "@/components/data-table/DataTable";
-import { useExistingRules } from "@/lib/dev/provisional/useCompanyRulesProvisional";
-import type { ExistingRuleSummary } from "@/lib/dev/provisional/companyRulesTypes";
 
-function StatusBadge({ status }: { status: ExistingRuleSummary["status"] }) {
-  return (
-    <span
-      className={`rounded-full px-2.5 py-0.5 text-[11px] font-bold ${
-        status === "Active" ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"
-      }`}
-    >
-      {status}
-    </span>
-  );
+interface RuleListDetailPanelProps<T> {
+  title: string;
+  items: T[];
+  isLoading: boolean;
+  error: Error | null;
+  onRetry: () => void | Promise<void>;
+  getId: (item: T) => string;
+  selectedId: string | null;
+  onSelect: (id: string) => void;
+  onAdd: () => void;
+  emptyHint: string;
+  renderListItem: (item: T) => ReactNode;
+  detail: ReactNode;
 }
 
-interface ManageExistingRulesTabProps {
-  /** Part C — clicking a row (anywhere but the Disable button) jumps to that rule's
-   * owning tab with the rule pre-selected, instead of leaving the user to hunt for it. */
-  onOpenRule: (rule: ExistingRuleSummary) => void;
-}
-
-export function ManageExistingRulesTab({ onOpenRule }: ManageExistingRulesTabProps) {
-  const { rules, isLoading, error, refetch, checkUsage, isCheckingUsage, disable, isDisabling, disableError } =
-    useExistingRules();
-
-  // Local-only overlays, since the dev mock has no real persistence — mirrors the same
-  // "optimistic local state on top of a static mock" pattern used by the five rule forms.
-  const [disabledIds, setDisabledIds] = useState<Set<string>>(new Set());
-  const [warningFor, setWarningFor] = useState<ExistingRuleSummary | null>(null);
-  const [activeRuleId, setActiveRuleId] = useState<string | null>(null);
-
-  const displayRules = useMemo(
-    () => rules.map((r) => (disabledIds.has(r.rule_id) ? { ...r, status: "Disabled" as const } : r)),
-    [rules, disabledIds]
-  );
-
-  const handleDisable = async (rule: ExistingRuleSummary) => {
-    setActiveRuleId(rule.rule_id);
-    setWarningFor(null);
-    try {
-      const usage = await checkUsage(rule.rule_id);
-      if (usage.in_use) {
-        setWarningFor(rule);
-        return;
-      }
-      await disable(rule.rule_id);
-      setDisabledIds((prev) => new Set(prev).add(rule.rule_id));
-    } catch {
-      // surfaced via disableError below — no fabricated success
-    } finally {
-      setActiveRuleId(null);
-    }
-  };
-
-  const columns = useMemo<ColumnDef<ExistingRuleSummary>[]>(
-    () => [
-      { accessorKey: "rule_kind", header: "Rule Type", enableGlobalFilter: false },
-      { accessorKey: "label", header: "Rule" },
-      { accessorKey: "detail", header: "Detail", enableGlobalFilter: false },
-      { accessorKey: "effective_date", header: "Effective", enableGlobalFilter: false },
-      {
-        accessorKey: "status",
-        header: "Status",
-        enableGlobalFilter: false,
-        cell: ({ row }) => <StatusBadge status={row.original.status} />,
-      },
-      {
-        id: "actions",
-        header: "",
-        enableGlobalFilter: false,
-        cell: ({ row }) => {
-          const rule = row.original;
-          const busy = activeRuleId === rule.rule_id && (isCheckingUsage || isDisabling);
-          if (rule.status === "Disabled") return null;
-          return (
-            <button
-              type="button"
-              disabled={busy}
-              onClick={(e) => {
-                // Don't also trigger the row's own "open in owning tab" click.
-                e.stopPropagation();
-                handleDisable(rule);
-              }}
-              className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-xs font-medium text-gray-500 transition hover:border-red-300 hover:text-red-600 disabled:opacity-50"
-            >
-              <Ban className="h-3.5 w-3.5" /> {busy ? "Checking…" : "Disable"}
-            </button>
-          );
-        },
-      },
-    ],
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [activeRuleId, isCheckingUsage, isDisabling]
-  );
-
+export function RuleListDetailPanel<T>({
+  title,
+  items,
+  isLoading,
+  error,
+  onRetry,
+  getId,
+  selectedId,
+  onSelect,
+  onAdd,
+  emptyHint,
+  renderListItem,
+  detail,
+}: RuleListDetailPanelProps<T>) {
   return (
-    <div className="flex flex-col gap-4">
-      <div>
-        <h2 className="text-base font-bold text-gray-900">Manage Existing Rules</h2>
-        <p className="text-xs text-gray-500">
-          Click a rule to open and edit it in its own tab, or disable it here. Rules
-          referenced in active quotations can&apos;t be disabled until that reference is
-          cleared.
-        </p>
-      </div>
-
-      {warningFor && (
-        <div className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-          <span>
-            <strong>{warningFor.label}</strong> is referenced in an active quotation and
-            can&apos;t be disabled right now. Remove or update the referencing quotation first.
-          </span>
-        </div>
-      )}
-
-      {disableError && (
-        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          Couldn&apos;t disable that rule: {disableError.message}
-        </div>
-      )}
-
+    <div className="grid gap-4 lg:grid-cols-[20rem_minmax(0,1fr)]">
       <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
+        <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3">
+          <div>
+            <p className="text-sm font-bold text-gray-900">{title}</p>
+            <p className="text-[11px] text-gray-400">{items.length} configured</p>
+          </div>
+          <button
+            type="button"
+            onClick={onAdd}
+            className="rounded-lg bg-primary px-3 py-1.5 text-xs font-bold text-primary-foreground transition hover:bg-(--primary-hover)"
+          >
+            Add
+          </button>
+        </div>
+
         <QueryState
           isLoading={isLoading}
           error={error}
-          isEmpty={displayRules.length === 0}
-          onRetry={refetch}
-          emptyTitle="No rules configured yet"
-          emptyHint="Configured rules across all categories will appear here once saved."
+          isEmpty={items.length === 0}
+          onRetry={onRetry}
+          emptyTitle={`No ${title.toLowerCase()} yet`}
+          emptyHint={emptyHint}
           minHeight={220}
         >
-          <DataTable columns={columns} data={displayRules} enablePagination pageSize={50} onRowClick={onOpenRule} />
+          <div className="max-h-[34rem] overflow-y-auto">
+            {items.map((item) => {
+              const id = getId(item);
+              const selected = selectedId === id;
+              return (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => onSelect(id)}
+                  className={`flex w-full items-start gap-3 border-b border-gray-100 px-4 py-3 text-left transition last:border-b-0 ${
+                    selected ? "bg-orange-50" : "hover:bg-gray-50"
+                  }`}
+                >
+                  <span className={`mt-1 h-2.5 w-2.5 rounded-full ${selected ? "bg-primary" : "bg-gray-200"}`} />
+                  <div className="min-w-0 flex-1">{renderListItem(item)}</div>
+                </button>
+              );
+            })}
+          </div>
         </QueryState>
       </div>
 
-      {disabledIds.size > 0 && (
-        <div className="flex items-center gap-2 text-xs text-gray-400">
-          <CheckCircle2 className="h-3.5 w-3.5 text-green-500" />
-          {disabledIds.size} rule{disabledIds.size !== 1 ? "s" : ""} disabled this session.
-        </div>
-      )}
+      <div className="min-h-[24rem] rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">{detail}</div>
     </div>
   );
 }

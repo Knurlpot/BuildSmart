@@ -1,6 +1,6 @@
 import "server-only";
 
-import { Pool } from "pg";
+import { Pool, type QueryResultRow } from "pg";
 
 declare global {
   var __buildsmartPool: Pool | undefined;
@@ -22,6 +22,6 @@ if (!globalThis.__buildsmartPool) {
   globalThis.__buildsmartPool = pool;
 }
 
-export async function query<T>(text: string, values?: unknown[]) {
+export async function query<T extends QueryResultRow>(text: string, values?: unknown[]) {
   return pool.query<T>(text, values);
 }

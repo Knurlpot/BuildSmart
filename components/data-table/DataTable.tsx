@@ -31,6 +31,7 @@ interface DataTableProps<TData> {
   compact?: boolean;
   selectable?: SelectableConfig<TData>;
   rowClassName?: (row: TData) => string;
+  onRowClick?: (row: TData) => void;
 }
 
 export function DataTable<TData>({
@@ -43,6 +44,7 @@ export function DataTable<TData>({
   compact = false,
   selectable,
   rowClassName,
+  onRowClick,
 }: DataTableProps<TData>) {
   const [sorting, setSorting] = useState<SortingState>(initialSorting);
   const [pagination, setPagination] = useState({ pageIndex: 0, pageSize });
@@ -127,7 +129,10 @@ export function DataTable<TData>({
           {table.getRowModel().rows.map((row) => (
             <tr
               key={row.id}
+              onClick={onRowClick ? () => onRowClick(row.original) : undefined}
               className={`border-b border-gray-50 transition-colors hover:bg-gray-50/60 ${
+                onRowClick ? "cursor-pointer" : ""
+              } ${
                 rowClassName ? rowClassName(row.original) : ""
               }`}
             >
