@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { AlertTriangle, Pencil } from "lucide-react";
+import { AlertTriangle, Pencil, Upload, X } from "lucide-react";
 import { RequireAuth } from "@/components/auth/RequireAuth";
 import { useFetch } from "@/hooks/useFetch";
 import { useMutation } from "@/hooks/useMutation";
@@ -18,8 +18,6 @@ import {
 } from "@/components/ui/dialog";
 import { SpecializationSelect } from "@/components/forms/SpecializationSelect";
 import { columnsToSpecializations, formatSpecializations, specializationsToColumns } from "@/lib/specializations";
-
-const STATUSES: Company["status"][] = ["Active", "Inactive"];
 
 const EMPTY_COMPANY: Company = {
   company_id: 0,
@@ -54,6 +52,67 @@ const btnCls =
   "w-fit rounded-xl bg-primary px-5 py-2.5 text-sm font-bold text-primary-foreground shadow-sm transition hover:bg-(--primary-hover) disabled:opacity-60";
 const cancelBtnCls =
   "w-fit rounded-xl border border-gray-200 px-5 py-2.5 text-sm font-bold text-gray-600 transition hover:bg-gray-50";
+
+function normalizeLogoUrl(value?: string | null): string {
+  const trimmed = value?.trim() ?? "";
+  if (!trimmed) return "";
+  if (
+    trimmed.startsWith("/") ||
+    trimmed.startsWith("http://") ||
+    trimmed.startsWith("https://") ||
+    trimmed.startsWith("data:") ||
+    trimmed.startsWith("blob:")
+  ) {
+    return trimmed;
+  }
+  return `/${trimmed.replace(/^\/+/, "")}`;
+}
+
+function getLogoCandidates(value?: string | null): string[] {
+  const trimmed = value?.trim() ?? "";
+  if (!trimmed) return [];
+
+  const direct = normalizeLogoUrl(trimmed);
+  const legacySvgProxy =
+    direct.startsWith("/uploads/") && direct.toLowerCase().endsWith(".svg+xml")
+      ? `/api/uploads/company-logo/legacy?path=${encodeURIComponent(direct)}`
+      : "";
+  const fileName = trimmed.split("/").filter(Boolean).pop() ?? "";
+  const fallbackFromFileName = fileName ? `/uploads/company-logos/${fileName}` : "";
+
+  return [...new Set([legacySvgProxy, direct, fallbackFromFileName].filter(Boolean))];
+}
+
+function LogoImage({
+  value,
+  alt,
+  className,
+}: {
+  value?: string | null;
+  alt: string;
+  className: string;
+}) {
+  const candidates = getLogoCandidates(value);
+  const [index, setIndex] = useState(0);
+
+  useEffect(() => {
+    setIndex(0);
+  }, [value]);
+
+  const src = candidates[index] ?? "";
+  if (!src) return null;
+
+  return (
+    <img
+      src={src}
+      alt={alt}
+      className={className}
+      onError={() => {
+        setIndex((current) => (current + 1 < candidates.length ? current + 1 : current));
+      }}
+    />
+  );
+}
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -121,6 +180,7 @@ function CompanySection() {
     companyId !== undefined && companyId !== null ? `/api/company/${companyId}` : null;
   const { data, isLoading, error, refetch } = useFetch<Company>(endpoint);
   const update = useMutation<Company>();
+  const logoUpload = useMutation<{ url: string }>();
   const [form, setForm] = useState<Company>(EMPTY_COMPANY);
   const [syncedData, setSyncedData] = useState<Company | null>(null);
   if (data !== syncedData) {
@@ -128,13 +188,39 @@ function CompanySection() {
     if (data) setForm(data);
   }
 
-  // Part A — view-first: starts read-only, Edit reveals the form. Cancel = No Changes Saved
   const [editing, setEditing] = useState(false);
   const [specializationError, setSpecializationError] = useState("");
+  const [logoFileName, setLogoFileName] = useState("");
+  const logoInputRef = useRef<HTMLInputElement>(null);
+
+  const uploadLogoFile = async (file: File) => {
+    setLogoFileName(file.name);
+    const body = new FormData();
+    body.append("file", file);
+    try {
+      const { url } = await logoUpload.mutate("/api/uploads/company-logo", body, "POST");
+      setForm((current) => ({ ...current, company_logo: url }));
+    } catch {
+      // surfaced via logoUpload.error below
+    }
+  };
+
+  const handleLogoFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) uploadLogoFile(file);
+  };
+
+  const removeLogo = () => {
+    setForm((current) => ({ ...current, company_logo: "" }));
+    setLogoFileName("");
+    logoUpload.reset();
+  };
 
   const handleCancel = () => {
     if (data) setForm(data);
     update.reset();
+    logoUpload.reset();
+    setLogoFileName("");
     setSpecializationError("");
     setEditing(false);
   };
@@ -148,10 +234,12 @@ function CompanySection() {
     }
     setSpecializationError("");
     const body: Partial<Company> = { ...form };
+    body.company_logo = normalizeLogoUrl(body.company_logo);
     delete body.company_id;
     try {
       const saved = await update.mutate(endpoint, body, "PATCH");
       setForm(saved);
+      window.dispatchEvent(new Event("company-profile-updated"));
       setEditing(false);
     } catch {
       // surfaced via update.error below — no fabricated success
@@ -171,9 +259,9 @@ function CompanySection() {
       {!editing ? (
         <div className="flex flex-col gap-4">
           <div className="flex items-center gap-4">
-            {form.company_logo ? (
-              <img
-                src={form.company_logo}
+            {getLogoCandidates(form.company_logo).length > 0 ? (
+              <LogoImage
+                value={form.company_logo}
                 alt="Company logo"
                 className="h-14 w-14 shrink-0 rounded-xl border border-gray-200 object-cover"
               />
@@ -191,7 +279,6 @@ function CompanySection() {
             <ReadOnlyRow label="Contact Email" value={form.contact_email} />
             <ReadOnlyRow label="Contact Number" value={form.contact_number} />
             <ReadOnlyRow label="Specialization" value={formatSpecializations(columnsToSpecializations(form))} />
-            <ReadOnlyRow label="Status" value={form.status} />
           </dl>
         </div>
       ) : (
@@ -240,34 +327,58 @@ function CompanySection() {
                 error={specializationError}
               />
             </div>
-            <Field label="Status">
-              <select
-                value={form.status}
-                onChange={(e) => setForm({ ...form, status: e.target.value as Company["status"] })}
-                className={inputCls}
-              >
-                {STATUSES.map((s) => (
-                  <option key={s}>{s}</option>
-                ))}
-              </select>
-            </Field>
-            <Field label="Company Logo (URL)">
+            <div className="sm:col-span-2 flex flex-col gap-1.5">
+              <span className={labelCls}>Company Logo</span>
+              {getLogoCandidates(form.company_logo).length > 0 ? (
+                <div className="flex items-center gap-3 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5">
+                  <LogoImage
+                    value={form.company_logo}
+                    alt="Company logo preview"
+                    className="h-10 w-10 shrink-0 rounded-lg border border-gray-200 object-cover"
+                  />
+                  <span className="flex-1 truncate text-sm text-gray-700">
+                    {logoFileName ? `Selected: ${logoFileName}` : "Logo"}
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => logoInputRef.current?.click()}
+                      className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm font-semibold text-gray-700 transition hover:bg-gray-100"
+                    >
+                      {logoUpload.isLoading ? "Uploading..." : "Upload Image"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={removeLogo}
+                      title="Remove logo"
+                      className="shrink-0 text-gray-400 transition hover:text-red-500"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => logoInputRef.current?.click()}
+                  className="flex w-full items-center justify-center gap-2 rounded-xl border border-gray-200 bg-gray-50 px-4 py-2.5 text-sm font-semibold text-gray-700 transition hover:bg-gray-100"
+                >
+                  <Upload className="h-4 w-4" />
+                  {logoUpload.isLoading ? "Uploading..." : "Upload Company Logo"}
+                </button>
+              )}
               <input
-                value={form.company_logo ?? ""}
-                onChange={(e) => setForm({ ...form, company_logo: e.target.value })}
-                placeholder="https://…"
-                className={inputCls}
+                ref={logoInputRef}
+                type="file"
+                accept="image/*"
+                onChange={handleLogoFileChange}
+                className="hidden"
               />
-            </Field>
+              {logoUpload.error && (
+                <p className="text-xs text-red-500">Couldn&apos;t upload logo: {logoUpload.error.message}</p>
+              )}
+            </div>
           </div>
-          {form.company_logo && (
-            <img
-              src={form.company_logo}
-              alt="Company logo preview"
-              className="h-14 w-14 rounded-xl border border-gray-200 object-cover"
-            />
-          )}
-
           <div className="flex items-center gap-3">
             <button type="submit" disabled={update.isLoading || !endpoint} className={btnCls}>
               {update.isLoading ? "Saving…" : "Save Company Profile"}
@@ -340,7 +451,6 @@ function UserSection() {
           </div>
           <dl className="grid grid-cols-2 gap-4 sm:grid-cols-3">
             <ReadOnlyRow label="Role" value={form.user_role} />
-            <ReadOnlyRow label="Status" value={form.status} />
           </dl>
         </div>
       ) : (
@@ -407,8 +517,6 @@ function UserSection() {
 }
 
 function PasswordSection() {
-  // Part A — password fields never render until the user explicitly asks: no empty
-  // password inputs sitting on the page by default.
   const [open, setOpen] = useState(false);
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
@@ -540,8 +648,7 @@ function PasswordSection() {
 }
 
 const DEACTIVATE_COUNTDOWN_SECONDS = 5;
-// Read as "signed out N ms after the success message renders" — long enough to read the
-// confirmation, short enough not to feel stuck.
+
 const DEACTIVATE_SIGNOUT_DELAY_MS = 1800;
 
 function DeactivateAccountDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
@@ -551,10 +658,6 @@ function DeactivateAccountDialog({ open, onOpenChange }: { open: boolean; onOpen
   const [countdown, setCountdown] = useState(DEACTIVATE_COUNTDOWN_SECONDS);
   const [deactivated, setDeactivated] = useState(false);
 
-  // Countdown resets fresh every time the dialog opens — closing and reopening doesn't
-  // let a stale countdown carry a head start into a new confirmation. Adjusted during
-  // render (React's documented pattern for this) rather than as a setState call inside
-  // the effect body below.
   const [syncedOpen, setSyncedOpen] = useState(open);
   if (open !== syncedOpen) {
     setSyncedOpen(open);
@@ -578,9 +681,7 @@ function DeactivateAccountDialog({ open, onOpenChange }: { open: boolean; onOpen
 
   const handleConfirm = async () => {
     try {
-      // See the "Assumed endpoints" comment at the top of this file — endpoint name,
-      // request shape, and which status column(s) it flips are all unconfirmed.
-      await deactivate.mutate("/api/account/deactivate", {}, "POST");
+          await deactivate.mutate("/api/account/deactivate", {}, "POST");
       setDeactivated(true);
     } catch {
       // surfaced via deactivate.error below — no fabricated success
@@ -589,10 +690,7 @@ function DeactivateAccountDialog({ open, onOpenChange }: { open: boolean; onOpen
 
   const confirmDisabled = countdown > 0 || deactivate.isLoading;
 
-  // On confirmed success, the account is paused server-side — staying on an
-  // authenticated page for it would be misleading, so this clears the local session and
-  // returns to login once the confirmation message has had a moment to be read.
-  useEffect(() => {
+    useEffect(() => {
     if (!deactivated) return;
     const t = setTimeout(() => {
       logout().finally(() => router.push("/login"));

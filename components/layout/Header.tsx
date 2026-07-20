@@ -24,6 +24,36 @@ function resolveTitle(pathname: string) {
   return { title: "BuildSmart" };
 }
 
+function normalizeLogoUrl(value?: string | null): string {
+  const trimmed = value?.trim() ?? "";
+  if (!trimmed) return "";
+  if (
+    trimmed.startsWith("/") ||
+    trimmed.startsWith("http://") ||
+    trimmed.startsWith("https://") ||
+    trimmed.startsWith("data:") ||
+    trimmed.startsWith("blob:")
+  ) {
+    return trimmed;
+  }
+  return `/${trimmed.replace(/^\/+/, "")}`;
+}
+
+function getLogoCandidates(value?: string | null): string[] {
+  const trimmed = value?.trim() ?? "";
+  if (!trimmed) return [];
+
+  const direct = normalizeLogoUrl(trimmed);
+  const legacySvgProxy =
+    direct.startsWith("/uploads/") && direct.toLowerCase().endsWith(".svg+xml")
+      ? `/api/uploads/company-logo/legacy?path=${encodeURIComponent(direct)}`
+      : "";
+  const fileName = trimmed.split("/").filter(Boolean).pop() ?? "";
+  const fallbackFromFileName = fileName ? `/uploads/company-logos/${fileName}` : "";
+
+  return [...new Set([legacySvgProxy, direct, fallbackFromFileName].filter(Boolean))];
+}
+
 
 export default function Header() {
   const pathname = usePathname();
@@ -32,16 +62,22 @@ export default function Header() {
   const { title, subtitle } = resolveTitle(pathname);
   const companyId = currentUser?.companyId;
   const companyEndpoint = companyId !== undefined && companyId !== null ? `/api/company/${companyId}` : null;
-  const { data: company } = useFetch<Company>(companyEndpoint);
+  const { data: company, refetch: refetchCompany } = useFetch<Company>(companyEndpoint);
   const { data: profile } = useFetch<Users>("/api/auth/me");
   const companyName = company?.company_name || "BuildSmart";
   const companyInitials = companyName.slice(0, 2).toUpperCase();
   const fullName = profile
     ? [profile.first_name, profile.middle_name, profile.last_name].filter(Boolean).join(" ")
     : (currentUser?.email?.split("@")[0] ?? "User");
+  const logoCandidates = getLogoCandidates(company?.company_logo);
 
   const [menuOpen, setMenuOpen] = useState(false);
+  const [logoIndex, setLogoIndex] = useState(0);
   const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    setLogoIndex(0);
+  }, [company?.company_logo]);
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -51,6 +87,14 @@ export default function Header() {
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [menuOpen]);
+
+  useEffect(() => {
+    const handleCompanyProfileUpdated = () => {
+      refetchCompany();
+    };
+    window.addEventListener("company-profile-updated", handleCompanyProfileUpdated);
+    return () => window.removeEventListener("company-profile-updated", handleCompanyProfileUpdated);
+  }, [refetchCompany]);
 
   const handleLogout = async () => {
     await logout();
@@ -70,12 +114,15 @@ export default function Header() {
           onClick={() => setMenuOpen((v) => !v)}
           className="flex items-center gap-2 rounded-xl px-2 py-1.5 transition hover:bg-gray-50"
         >
-          {company?.company_logo ? (
+          {logoCandidates[logoIndex] ? (
             // eslint-disable-next-line @next/next/no-img-element -- arbitrary external URL, not a static asset
             <img
-              src={company.company_logo}
+              src={logoCandidates[logoIndex]}
               alt=""
               className="h-9 w-9 shrink-0 rounded-full border border-gray-100 object-cover"
+              onError={() => {
+                setLogoIndex((current) => (current + 1 < logoCandidates.length ? current + 1 : current));
+              }}
             />
           ) : (
             <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary text-sm font-bold text-primary-foreground">
