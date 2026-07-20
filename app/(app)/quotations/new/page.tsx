@@ -1,3 +1,10 @@
+import { RequireOnboardingStep } from "@/components/auth/RequireOnboardingStep";
+import { QuotationGenerationWizard } from "@/features/quotation-generation";
+
 export default function NewQuotationPage() {
-  return <div>New Quotation (placeholder)</div>;
+  return (
+    <RequireOnboardingStep minStep={2}>
+      <QuotationGenerationWizard />
+    </RequireOnboardingStep>
+  );
 }
