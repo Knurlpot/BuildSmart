@@ -25,6 +25,12 @@ export interface DraftSegment {
   area_sqm: number;
   polygon_coords: [number, number][] | null;
   confidence_score: number | null;
+  // Review-gate flag for the Blueprint path's "MUST VALIDATE" step — UI-only, never
+  // submitted (no schema column, and not a Part-2 concern). Blueprint-detected segments
+  // start unconfirmed (something a human has to actually look at); segments the user
+  // authored directly (manual add, or the result of grouping) start confirmed since
+  // there's nothing "detected" to second-guess.
+  confirmed: boolean;
   // Step 3 config — PROVISIONAL, no schema column yet (see quotationGenerationTypes.ts).
   treatment_type: string | null;
   is_rush: boolean;
@@ -49,6 +55,7 @@ export function createManualSegment(): DraftSegment {
     area_sqm: 0,
     polygon_coords: null,
     confidence_score: null,
+    confirmed: true,
     treatment_type: null,
     is_rush: false,
     condition_tags: [],
@@ -68,6 +75,7 @@ export function createSegmentFromExtraction(extracted: ExtractedSegment, floorLe
     area_sqm: extracted.area_sqm,
     polygon_coords: extracted.polygon_coords,
     confidence_score: extracted.confidence_score,
+    confirmed: false,
     treatment_type: null,
     is_rush: false,
     condition_tags: [],
@@ -91,6 +99,8 @@ export function mergeSegments(segments: DraftSegment[], newName: string): DraftS
     area_sqm: Math.round(segments.reduce((sum, s) => sum + s.area_sqm, 0) * 100) / 100,
     polygon_coords: null,
     confidence_score: confidences.length > 0 ? Math.min(...confidences) : null,
+    // Combining is itself a deliberate, reviewed action — nothing left to second-guess.
+    confirmed: true,
     treatment_type: null,
     is_rush: false,
     condition_tags: [],
@@ -165,4 +175,17 @@ export function confidenceBand(score: number | null): 'high' | 'medium' | 'low' 
   if (score >= 90) return 'high';
   if (score >= 70) return 'medium';
   return 'low';
+}
+
+export const CONFIDENCE_BAND_LABEL: Record<ReturnType<typeof confidenceBand>, string> = {
+  high: 'High',
+  medium: 'Medium',
+  low: 'Low',
+  none: 'Unknown',
+};
+
+/** Simple average-of-vertices centroid — good enough to order the scan animation's
+ * top-to-bottom polygon reveal in BlueprintOverlay.tsx; not used for anything geometric. */
+export function polygonCentroidY(coords: [number, number][]): number {
+  return coords.reduce((sum, [, y]) => sum + y, 0) / coords.length;
 }

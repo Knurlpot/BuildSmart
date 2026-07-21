@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { Check, ChevronsUpDown, Pencil, Plus, Trash2, X } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { Check, CheckCircle2, ChevronsUpDown, Circle, Pencil, Plus, Trash2, X } from "lucide-react";
 import {
   computeAreaFromDimensions,
   confidenceBand,
@@ -70,7 +70,7 @@ function SegmentRowForm({ draft, onSave, onCancel }: SegmentRowFormProps) {
   };
 
   return (
-    <div className="flex flex-col gap-3">
+    <div className="flex flex-col gap-3 rounded-xl bg-gray-50/60 p-3.5">
       <div className="grid grid-cols-2 gap-3">
         <div className="flex flex-col gap-1">
           <label className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">
@@ -178,6 +178,9 @@ interface SegmentEditorListProps {
   segments: DraftSegment[];
   onChange: (next: DraftSegment[]) => void;
   showConfidence?: boolean;
+  /** Blueprint validation only — a per-row confirm toggle, see draftSegment.ts's
+   * `confirmed` field doc for why Quick Measurement never needs this. */
+  showConfirmToggle?: boolean;
   addLabel?: string;
   hoveredId?: string | null;
   onHoverChange?: (id: string | null) => void;
@@ -185,11 +188,14 @@ interface SegmentEditorListProps {
 
 // Shared editable list: add / edit / delete / group. Used standalone by Quick
 // Measurement, and as the side list (synced to BlueprintOverlay's hover state) during
-// blueprint validation — the same underlying DraftSegment[] either way.
+// blueprint validation — the same underlying DraftSegment[] either way. When `hoveredId`
+// changes from OUTSIDE (i.e. the user hovered a polygon on the blueprint, not a row here),
+// the matching row smooth-scrolls into view — same shared state either direction.
 export function SegmentEditorList({
   segments,
   onChange,
   showConfidence = false,
+  showConfirmToggle = false,
   addLabel = "Add Segment",
   hoveredId = null,
   onHoverChange,
@@ -198,6 +204,12 @@ export function SegmentEditorList({
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [grouping, setGrouping] = useState(false);
   const [groupName, setGroupName] = useState("");
+  const rowRefs = useRef<Map<string, HTMLDivElement>>(new Map());
+
+  useEffect(() => {
+    if (!hoveredId) return;
+    rowRefs.current.get(hoveredId)?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }, [hoveredId]);
 
   const startAdd = () => {
     const draft = createManualSegment();
@@ -238,6 +250,10 @@ export function SegmentEditorList({
     });
   };
 
+  const toggleConfirmed = (draftId: string) => {
+    onChange(segments.map((s) => (s.draft_id === draftId ? { ...s, confirmed: !s.confirmed } : s)));
+  };
+
   const handleGroup = () => {
     if (selectedIds.size < 2 || !groupName.trim()) return;
     const toMerge = segments.filter((s) => selectedIds.has(s.draft_id));
@@ -249,8 +265,8 @@ export function SegmentEditorList({
   };
 
   return (
-    <div className="flex flex-col gap-3">
-      <div className="flex flex-wrap items-center justify-between gap-2">
+    <div className="flex flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-100 px-4 py-3">
         <p className="text-xs font-bold uppercase tracking-wider text-gray-400">Segments ({segments.length})</p>
         <div className="flex items-center gap-2">
           {selectedIds.size >= 2 && !grouping && (
@@ -273,7 +289,7 @@ export function SegmentEditorList({
       </div>
 
       {grouping && (
-        <div className="flex items-center gap-2 rounded-lg border border-primary/30 bg-orange-50/50 px-3 py-2">
+        <div className="flex items-center gap-2 border-b border-gray-100 bg-orange-50/50 px-4 py-2.5">
           <input
             value={groupName}
             onChange={(e) => setGroupName(e.target.value)}
@@ -303,11 +319,11 @@ export function SegmentEditorList({
       )}
 
       {segments.length === 0 ? (
-        <p className="rounded-xl border border-dashed border-gray-200 px-4 py-6 text-center text-sm text-gray-400">
-          No segments yet — add one to get started.
-        </p>
+        <div className="flex flex-col items-center gap-2 px-6 py-10 text-center">
+          <p className="text-sm text-gray-400">No segments yet — add one to get started.</p>
+        </div>
       ) : (
-        <div className="flex flex-col divide-y divide-gray-100 rounded-xl border border-gray-200 bg-white">
+        <div className="flex max-h-130 flex-col divide-y divide-gray-100 overflow-y-auto">
           {segments.map((seg) =>
             editingId === seg.draft_id ? (
               <div key={seg.draft_id} className="p-3">
@@ -316,9 +332,13 @@ export function SegmentEditorList({
             ) : (
               <div
                 key={seg.draft_id}
+                ref={(el) => {
+                  if (el) rowRefs.current.set(seg.draft_id, el);
+                  else rowRefs.current.delete(seg.draft_id);
+                }}
                 onMouseEnter={() => onHoverChange?.(seg.draft_id)}
                 onMouseLeave={() => onHoverChange?.(null)}
-                className={`flex items-center gap-3 px-3 py-2.5 transition ${hoveredId === seg.draft_id ? "bg-orange-50/60" : ""}`}
+                className={`flex items-center gap-3 px-4 py-2.5 transition ${hoveredId === seg.draft_id ? "bg-orange-50/60" : ""}`}
               >
                 <input
                   type="checkbox"
@@ -326,6 +346,20 @@ export function SegmentEditorList({
                   onChange={() => toggleSelect(seg.draft_id)}
                   className="h-4 w-4 shrink-0 rounded border-gray-300 text-primary focus:ring-2 focus:ring-primary/30"
                 />
+                {showConfirmToggle && (
+                  <button
+                    type="button"
+                    onClick={() => toggleConfirmed(seg.draft_id)}
+                    title={seg.confirmed ? "Confirmed — click to unconfirm" : "Click to confirm this segment"}
+                    className="shrink-0"
+                  >
+                    {seg.confirmed ? (
+                      <CheckCircle2 className="h-5 w-5 text-green-500" />
+                    ) : (
+                      <Circle className="h-5 w-5 text-gray-300 transition hover:text-primary" />
+                    )}
+                  </button>
+                )}
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-semibold text-gray-800">{seg.segment_name || "Untitled segment"}</p>
                   <p className="text-xs text-gray-400">

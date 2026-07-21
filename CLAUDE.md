@@ -194,3 +194,11 @@ be committed into the repo for Claude Code to reference them.
   "create project" entry point. Projects can be re-edited or archived.
 - Onboarding gate is sequential (pricelist → rules), not parallel.
 - Market Intelligence AI insights are interpretive summaries, not forecasts.
+
+## Git policy
+- Do NOT run git add, git commit, or git push. The user performs all git
+  operations manually after reviewing the changes.
+- Do NOT add "Co-Authored-By: Claude" or "Generated with Claude Code"
+  trailers to any commit message.
+- When work is complete, summarize what changed and which files were
+  touched, then stop — leave committing to the user.

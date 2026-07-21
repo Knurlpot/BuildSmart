@@ -1,6 +1,5 @@
 "use client";
 
-import { Ruler } from "lucide-react";
 import { SegmentEditorList } from "./SegmentEditorList";
 import type { DraftSegment } from "../lib/draftSegment";
 
@@ -16,16 +15,13 @@ interface QuickMeasurementPanelProps {
 export function QuickMeasurementPanel({ segments, onChange, onContinue }: QuickMeasurementPanelProps) {
   return (
     <div className="flex max-w-2xl flex-col gap-5">
-      <div className="flex items-start gap-3 rounded-xl border border-gray-100 bg-gray-50/60 px-4 py-3">
-        <Ruler className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
-        <div>
-          <h2 className="text-base font-bold text-gray-900">Quick Measurement</h2>
-          <p className="text-xs text-gray-500">
-            Add each area you measured on-site. Most waterproofing jobs are a single total
-            area — &quot;Total sqm&quot; is the fast option; use Length × Width only when you
-            have both dimensions handy.
-          </p>
-        </div>
+      <div>
+        <h2 className="text-base font-bold text-gray-900">Quick Measurement</h2>
+        <p className="text-xs text-gray-500">
+          Add each area you measured on-site. Most waterproofing jobs are a single total
+          area — &quot;Total sqm&quot; is the fast option; use Length × Width only when you
+          have both dimensions handy.
+        </p>
       </div>
 
       <SegmentEditorList segments={segments} onChange={onChange} addLabel="Add Segment" />

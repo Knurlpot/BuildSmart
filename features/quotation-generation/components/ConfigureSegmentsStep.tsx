@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { AlertTriangle, CheckCircle2, Circle } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Circle, Sparkles, Zap } from "lucide-react";
 import { useSaveSegments, useUpdateQuotationInputMethod } from "@/hooks/useQuotationGeneration";
 import { TREATMENT_TYPES } from "@/lib/dev/provisional/quotationGenerationTypes";
 import { SEGMENT_CONDITION_TAGS, type SegmentConditionTag } from "@/types/entities/segment-tag";
@@ -142,6 +142,133 @@ function SegmentConfigForm({ segment, onSave }: SegmentConfigFormProps) {
   );
 }
 
+interface ApplyToAllPanelProps {
+  segmentCount: number;
+  onApply: (patch: Pick<DraftSegment, "treatment_type" | "condition_tags" | "is_rush">) => void;
+}
+
+// NEW — not part of the Replit prototype this feature otherwise follows; added as a
+// convenience since a job can have many similar areas (e.g. every room gets the same
+// waterproofing treatment). Sets treatment_type / conditions / rush ONCE across every
+// segment — it's a bulk starting point, not a lock: any segment can still be opened
+// afterward and overridden individually via SegmentConfigForm above.
+function ApplyToAllPanel({ segmentCount, onApply }: ApplyToAllPanelProps) {
+  const [open, setOpen] = useState(false);
+  const [treatmentChoice, setTreatmentChoice] = useState("");
+  const [customTreatment, setCustomTreatment] = useState("");
+  const [tags, setTags] = useState<SegmentConditionTag[]>([]);
+  const [isRush, setIsRush] = useState(false);
+
+  const toggleTag = (tag: SegmentConditionTag) => {
+    setTags((prev) => (prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag]));
+  };
+
+  const treatmentValid = treatmentChoice === "Other" ? customTreatment.trim().length > 0 : treatmentChoice !== "";
+
+  const handleApply = () => {
+    if (!treatmentValid) return;
+    onApply({
+      treatment_type: treatmentChoice === "Other" ? customTreatment.trim() : treatmentChoice,
+      condition_tags: tags,
+      is_rush: isRush,
+    });
+    setOpen(false);
+  };
+
+  if (!open) {
+    return (
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="flex w-fit items-center gap-1.5 rounded-lg border border-dashed border-primary/40 bg-orange-50/40 px-3 py-1.5 text-xs font-bold text-primary transition hover:bg-orange-50"
+      >
+        <Zap className="h-3.5 w-3.5" /> Apply to All Segments
+        <span className="rounded-full bg-primary/10 px-1.5 py-0.5 text-[9px] font-extrabold uppercase tracking-wide text-primary">New</span>
+      </button>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-3 rounded-xl border border-primary/30 bg-orange-50/40 p-4">
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex items-center gap-1.5">
+          <Sparkles className="h-4 w-4 text-primary" />
+          <p className="text-sm font-bold text-gray-900">Apply to All {segmentCount} Segments</p>
+        </div>
+        <button type="button" onClick={() => setOpen(false)} className="text-xs font-semibold text-gray-400 transition hover:text-gray-600">
+          Cancel
+        </button>
+      </div>
+      <p className="text-xs text-gray-500">
+        Set a value once and apply it everywhere — handy when a job has many similar areas.
+        You can still open any segment afterward and change just that one.
+      </p>
+
+      <div className="flex flex-col gap-1.5">
+        <label className="text-xs font-semibold text-gray-600">Treatment Type</label>
+        <select value={treatmentChoice} onChange={(e) => setTreatmentChoice(e.target.value)} className={inputCls}>
+          <option value="">Select…</option>
+          {TREATMENT_TYPES.map((t) => (
+            <option key={t}>{t}</option>
+          ))}
+          <option value="Other">Other…</option>
+        </select>
+        {treatmentChoice === "Other" && (
+          <input
+            value={customTreatment}
+            onChange={(e) => setCustomTreatment(e.target.value)}
+            placeholder="Describe the treatment"
+            className={inputCls}
+            autoFocus
+          />
+        )}
+      </div>
+
+      <div className="flex flex-col gap-1.5">
+        <label className="text-xs font-semibold text-gray-600">
+          Site Conditions <span className="font-normal normal-case text-gray-400">(optional)</span>
+        </label>
+        <div className="flex flex-wrap gap-2">
+          {SEGMENT_CONDITION_TAGS.map((tag) => {
+            const checked = tags.includes(tag);
+            return (
+              <button
+                key={tag}
+                type="button"
+                onClick={() => toggleTag(tag)}
+                className={`rounded-full border px-3 py-1 text-xs font-semibold transition ${
+                  checked ? "border-primary bg-white text-primary" : "border-gray-200 bg-white text-gray-500 hover:border-gray-300"
+                }`}
+              >
+                {tag}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      <label className="flex items-center gap-2.5 text-sm text-gray-700">
+        <input
+          type="checkbox"
+          checked={isRush}
+          onChange={(e) => setIsRush(e.target.checked)}
+          className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-2 focus:ring-primary/30"
+        />
+        Rush job
+      </label>
+
+      <button
+        type="button"
+        disabled={!treatmentValid}
+        onClick={handleApply}
+        className="w-fit rounded-lg bg-primary px-4 py-2 text-xs font-bold text-primary-foreground transition hover:bg-(--primary-hover) disabled:opacity-50"
+      >
+        Apply to {segmentCount} Segment{segmentCount === 1 ? "" : "s"}
+      </button>
+    </div>
+  );
+}
+
 interface ConfigureSegmentsStepProps {
   quoteId: number;
   segments: DraftSegment[];
@@ -153,6 +280,14 @@ export function ConfigureSegmentsStep({ quoteId, segments, onChange, onSaved }: 
   const { saveSegments, isSaving, saveError } = useSaveSegments();
   const { updateInputMethod } = useUpdateQuotationInputMethod();
   const [selectedId, setSelectedId] = useState<string | null>(segments[0]?.draft_id ?? null);
+  // Bumped by applyToAll — folded into SegmentConfigForm's key below so the currently-open
+  // segment's form remounts (and re-reads the freshly bulk-applied values) even though
+  // its OWN draft_id didn't change. Without this, a segment already selected when "Apply
+  // to All" runs keeps showing its stale pre-apply local state (e.g. Treatment Type still
+  // "Select…") despite the underlying segment already being configured — key={draft_id}
+  // alone only resets on switching BETWEEN segments, not on external bulk edits to the
+  // one already open.
+  const [applyRevision, setApplyRevision] = useState(0);
 
   const configuredCount = segments.filter(isSegmentConfigured).length;
   const allConfigured = segments.length > 0 && configuredCount === segments.length;
@@ -160,6 +295,11 @@ export function ConfigureSegmentsStep({ quoteId, segments, onChange, onSaved }: 
 
   const updateSegment = (draftId: string, patch: Partial<DraftSegment>) => {
     onChange(segments.map((s) => (s.draft_id === draftId ? { ...s, ...patch } : s)));
+  };
+
+  const applyToAll = (patch: Pick<DraftSegment, "treatment_type" | "condition_tags" | "is_rush">) => {
+    onChange(segments.map((s) => ({ ...s, ...patch })));
+    setApplyRevision((r) => r + 1);
   };
 
   const handleSave = async () => {
@@ -187,6 +327,8 @@ export function ConfigureSegmentsStep({ quoteId, segments, onChange, onSaved }: 
           on every segment before you can continue.
         </p>
       </div>
+
+      <ApplyToAllPanel segmentCount={segments.length} onApply={applyToAll} />
 
       <div className="flex overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm" style={{ minHeight: 440 }}>
         <div className="flex w-80 shrink-0 flex-col border-r border-gray-100">
@@ -224,7 +366,7 @@ export function ConfigureSegmentsStep({ quoteId, segments, onChange, onSaved }: 
         </div>
         <div className="flex-1 overflow-y-auto p-5">
           {selected ? (
-            <SegmentConfigForm key={selected.draft_id} segment={selected} onSave={(patch) => updateSegment(selected.draft_id, patch)} />
+            <SegmentConfigForm key={`${selected.draft_id}-${applyRevision}`} segment={selected} onSave={(patch) => updateSegment(selected.draft_id, patch)} />
           ) : (
             <div className="flex h-full items-center justify-center text-sm text-gray-400">No segments to configure.</div>
           )}
