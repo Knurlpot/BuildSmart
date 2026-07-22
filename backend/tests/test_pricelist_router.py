@@ -29,9 +29,10 @@ def test_upload_triggers_task_without_a_real_worker():
     assert response.json() == {"task_id": "fake-task-id"}
 
     assert mock_delay.call_count == 1
-    saved_path, source, supplier_id = mock_delay.call_args.args
+    saved_path, source, supplier_id, use_mock = mock_delay.call_args.args
     assert source == "Supplier"
     assert supplier_id == 7
+    assert use_mock is None  # not specified in this request's form data
     saved_file = Path(saved_path)
     assert saved_file.exists()
     assert saved_file.suffix == ".csv"
@@ -44,7 +45,7 @@ def test_status_endpoint_maps_celery_states():
         ("STARTED", None, "processing", None),
         ("SUCCESS", {"processed": 10, "matched": 6, "new_items_created": 0, "needs_review": 4}, "done",
          {"processed": 10, "matched": 6, "new_items_created": 0, "needs_review": 4}),
-        ("FAILURE", RuntimeError("boom"), "failed", None),
+        ("FAILURE", RuntimeError("boom"), "failed", {"error": "boom"}),
     ]
 
     for celery_state, celery_result, expected_status, expected_result in cases:

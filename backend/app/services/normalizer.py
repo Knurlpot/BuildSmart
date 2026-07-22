@@ -9,8 +9,12 @@ def normalize_material(
     raw_name: str,
     raw_unit: str,
     candidates: list[ItemCandidate],
+    use_mock: bool | None = None,
 ) -> MaterialMatch:
-    use_mock = os.getenv("USE_MOCK_AI", "true").lower() == "true"
+    # Explicit per-call override (e.g. a per-upload UI choice) takes precedence
+    # over the process-wide USE_MOCK_AI env var default.
+    if use_mock is None:
+        use_mock = os.getenv("USE_MOCK_AI", "true").lower() == "true"
 
     if use_mock:
         return normalize_material_mock(raw_name, raw_unit, candidates)

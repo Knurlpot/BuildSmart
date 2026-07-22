@@ -1,10 +1,12 @@
 import os
+import re
 import time
 from pathlib import Path
 
 from dotenv import load_dotenv
 from google import genai
 from google.genai import types
+from google.genai.errors import APIError
 from tenacity import RetryError, retry, stop_after_attempt, wait_exponential
 
 from app.schemas.normalization import MaterialMatch
@@ -27,15 +29,22 @@ MODEL = "gemini-flash-latest"
 # outgrows this in practice.
 MAX_CANDIDATES_IN_PROMPT = 50
 
-# A live batch run hit 429s after ~6 rapid sequential calls (normalize_pricelist
-# processes rows back-to-back with no pacing). This project's exact free-tier
-# RPM isn't published anywhere I could confirm, so 4s is a conservative guess
-# at safe spacing, not a number derived from official docs — revisit if 429s
-# still occur, or once the actual quota tier is known.
-MIN_SECONDS_BETWEEN_CALLS = 4.0
+# gemini-flash-latest is a rolling alias — it moved from gemini-3.5-flash
+# (20 requests/DAY free tier) to gemini-3.6-flash (5 requests/MINUTE free
+# tier) within two days of each other, with no warning, and each has a
+# different real limit. A hardcoded static pacing number keeps breaking as the
+# underlying model silently changes, so this widens itself automatically using
+# the server's own reported retryDelay whenever a 429 actually occurs — see
+# _retry_delay_seconds() and its use in _call_gemini() below. Starting point
+# (13s) reflects the 5-req/min limit actually observed against gemini-3.6-flash
+# just now, not a guess — a whole batch fails atomically on the first
+# unrecoverable row (normalize_pricelist has no per-row error handling), so
+# starting under-conservative would likely fail the very next upload before
+# the adaptive logic got a chance to learn from it.
+_min_interval = 13.0
+_last_call_at = 0.0
 
 _client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
-_last_call_at = 0.0
 
 CATEGORY_TYPES = (
     "Structural",
@@ -49,7 +58,30 @@ CATEGORY_TYPES = (
 )
 
 
-@retry(wait=wait_exponential(multiplier=1, min=1, max=10), stop=stop_after_attempt(3))
+def _retry_delay_seconds(exc: BaseException | None) -> float | None:
+    """Pull the server's own suggested wait time out of a 429's structured
+    detail (a google.rpc.RetryInfo entry), if present. Trusting this instead of
+    guessing a fixed backoff means we automatically adapt to whatever the
+    current model behind gemini-flash-latest actually enforces."""
+    if not isinstance(exc, APIError) or not isinstance(exc.details, dict):
+        return None
+    for detail in exc.details.get("error", {}).get("details", []):
+        if str(detail.get("@type", "")).endswith("RetryInfo"):
+            match = re.match(r"([\d.]+)s?$", str(detail.get("retryDelay", "")))
+            if match:
+                return float(match.group(1))
+    return None
+
+
+def _wait_for_gemini(retry_state):
+    exc = retry_state.outcome.exception() if retry_state.outcome else None
+    delay = _retry_delay_seconds(exc)
+    if delay is not None:
+        return delay + 1  # small buffer over what the server asked for
+    return wait_exponential(multiplier=1, min=1, max=10)(retry_state)
+
+
+@retry(wait=_wait_for_gemini, stop=stop_after_attempt(4))
 def _call_gemini_once(prompt: str) -> MaterialMatch:
     response = _client.models.generate_content(
         model=MODEL,
@@ -63,10 +95,10 @@ def _call_gemini_once(prompt: str) -> MaterialMatch:
 
 
 def _call_gemini(prompt: str) -> MaterialMatch:
-    global _last_call_at
+    global _last_call_at, _min_interval
     elapsed = time.monotonic() - _last_call_at
-    if elapsed < MIN_SECONDS_BETWEEN_CALLS:
-        time.sleep(MIN_SECONDS_BETWEEN_CALLS - elapsed)
+    if elapsed < _min_interval:
+        time.sleep(_min_interval - elapsed)
 
     try:
         return _call_gemini_once(prompt)
@@ -76,6 +108,14 @@ def _call_gemini(prompt: str) -> MaterialMatch:
         # UnpickleableExceptionWrapper instead of the real cause). Re-raise a
         # plain, picklable exception with the underlying error's message.
         underlying = exc.last_attempt.exception()
+
+        # Learn from the failure: widen future spacing to whatever the server
+        # actually asked for, so subsequent calls in this process don't repeat
+        # the same mistake against whatever model version is live right now.
+        delay = _retry_delay_seconds(underlying)
+        if delay is not None:
+            _min_interval = max(_min_interval, delay + 1)
+
         raise RuntimeError(f"Gemini normalization failed after retries: {underlying}") from None
     finally:
         _last_call_at = time.monotonic()

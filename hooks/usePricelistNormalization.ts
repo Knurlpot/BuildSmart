@@ -34,7 +34,7 @@ interface UploadResponse {
 
 interface StatusResponse {
   status: NormalizationTaskStatus;
-  result: NormalizationSummary | null;
+  result: NormalizationSummary | { error: string } | null;
 }
 
 export interface PricelistReviewItem {
@@ -52,15 +52,35 @@ export interface PricelistReviewItem {
   created_at: string;
 }
 
+// The backend processes one file per task (POST /pricelist/upload takes a
+// single UploadFile) — multi-file support is a client-side queue on top of
+// that, uploaded one at a time rather than concurrently. Sequential matters
+// most for AI Match: several files firing rate-limited Gemini calls at once
+// would just make each other wait anyway, so there's no throughput to gain
+// and it'd make the adaptive pacing in normalizer_gemini.py harder to reason
+// about (multiple call sites racing to update the same shared interval).
+export type QueueItemStatus = 'queued' | 'uploading' | NormalizationTaskStatus;
+
+export interface QueueItem {
+  id: string;
+  file: File;
+  // Captured per-file at enqueue time (not passed as loop-level params) so
+  // that changing "Matching Mode" while an earlier batch is still processing
+  // can't silently leak into files added afterward.
+  source: string;
+  useAi: boolean;
+  status: QueueItemStatus;
+  taskId?: string;
+  result?: NormalizationSummary;
+  failureReason?: string;
+}
+
 const POLL_INTERVAL_MS = 2000;
 
 export function usePricelistNormalization() {
-  const [isUploading, setIsUploading] = useState(false);
-  const [uploadError, setUploadError] = useState<Error | null>(null);
-  const [taskStatus, setTaskStatus] = useState<NormalizationTaskStatus | null>(null);
-  const [result, setResult] = useState<NormalizationSummary | null>(null);
-  const [pollError, setPollError] = useState<Error | null>(null);
-  const pollTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const queueRef = useRef<QueueItem[]>([]);
+  const [queue, setQueue] = useState<QueueItem[]>([]);
+  const processingRef = useRef(false);
 
   const [reviewItems, setReviewItems] = useState<PricelistReviewItem[]>([]);
   const [isLoadingReview, setIsLoadingReview] = useState(false);
@@ -81,62 +101,100 @@ export function usePricelistNormalization() {
 
   useEffect(() => {
     refetchReview();
-    return () => {
-      if (pollTimer.current) clearTimeout(pollTimer.current);
-    };
   }, [refetchReview]);
 
-  const pollStatus = (taskId: string) => {
-    normalizationApiClient<StatusResponse>(`/pricelist/status/${taskId}`)
-      .then((res) => {
-        setTaskStatus(res.status);
-        if (res.status === 'done' || res.status === 'failed') {
-          setResult(res.result);
-          if (res.status === 'done') refetchReview();
-          return;
-        }
-        pollTimer.current = setTimeout(() => pollStatus(taskId), POLL_INTERVAL_MS);
-      })
-      .catch((err) => setPollError(err instanceof Error ? err : new Error(String(err))));
+  const updateItem = (id: string, patch: Partial<QueueItem>) => {
+    queueRef.current = queueRef.current.map((item) => (item.id === id ? { ...item, ...patch } : item));
+    setQueue([...queueRef.current]);
   };
 
-  const uploadFile = async (file: File, source: string, supplierId?: number) => {
-    if (pollTimer.current) clearTimeout(pollTimer.current);
-    setIsUploading(true);
-    setUploadError(null);
-    setTaskStatus(null);
-    setResult(null);
-    setPollError(null);
+  const pollTaskStatus = (itemId: string, taskId: string): Promise<void> =>
+    new Promise((resolve) => {
+      const poll = () => {
+        normalizationApiClient<StatusResponse>(`/pricelist/status/${taskId}`)
+          .then((res) => {
+            if (res.status === 'done') {
+              updateItem(itemId, { status: 'done', result: res.result as NormalizationSummary });
+              resolve();
+            } else if (res.status === 'failed') {
+              const reason = res.result && 'error' in res.result ? res.result.error : undefined;
+              updateItem(itemId, { status: 'failed', failureReason: reason });
+              resolve();
+            } else {
+              updateItem(itemId, { status: res.status });
+              setTimeout(poll, POLL_INTERVAL_MS);
+            }
+          })
+          .catch((err) => {
+            updateItem(itemId, {
+              status: 'failed',
+              failureReason: err instanceof Error ? err.message : String(err),
+            });
+            resolve();
+          });
+      };
+      poll();
+    });
 
-    const form = new FormData();
-    form.append('file', file);
-    form.append('source', source);
-    if (supplierId != null) form.append('supplier_id', String(supplierId));
+  const processQueue = async () => {
+    if (processingRef.current) return;
+    processingRef.current = true;
 
-    try {
-      const res = await normalizationApiClient<UploadResponse>('/pricelist/upload', {
-        method: 'POST',
-        body: form,
-      });
-      setTaskStatus('pending');
-      pollStatus(res.task_id);
-      return res;
-    } catch (err) {
-      const error = err instanceof Error ? err : new Error(String(err));
-      setUploadError(error);
-      throw error;
-    } finally {
-      setIsUploading(false);
+    while (true) {
+      const next = queueRef.current.find((item) => item.status === 'queued');
+      if (!next) break;
+
+      updateItem(next.id, { status: 'uploading' });
+
+      const form = new FormData();
+      form.append('file', next.file);
+      form.append('source', next.source);
+      // Backend's use_mock is the inverse of the UI's "AI Match" choice.
+      form.append('use_mock', String(!next.useAi));
+
+      try {
+        const res = await normalizationApiClient<UploadResponse>('/pricelist/upload', {
+          method: 'POST',
+          body: form,
+        });
+        updateItem(next.id, { status: 'pending', taskId: res.task_id });
+        await pollTaskStatus(next.id, res.task_id);
+        refetchReview();
+      } catch (err) {
+        updateItem(next.id, {
+          status: 'failed',
+          failureReason: err instanceof Error ? err.message : String(err),
+        });
+      }
     }
+
+    processingRef.current = false;
+  };
+
+  const enqueueFiles = (files: File[], source: string, useAi: boolean) => {
+    const newItems: QueueItem[] = files.map((file) => ({
+      id: `${file.name}-${file.size}-${Date.now()}-${Math.random()}`,
+      file,
+      source,
+      useAi,
+      status: 'queued',
+    }));
+    queueRef.current = [...queueRef.current, ...newItems];
+    setQueue([...queueRef.current]);
+    processQueue().catch(() => {});
+  };
+
+  const clearFinishedQueueItems = () => {
+    queueRef.current = queueRef.current.filter(
+      (item) => item.status !== 'done' && item.status !== 'failed'
+    );
+    setQueue([...queueRef.current]);
   };
 
   return {
-    uploadFile,
-    isUploading,
-    uploadError,
-    taskStatus,
-    result,
-    pollError,
+    queue,
+    enqueueFiles,
+    clearFinishedQueueItems,
     reviewItems,
     isLoadingReview,
     reviewError,

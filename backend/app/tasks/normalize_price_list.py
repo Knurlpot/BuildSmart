@@ -16,6 +16,7 @@ def normalize_price_list(
     file_path: str,
     source: str,
     supplier_id: int | None = None,
+    use_mock: bool | None = None,
     db: Session | None = None,
 ) -> dict:
     # `db` lets tests inject a session bound to their own rollback-wrapped
@@ -28,7 +29,7 @@ def normalize_price_list(
     try:
         df = parse_pricelist_file(file_path)
         candidates = get_item_candidates(session)
-        results = normalize_pricelist(df, candidates)
+        results = normalize_pricelist(df, candidates, use_mock=use_mock)
 
         matched = 0
         new_items_created = 0

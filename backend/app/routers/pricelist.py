@@ -61,13 +61,14 @@ async def upload_pricelist(
     file: UploadFile = File(...),
     source: str = Form(...),
     supplier_id: int | None = Form(None),
+    use_mock: bool | None = Form(None),
 ):
     suffix = Path(file.filename).suffix
     dest = UPLOAD_DIR / f"{uuid.uuid4()}{suffix}"
     with dest.open("wb") as out:
         shutil.copyfileobj(file.file, out)
 
-    task = normalize_price_list.delay(str(dest), source, supplier_id)
+    task = normalize_price_list.delay(str(dest), source, supplier_id, use_mock)
     return UploadResponse(task_id=task.id)
 
 
@@ -75,7 +76,16 @@ async def upload_pricelist(
 def get_task_status(task_id: str):
     async_result = AsyncResult(task_id, app=celery_app)
     status = TASK_STATE_MAP.get(async_result.state, "processing")
-    result = async_result.result if async_result.state == "SUCCESS" else None
+
+    if async_result.state == "SUCCESS":
+        result = async_result.result
+    elif async_result.state == "FAILURE":
+        # async_result.result is the exception instance itself on failure —
+        # stringify it so callers actually see why it failed instead of null.
+        result = {"error": str(async_result.result)}
+    else:
+        result = None
+
     return StatusResponse(status=status, result=result)
 
 
