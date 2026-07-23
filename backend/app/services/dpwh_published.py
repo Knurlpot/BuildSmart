@@ -9,7 +9,7 @@ from app.services.candidates import get_item_candidates
 from app.services.pricelist_parser import parse_pricelist_file
 
 
-DPWH_PUBLISHED_BASE_URL = os.environ.get("DPWH_PUBLISHED_BASE_URL", "")
+DPWH_PUBLISHED_BASE_URL = os.environ.get("DPWH_PUBLISHED_BASE_URL", "https://www.dpwh.gov.ph/dpwh/bureaus-and-services/bureau-construction")
 
 
 def fetch_dpwh_cmpd_release(region: str) -> dict[str, Any]:
