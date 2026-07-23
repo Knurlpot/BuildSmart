@@ -1,4 +1,5 @@
 import os
+from contextlib import contextmanager
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -19,6 +20,15 @@ class Base(DeclarativeBase):
 
 
 def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+
+@contextmanager
+def get_db_session():
     db = SessionLocal()
     try:
         yield db

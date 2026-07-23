@@ -155,7 +155,11 @@ def fetch_published(
     if not payload.region:
         raise HTTPException(status_code=400, detail="region is required for DPWH published fetch")
 
-    release_payload = fetch_dpwh_cmpd_release(payload.region)
+    try:
+        release_payload = fetch_dpwh_cmpd_release(payload.region)
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"DPWH fetch failed: {exc}") from exc
+
     saved_count = save_dpwh_cmpd_publish_records(db, release_payload)
     return FetchPublishedResponse(auto_saved_count=saved_count, flagged=[])
 

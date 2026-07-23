@@ -1,27 +1,73 @@
 import os
+import tempfile
+from pathlib import Path
 from typing import Any
 
-import requests
 from sqlalchemy.orm import Session
 
+from app.ingest.scraper import download_file, fetch_dpwh_cmpd_links
 from app.models import Category, HistoricalPriceRecord, Items
 from app.services.candidates import get_item_candidates
 from app.services.pricelist_parser import parse_pricelist_file
 
 
-DPWH_PUBLISHED_BASE_URL = os.environ.get("DPWH_PUBLISHED_BASE_URL", "https://www.dpwh.gov.ph/dpwh/bureaus-and-services/bureau-construction")
+DPWH_PUBLISHED_BASE_URL = os.environ.get(
+    "DPWH_PUBLISHED_BASE_URL",
+    "https://www.dpwh.gov.ph/dpwh/bureaus-and-services/bureau-construction",
+)
 
 
-def fetch_dpwh_cmpd_release(region: str) -> dict[str, Any]:
+def fetch_dpwh_cmpd_release(region: str) -> list[dict[str, Any]]:
     if not DPWH_PUBLISHED_BASE_URL:
         raise RuntimeError("DPWH_PUBLISHED_BASE_URL is not configured")
 
-    # Placeholder for the real DPWH CMPD fetch path. The exact URL and payload
-    # depend on the publisher's public API or scraping interface.
-    # This function must be updated when the DPWH source contract is available.
-    response = requests.get(f"{DPWH_PUBLISHED_BASE_URL}/cmpd/latest", params={"region": region})
-    response.raise_for_status()
-    return response.json()
+    links = fetch_dpwh_cmpd_links(DPWH_PUBLISHED_BASE_URL)
+    if not links:
+        raise RuntimeError("No DPWH CMPD file links were found on the configured DPWH page")
+
+    latest_url = links[0]
+    with tempfile.TemporaryDirectory() as workdir:
+        dest = Path(workdir) / Path(latest_url).name
+        download_file(latest_url, dest)
+        df = parse_pricelist_file(str(dest))
+
+    rows: list[dict[str, Any]] = []
+    for _, row in df.iterrows():
+        item_name = str(
+            row.get("raw_name")
+            or row.get("item_name")
+            or row.get("description")
+            or row.get("material")
+            or ""
+        ).strip()
+        raw_unit = str(
+            row.get("raw_unit")
+            or row.get("unit")
+            or row.get("uom")
+            or ""
+        ).strip()
+        raw_price = row.get("raw_price") if "raw_price" in row else row.get("price")
+        quarter = row.get("quarter") or row.get("period")
+        year = row.get("year")
+
+        if not item_name:
+            continue
+
+        rows.append(
+            {
+                "item_name": item_name,
+                "unit": raw_unit,
+                "price": raw_price,
+                "region": region,
+                "quarter": quarter,
+                "year": int(year) if year is not None else None,
+            }
+        )
+
+    if not rows:
+        raise RuntimeError("DPWH CMPD file was downloaded but no valid rows could be parsed")
+
+    return rows
 
 
 def _normalize_dpwh_rows(payload: dict[str, Any]) -> list[dict[str, Any]]:
