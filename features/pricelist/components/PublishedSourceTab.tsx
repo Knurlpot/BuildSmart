@@ -167,6 +167,7 @@ export function PublishedSourceTab({ onViewCatalog }: { onViewCatalog?: () => vo
       const status = await checkDpwhVersion(region);
       if (status.status === "new_available") {
         await trigger(region).catch(() => {});
+        revealCatalog();
       } else {
         revealCatalog();
       }

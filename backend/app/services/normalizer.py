@@ -1,7 +1,6 @@
 import os
 
 from app.schemas.normalization import MaterialMatch
-from app.services.normalizer_gemini import normalize_material_gemini
 from app.services.normalizer_mock import ItemCandidate, normalize_material_mock
 
 
@@ -18,4 +17,7 @@ def normalize_material(
 
     if use_mock:
         return normalize_material_mock(raw_name, raw_unit, candidates)
+
+    from app.services.normalizer_gemini import normalize_material_gemini
+
     return normalize_material_gemini(raw_name, raw_unit, candidates)

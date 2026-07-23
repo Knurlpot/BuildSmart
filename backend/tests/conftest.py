@@ -13,8 +13,11 @@ os.environ["USE_MOCK_AI"] = "true"
 import pytest
 from sqlalchemy.orm import Session
 
-from app.database import engine
+from app.database import Base, engine
 from app.models import Category, Items
+
+# Ensure the test database schema exists for these database-backed tests.
+Base.metadata.create_all(engine)
 
 # Seed data mirrors CANDIDATES in test_normalizer_mock.py, adapted to real inserts.
 SEED_ITEMS = [
