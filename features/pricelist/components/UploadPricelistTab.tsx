@@ -6,7 +6,14 @@ import { QuickUploadGuide } from "./QuickUploadGuide";
 import { ColumnMappingStep } from "./ColumnMappingStep";
 import { RowReviewStep } from "./RowReviewStep";
 import { SavedCatalogView } from "./SavedCatalogView";
-import { usePricelistUpload } from "@/hooks/usePricelistUpload";
+import {
+  ITEM_OPTIONAL_FIELDS,
+  ITEM_REQUIRED_FIELDS,
+  SUPPLIER_OPTIONAL_FIELDS,
+  SUPPLIER_REQUIRED_FIELDS,
+  SYSTEM_FIELD_LABELS,
+  usePricelistUpload,
+} from "@/hooks/usePricelistUpload";
 
 const ACCEPTED_EXTENSIONS = [".csv", ".xlsx", ".pdf"];
 
@@ -222,14 +229,31 @@ export function UploadPricelistTab({ onViewCatalog }: { onViewCatalog?: () => vo
       )}
 
       {step === 2 && (
-        <ColumnMappingStep
-          columns={columns}
-          itemRowCount={itemRows.length}
-          supplierRowCount={supplierRows.length}
-          onUpdateMapping={updateColumnMapping}
-          onBack={() => setStep(1)}
-          onContinue={() => setStep(3)}
-        />
+        <div className="flex flex-col gap-3">
+          <ColumnMappingStep
+            description={`Match each detected column to a BuildSmart field — scroll down to map both item and supplier columns. This applies once to the whole upload (${itemRows.length} item row${itemRows.length !== 1 ? "s" : ""}${supplierRows.length > 0 ? `, ${supplierRows.length} supplier row${supplierRows.length !== 1 ? "s" : ""}` : ""}).`}
+            columns={columns}
+            sections={[
+              { title: "Item Columns", requiredFields: ITEM_REQUIRED_FIELDS, optionalFields: ITEM_OPTIONAL_FIELDS },
+              {
+                title: "Supplier Columns",
+                requiredFields: SUPPLIER_REQUIRED_FIELDS,
+                optionalFields: SUPPLIER_OPTIONAL_FIELDS,
+                emptyHint: "No detected columns yet.",
+              },
+            ]}
+            fieldLabels={SYSTEM_FIELD_LABELS}
+            onUpdateMapping={updateColumnMapping}
+            onBack={() => setStep(1)}
+            onContinue={() => setStep(3)}
+          />
+          {supplierRows.length === 0 && (
+            <p className="text-xs text-gray-400">
+              No file supplied supplier columns — that&apos;s fine, leave the Supplier section
+              unmapped and Map &amp; Confirm&apos;s Suppliers view will show nothing to confirm.
+            </p>
+          )}
+        </div>
       )}
 
       {step === 3 && (

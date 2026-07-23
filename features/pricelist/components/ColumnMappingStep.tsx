@@ -1,59 +1,50 @@
 "use client";
 
 import { ChevronLeft, ChevronRight } from "lucide-react";
-import {
-  ITEM_OPTIONAL_FIELDS,
-  ITEM_REQUIRED_FIELDS,
-  SUPPLIER_OPTIONAL_FIELDS,
-  SUPPLIER_REQUIRED_FIELDS,
-  type DetectedColumn,
-  type ItemSystemField,
-  type SupplierSystemField,
-  type SystemField,
-} from "@/hooks/usePricelistUpload";
 
-const FIELD_LABELS: Record<SystemField, string> = {
-  item_name: "Item Name",
-  material: "Material",
-  brand: "Brand",
-  unit: "Unit",
-  category_id: "Category",
-  item_source: "Item Source",
-  price: "Price",
-  quality: "Quality",
-  size_width: "Size (Width)",
-  size_length: "Size (Length)",
-  color: "Color",
-  description: "Description",
-  supplier_name: "Supplier Name",
-  supplier_address: "Supplier Address",
-  city: "City",
-  region: "Region",
-  contact_email: "Contact Email",
-  contact_number: "Contact Number",
-  supplier_type: "Supplier Type",
-  warehouse_loc: "Warehouse Location",
-};
-
-interface ColumnMappingStepProps {
-  columns: DetectedColumn[];
-  itemRowCount: number;
-  supplierRowCount: number;
-  onUpdateMapping: (rawColumn: string, mappedField: SystemField | null) => void;
-  onBack: () => void;
-  onContinue: () => void;
+// Generic over the field union so this same component serves two different
+// mapping vocabularies: the manual upload wizard's ~20 item/supplier fields
+// (usePricelistUpload's SystemField) and the AI Normalization panel's 3-field
+// raw_name/raw_unit/raw_price recovery flow (usePricelistNormalization).
+export interface DetectedColumn<F extends string = string> {
+  raw_column: string;
+  mapped_field: F | null;
+  /** Which uploaded file(s) this raw column was seen in — for display only. */
+  source_files: string[];
 }
 
-function FieldRow({
+export interface MappingSection<F extends string> {
+  title: string;
+  requiredFields: F[];
+  optionalFields: F[];
+  emptyHint?: string;
+}
+
+interface ColumnMappingStepProps<F extends string> {
+  title?: string;
+  description: string;
+  columns: DetectedColumn<F>[];
+  sections: MappingSection<F>[];
+  fieldLabels: Record<F, string>;
+  onUpdateMapping: (rawColumn: string, mappedField: F | null) => void;
+  onBack: () => void;
+  onContinue: () => void;
+  continueLabel?: string;
+  continueDisabled?: boolean;
+}
+
+function FieldRow<F extends string>({
   field,
   required,
   columns,
+  fieldLabels,
   onUpdateMapping,
 }: {
-  field: SystemField;
+  field: F;
   required: boolean;
-  columns: DetectedColumn[];
-  onUpdateMapping: (rawColumn: string, mappedField: SystemField | null) => void;
+  columns: DetectedColumn<F>[];
+  fieldLabels: Record<F, string>;
+  onUpdateMapping: (rawColumn: string, mappedField: F | null) => void;
 }) {
   // A field may be mapped from at most one detected column — find which one (if any).
   const mappedColumn = columns.find((c) => c.mapped_field === field);
@@ -70,7 +61,7 @@ function FieldRow({
   return (
     <div className="flex items-center gap-4 px-4 py-2.5">
       <span className="flex w-44 shrink-0 items-center gap-1.5 text-sm font-semibold text-gray-700">
-        {FIELD_LABELS[field]}
+        {fieldLabels[field]}
         {required ? (
           <span className="text-red-500">*</span>
         ) : (
@@ -86,7 +77,7 @@ function FieldRow({
         {columns.map((c) => (
           <option key={c.raw_column} value={c.raw_column} disabled={c.mapped_field !== null && c.mapped_field !== field}>
             {c.raw_column}
-            {c.mapped_field !== null && c.mapped_field !== field ? ` (used for ${FIELD_LABELS[c.mapped_field]})` : ""}
+            {c.mapped_field !== null && c.mapped_field !== field ? ` (used for ${fieldLabels[c.mapped_field]})` : ""}
           </option>
         ))}
       </select>
@@ -94,35 +85,31 @@ function FieldRow({
   );
 }
 
-function Section({
-  title,
-  requiredFields,
-  optionalFields,
+function Section<F extends string>({
+  section,
   columns,
+  fieldLabels,
   onUpdateMapping,
-  emptyHint,
 }: {
-  title: string;
-  requiredFields: ItemSystemField[] | SupplierSystemField[];
-  optionalFields: ItemSystemField[] | SupplierSystemField[];
-  columns: DetectedColumn[];
-  onUpdateMapping: (rawColumn: string, mappedField: SystemField | null) => void;
-  emptyHint?: string;
+  section: MappingSection<F>;
+  columns: DetectedColumn<F>[];
+  fieldLabels: Record<F, string>;
+  onUpdateMapping: (rawColumn: string, mappedField: F | null) => void;
 }) {
   return (
     <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white">
       <div className="border-b border-gray-100 bg-gray-50 px-4 py-3">
-        <p className="text-xs font-bold uppercase tracking-wider text-gray-400">{title}</p>
+        <p className="text-xs font-bold uppercase tracking-wider text-gray-400">{section.title}</p>
       </div>
-      {columns.length === 0 && emptyHint ? (
-        <p className="px-4 py-6 text-center text-xs text-gray-400">{emptyHint}</p>
+      {columns.length === 0 && section.emptyHint ? (
+        <p className="px-4 py-6 text-center text-xs text-gray-400">{section.emptyHint}</p>
       ) : (
         <div className="flex flex-col divide-y divide-gray-100">
-          {requiredFields.map((f) => (
-            <FieldRow key={f} field={f} required columns={columns} onUpdateMapping={onUpdateMapping} />
+          {section.requiredFields.map((f) => (
+            <FieldRow key={f} field={f} required columns={columns} fieldLabels={fieldLabels} onUpdateMapping={onUpdateMapping} />
           ))}
-          {optionalFields.map((f) => (
-            <FieldRow key={f} field={f} required={false} columns={columns} onUpdateMapping={onUpdateMapping} />
+          {section.optionalFields.map((f) => (
+            <FieldRow key={f} field={f} required={false} columns={columns} fieldLabels={fieldLabels} onUpdateMapping={onUpdateMapping} />
           ))}
         </div>
       )}
@@ -130,25 +117,24 @@ function Section({
   );
 }
 
-export function ColumnMappingStep({
+export function ColumnMappingStep<F extends string>({
+  title = "Review & Detect",
+  description,
   columns,
-  itemRowCount,
-  supplierRowCount,
+  sections,
+  fieldLabels,
   onUpdateMapping,
   onBack,
   onContinue,
-}: ColumnMappingStepProps) {
+  continueLabel = "Map & Confirm",
+  continueDisabled = false,
+}: ColumnMappingStepProps<F>) {
   return (
     <div className="flex flex-col gap-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 className="text-base font-bold text-gray-900">Review &amp; Detect</h2>
-          <p className="text-xs text-gray-500">
-            Match each detected column to a BuildSmart field — scroll down to map both item and
-            supplier columns. This applies once to the whole upload ({itemRowCount} item row
-            {itemRowCount !== 1 ? "s" : ""}
-            {supplierRowCount > 0 ? `, ${supplierRowCount} supplier row${supplierRowCount !== 1 ? "s" : ""}` : ""}).
-          </p>
+          <h2 className="text-base font-bold text-gray-900">{title}</h2>
+          <p className="text-xs text-gray-500">{description}</p>
         </div>
         <div className="flex gap-2">
           <button
@@ -161,37 +147,19 @@ export function ColumnMappingStep({
           <button
             type="button"
             onClick={onContinue}
-            className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-bold text-primary-foreground transition hover:bg-(--primary-hover)"
+            disabled={continueDisabled}
+            className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-bold text-primary-foreground transition hover:bg-(--primary-hover) disabled:cursor-not-allowed disabled:opacity-50"
           >
-            Map &amp; Confirm <ChevronRight className="h-4 w-4" />
+            {continueLabel} <ChevronRight className="h-4 w-4" />
           </button>
         </div>
       </div>
 
       <div className="flex max-h-140 flex-col gap-5 overflow-y-auto pr-1">
-        <Section
-          title="Item Columns"
-          requiredFields={ITEM_REQUIRED_FIELDS}
-          optionalFields={ITEM_OPTIONAL_FIELDS}
-          columns={columns}
-          onUpdateMapping={onUpdateMapping}
-        />
-        <Section
-          title="Supplier Columns"
-          requiredFields={SUPPLIER_REQUIRED_FIELDS}
-          optionalFields={SUPPLIER_OPTIONAL_FIELDS}
-          columns={columns}
-          onUpdateMapping={onUpdateMapping}
-          emptyHint="No detected columns yet."
-        />
+        {sections.map((section) => (
+          <Section key={section.title} section={section} columns={columns} fieldLabels={fieldLabels} onUpdateMapping={onUpdateMapping} />
+        ))}
       </div>
-
-      {supplierRowCount === 0 && (
-        <p className="text-xs text-gray-400">
-          No file supplied supplier columns — that&apos;s fine, leave the Supplier section
-          unmapped and Map &amp; Confirm&apos;s Suppliers view will show nothing to confirm.
-        </p>
-      )}
     </div>
   );
 }

@@ -17,6 +17,7 @@ def normalize_price_list(
     source: str,
     supplier_id: int | None = None,
     use_mock: bool | None = None,
+    column_mapping: dict[str, str] | None = None,
     db: Session | None = None,
 ) -> dict:
     # `db` lets tests inject a session bound to their own rollback-wrapped
@@ -27,7 +28,7 @@ def normalize_price_list(
     session = db if db is not None else SessionLocal()
 
     try:
-        df = parse_pricelist_file(file_path)
+        df = parse_pricelist_file(file_path, column_mapping=column_mapping)
         candidates = get_item_candidates(session)
         results = normalize_pricelist(df, candidates, use_mock=use_mock)
 

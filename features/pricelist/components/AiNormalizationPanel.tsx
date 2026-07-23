@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   AlertTriangle,
   CheckCircle2,
@@ -16,7 +16,15 @@ import {
   Zap,
 } from "lucide-react";
 import { QueryState } from "@/components/feedback/QueryState";
-import { usePricelistNormalization, type QueueItem } from "@/hooks/usePricelistNormalization";
+import { ColumnMappingStep, type DetectedColumn } from "./ColumnMappingStep";
+import {
+  NORMALIZATION_FIELD_LABELS,
+  usePricelistNormalization,
+  type NormalizationField,
+  type QueueItem,
+} from "@/hooks/usePricelistNormalization";
+
+const NORMALIZATION_FIELDS: NormalizationField[] = ["raw_name", "raw_unit", "raw_price"];
 
 const SOURCES = ["DPWH", "PSA", "Supplier", "Internal"] as const;
 // Backend support confirmed for all three: pricelist_parser.py handles
@@ -50,6 +58,11 @@ function QueueItemRow({ item }: { item: QueueItem }) {
             {item.result.needs_review} flagged for review.
           </p>
         )}
+        {item.status === "needs_mapping" && (
+          <p className="text-xs text-amber-600">
+            Couldn&apos;t auto-detect its columns — map them above to continue.
+          </p>
+        )}
         {item.status === "failed" && (
           <p className="text-xs text-red-600">{item.failureReason || "Failed — check the backend logs."}</p>
         )}
@@ -57,6 +70,7 @@ function QueueItemRow({ item }: { item: QueueItem }) {
       <div className="mt-0.5 shrink-0">
         {item.status === "queued" && <Clock className="h-4 w-4 text-gray-300" />}
         {item.status === "done" && <CheckCircle2 className="h-4 w-4 text-green-500" />}
+        {item.status === "needs_mapping" && <AlertTriangle className="h-4 w-4 text-amber-500" />}
         {item.status === "failed" && <AlertTriangle className="h-4 w-4 text-red-500" />}
       </div>
     </div>
@@ -71,8 +85,75 @@ function QueueItemRow({ item }: { item: QueueItem }) {
  * contract — see the Step 7 gap report for why these aren't merged.
  */
 export function AiNormalizationPanel() {
-  const { queue, enqueueFiles, clearFinishedQueueItems, reviewItems, isLoadingReview, reviewError, refetchReview } =
-    usePricelistNormalization();
+  const {
+    queue,
+    enqueueFiles,
+    resolveColumnMapping,
+    cancelColumnMapping,
+    clearFinishedQueueItems,
+    reviewItems,
+    isLoadingReview,
+    reviewError,
+    refetchReview,
+    clearPendingReview,
+    isClearingReview,
+    clearReviewError,
+  } = usePricelistNormalization();
+
+  // Two-click inline confirm rather than a native confirm() dialog — this
+  // permanently deletes every Pending row with no undo.
+  const [confirmingClear, setConfirmingClear] = useState(false);
+
+  const handleClearReview = () => {
+    if (!confirmingClear) {
+      setConfirmingClear(true);
+      return;
+    }
+    setConfirmingClear(false);
+    clearPendingReview().catch(() => {});
+  };
+
+  const mappingItem = queue.find((item) => item.status === "needs_mapping");
+
+  // Draft mapping for whichever file is currently stuck in 'needs_mapping' —
+  // pre-filled from what the backend's tiers 1-3 DID resolve, so the user
+  // only has to pick the field(s) that actually need a human. Only one item
+  // can be in this state at a time (see usePricelistNormalization's queue
+  // guard), so a single draft is enough.
+  const [mappingColumns, setMappingColumns] = useState<DetectedColumn<NormalizationField>[]>([]);
+
+  useEffect(() => {
+    if (!mappingItem?.mappingInfo) return;
+    const { availableColumns, detectedMapping } = mappingItem.mappingInfo;
+    setMappingColumns(
+      availableColumns.map((col) => ({
+        raw_column: col,
+        mapped_field:
+          NORMALIZATION_FIELDS.find((field) => detectedMapping[field] === col) ?? null,
+        source_files: [mappingItem.file.name],
+      }))
+    );
+    // Re-derive only when a (possibly different) file's mapping info shows up, not on every
+    // queue update — otherwise every edit to mappingColumns itself would get clobbered by
+    // this effect re-running off the same mappingItem reference.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mappingItem?.mappingInfo]);
+
+  const updateMappingColumn = (rawColumn: string, mappedField: NormalizationField | null) => {
+    setMappingColumns((prev) => prev.map((c) => (c.raw_column === rawColumn ? { ...c, mapped_field: mappedField } : c)));
+  };
+
+  const mappingComplete = NORMALIZATION_FIELDS.every((field) =>
+    mappingColumns.some((c) => c.mapped_field === field)
+  );
+
+  const handleConfirmMapping = () => {
+    if (!mappingItem || !mappingComplete) return;
+    const mapping = Object.fromEntries(
+      NORMALIZATION_FIELDS.map((field) => [field, mappingColumns.find((c) => c.mapped_field === field)!.raw_column])
+    ) as Record<NormalizationField, string>;
+    resolveColumnMapping(mappingItem.id, mapping);
+  };
 
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
   const [fileTypeError, setFileTypeError] = useState<string | null>(null);
@@ -130,6 +211,55 @@ export function AiNormalizationPanel() {
           the existing item catalog by name/unit similarity. Multiple files are queued and processed one at a
           time.
         </p>
+        {mappingItem?.mappingInfo ? (
+          <div className="flex flex-col gap-4">
+            {mappingItem.mappingInfo.previewRows.length > 0 && (
+              <div className="overflow-x-auto rounded-xl border border-gray-100">
+                <table className="w-full text-left text-xs">
+                  <thead>
+                    <tr className="border-b border-gray-100 bg-gray-50 text-gray-400">
+                      {mappingItem.mappingInfo.availableColumns.map((col) => (
+                        <th key={col} className="whitespace-nowrap px-3 py-2 font-semibold">
+                          {col}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-50">
+                    {mappingItem.mappingInfo.previewRows.map((row, i) => (
+                      <tr key={i}>
+                        {mappingItem.mappingInfo!.availableColumns.map((col) => (
+                          <td key={col} className="whitespace-nowrap px-3 py-2 text-gray-600">
+                            {row[col] ?? ""}
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+            <ColumnMappingStep
+              title="Map Columns"
+              description={`"${mappingItem.file.name}" doesn't use column headers we recognize automatically — match each field to the right column using the preview above.`}
+              columns={mappingColumns}
+              sections={[
+                {
+                  title: "Price List Columns",
+                  requiredFields: NORMALIZATION_FIELDS,
+                  optionalFields: [],
+                },
+              ]}
+              fieldLabels={NORMALIZATION_FIELD_LABELS}
+              onUpdateMapping={updateMappingColumn}
+              onBack={() => cancelColumnMapping(mappingItem.id)}
+              onContinue={handleConfirmMapping}
+              continueLabel="Confirm & Normalize"
+              continueDisabled={!mappingComplete}
+            />
+          </div>
+        ) : (
+        <>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
           <div className="flex flex-col gap-1.5 sm:col-span-2">
             <label className="text-xs font-semibold uppercase tracking-wide text-gray-600">Files</label>
@@ -243,6 +373,8 @@ export function AiNormalizationPanel() {
             ? `Upload & Normalize ${pendingFiles.length} Files`
             : "Upload & Normalize"}
         </button>
+        </>
+        )}
 
         {/* The status endpoint only ever returns {status, result} — no per-row
             progress (e.g. "row 4 of 10"). Showing that would need the Celery
@@ -283,14 +415,42 @@ export function AiNormalizationPanel() {
               this is read-only.
             </p>
           </div>
-          <button
-            type="button"
-            onClick={refetchReview}
-            className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-600 transition hover:bg-gray-50"
-          >
-            <RefreshCw className="h-3.5 w-3.5" /> Refresh
-          </button>
+          <div className="flex shrink-0 items-center gap-2">
+            {confirmingClear && (
+              <button
+                type="button"
+                onClick={() => setConfirmingClear(false)}
+                className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-600 transition hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={handleClearReview}
+              disabled={reviewItems.length === 0 || isClearingReview}
+              className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-50 ${
+                confirmingClear
+                  ? "border-red-200 bg-red-50 text-red-600 hover:bg-red-100"
+                  : "border-gray-200 bg-white text-gray-600 hover:bg-gray-50"
+              }`}
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+              {isClearingReview ? "Clearing…" : confirmingClear ? "Confirm — delete all?" : "Clear"}
+            </button>
+            <button
+              type="button"
+              onClick={refetchReview}
+              className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-600 transition hover:bg-gray-50"
+            >
+              <RefreshCw className="h-3.5 w-3.5" /> Refresh
+            </button>
+          </div>
         </div>
+
+        {clearReviewError && (
+          <p className="mb-3 text-xs text-red-600">Couldn&apos;t clear review items: {clearReviewError.message}</p>
+        )}
 
         <QueryState
           isLoading={isLoadingReview}

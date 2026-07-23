@@ -52,14 +52,68 @@ export interface PricelistReviewItem {
   created_at: string;
 }
 
+// Mirrors pricelist_parser.py's REQUIRED_COLUMNS — the 3 fields the backend
+// couldn't place in a file's headers via its exact/synonym/keyword tiers.
+export type NormalizationField = 'raw_name' | 'raw_unit' | 'raw_price';
+
+export const NORMALIZATION_FIELD_LABELS: Record<NormalizationField, string> = {
+  raw_name: 'Material Name',
+  raw_unit: 'Unit',
+  raw_price: 'Price',
+};
+
+// What POST /pricelist/upload returns as a 422 when parse_pricelist_file()
+// raises MissingColumnsError — everything ColumnMappingStep.tsx needs to let
+// a human finish what the backend's tiers 1-3 couldn't.
+export interface MissingColumnsInfo {
+  uploadId: string;
+  missingColumns: NormalizationField[];
+  availableColumns: string[];
+  detectedMapping: Partial<Record<NormalizationField, string>>;
+  previewRows: Record<string, string>[];
+}
+
+class MissingColumnsApiError extends Error {
+  info: MissingColumnsInfo;
+  constructor(info: MissingColumnsInfo) {
+    super('Price list file is missing required column(s)');
+    this.info = info;
+  }
+}
+
+async function uploadPricelistFile(form: FormData): Promise<UploadResponse> {
+  const res = await fetch(`${NORMALIZATION_API_BASE}/pricelist/upload`, { method: 'POST', body: form });
+
+  if (res.status === 422) {
+    const body = await res.json().catch(() => null);
+    if (body && typeof body.upload_id === 'string' && Array.isArray(body.missing_columns)) {
+      throw new MissingColumnsApiError({
+        uploadId: body.upload_id,
+        missingColumns: body.missing_columns,
+        availableColumns: body.available_columns ?? [],
+        detectedMapping: body.detected_mapping ?? {},
+        previewRows: body.preview_rows ?? [],
+      });
+    }
+  }
+
+  if (!res.ok) {
+    const body = await res.json().catch(() => null);
+    throw new Error(body?.detail || body?.error || `API error: ${res.status}`);
+  }
+  return res.json();
+}
+
 // The backend processes one file per task (POST /pricelist/upload takes a
 // single UploadFile) — multi-file support is a client-side queue on top of
 // that, uploaded one at a time rather than concurrently. Sequential matters
 // most for AI Match: several files firing rate-limited Gemini calls at once
 // would just make each other wait anyway, so there's no throughput to gain
 // and it'd make the adaptive pacing in normalizer_gemini.py harder to reason
-// about (multiple call sites racing to update the same shared interval).
-export type QueueItemStatus = 'queued' | 'uploading' | NormalizationTaskStatus;
+// about (multiple call sites racing to update the same shared interval). It
+// also means at most one file can be sitting in 'needs_mapping' at a time —
+// the queue pauses there until a human resolves or cancels it.
+export type QueueItemStatus = 'queued' | 'uploading' | 'needs_mapping' | NormalizationTaskStatus;
 
 export interface QueueItem {
   id: string;
@@ -73,6 +127,7 @@ export interface QueueItem {
   taskId?: string;
   result?: NormalizationSummary;
   failureReason?: string;
+  mappingInfo?: MissingColumnsInfo;
 }
 
 const POLL_INTERVAL_MS = 2000;
@@ -138,6 +193,10 @@ export function usePricelistNormalization() {
 
   const processQueue = async () => {
     if (processingRef.current) return;
+    // A file awaiting a human-confirmed mapping blocks the rest of the batch
+    // — resuming here would let a later file's Quick/AI Match run ahead of a
+    // decision the user hasn't made yet, out of the upload order they expect.
+    if (queueRef.current.some((item) => item.status === 'needs_mapping')) return;
     processingRef.current = true;
 
     while (true) {
@@ -153,14 +212,15 @@ export function usePricelistNormalization() {
       form.append('use_mock', String(!next.useAi));
 
       try {
-        const res = await normalizationApiClient<UploadResponse>('/pricelist/upload', {
-          method: 'POST',
-          body: form,
-        });
+        const res = await uploadPricelistFile(form);
         updateItem(next.id, { status: 'pending', taskId: res.task_id });
         await pollTaskStatus(next.id, res.task_id);
         refetchReview();
       } catch (err) {
+        if (err instanceof MissingColumnsApiError) {
+          updateItem(next.id, { status: 'needs_mapping', mappingInfo: err.info });
+          break; // pause here — see the guard above for why
+        }
         updateItem(next.id, {
           status: 'failed',
           failureReason: err instanceof Error ? err.message : String(err),
@@ -184,6 +244,49 @@ export function usePricelistNormalization() {
     processQueue().catch(() => {});
   };
 
+  // Submits the human-confirmed mapping from ColumnMappingStep.tsx for an
+  // item stuck in 'needs_mapping', then resumes the rest of the queue
+  // regardless of whether this file itself succeeds or fails.
+  const resolveColumnMapping = async (itemId: string, mapping: Record<NormalizationField, string>) => {
+    const item = queueRef.current.find((i) => i.id === itemId);
+    if (!item?.mappingInfo) return;
+
+    updateItem(itemId, { status: 'uploading' });
+
+    const form = new FormData();
+    form.append('raw_name_column', mapping.raw_name);
+    form.append('raw_unit_column', mapping.raw_unit);
+    form.append('raw_price_column', mapping.raw_price);
+    form.append('source', item.source);
+    form.append('use_mock', String(!item.useAi));
+
+    try {
+      const res = await normalizationApiClient<UploadResponse>(
+        `/pricelist/upload/${item.mappingInfo.uploadId}/confirm-mapping`,
+        { method: 'POST', body: form }
+      );
+      updateItem(itemId, { status: 'pending', taskId: res.task_id, mappingInfo: undefined });
+      await pollTaskStatus(itemId, res.task_id);
+      refetchReview();
+    } catch (err) {
+      updateItem(itemId, {
+        status: 'failed',
+        failureReason: err instanceof Error ? err.message : String(err),
+        mappingInfo: undefined,
+      });
+    }
+
+    processQueue().catch(() => {});
+  };
+
+  // Backs out of a 'needs_mapping' file without submitting a mapping —
+  // drops it from the queue and unblocks whatever's queued behind it.
+  const cancelColumnMapping = (itemId: string) => {
+    queueRef.current = queueRef.current.filter((item) => item.id !== itemId);
+    setQueue([...queueRef.current]);
+    processQueue().catch(() => {});
+  };
+
   const clearFinishedQueueItems = () => {
     queueRef.current = queueRef.current.filter(
       (item) => item.status !== 'done' && item.status !== 'failed'
@@ -191,13 +294,38 @@ export function usePricelistNormalization() {
     setQueue([...queueRef.current]);
   };
 
+  const [isClearingReview, setIsClearingReview] = useState(false);
+  const [clearReviewError, setClearReviewError] = useState<Error | null>(null);
+
+  // Permanently deletes every currently-Pending review row (DELETE
+  // /pricelist/review, scoped server-side to status == "Pending" — see
+  // clear_pending_review in pricelist.py). Irreversible: there's no
+  // approve/reject workflow yet for these rows to have been acted on first.
+  const clearPendingReview = async () => {
+    setIsClearingReview(true);
+    setClearReviewError(null);
+    try {
+      await normalizationApiClient<{ deleted_count: number }>('/pricelist/review', { method: 'DELETE' });
+      setReviewItems([]);
+    } catch (err) {
+      setClearReviewError(err instanceof Error ? err : new Error(String(err)));
+    } finally {
+      setIsClearingReview(false);
+    }
+  };
+
   return {
     queue,
     enqueueFiles,
+    resolveColumnMapping,
+    cancelColumnMapping,
     clearFinishedQueueItems,
     reviewItems,
     isLoadingReview,
     reviewError,
     refetchReview,
+    clearPendingReview,
+    isClearingReview,
+    clearReviewError,
   };
 }

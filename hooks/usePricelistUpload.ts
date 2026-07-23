@@ -26,6 +26,7 @@
 // these rows aren't persisted until commit, so they carry no item_code/historicalrec_id/
 // supplier_id yet — those are database-generated and read back from the commit response only.
 import { useState } from 'react';
+import type { DetectedColumn } from '@/features/pricelist/components/ColumnMappingStep';
 import { useMutation } from './useMutation';
 
 // "price" is grouped into the Items mapping section for UX (it lives on the same row as the
@@ -94,12 +95,30 @@ export const SYSTEM_FIELDS: SystemField[] = [
   ...SUPPLIER_OPTIONAL_FIELDS,
 ];
 
-export interface DetectedColumn {
-  raw_column: string;
-  mapped_field: SystemField | null;
-  /** Which uploaded file(s) this raw column was seen in — for display only. */
-  source_files: string[];
-}
+export const SYSTEM_FIELD_LABELS: Record<SystemField, string> = {
+  item_name: "Item Name",
+  material: "Material",
+  brand: "Brand",
+  unit: "Unit",
+  category_id: "Category",
+  item_source: "Item Source",
+  price: "Price",
+  quality: "Quality",
+  size_width: "Size (Width)",
+  size_length: "Size (Length)",
+  color: "Color",
+  description: "Description",
+  supplier_name: "Supplier Name",
+  supplier_address: "Supplier Address",
+  city: "City",
+  region: "Region",
+  contact_email: "Contact Email",
+  contact_number: "Contact Number",
+  supplier_type: "Supplier Type",
+  warehouse_loc: "Warehouse Location",
+};
+
+export type { DetectedColumn };
 
 export interface ExtractedItemRow {
   row_key: string; // client-side staging key — NOT a database id, never sent as one
@@ -133,7 +152,7 @@ export interface ExtractedSupplierRow {
 }
 
 export interface UploadResponse {
-  columns: DetectedColumn[];
+  columns: DetectedColumn<SystemField>[];
   item_rows: ExtractedItemRow[];
   supplier_rows: ExtractedSupplierRow[];
 }
@@ -174,7 +193,7 @@ export const SOFT_ROW_CAP = 5000;
 export function usePricelistUpload() {
   const [itemRows, setItemRows] = useState<ExtractedItemRow[]>([]);
   const [supplierRows, setSupplierRows] = useState<ExtractedSupplierRow[]>([]);
-  const [columns, setColumns] = useState<DetectedColumn[]>([]);
+  const [columns, setColumns] = useState<DetectedColumn<SystemField>[]>([]);
   const upload = useMutation<UploadResponse>();
   const commit = useMutation<CommitResponse>();
 
