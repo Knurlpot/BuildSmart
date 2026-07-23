@@ -9,8 +9,10 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@tanstack/react-table": "^8.21.3",
     "@types/pg": "^8.20.0",
     "lucide-react": "^1.24.0",
+    "mysql2": "^3.23.0",
     "next": "16.2.9",
     "pg": "^8.22.0",
     "radix-ui": "^1.6.0",
@@ -31,5 +33,9 @@
     "eslint-config-next": "16.2.9",
     "tailwindcss": "^4",
     "typescript": "^5"
+  },
+  "allowScripts": {
+    "sharp@0.34.5": true,
+    "unrs-resolver@1.12.2": true
   }
 }
