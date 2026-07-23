@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Check, CheckCircle2 } from "lucide-react";
+import { AmbientBackground } from "./AmbientBackground";
 import { ClientAndProjectStep } from "./ClientAndProjectStep";
 import { InputMethodChoice } from "./InputMethodChoice";
 import { QuickMeasurementPanel } from "./QuickMeasurementPanel";
@@ -142,22 +143,27 @@ export function QuotationGenerationWizard() {
   }
 
   return (
-    <div className="flex flex-col gap-6">
-      <div className="flex flex-col gap-3">
-        <div>
-          <h1 className="text-xl font-extrabold tracking-tight text-gray-900">New Quotation</h1>
-          {client && quotation ? (
-            <p className="text-sm text-gray-500">
-              Quoting for <span className="font-semibold text-gray-700">{client.client_name}</span> —{" "}
-              {quotation.project_name}
-            </p>
-          ) : (
-            <p className="text-sm text-gray-500">Select a client and the basics of the project.</p>
-          )}
+    <div className="relative -m-6 min-h-full overflow-hidden p-6">
+      {/* Ambient backdrop for the whole workflow — dimmed to near-nothing during blueprint
+          review specifically, so it never competes with the polygon overlay (Part B). */}
+      <AmbientBackground dimmed={step === "blueprint"} />
+      <div className="relative flex flex-col gap-6">
+        <div className="flex flex-col gap-3">
+          <div>
+            <h1 className="text-xl font-extrabold tracking-tight text-gray-900">New Quotation</h1>
+            {client && quotation ? (
+              <p className="text-sm text-gray-500">
+                Quoting for <span className="font-semibold text-gray-700">{client.client_name}</span> —{" "}
+                {quotation.project_name}
+              </p>
+            ) : (
+              <p className="text-sm text-gray-500">Select a client and the basics of the project.</p>
+            )}
+          </div>
+          <Stepper step={step} />
         </div>
-        <Stepper step={step} />
+        {body}
       </div>
-      {body}
     </div>
   );
 }

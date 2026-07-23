@@ -2,10 +2,36 @@
 // extraction mock in lib/dev/mockFetch.ts.
 import type { Client, BlueprintExtractionResult } from './quotationGenerationTypes';
 
+// client_type is null for all three — these seed rows predate that field and there's no
+// real basis to guess New vs. Returning for them (see quotationGenerationTypes.ts).
 export const clientsFixture: Client[] = [
-  { client_id: 'cl-1', client_name: 'Rivercrest Family Trust', contact_number: '+63 917 555 0142', contact_email: 'admin@rivercrest.example' },
-  { client_id: 'cl-2', client_name: 'Northline Logistics Corp.', contact_number: '+63 918 222 4410', contact_email: 'facilities@northline.example' },
-  { client_id: 'cl-3', client_name: 'Terra Bright Holdings', contact_number: '+63 917 888 3321', contact_email: 'ops@terrabright.example' },
+  {
+    client_id: 'cl-1',
+    client_name: 'Rivercrest Family Trust',
+    contact_number: '+63 917 555 0142',
+    contact_email: 'admin@rivercrest.example',
+    contact_person: null,
+    client_address: null,
+    client_type: null,
+  },
+  {
+    client_id: 'cl-2',
+    client_name: 'Northline Logistics Corp.',
+    contact_number: '+63 918 222 4410',
+    contact_email: 'facilities@northline.example',
+    contact_person: null,
+    client_address: null,
+    client_type: null,
+  },
+  {
+    client_id: 'cl-3',
+    client_name: 'Terra Bright Holdings',
+    contact_number: '+63 917 888 3321',
+    contact_email: 'ops@terrabright.example',
+    contact_person: null,
+    client_address: null,
+    client_type: null,
+  },
 ];
 
 interface WallSegment {
