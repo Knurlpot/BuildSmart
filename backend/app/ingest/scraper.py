@@ -16,7 +16,7 @@ def compute_sha256(data: bytes) -> str:
 
 def download_file(url: str, dest: Path) -> tuple[Path, str]:
     dest.parent.mkdir(parents=True, exist_ok=True)
-    with httpx.stream("GET", url, timeout=30.0, follow_redirects=True) as response:
+    with httpx.stream("GET", url, timeout=30.0, follow_redirects=True, verify=False) as response:
         response.raise_for_status()
         with dest.open("wb") as out_file:
             for chunk in response.iter_bytes():
@@ -30,7 +30,7 @@ def _normalize_dpwh_url(base_url: str, href: str) -> str:
 
 
 def fetch_dpwh_cmpd_links(base_url: str) -> list[str]:
-    with httpx.Client(timeout=30.0, follow_redirects=True) as client:
+    with httpx.Client(timeout=30.0, follow_redirects=True, verify=False) as client:
         response = client.get(base_url)
         response.raise_for_status()
         soup = BeautifulSoup(response.text, "html.parser")

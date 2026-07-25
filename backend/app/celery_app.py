@@ -11,4 +11,4 @@ REDIS_URL = os.environ["REDIS_URL"]
 
 celery_app = Celery("buildsmart", broker=REDIS_URL, backend=REDIS_URL)
 # autodiscover_tasks imports task modules so @shared_task decorators register.
-celery_app.autodiscover_tasks(["app", "app.ingest"])
+celery_app.autodiscover_tasks(["app", "app.ingest", "app.tasks"])

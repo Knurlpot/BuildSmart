@@ -6,6 +6,20 @@ from sqlalchemy.orm import Mapped, mapped_column
 from app.database import Base
 
 
+class MaterialPrice(Base):
+    __tablename__ = "material_price"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    item_code: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    material_name: Mapped[str] = mapped_column(String(255), index=True)
+    unit: Mapped[str] = mapped_column(String(50))
+    unit_cost: Mapped[float] = mapped_column(Numeric(12, 2))
+    source: Mapped[str] = mapped_column(String(50))
+    source_url: Mapped[str] = mapped_column(String(500), default="https://www.dpwh.gov.ph/dpwh/bureaus-and-services/bureau-construction")
+    effective_quarter: Mapped[str] = mapped_column(String(20))
+    created_at: Mapped[datetime] = mapped_column(TIMESTAMP, server_default=func.now())
+
+
 class Category(Base):
     __tablename__ = "category"
 

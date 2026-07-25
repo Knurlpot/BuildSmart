@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 
 from app.celery_app import celery_app
 from app.database import get_db
+from app.ingest.models import MaterialPriceVariance
 from app.models import HistoricalPriceRecord, Items, PriceListReviewItem
 from app.schemas.pricelist import NormalizedPriceRecord, SourceAgency
 from app.services.dpwh_published import fetch_dpwh_cmpd_release, save_dpwh_cmpd_publish_records
@@ -62,6 +63,17 @@ class ReviewItemResponse(BaseModel):
     created_at: datetime
 
 
+class ReviewItemUpdateRequest(BaseModel):
+    raw_name: str | None = Field(default=None, min_length=1, max_length=100)
+    raw_unit: str | None = Field(default=None, min_length=1, max_length=30)
+    raw_price: float | None = Field(default=None, gt=0)
+    confidence: float | None = Field(default=None, ge=0.0, le=1.0)
+    suggested_category_type: str | None = Field(default=None, max_length=40)
+    suggested_material: str | None = Field(default=None, max_length=100)
+    suggested_brand: str | None = Field(default=None, max_length=100)
+    status: str | None = Field(default=None, min_length=1, max_length=20)
+
+
 class VersionCheckRequest(BaseModel):
     source: SourceAgency
     region: str | None = None
@@ -80,6 +92,24 @@ class FetchPublishedRequest(BaseModel):
 class FetchPublishedResponse(BaseModel):
     auto_saved_count: int
     flagged: list[dict] = Field(default_factory=list)
+
+
+class PsaIndexRequest(BaseModel):
+    source: Literal["PSA"] | None = "PSA"
+    region: str | None = None
+
+
+class PsaIndexEntry(BaseModel):
+    commodity_group: str | None
+    quarter: str
+    year: int
+    percent_change: float
+    trend_direction: str
+    is_significant_spike: bool
+
+
+class PsaIndexResponse(BaseModel):
+    index: list[PsaIndexEntry]
 
 
 class DpwhCatalogRow(BaseModel):
@@ -145,6 +175,27 @@ def list_review_items(db: Session = Depends(get_db)):
     return rows
 
 
+@router.patch("/review/{review_id}", response_model=ReviewItemResponse)
+def update_review_item(
+    review_id: int,
+    payload: ReviewItemUpdateRequest,
+    db: Session = Depends(get_db),
+):
+    row = db.get(PriceListReviewItem, review_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="Review item not found")
+
+    updates = payload.model_dump(exclude_unset=True)
+    for field, value in updates.items():
+        if isinstance(value, str):
+            value = value.strip()
+        setattr(row, field, value)
+
+    db.commit()
+    db.refresh(row)
+    return row
+
+
 @router.post("/fetch-published", response_model=FetchPublishedResponse)
 def fetch_published(
     payload: FetchPublishedRequest = Body(...),
@@ -172,6 +223,35 @@ def check_version(
         raise HTTPException(status_code=400, detail="Unsupported source for version check")
     result = check_published_version(payload.source, payload.region)
     return VersionCheckResponse(**result)
+
+
+@router.post("/fetch-published-index", response_model=PsaIndexResponse)
+def fetch_published_index(
+    payload: PsaIndexRequest = Body(default_factory=PsaIndexRequest),
+    db: Session = Depends(get_db),
+):
+    if payload.region and payload.region != "NCR":
+        raise HTTPException(status_code=400, detail="PSA index is NCR only")
+
+    rows = db.execute(
+        select(MaterialPriceVariance)
+        .where(MaterialPriceVariance.variance_source == "PSA")
+        .order_by(MaterialPriceVariance.year.desc(), MaterialPriceVariance.quarter.desc(), MaterialPriceVariance.commodity_group)
+    ).scalars().all()
+
+    return PsaIndexResponse(
+        index=[
+            PsaIndexEntry(
+                commodity_group=row.commodity_group,
+                quarter=row.quarter,
+                year=row.year,
+                percent_change=float(row.percent_change),
+                trend_direction=row.trend_direction,
+                is_significant_spike=row.is_significant_spike,
+            )
+            for row in rows
+        ]
+    )
 
 
 @router.get("/catalog/dpwh", response_model=list[DpwhCatalogRow])

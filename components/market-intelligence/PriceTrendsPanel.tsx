@@ -25,9 +25,42 @@ function fmt(n: number) {
   return "₱" + n.toLocaleString("en-PH", { minimumFractionDigits: 2 });
 }
 
+function fmtMaybe(n: number | null) {
+  return n === null ? "N/A" : fmt(n);
+}
+
+function pct(n: number) {
+  return `${n > 0 ? "+" : ""}${n.toFixed(1)}%`;
+}
+
 function itemLabel(row: Pick<HistoricalPriceRecordRow, "item_code" | "item_name" | "material">) {
   return row.item_name || row.material || `Item #${row.item_code}`;
 }
+
+function periodRank(row: Pick<HistoricalPriceRecordRow, "quarter" | "year" | "recorded_at">) {
+  if (row.year && row.quarter) return row.year * 10 + QUARTER_ORDER[row.quarter];
+  return new Date(row.recorded_at).getTime() / 1000000000000;
+}
+
+function materialKey(value?: string | null) {
+  return (value ?? "").trim().toLowerCase();
+}
+
+type VarianceAnalysisRow = {
+  itemCode: number;
+  itemName: string;
+  unit: string;
+  material: string;
+  category: string;
+  actualQty: number | null;
+  actualPrice: number;
+  dpwhRate: number | null;
+  psaAdjustedRate: number | null;
+  totalVariance: number | null;
+  deviationPct: number | null;
+  status: "Favorable" | "Unfavorable" | "Benchmark Missing";
+  primaryDriver: string;
+};
 
 function TrendIcon({ direction }: { direction: MaterialPriceVariance["trend_direction"] }) {
   if (direction === "Up") return <TrendingUp className="h-4 w-4 text-red-500" />;
@@ -105,11 +138,100 @@ export function PriceTrendsPanel({ compact = false }: PriceTrendsPanelProps) {
   // PSA (CMWPI/CMRPI) rows are per-commodity-group index movement, analytics-only market
   // context — never a specific item's price. Kept visually separate from BuildSmart's own
   // per-item variance so neither reads as the other. Never join a PSA row to item_code.
-  const internalVariance = useMemo(
-    () => varianceRows.filter((v) => v.variance_source === "Internal"),
-    [varianceRows]
-  );
   const psaVariance = useMemo(() => varianceRows.filter((v) => v.variance_source === "PSA"), [varianceRows]);
+
+  const latestPsaByCommodity = useMemo(() => {
+    const map = new Map<string, MaterialPriceVariance>();
+    for (const row of psaVariance) {
+      const key = materialKey(row.commodity_group);
+      if (!key) continue;
+      const current = map.get(key);
+      const currentRank = current ? current.year * 10 + QUARTER_ORDER[current.quarter] : -1;
+      const nextRank = row.year * 10 + QUARTER_ORDER[row.quarter];
+      if (!current || nextRank > currentRank) map.set(key, row);
+    }
+    return map;
+  }, [psaVariance]);
+
+  const analysisRows = useMemo<VarianceAnalysisRow[]>(() => {
+    const byItem = new Map<number, HistoricalPriceRecordRow[]>();
+    for (const row of filteredRows) {
+      if (!byItem.has(row.item_code)) byItem.set(row.item_code, []);
+      byItem.get(row.item_code)!.push(row);
+    }
+
+    const rowsForAnalysis: VarianceAnalysisRow[] = [];
+
+    for (const rows of byItem.values()) {
+      const actual = rows
+        .filter((r) => r.price_source === "Supplier" || r.price_source === "Internal")
+        .sort((a, b) => periodRank(b) - periodRank(a))[0];
+      if (!actual) continue;
+
+      const dpwh = rows
+        .filter((r) => r.price_source === "DPWH")
+        .sort((a, b) => periodRank(b) - periodRank(a))[0];
+
+      const psa =
+        latestPsaByCommodity.get(materialKey(actual.material)) ??
+        latestPsaByCommodity.get(materialKey(actual.category_type));
+
+      const actualQty = actual.actual_quantity ?? null;
+      const dpwhRate: number | null = dpwh?.price ?? null;
+      const psaAdjustedRate = dpwhRate === null ? null : dpwhRate * (1 + (psa?.percent_change ?? 0) / 100);
+      const totalVariance = dpwhRate !== null && actualQty !== null ? (actual.price - dpwhRate) * actualQty : null;
+      const deviationPct = dpwhRate !== null && dpwhRate > 0 ? ((actual.price - dpwhRate) / dpwhRate) * 100 : null;
+      const status: VarianceAnalysisRow["status"] =
+        dpwhRate === null ? "Benchmark Missing" : actual.price <= dpwhRate ? "Favorable" : "Unfavorable";
+      const primaryDriver =
+        dpwhRate === null
+          ? "No DPWH CMPD match"
+          : actual.price <= dpwhRate
+            ? "Below DPWH benchmark"
+            : psaAdjustedRate !== null && actual.price <= psaAdjustedRate
+              ? "PSA market inflation"
+              : "Supplier/procurement markup";
+
+      rowsForAnalysis.push({
+        itemCode: actual.item_code,
+        itemName: itemLabel(actual),
+        unit: actual.unit ?? "-",
+        material: actual.material ?? "Unclassified",
+        category: actual.category_type ?? actual.material ?? "Unclassified",
+        actualQty,
+        actualPrice: actual.price,
+        dpwhRate,
+        psaAdjustedRate,
+        totalVariance,
+        deviationPct,
+        status,
+        primaryDriver,
+      });
+    }
+
+    return rowsForAnalysis.sort((a, b) => Math.abs(b.totalVariance ?? b.actualPrice) - Math.abs(a.totalVariance ?? a.actualPrice));
+  }, [filteredRows, latestPsaByCommodity]);
+
+  const varianceSummary = useMemo(() => {
+    const quantifiable = analysisRows.filter((row) => row.totalVariance !== null && row.dpwhRate !== null && row.actualQty !== null);
+    const totalVariance = quantifiable.reduce((sum, row) => sum + (row.totalVariance ?? 0), 0);
+    const dpwhBudget = quantifiable.reduce((sum, row) => sum + (row.dpwhRate ?? 0) * (row.actualQty ?? 0), 0);
+    const actualCost = quantifiable.reduce((sum, row) => sum + row.actualPrice * (row.actualQty ?? 0), 0);
+    const unfavorable = analysisRows.filter((row) => row.status === "Unfavorable").length;
+    const marketDriven = analysisRows.filter((row) => row.primaryDriver === "PSA market inflation").length;
+    const markupDriven = analysisRows.filter((row) => row.primaryDriver === "Supplier/procurement markup").length;
+
+    return {
+      totalVariance,
+      dpwhBudget,
+      actualCost,
+      overallPct: dpwhBudget > 0 ? (totalVariance / dpwhBudget) * 100 : null,
+      quantifiableCount: quantifiable.length,
+      unfavorable,
+      marketDriven,
+      markupDriven,
+    };
+  }, [analysisRows]);
 
   return (
     <div className="flex flex-col gap-5">
@@ -150,6 +272,42 @@ export function PriceTrendsPanel({ compact = false }: PriceTrendsPanelProps) {
       </div>
 
       <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
+        <div className="mb-5">
+          <p className="text-xs font-bold uppercase tracking-wider text-gray-400">Executive Summary</p>
+          <p className="mt-1 text-sm leading-relaxed text-gray-600">
+            Variance analysis compares uploaded Supplier/Internal actual rates against DPWH CMPD baseline rates,
+            then uses PSA CMWPI/CMRPI commodity movement as market-inflation context. Peso variance is computed
+            where actual quantity is available from quotation/project usage.
+          </p>
+        </div>
+        <div className="mb-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="rounded-xl border border-gray-100 bg-gray-50 p-4">
+            <p className="text-xs font-semibold text-gray-400">Overall Variance</p>
+            <p className={`mt-1 text-xl font-extrabold ${varianceSummary.totalVariance > 0 ? "text-red-500" : "text-green-600"}`}>
+              {fmt(varianceSummary.totalVariance)}
+            </p>
+            <p className="text-xs text-gray-400">
+              {varianceSummary.overallPct === null ? "Qty data unavailable" : `${pct(varianceSummary.overallPct)} vs DPWH CMPD`}
+            </p>
+          </div>
+          <div className="rounded-xl border border-gray-100 bg-gray-50 p-4">
+            <p className="text-xs font-semibold text-gray-400">Actual Cost Covered</p>
+            <p className="mt-1 text-xl font-extrabold text-gray-900">{fmt(varianceSummary.actualCost)}</p>
+            <p className="text-xs text-gray-400">{varianceSummary.quantifiableCount} item(s) with quantity</p>
+          </div>
+          <div className="rounded-xl border border-gray-100 bg-gray-50 p-4">
+            <p className="text-xs font-semibold text-gray-400">Unfavorable Items</p>
+            <p className="mt-1 text-xl font-extrabold text-red-500">{varianceSummary.unfavorable}</p>
+            <p className="text-xs text-gray-400">Actual rate above DPWH</p>
+          </div>
+          <div className="rounded-xl border border-gray-100 bg-gray-50 p-4">
+            <p className="text-xs font-semibold text-gray-400">Likely Driver Mix</p>
+            <p className="mt-1 text-xl font-extrabold text-gray-900">
+              {varianceSummary.marketDriven}/{varianceSummary.markupDriven}
+            </p>
+            <p className="text-xs text-gray-400">Market / procurement markup</p>
+          </div>
+        </div>
         <p className="font-bold text-gray-900">Price Trends — {region}</p>
         <p className="mb-4 text-xs text-gray-400">Quarterly unit price per material</p>
         <QueryState
@@ -190,47 +348,73 @@ export function PriceTrendsPanel({ compact = false }: PriceTrendsPanelProps) {
       </div>
 
       <div className="flex flex-col gap-3">
-        <p className="text-xs font-bold uppercase tracking-wider text-gray-400">Item Price Variance</p>
+        <p className="text-xs font-bold uppercase tracking-wider text-gray-400">Detailed Variance Summary</p>
         <QueryState
-          isLoading={variances.isLoading}
-          error={variances.error}
-          isEmpty={internalVariance.length === 0}
-          onRetry={variances.refetch}
-          emptyTitle="No item variance data yet"
-          emptyHint="This section populates once /api/material-price-variances returns Internal-source records."
+          isLoading={historical.isLoading || variances.isLoading}
+          error={historical.error ?? variances.error}
+          isEmpty={analysisRows.length === 0}
+          onRetry={() => {
+            historical.refetch();
+            variances.refetch();
+          }}
+          emptyTitle="No actual-vs-DPWH variance data yet"
+          emptyHint="Upload or approve Supplier/Internal prices and load DPWH CMPD benchmarks to populate this analysis."
           minHeight={120}
         >
-          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
-            {internalVariance.map((v) => (
-              <div
-                key={`internal-${v.item_code}-${v.quarter}-${v.year}`}
-                className="flex flex-col gap-2 rounded-2xl border border-gray-100 bg-white p-4 shadow-sm"
-              >
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-gray-500">
-                    Item #{v.item_code} · {v.quarter} {v.year}
-                  </span>
-                  <TrendIcon direction={v.trend_direction} />
-                </div>
-                <p
-                  className={`text-lg font-extrabold ${
-                    v.trend_direction === "Up"
-                      ? "text-red-500"
-                      : v.trend_direction === "Down"
-                        ? "text-green-600"
-                        : "text-gray-700"
-                  }`}
-                >
-                  {v.percent_change > 0 ? "+" : ""}
-                  {v.percent_change.toFixed(1)}%
-                </p>
-                {v.is_significant_spike && (
-                  <span className="w-fit rounded-full bg-red-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-red-600">
-                    Significant spike
-                  </span>
-                )}
-              </div>
-            ))}
+          <div className="overflow-x-auto rounded-2xl border border-gray-100 bg-white shadow-sm">
+            <table className="min-w-[1100px] w-full text-left text-sm">
+              <thead className="border-b border-gray-100 bg-gray-50 text-xs uppercase tracking-wider text-gray-400">
+                <tr>
+                  <th className="px-4 py-3">Material Item</th>
+                  <th className="px-4 py-3">Unit</th>
+                  <th className="px-4 py-3 text-right">Actual Qty</th>
+                  <th className="px-4 py-3 text-right">Actual Price</th>
+                  <th className="px-4 py-3 text-right">DPWH CMPD Rate</th>
+                  <th className="px-4 py-3 text-right">PSA Adjusted Rate</th>
+                  <th className="px-4 py-3 text-right">Total Price Variance</th>
+                  <th className="px-4 py-3 text-right">Variance %</th>
+                  <th className="px-4 py-3">Status</th>
+                  <th className="px-4 py-3">Primary Driver</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {analysisRows.map((row) => (
+                  <tr key={row.itemCode} className="text-gray-600">
+                    <td className="px-4 py-3">
+                      <p className="font-semibold text-gray-900">{row.itemName}</p>
+                      <p className="text-xs text-gray-400">{row.category}</p>
+                    </td>
+                    <td className="px-4 py-3">{row.unit}</td>
+                    <td className="px-4 py-3 text-right">
+                      {row.actualQty === null ? "N/A" : row.actualQty.toLocaleString("en-PH")}
+                    </td>
+                    <td className="px-4 py-3 text-right">{fmt(row.actualPrice)}</td>
+                    <td className="px-4 py-3 text-right">{fmtMaybe(row.dpwhRate)}</td>
+                    <td className="px-4 py-3 text-right">{fmtMaybe(row.psaAdjustedRate)}</td>
+                    <td className={`px-4 py-3 text-right font-semibold ${(row.totalVariance ?? 0) > 0 ? "text-red-500" : "text-green-600"}`}>
+                      {fmtMaybe(row.totalVariance)}
+                    </td>
+                    <td className={`px-4 py-3 text-right font-semibold ${(row.deviationPct ?? 0) > 0 ? "text-red-500" : "text-green-600"}`}>
+                      {row.deviationPct === null ? "N/A" : pct(row.deviationPct)}
+                    </td>
+                    <td className="px-4 py-3">
+                      <span
+                        className={`rounded-full px-2 py-1 text-xs font-bold ${
+                          row.status === "Unfavorable"
+                            ? "bg-red-50 text-red-600"
+                            : row.status === "Favorable"
+                              ? "bg-green-50 text-green-700"
+                              : "bg-amber-50 text-amber-700"
+                        }`}
+                      >
+                        {row.status}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3">{row.primaryDriver}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         </QueryState>
       </div>
@@ -288,6 +472,48 @@ export function PriceTrendsPanel({ compact = false }: PriceTrendsPanelProps) {
             ))}
           </div>
         </QueryState>
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
+          <div className="mb-2 flex items-center gap-2">
+            <Globe2 className="h-4 w-4 text-gray-400" />
+            <p className="font-bold text-gray-900">Market Trend Comparison</p>
+          </div>
+          <p className="text-sm leading-relaxed text-gray-600">
+            PSA movement explains items where actual pricing is above DPWH but still within the PSA-adjusted proxy rate.
+            Items above both DPWH and the PSA-adjusted benchmark are treated as supplier markup, inefficient procurement,
+            logistics premium, or a local availability issue requiring commercial review.
+          </p>
+          <div className="mt-4 grid grid-cols-3 gap-3 text-center">
+            <div className="rounded-xl bg-indigo-50 p-3">
+              <p className="text-lg font-extrabold text-indigo-600">{varianceSummary.marketDriven}</p>
+              <p className="text-xs text-indigo-400">Market-driven</p>
+            </div>
+            <div className="rounded-xl bg-red-50 p-3">
+              <p className="text-lg font-extrabold text-red-500">{varianceSummary.markupDriven}</p>
+              <p className="text-xs text-red-400">Markup-driven</p>
+            </div>
+            <div className="rounded-xl bg-green-50 p-3">
+              <p className="text-lg font-extrabold text-green-600">
+                {analysisRows.filter((row) => row.status === "Favorable").length}
+              </p>
+              <p className="text-xs text-green-500">Favorable</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
+          <div className="mb-2 flex items-center gap-2">
+            <Truck className="h-4 w-4 text-gray-400" />
+            <p className="font-bold text-gray-900">Actionable Recommendations</p>
+          </div>
+          <div className="space-y-3 text-sm leading-relaxed text-gray-600">
+            <p>Prioritize negotiation on items tagged supplier/procurement markup, especially high-value unfavorable rows.</p>
+            <p>For PSA market-driven increases, update POW/DUPA contingencies and escalation assumptions before final ABC review.</p>
+            <p>For missing DPWH benchmarks, fetch the correct regional CMPD release or request district DEO/eFOI support before approval.</p>
+          </div>
+        </div>
       </div>
 
       {!compact && (

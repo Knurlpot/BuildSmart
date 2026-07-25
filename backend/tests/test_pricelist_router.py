@@ -6,6 +6,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 
 from app.database import get_db
+from app.ingest.models import MaterialPriceVariance
 from app.main import app
 from app.models import HistoricalPriceRecord, Items, PriceListReviewItem
 from app.routers import pricelist as pricelist_router
@@ -109,6 +110,53 @@ def test_review_list_returns_only_pending_items(db_session):
     assert matched["suggested_category_type"] == "Structural"
 
 
+def test_update_review_item_edits_pending_row(db_session):
+    item = PriceListReviewItem(
+        raw_name="Cemnt Portland Typ 1",
+        raw_unit="bg",
+        raw_price=240.00,
+        confidence=0.0,
+        suggested_category_type="Uncategorized",
+        suggested_material="Cemnt Portland Typ 1",
+        suggested_brand="Generic",
+        source="Supplier",
+        supplier_id=None,
+    )
+    db_session.add(item)
+    db_session.flush()
+
+    def override_get_db():
+        yield db_session
+
+    app.dependency_overrides[get_db] = override_get_db
+    try:
+        response = client.patch(
+            f"/pricelist/review/{item.review_id}",
+            json={
+                "raw_name": "Portland Cement Type 1 40kg",
+                "raw_unit": "bag",
+                "raw_price": 255.5,
+                "confidence": 0.8,
+                "suggested_category_type": "Concrete & Masonry",
+                "suggested_material": "Portland Cement",
+                "suggested_brand": "Generic",
+            },
+        )
+    finally:
+        del app.dependency_overrides[get_db]
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["raw_name"] == "Portland Cement Type 1 40kg"
+    assert body["raw_unit"] == "bag"
+    assert body["raw_price"] == 255.5
+    assert body["confidence"] == 0.8
+    assert body["suggested_category_type"] == "Concrete & Masonry"
+
+    db_session.refresh(item)
+    assert item.raw_name == "Portland Cement Type 1 40kg"
+
+
 def test_check_version_returns_new_available():
     response = client.post(
         "/pricelist/check-version",
@@ -157,6 +205,65 @@ def test_fetch_published_saves_dpwh_records(db_session):
     assert saved_row.quarter == "Q1"
     assert saved_row.year == 2026
     assert float(saved_row.price) == 260.0
+
+
+def test_fetch_published_index_returns_psa_variance_rows(db_session):
+    db_session.add(
+        MaterialPriceVariance(
+            item_code=None,
+            variance_source="PSA",
+            commodity_group="Cement",
+            quarter="Q2",
+            year=2026,
+            percent_change=4.25,
+            trend_direction="Up",
+            is_significant_spike=True,
+        )
+    )
+    db_session.flush()
+
+    def override_get_db():
+        yield db_session
+
+    app.dependency_overrides[get_db] = override_get_db
+    try:
+        response = client.post(
+            "/pricelist/fetch-published-index",
+            json={"source": "PSA", "region": "NCR"},
+        )
+    finally:
+        del app.dependency_overrides[get_db]
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "index": [
+            {
+                "commodity_group": "Cement",
+                "quarter": "Q2",
+                "year": 2026,
+                "percent_change": 4.25,
+                "trend_direction": "Up",
+                "is_significant_spike": True,
+            }
+        ]
+    }
+
+
+def test_fetch_published_index_accepts_region_only_payload(db_session):
+    def override_get_db():
+        yield db_session
+
+    app.dependency_overrides[get_db] = override_get_db
+    try:
+        response = client.post(
+            "/pricelist/fetch-published-index",
+            json={"region": "NCR"},
+        )
+    finally:
+        del app.dependency_overrides[get_db]
+
+    assert response.status_code == 200
+    assert response.json() == {"index": []}
 
 
 def test_get_dpwh_catalog_returns_rows(db_session):

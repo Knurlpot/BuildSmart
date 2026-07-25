@@ -20,6 +20,7 @@ import { DataTable } from "@/components/data-table/DataTable";
 import {
   deviationKey,
   usePricelistPublishedSource,
+  type DpwhCatalogRow,
   type FlaggedPriceDeviation,
   type PsaIndexEntry,
 } from "@/hooks/usePricelistPublishedSource";
@@ -184,6 +185,43 @@ export function PublishedSourceTab({ onViewCatalog }: { onViewCatalog?: () => vo
     }
     triggerPsaIndex().catch(() => {}); // both statuses land on the (possibly refreshed) index view
   };
+
+  const dpwhCatalogRows = useMemo(
+    () => dpwhCatalog.records.filter((item) => region === "All" || item.region === region),
+    [dpwhCatalog.records, region]
+  );
+
+  const dpwhCatalogColumns = useMemo<ColumnDef<DpwhCatalogRow>[]>(
+    () => [
+      {
+        accessorKey: "item_name",
+        header: "Material",
+        cell: ({ row }) => (
+          <span className="font-medium text-gray-800">
+            {row.original.item_name ?? `Item #${row.original.item_code}`}
+          </span>
+        ),
+      },
+      { accessorKey: "region", header: "Region", enableGlobalFilter: false },
+      {
+        id: "period",
+        header: "Period",
+        enableGlobalFilter: false,
+        cell: ({ row }) => (
+          <span className="text-gray-500">
+            {row.original.quarter} {row.original.year}
+          </span>
+        ),
+      },
+      {
+        accessorKey: "price",
+        header: "Price",
+        enableGlobalFilter: false,
+        cell: ({ getValue }) => <span className="font-semibold text-gray-900">{fmt(getValue<number>())}</span>,
+      },
+    ],
+    []
+  );
 
   const columns = useMemo<ColumnDef<FlaggedPriceDeviation>[]>(
     () => [
@@ -370,7 +408,7 @@ export function PublishedSourceTab({ onViewCatalog }: { onViewCatalog?: () => vo
           )}
 
           {dpwhVersionResult?.status === "up_to_date" && (
-            <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-gray-200 bg-white p-4">
+            <div className="flex flex-col gap-4 rounded-2xl border border-gray-200 bg-white p-4">
               <div>
                 <p className="text-sm font-bold text-gray-900">Current DPWH catalog readings</p>
                 {dpwhCatalog.isLoading ? (
@@ -384,6 +422,20 @@ export function PublishedSourceTab({ onViewCatalog }: { onViewCatalog?: () => vo
                   </p>
                 )}
               </div>
+              {dpwhCatalog.records.length > 0 && (
+                <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
+                  <div className="border-b border-gray-100 px-4 py-3 text-sm font-semibold text-gray-700">
+                    DPWH prices for {region}
+                  </div>
+                  <DataTable
+                    columns={dpwhCatalogColumns}
+                    data={dpwhCatalogRows}
+                    compact
+                    enablePagination
+                    pageSize={10}
+                  />
+                </div>
+              )}
               {onViewCatalog && (
                 <button
                   type="button"

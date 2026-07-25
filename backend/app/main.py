@@ -7,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.ingest.router import router as ingest_router
 from app.routers import pricelist
+from app.scheduler import setup_scheduler
 
 # .env lives at the repo root (shared with the Next.js frontend), one level up from backend/.
 load_dotenv(Path(__file__).resolve().parents[2] / ".env")
@@ -22,3 +23,4 @@ app.add_middleware(
 )
 app.include_router(pricelist.router)
 app.include_router(ingest_router)
+setup_scheduler()

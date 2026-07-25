@@ -52,6 +52,20 @@ export interface PricelistReviewItem {
   created_at: string;
 }
 
+export type PricelistReviewItemUpdate = Partial<
+  Pick<
+    PricelistReviewItem,
+    | 'raw_name'
+    | 'raw_unit'
+    | 'raw_price'
+    | 'confidence'
+    | 'suggested_category_type'
+    | 'suggested_material'
+    | 'suggested_brand'
+    | 'status'
+  >
+>;
+
 // The backend processes one file per task (POST /pricelist/upload takes a
 // single UploadFile) — multi-file support is a client-side queue on top of
 // that, uploaded one at a time rather than concurrently. Sequential matters
@@ -191,10 +205,21 @@ export function usePricelistNormalization() {
     setQueue([...queueRef.current]);
   };
 
+  const updateReviewItem = useCallback(async (reviewId: number, patch: PricelistReviewItemUpdate) => {
+    const updated = await normalizationApiClient<PricelistReviewItem>(`/pricelist/review/${reviewId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(patch),
+    });
+    setReviewItems((items) => items.map((item) => (item.review_id === reviewId ? updated : item)));
+    return updated;
+  }, []);
+
   return {
     queue,
     enqueueFiles,
     clearFinishedQueueItems,
+    updateReviewItem,
     reviewItems,
     isLoadingReview,
     reviewError,

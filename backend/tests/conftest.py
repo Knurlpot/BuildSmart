@@ -14,6 +14,7 @@ import pytest
 from sqlalchemy.orm import Session
 
 from app.database import Base, engine
+from app.ingest.models import MaterialPriceVariance, ProcessedFileLog
 from app.models import Category, Items
 
 # Ensure the test database schema exists for these database-backed tests.

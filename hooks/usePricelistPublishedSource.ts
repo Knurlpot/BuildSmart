@@ -34,10 +34,118 @@
 // `FlaggedPriceDeviation` is a FRONTEND STAGING shape describing an old-vs-new comparison
 // for the review UI, not a historical_price_record mirror. DPWH-only now — PSA never had
 // real peso deviations, that was fabricated mock data and has been removed.
-import { useState } from 'react';
-import { useFetch } from './useFetch';
-import { useMutation } from './useMutation';
+import { useEffect, useState } from 'react';
 import type { HistoricalPriceRecord, MaterialPriceVariance } from '@/types/entities';
+
+const BACKEND_API_BASE = process.env.NEXT_PUBLIC_NORMALIZATION_API_BASE_URL?.replace(/\/$/, '') || '';
+
+function formatApiErrorDetail(detail: unknown): string | null {
+  if (!detail) return null;
+  if (typeof detail === 'string') return detail;
+  if (Array.isArray(detail)) {
+    return detail
+      .map((item) => {
+        if (typeof item === 'string') return item;
+        if (item && typeof item === 'object' && 'msg' in item) {
+          const path = 'loc' in item && Array.isArray(item.loc) ? `${item.loc.join('.')}: ` : '';
+          return `${path}${String(item.msg)}`;
+        }
+        return JSON.stringify(item);
+      })
+      .join('; ');
+  }
+  if (typeof detail === 'object' && 'message' in detail) return String(detail.message);
+  return JSON.stringify(detail);
+}
+
+async function backendApiClient<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
+  const res = await fetch(`${BACKEND_API_BASE}${endpoint}`, {
+    mode: 'cors',
+    credentials: 'omit',
+    headers: {
+      Accept: 'application/json',
+      ...(options.headers ?? {}),
+    },
+    ...options,
+  });
+
+  if (!res.ok) {
+    const body = await res.json().catch(() => null);
+    throw new Error(formatApiErrorDetail(body?.detail) || formatApiErrorDetail(body?.error) || `API error: ${res.status}`);
+  }
+  if (res.status === 204) return undefined as T;
+  return res.json();
+}
+
+interface MutationState<T> {
+  data: T | null;
+  error: Error | null;
+  isLoading: boolean;
+}
+
+function useBackendMutation<T = unknown>() {
+  const [state, setState] = useState<MutationState<T>>({ data: null, error: null, isLoading: false });
+
+  const mutate = async (endpoint: string, body: unknown, method: 'PATCH' | 'POST' | 'PUT' = 'PATCH') => {
+    setState({ data: null, error: null, isLoading: true });
+    try {
+      const isFormData = typeof FormData !== 'undefined' && body instanceof FormData;
+          const result = await backendApiClient<T>(endpoint, {
+        method,
+        headers: isFormData ? undefined : { 'Content-Type': 'application/json' },
+        body: isFormData ? (body as FormData) : JSON.stringify(body),
+      });
+      setState({ data: result, error: null, isLoading: false });
+      return result;
+    } catch (err) {
+      const error = err instanceof Error ? err : new Error(String(err));
+      setState({ data: null, error, isLoading: false });
+      throw error;
+    }
+  };
+
+  const reset = () => setState({ data: null, error: null, isLoading: false });
+
+  return { ...state, mutate, reset };
+}
+
+function useBackendFetch<T>(endpoint: string | null) {
+  const [resolved, setResolved] = useState<{ key: string; data: T | null; error: Error | null }>({
+    key: '',
+    data: null,
+    error: null,
+  });
+  const [reloadToken, setReloadToken] = useState(0);
+  const requestKey = endpoint ? `${endpoint}::${reloadToken}` : '';
+
+  useEffect(() => {
+    if (!endpoint) return;
+    const key = `${endpoint}::${reloadToken}`;
+    const controller = new AbortController();
+
+    backendApiClient<T>(endpoint, {
+      signal: controller.signal,
+    })
+      .then((result) => setResolved({ key, data: result, error: null }))
+      .catch((err) => {
+        if (controller.signal.aborted) return;
+        setResolved({ key, data: null, error: err instanceof Error ? err : new Error(String(err)) });
+      });
+
+    return () => controller.abort();
+  }, [endpoint, reloadToken]);
+
+  const refetch = () => setReloadToken((t) => t + 1);
+  if (!endpoint) return { data: null, isLoading: false, error: null, refetch };
+
+  const isLoading = resolved.key !== requestKey;
+  return {
+    data: isLoading ? null : resolved.data,
+    isLoading,
+    error: isLoading ? null : resolved.error,
+    refetch,
+  };
+}
 
 export interface FlaggedPriceDeviation {
   item_code: number;
@@ -120,27 +228,27 @@ export function usePricelistPublishedSource() {
   // Keyed by deviationKey — outcomes from THIS fetch only, reset whenever a new DPWH
   // fetch is triggered (see `trigger` below) so stale highlights never linger.
   const [resolutions, setResolutions] = useState<Map<string, ResolutionOutcome>>(new Map());
-  const fetchPublished = useMutation<FetchPublishedResponse>();
-  const resolveDeviation = useMutation<{ resolved: boolean }>();
-  const resolveBulk = useMutation<BulkResolveResponse>();
-  const fetchPsaIndex = useMutation<PsaIndexResponse>();
+  const fetchPublished = useBackendMutation<FetchPublishedResponse>();
+  const resolveDeviation = useBackendMutation<{ resolved: boolean }>();
+  const resolveBulk = useBackendMutation<BulkResolveResponse>();
+  const fetchPsaIndex = useBackendMutation<PsaIndexResponse>();
   const [catalogEnabled, setCatalogEnabled] = useState(false);
-  const dpwhCatalog = useFetch<DpwhCatalogRow[]>(catalogEnabled ? '/api/pricelist/catalog/dpwh' : null);
+  const dpwhCatalog = useBackendFetch<DpwhCatalogRow[]>(catalogEnabled ? '/pricelist/catalog/dpwh' : null);
   // Separate instances (not one shared mutation) so DPWH's and PSA's loading/error/result
   // state never bleed into each other when the user switches source.
-  const checkDpwhVersion = useMutation<VersionCheckResponse>();
-  const checkPsaVersion = useMutation<VersionCheckResponse>();
+  const checkDpwhVersion = useBackendMutation<VersionCheckResponse>();
+  const checkPsaVersion = useBackendMutation<VersionCheckResponse>();
 
   const trigger = async (region: string) => {
     setResolutions(new Map());
-    const res = await fetchPublished.mutate('/api/pricelist/fetch-published', { source: 'DPWH', region }, 'POST');
+    const res = await fetchPublished.mutate('/pricelist/fetch-published', { source: 'DPWH', region }, 'POST');
     setFlagged(res.flagged ?? []);
     return res;
   };
 
   const resolve = async (item: FlaggedPriceDeviation, action: 'approve' | 'reject') => {
     await resolveDeviation.mutate(
-      '/api/pricelist/deviations/resolve',
+      '/pricelist/deviations/resolve',
       { item_code: item.item_code, quarter: item.quarter, year: item.year, action },
       'POST'
     );
@@ -150,7 +258,7 @@ export function usePricelistPublishedSource() {
 
   const resolveMany = async (items: FlaggedPriceDeviation[], action: 'approve' | 'reject') => {
     const keys = items.map((i) => ({ item_code: i.item_code, quarter: i.quarter, year: i.year }));
-    const res = await resolveBulk.mutate('/api/pricelist/deviations/resolve-bulk', { items: keys, action }, 'POST');
+    const res = await resolveBulk.mutate('/pricelist/deviations/resolve-bulk', { items: keys, action }, 'POST');
     setResolutions((prev) => {
       const next = new Map(prev);
       for (const item of items) next.set(deviationKey(item), outcomeOf(item, action));
@@ -161,7 +269,7 @@ export function usePricelistPublishedSource() {
     return res;
   };
 
-  const triggerPsaIndex = () => fetchPsaIndex.mutate('/api/pricelist/fetch-published-index', { region: 'NCR' }, 'POST');
+  const triggerPsaIndex = () => fetchPsaIndex.mutate('/pricelist/fetch-published-index', { region: 'NCR' }, 'POST');
 
   return {
     trigger,
@@ -182,12 +290,12 @@ export function usePricelistPublishedSource() {
     psaIndex: fetchPsaIndex.data?.index ?? [],
     psaIndexResult: fetchPsaIndex.data,
     checkDpwhVersion: (region: string) =>
-      checkDpwhVersion.mutate('/api/pricelist/check-version?source=DPWH', { source: 'DPWH', region }, 'POST'),
+      checkDpwhVersion.mutate('/pricelist/check-version', { source: 'DPWH', region }, 'POST'),
     isCheckingDpwhVersion: checkDpwhVersion.isLoading,
     checkDpwhVersionError: checkDpwhVersion.error,
     dpwhVersionResult: checkDpwhVersion.data,
     checkPsaVersion: () =>
-      checkPsaVersion.mutate('/api/pricelist/check-version?source=PSA', { source: 'PSA', region: 'NCR' }, 'POST'),
+      checkPsaVersion.mutate('/pricelist/check-version', { source: 'PSA', region: 'NCR' }, 'POST'),
     isCheckingPsaVersion: checkPsaVersion.isLoading,
     checkPsaVersionError: checkPsaVersion.error,
     psaVersionResult: checkPsaVersion.data,

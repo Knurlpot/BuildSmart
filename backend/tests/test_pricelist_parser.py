@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from app.services.pricelist_parser import parse_pricelist_file
+from app.services.pricelist_parser import _pdf_table_to_dataframe, parse_pricelist_file
 
 FIXTURE = Path(__file__).parent / "fixtures" / "sample_pricelist.csv"
 PDF_FIXTURE = Path(__file__).parent / "fixtures" / "sample_pricelist.pdf"
@@ -27,6 +27,21 @@ def test_parses_pdf_with_a_real_gridded_table():
     assert df.iloc[0]["raw_price"] == 255.0
 
 
+def test_pdf_table_with_title_row_and_wider_body_does_not_crash():
+    frame = _pdf_table_to_dataframe(
+        [
+            ["Construction Materials Price Data"],
+            ["Item No.", "Material Description", "Unit", "Unit Cost", "Remarks"],
+            ["1", "Portland Cement Type 1", "bag", "255.00", ""],
+            ["2", "Deformed Rebar 12mm x 6m", "pcs", "315.00", ""],
+        ]
+    )
+
+    assert frame is not None
+    assert list(frame.columns) == ["Item No.", "Material Description", "Unit", "Unit Cost", "Remarks"]
+    assert len(frame) == 2
+
+
 def test_recognizes_common_header_synonyms():
     df = parse_pricelist_file(str(SYNONYM_FIXTURE))
 
@@ -42,12 +57,70 @@ def test_recognizes_header_with_currency_annotation(tmp_path):
     # otherwise-recognized header (e.g. "Price (PHP)") — this is the exact
     # header a real uploaded PDF failed on before this fix.
     annotated_file = tmp_path / "annotated.csv"
-    annotated_file.write_text("Material,Unit,Price (PHP)\nPortland Cement Type 1,bag,255.00\n")
+    annotated_file.write_text(
+        "Material,Unit,Price (PHP)\n"
+        "Portland Cement Type 1,bag,255.00\n"
+        "Portland Cement Type 1 40kg bag,bag,PHP 260 per bag\n"
+    )
 
     df = parse_pricelist_file(str(annotated_file))
 
     assert {"raw_name", "raw_unit", "raw_price"}.issubset(df.columns)
     assert df.iloc[0]["raw_price"] == 255.0
+    assert df.iloc[1]["raw_price"] == 260.0
+
+
+def test_infers_columns_when_headers_are_generic(tmp_path):
+    generic_file = tmp_path / "generic.csv"
+    generic_file.write_text(
+        "A,B,C,D\n"
+        "1,Portland Cement Type I 40kg,bag,Php 240.50\n"
+        "2,DEFORMED REBAR 12MM X 6M GRADE 33,pcs,315.00\n"
+        "3,Marine Plywood 1/4 x 4 x 8,sheet,₱ 680.00\n"
+    )
+
+    df = parse_pricelist_file(str(generic_file))
+
+    assert {"raw_name", "raw_unit", "raw_price"}.issubset(df.columns)
+    assert len(df) == 3
+    assert df.iloc[0]["raw_name"] == "Portland Cement Type I 40kg"
+    assert df.iloc[0]["raw_unit"] == "bag"
+    assert df.iloc[0]["raw_price"] == 240.50
+
+
+def test_promotes_embedded_header_after_report_title_rows(tmp_path):
+    report_file = tmp_path / "report.csv"
+    report_file.write_text(
+        "Construction Materials Price Data,,,\n"
+        "NCR Quarterly Supplier Report,,,\n"
+        "Item No.,Particulars,UOM,Unit Cost\n"
+        "1,Portland Cement Type 1,bag,255.00\n"
+        "2,Concrete Hollow Block 4 inch,pc,18.50\n"
+        "Grand Total,,,273.50\n"
+    )
+
+    df = parse_pricelist_file(str(report_file))
+
+    assert {"raw_name", "raw_unit", "raw_price"}.issubset(df.columns)
+    assert len(df) == 2
+    assert df.iloc[0]["raw_name"] == "Portland Cement Type 1"
+    assert df.iloc[1]["raw_unit"] == "pc"
+
+
+def test_extracts_unit_from_material_name_when_unit_column_is_missing(tmp_path):
+    missing_unit_file = tmp_path / "missing_unit.csv"
+    missing_unit_file.write_text(
+        "Material Description,Latest Price\n"
+        "Cement Portland Type I 40kg bag,240.50\n"
+        "PVC Pipe 4 inch length,180.00\n"
+    )
+
+    df = parse_pricelist_file(str(missing_unit_file))
+
+    assert {"raw_name", "raw_unit", "raw_price"}.issubset(df.columns)
+    assert len(df) == 2
+    assert df.iloc[0]["raw_unit"] == "bag"
+    assert df.iloc[1]["raw_unit"] == "length"
 
 
 def test_raises_on_missing_columns(tmp_path):

@@ -17,6 +17,10 @@ import type { HistoricalPriceRecord, MaterialPriceVariance } from '@/types/entit
 export interface HistoricalPriceRecordRow extends HistoricalPriceRecord {
   item_name?: string;
   material?: string;
+  category_type?: string | null;
+  unit?: string;
+  actual_quantity?: number | null;
+  actual_total_cost?: number | null;
 }
 
 export interface MarketInsight {
