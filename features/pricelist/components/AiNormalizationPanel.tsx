@@ -89,9 +89,13 @@ type ReviewEditDraft = {
   suggested_category_type: string;
   suggested_material: string;
   suggested_brand: string;
+  description: string;
 };
 
 function reviewItemToDraft(item: PricelistReviewItem): ReviewEditDraft {
+  const initialDescription = item.description || item.suggested_brand || "";
+  const initialBrand = item.description ? item.suggested_brand ?? "" : "";
+
   return {
     raw_name: item.raw_name,
     raw_unit: item.raw_unit,
@@ -99,12 +103,15 @@ function reviewItemToDraft(item: PricelistReviewItem): ReviewEditDraft {
     confidence: String(Math.round(item.confidence * 100)),
     suggested_category_type: item.suggested_category_type ?? "Uncategorized",
     suggested_material: item.suggested_material ?? "",
-    suggested_brand: item.suggested_brand ?? "",
+    suggested_brand: initialBrand,
+    description: initialDescription,
   };
 }
 
 function draftToPatch(draft: ReviewEditDraft): PricelistReviewItemUpdate {
   const confidencePercent = Number(draft.confidence);
+  const resolvedDescription = draft.description.trim() || null;
+  const resolvedBrand = draft.suggested_brand.trim() || (resolvedDescription ? "Generic" : null);
   return {
     raw_name: draft.raw_name.trim(),
     raw_unit: draft.raw_unit.trim(),
@@ -112,7 +119,8 @@ function draftToPatch(draft: ReviewEditDraft): PricelistReviewItemUpdate {
     confidence: Number.isFinite(confidencePercent) ? confidencePercent / 100 : 0,
     suggested_category_type: draft.suggested_category_type.trim() || null,
     suggested_material: draft.suggested_material.trim() || null,
-    suggested_brand: draft.suggested_brand.trim() || null,
+    suggested_brand: resolvedBrand,
+    description: resolvedDescription,
   };
 }
 
@@ -146,9 +154,9 @@ function ReviewItemRow({
         <td className="py-2 pr-4 text-gray-500">{fmt(item.raw_price)}</td>
         <td className="py-2 pr-4 text-gray-500">{(item.confidence * 100).toFixed(0)}%</td>
         <td className="py-2 pr-4 text-gray-500">{item.suggested_category_type ?? "—"}</td>
-        <td className="py-2 pr-4 text-gray-500">{item.suggested_material ?? "—"}</td>
-        <td className="py-2 pr-4 text-gray-500">{item.suggested_brand ?? "—"}</td>
-        <td className="py-2 pr-4 text-gray-500">{item.source}</td>
+        <td className="py-2 pr-4 text-gray-500">{item.description || item.suggested_brand || "—"}</td>
+        <td className="py-2 pr-4 text-gray-500">{item.suggested_brand || "Generic"}</td>
+        <td className="py-2 pr-4 text-gray-500">{item.source || "Supplier"}</td>
         <td className="py-2 text-right">
           <div className="flex justify-end gap-1">
             <button
@@ -233,9 +241,10 @@ function ReviewItemRow({
       </td>
       <td className="py-2 pr-4">
         <input
-          value={draft.suggested_material}
-          onChange={(e) => onDraftChange({ suggested_material: e.target.value })}
+          value={draft.description}
+          onChange={(e) => onDraftChange({ description: e.target.value })}
           className={inputClass}
+          placeholder="Specification / Description"
         />
       </td>
       <td className="py-2 pr-4">
@@ -243,6 +252,7 @@ function ReviewItemRow({
           value={draft.suggested_brand}
           onChange={(e) => onDraftChange({ suggested_brand: e.target.value })}
           className={inputClass}
+          placeholder="Generic"
         />
       </td>
       <td className="py-2 pr-4 text-gray-500">{item.source}</td>
@@ -586,10 +596,10 @@ export function AiNormalizationPanel() {
                   <th className="py-2 pr-4">Price</th>
                   <th className="py-2 pr-4">Confidence</th>
                   <th className="py-2 pr-4">Category</th>
-                  <th className="py-2 pr-4">Material</th>
+                    <th className="py-2 pr-4">Specification</th>
                   <th className="py-2 pr-4">Brand</th>
                   <th className="py-2 pr-4">Source</th>
-                  <th className="py-2 text-right">Actions</th>
+                    <th className="py-2 text-right">Action</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">

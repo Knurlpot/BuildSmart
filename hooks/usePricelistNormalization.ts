@@ -46,6 +46,7 @@ export interface PricelistReviewItem {
   suggested_category_type: string | null;
   suggested_material: string | null;
   suggested_brand: string | null;
+  description: string | null;
   source: string;
   supplier_id: number | null;
   status: string;
@@ -62,6 +63,7 @@ export type PricelistReviewItemUpdate = Partial<
     | 'suggested_category_type'
     | 'suggested_material'
     | 'suggested_brand'
+    | 'description'
     | 'status'
   >
 >;

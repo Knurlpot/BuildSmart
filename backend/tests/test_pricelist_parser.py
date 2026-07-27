@@ -88,6 +88,23 @@ def test_infers_columns_when_headers_are_generic(tmp_path):
     assert df.iloc[0]["raw_price"] == 240.50
 
 
+def test_preserves_material_as_item_name_and_extracts_specification_as_description(tmp_path):
+    spec_file = tmp_path / "specification.csv"
+    spec_file.write_text(
+        "Material,Specification,Unit,Price\n"
+        "Portland Cement,Class A Portland Cement 40kg Bag,bag,255.00\n"
+        "Rebar,Grade 33 Deformed Bar 12mm x 6m,pcs,315.00\n"
+    )
+
+    df = parse_pricelist_file(str(spec_file))
+
+    assert {"raw_name", "raw_unit", "raw_price", "description"}.issubset(df.columns)
+    assert df.iloc[0]["raw_name"] == "Portland Cement"
+    assert df.iloc[0]["description"] == "Class A Portland Cement 40kg Bag"
+    assert df.iloc[1]["raw_name"] == "Rebar"
+    assert df.iloc[1]["description"] == "Grade 33 Deformed Bar 12mm x 6m"
+
+
 def test_promotes_embedded_header_after_report_title_rows(tmp_path):
     report_file = tmp_path / "report.csv"
     report_file.write_text(

@@ -75,6 +75,7 @@ class PriceListReviewItem(Base):
     suggested_category_type: Mapped[str | None] = mapped_column(String(40))
     suggested_material: Mapped[str | None] = mapped_column(String(100))
     suggested_brand: Mapped[str | None] = mapped_column(String(100))
+    description: Mapped[str | None] = mapped_column(String(255))
     source: Mapped[str] = mapped_column(String(20))
     # No Suppliers model mapped yet, matching the same plain-int pattern used by
     # HistoricalPriceRecord.supplier_id.

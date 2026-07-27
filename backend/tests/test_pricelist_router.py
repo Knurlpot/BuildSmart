@@ -157,6 +157,42 @@ def test_update_review_item_edits_pending_row(db_session):
     assert item.raw_name == "Portland Cement Type 1 40kg"
 
 
+def test_update_review_item_allows_description_field(db_session):
+    item = PriceListReviewItem(
+        raw_name="Portland Cement Type 1 40kg",
+        raw_unit="bag",
+        raw_price=255.50,
+        confidence=0.82,
+        suggested_category_type="Structural",
+        suggested_material="Cement",
+        suggested_brand="Holcim",
+        description="Class A Portland Cement 40kg Bag",
+        source="Supplier",
+        supplier_id=None,
+    )
+    db_session.add(item)
+    db_session.flush()
+
+    def override_get_db():
+        yield db_session
+
+    app.dependency_overrides[get_db] = override_get_db
+    try:
+        response = client.patch(
+            f"/pricelist/review/{item.review_id}",
+            json={"description": "Class B Portland Cement 40kg Bag"},
+        )
+    finally:
+        del app.dependency_overrides[get_db]
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["description"] == "Class B Portland Cement 40kg Bag"
+
+    db_session.refresh(item)
+    assert item.description == "Class B Portland Cement 40kg Bag"
+
+
 def test_update_review_item_approve_saves_to_supplier_catalog(db_session):
     item = PriceListReviewItem(
         raw_name="Portland Cement Type 1 40kg",

@@ -57,6 +57,7 @@ class ReviewItemResponse(BaseModel):
     suggested_category_type: str | None
     suggested_material: str | None
     suggested_brand: str | None
+    description: str | None
     source: str
     supplier_id: int | None
     status: str
@@ -71,6 +72,7 @@ class ReviewItemUpdateRequest(BaseModel):
     suggested_category_type: str | None = Field(default=None, max_length=40)
     suggested_material: str | None = Field(default=None, max_length=100)
     suggested_brand: str | None = Field(default=None, max_length=100)
+    description: str | None = Field(default=None, max_length=255)
     status: str | None = Field(default=None, min_length=1, max_length=20)
 
 
