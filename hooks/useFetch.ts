@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { apiClient } from '@/lib/api/client';
 
 export interface UseFetchResult<T> {
@@ -28,7 +28,7 @@ interface Resolved<T> {
 export function useFetch<T>(endpoint: string | null): UseFetchResult<T> {
   const [resolved, setResolved] = useState<Resolved<T>>({ key: '', data: null, error: null });
   const [reloadToken, setReloadToken] = useState(0);
-  const refetch = () => setReloadToken((t) => t + 1);
+  const refetch = useCallback(() => setReloadToken((t) => t + 1), []);
   const requestKey = endpoint ? `${endpoint}::${reloadToken}` : '';
 
   useEffect(() => {

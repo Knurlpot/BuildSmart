@@ -211,8 +211,22 @@ export function usePricelistNormalization() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(patch),
     });
-    setReviewItems((items) => items.map((item) => (item.review_id === reviewId ? updated : item)));
+    setReviewItems((items) => {
+      if (updated.status !== 'Pending') {
+        return items.filter((item) => item.review_id !== reviewId);
+      }
+      return items.map((item) => (item.review_id === reviewId ? updated : item));
+    });
     return updated;
+  }, []);
+
+  const deleteReviewItem = useCallback(async (reviewId: number) => {
+    await normalizationApiClient<PricelistReviewItem>(`/pricelist/review/${reviewId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status: 'Deleted' }),
+    });
+    setReviewItems((items) => items.filter((item) => item.review_id !== reviewId));
   }, []);
 
   return {
@@ -220,6 +234,7 @@ export function usePricelistNormalization() {
     enqueueFiles,
     clearFinishedQueueItems,
     updateReviewItem,
+    deleteReviewItem,
     reviewItems,
     isLoadingReview,
     reviewError,

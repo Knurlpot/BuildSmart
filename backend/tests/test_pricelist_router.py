@@ -157,6 +157,97 @@ def test_update_review_item_edits_pending_row(db_session):
     assert item.raw_name == "Portland Cement Type 1 40kg"
 
 
+def test_update_review_item_approve_saves_to_supplier_catalog(db_session):
+    item = PriceListReviewItem(
+        raw_name="Portland Cement Type 1 40kg",
+        raw_unit="bag",
+        raw_price=255.50,
+        confidence=0.82,
+        suggested_category_type="Structural",
+        suggested_material="Cement",
+        suggested_brand="Holcim",
+        source="Supplier",
+        supplier_id=None,
+    )
+    db_session.add(item)
+    db_session.flush()
+
+    def override_get_db():
+        yield db_session
+
+    app.dependency_overrides[get_db] = override_get_db
+    try:
+        response = client.patch(
+            f"/pricelist/review/{item.review_id}",
+            json={"status": "Approved"},
+        )
+    finally:
+        del app.dependency_overrides[get_db]
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "Approved"
+
+    saved_item = db_session.execute(
+        select(Items)
+        .where(Items.item_name == "Portland Cement Type 1 40kg")
+        .where(Items.material == "Cement")
+        .where(Items.brand == "Holcim")
+        .where(Items.unit == "bag")
+        .where(Items.item_source == "Supplier")
+    ).scalars().first()
+    assert saved_item is not None
+
+    saved_price = db_session.execute(
+        select(HistoricalPriceRecord)
+        .where(HistoricalPriceRecord.item_code == saved_item.item_code)
+        .where(HistoricalPriceRecord.supplier_id.is_(None))
+        .where(HistoricalPriceRecord.price_source == "Supplier")
+    ).scalars().first()
+    assert saved_price is not None
+    assert float(saved_price.price) == 255.5
+
+
+def test_update_review_item_approve_creates_supplier_item_even_if_internal_exists(db_session):
+    item = PriceListReviewItem(
+        raw_name="Portland Cement Type 1",
+        raw_unit="bag",
+        raw_price=260.00,
+        confidence=0.77,
+        suggested_category_type="Structural",
+        suggested_material="Cement",
+        suggested_brand="Holcim",
+        source="Supplier",
+        supplier_id=None,
+    )
+    db_session.add(item)
+    db_session.flush()
+
+    def override_get_db():
+        yield db_session
+
+    app.dependency_overrides[get_db] = override_get_db
+    try:
+        response = client.patch(
+            f"/pricelist/review/{item.review_id}",
+            json={"status": "Approved"},
+        )
+    finally:
+        del app.dependency_overrides[get_db]
+
+    assert response.status_code == 200
+
+    supplier_item = db_session.execute(
+        select(Items)
+        .where(Items.item_name == "Portland Cement Type 1")
+        .where(Items.material == "Cement")
+        .where(Items.brand == "Holcim")
+        .where(Items.unit == "bag")
+        .where(Items.item_source == "Supplier")
+    ).scalars().first()
+    assert supplier_item is not None
+
+
 def test_check_version_returns_new_available():
     response = client.post(
         "/pricelist/check-version",

@@ -122,18 +122,18 @@ function ReviewItemRow({
   draft,
   isSaving,
   onEdit,
-  onCancel,
   onDraftChange,
   onSave,
+  onDelete,
 }: {
   item: PricelistReviewItem;
   isEditing: boolean;
   draft: ReviewEditDraft;
   isSaving: boolean;
   onEdit: () => void;
-  onCancel: () => void;
   onDraftChange: (patch: Partial<ReviewEditDraft>) => void;
   onSave: () => void;
+  onDelete: () => void;
 }) {
   const inputClass =
     "h-8 w-full min-w-[7rem] rounded-lg border border-gray-200 bg-white px-2 text-sm text-gray-700 outline-none focus:border-primary focus:ring-2 focus:ring-primary/15";
@@ -150,14 +150,34 @@ function ReviewItemRow({
         <td className="py-2 pr-4 text-gray-500">{item.suggested_brand ?? "—"}</td>
         <td className="py-2 pr-4 text-gray-500">{item.source}</td>
         <td className="py-2 text-right">
-          <button
-            type="button"
-            onClick={onEdit}
-            className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 text-gray-500 transition hover:bg-gray-50 hover:text-primary"
-            aria-label={`Edit ${item.raw_name}`}
-          >
-            <Pencil className="h-3.5 w-3.5" />
-          </button>
+          <div className="flex justify-end gap-1">
+            <button
+              type="button"
+              disabled={isSaving}
+              onClick={onSave}
+              className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-white transition hover:bg-(--primary-hover) disabled:opacity-60"
+              aria-label={`Save ${item.raw_name}`}
+            >
+              {isSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+            </button>
+            <button
+              type="button"
+              onClick={onEdit}
+              className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 text-gray-500 transition hover:bg-gray-50 hover:text-primary"
+              aria-label={`Edit ${item.raw_name}`}
+            >
+              <Pencil className="h-3.5 w-3.5" />
+            </button>
+            <button
+              type="button"
+              disabled={isSaving}
+              onClick={onDelete}
+              className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 text-gray-500 transition hover:bg-red-50 hover:text-red-600 disabled:opacity-60"
+              aria-label={`Delete ${item.raw_name}`}
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </button>
+          </div>
         </td>
       </tr>
     );
@@ -239,12 +259,21 @@ function ReviewItemRow({
           </button>
           <button
             type="button"
-            disabled={isSaving}
-            onClick={onCancel}
-            className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 text-gray-500 transition hover:bg-gray-50 disabled:opacity-60"
-            aria-label={`Cancel editing ${item.raw_name}`}
+            disabled
+            className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 text-primary/60"
+            aria-label={`Edit ${item.raw_name}`}
+            title="Currently editing"
           >
-            <X className="h-3.5 w-3.5" />
+            <Pencil className="h-3.5 w-3.5" />
+          </button>
+          <button
+            type="button"
+            disabled={isSaving}
+            onClick={onDelete}
+            className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 text-gray-500 transition hover:bg-red-50 hover:text-red-600 disabled:opacity-60"
+            aria-label={`Delete ${item.raw_name}`}
+          >
+            <Trash2 className="h-3.5 w-3.5" />
           </button>
         </div>
       </td>
@@ -265,6 +294,7 @@ export function AiNormalizationPanel() {
     enqueueFiles,
     clearFinishedQueueItems,
     updateReviewItem,
+    deleteReviewItem,
     reviewItems,
     isLoadingReview,
     reviewError,
@@ -331,11 +361,30 @@ export function AiNormalizationPanel() {
 
   const saveEditing = async () => {
     if (editingId === null || editDraft === null) return;
-    setSavingId(editingId);
+    await saveReviewItem(editingId, { ...draftToPatch(editDraft), status: "Approved" });
+    cancelEditing();
+  };
+
+  const saveReviewItem = async (reviewId: number, patch: PricelistReviewItemUpdate) => {
+    setSavingId(reviewId);
     setReviewSaveError(null);
     try {
-      await updateReviewItem(editingId, draftToPatch(editDraft));
-      cancelEditing();
+      await updateReviewItem(reviewId, patch);
+    } catch (err) {
+      setReviewSaveError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSavingId(null);
+    }
+  };
+
+  const removeReviewItem = async (reviewId: number) => {
+    setSavingId(reviewId);
+    setReviewSaveError(null);
+    try {
+      await deleteReviewItem(reviewId);
+      if (editingId === reviewId) {
+        cancelEditing();
+      }
     } catch (err) {
       setReviewSaveError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -506,8 +555,8 @@ export function AiNormalizationPanel() {
           <div>
             <p className="text-sm font-bold text-gray-900">Pending Review</p>
             <p className="text-xs text-gray-500">
-              Low-confidence matches awaiting a decision. Approve/reject actions aren&apos;t wired up yet —
-              this is read-only.
+              Low-confidence matches awaiting a decision. Use Check to approve and save to the Supplier
+              price catalog.
             </p>
           </div>
           <button
@@ -536,9 +585,9 @@ export function AiNormalizationPanel() {
                   <th className="py-2 pr-4">Unit</th>
                   <th className="py-2 pr-4">Price</th>
                   <th className="py-2 pr-4">Confidence</th>
-                  <th className="py-2 pr-4">Suggested Category</th>
-                  <th className="py-2 pr-4">Suggested Material</th>
-                  <th className="py-2 pr-4">Suggested Brand</th>
+                  <th className="py-2 pr-4">Category</th>
+                  <th className="py-2 pr-4">Material</th>
+                  <th className="py-2 pr-4">Brand</th>
                   <th className="py-2 pr-4">Source</th>
                   <th className="py-2 text-right">Actions</th>
                 </tr>
@@ -552,9 +601,18 @@ export function AiNormalizationPanel() {
                     draft={editingId === item.review_id && editDraft ? editDraft : reviewItemToDraft(item)}
                     isSaving={savingId === item.review_id}
                     onEdit={() => startEditing(item)}
-                    onCancel={cancelEditing}
                     onDraftChange={(patch) => setEditDraft((current) => (current ? { ...current, ...patch } : current))}
-                    onSave={saveEditing}
+                    onSave={() => {
+                      if (editingId === item.review_id && editDraft) {
+                        void saveEditing();
+                        return;
+                      }
+                      void saveReviewItem(item.review_id, {
+                        ...draftToPatch(reviewItemToDraft(item)),
+                        status: "Approved",
+                      });
+                    }}
+                    onDelete={() => removeReviewItem(item.review_id)}
                   />
                 ))}
               </tbody>

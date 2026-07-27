@@ -6,13 +6,15 @@
 // material_price_variances for freshly-committed rows, and whether a second upload of the
 // same material is even treated as an "update" vs a new record, are both unconfirmed — so
 // this view does not attempt to diff or badge anything as changed/new/spiked.
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import { useFetch } from './useFetch';
 
 export interface SavedPriceRecord {
   historicalrec_id: number;
   item_code: number;
-  description: string; // assumed join from items — unconfirmed, see items.ts
+  item_name: string;
+  brand: string;
+  description_material: string;
   unit: string;
   price: number;
   region: string;
@@ -26,11 +28,19 @@ export function usePricelistCatalog() {
     enabled ? '/api/pricelist/catalog' : null
   );
 
+  const load = useCallback(() => {
+    if (!enabled) {
+      setEnabled(true);
+      return;
+    }
+    refetch();
+  }, [enabled, refetch]);
+
   return {
     records: data ?? [],
     isLoading,
     error,
     refetch,
-    load: () => setEnabled(true),
+    load,
   };
 }

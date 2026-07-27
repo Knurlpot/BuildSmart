@@ -82,24 +82,21 @@ export function PriceCatalogTab() {
   const supplierColumns = useMemo<ColumnDef<SavedPriceRecord>[]>(
     () => [
       {
-        accessorKey: "description",
-        header: "Description",
-        cell: ({ row }) => <span className="font-medium text-gray-800">{row.original.description}</span>,
+        accessorKey: "item_name",
+        header: "Item Name",
+        cell: ({ row }) => <span className="font-medium text-gray-800">{row.original.item_name}</span>,
       },
-      { accessorKey: "item_code", header: "Item Code", enableGlobalFilter: false },
+      { accessorKey: "brand", header: "Brand" },
+      {
+        accessorKey: "description_material",
+        header: "Description/Material",
+      },
       { accessorKey: "unit", header: "Unit", enableGlobalFilter: false },
       {
         accessorKey: "price",
         header: "Price",
         enableGlobalFilter: false,
         cell: ({ getValue }) => <span className="font-semibold text-gray-900">{fmt(getValue<number>())}</span>,
-      },
-      { accessorKey: "region", header: "Region", enableGlobalFilter: false },
-      {
-        accessorKey: "recorded_at",
-        header: "Date",
-        enableGlobalFilter: false,
-        cell: ({ getValue }) => <span className="text-gray-400">{formatDate(getValue<string>())}</span>,
       },
     ],
     []

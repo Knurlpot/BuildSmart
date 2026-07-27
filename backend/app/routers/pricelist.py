@@ -7,13 +7,13 @@ from typing import Literal
 from celery.result import AsyncResult
 from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel, ConfigDict, Field
-from sqlalchemy import select
+from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session
 
 from app.celery_app import celery_app
 from app.database import get_db
 from app.ingest.models import MaterialPriceVariance
-from app.models import HistoricalPriceRecord, Items, PriceListReviewItem
+from app.models import Category, HistoricalPriceRecord, Items, PriceListReviewItem
 from app.schemas.pricelist import NormalizedPriceRecord, SourceAgency
 from app.services.dpwh_published import fetch_dpwh_cmpd_release, save_dpwh_cmpd_publish_records
 from app.services.pricelist_json_normalizer import normalize_pricelist_dataframe
@@ -134,6 +134,104 @@ class ResolveBulkRequest(BaseModel):
     action: Literal["approve", "reject"]
 
 
+def _resolve_category_id(db: Session, category_type: str | None) -> int:
+    if category_type:
+        category = db.execute(
+            select(Category).where(Category.category_type == category_type.strip())
+        ).scalar_one_or_none()
+        if category is not None:
+            return category.category_id
+
+    fallback = db.execute(select(Category).order_by(Category.category_id)).scalars().first()
+    if fallback is not None:
+        return fallback.category_id
+
+    created = Category(category_type="Others", category_desc="Auto-generated category")
+    db.add(created)
+    db.flush()
+    return created.category_id
+
+
+def _find_existing_item(
+    db: Session,
+    *,
+    item_name: str,
+    material: str,
+    brand: str,
+    unit: str,
+    item_source: str,
+) -> Items | None:
+    return db.execute(
+        select(Items)
+        .where(func.lower(Items.item_name) == item_name.lower())
+        .where(func.lower(Items.material) == material.lower())
+        .where(func.lower(Items.brand) == brand.lower())
+        .where(func.lower(Items.unit) == unit.lower())
+        .where(func.lower(Items.item_source) == item_source.lower())
+        .order_by(Items.item_code.desc())
+    ).scalars().first()
+
+
+def _save_review_item_to_catalog(row: PriceListReviewItem, db: Session) -> None:
+    item_name = row.raw_name.strip()
+    unit = row.raw_unit.strip()
+    material = (row.suggested_material or row.raw_name).strip() or row.raw_name.strip()
+    brand = (row.suggested_brand or "Generic").strip() or "Generic"
+    source = row.source.strip()
+    supplier_id = row.supplier_id
+
+    if supplier_id is not None:
+        supplier_exists = db.execute(
+            text("SELECT 1 FROM suppliers WHERE supplier_id = :supplier_id"),
+            {"supplier_id": supplier_id},
+        ).scalar_one_or_none()
+        if supplier_exists is None:
+            supplier_id = None
+
+    existing = _find_existing_item(
+        db,
+        item_name=item_name,
+        material=material,
+        brand=brand,
+        unit=unit,
+        item_source=source,
+    )
+
+    if existing is None:
+        item = Items(
+            category_id=_resolve_category_id(db, row.suggested_category_type),
+            item_name=item_name,
+            material=material,
+            brand=brand,
+            unit=unit,
+            item_source=source,
+        )
+        db.add(item)
+        db.flush()
+    else:
+        item = existing
+
+    # Avoid duplicate historical rows from repeated approve clicks.
+    duplicate = db.execute(
+        select(HistoricalPriceRecord)
+        .where(HistoricalPriceRecord.item_code == item.item_code)
+        .where(HistoricalPriceRecord.supplier_id == supplier_id)
+        .where(HistoricalPriceRecord.price_source == source)
+        .where(HistoricalPriceRecord.price == float(row.raw_price))
+        .order_by(HistoricalPriceRecord.historicalrec_id.desc())
+    ).scalars().first()
+
+    if duplicate is None:
+        db.add(
+            HistoricalPriceRecord(
+                item_code=item.item_code,
+                supplier_id=supplier_id,
+                price_source=source,
+                price=float(row.raw_price),
+            )
+        )
+
+
 @router.post("/upload", response_model=UploadResponse)
 async def upload_pricelist(
     file: UploadFile = File(...),
@@ -190,6 +288,9 @@ def update_review_item(
         if isinstance(value, str):
             value = value.strip()
         setattr(row, field, value)
+
+    if row.status == "Approved":
+        _save_review_item_to_catalog(row, db)
 
     db.commit()
     db.refresh(row)

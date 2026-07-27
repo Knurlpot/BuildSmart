@@ -34,7 +34,7 @@
 // `FlaggedPriceDeviation` is a FRONTEND STAGING shape describing an old-vs-new comparison
 // for the review UI, not a historical_price_record mirror. DPWH-only now — PSA never had
 // real peso deviations, that was fabricated mock data and has been removed.
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import type { HistoricalPriceRecord, MaterialPriceVariance } from '@/types/entities';
 
 const BACKEND_API_BASE = process.env.NEXT_PUBLIC_NORMALIZATION_API_BASE_URL?.replace(/\/$/, '') || '';
@@ -135,7 +135,7 @@ function useBackendFetch<T>(endpoint: string | null) {
     return () => controller.abort();
   }, [endpoint, reloadToken]);
 
-  const refetch = () => setReloadToken((t) => t + 1);
+  const refetch = useCallback(() => setReloadToken((t) => t + 1), []);
   if (!endpoint) return { data: null, isLoading: false, error: null, refetch };
 
   const isLoading = resolved.key !== requestKey;
@@ -234,6 +234,7 @@ export function usePricelistPublishedSource() {
   const fetchPsaIndex = useBackendMutation<PsaIndexResponse>();
   const [catalogEnabled, setCatalogEnabled] = useState(false);
   const dpwhCatalog = useBackendFetch<DpwhCatalogRow[]>(catalogEnabled ? '/pricelist/catalog/dpwh' : null);
+  const loadDpwhCatalog = useCallback(() => setCatalogEnabled(true), []);
   // Separate instances (not one shared mutation) so DPWH's and PSA's loading/error/result
   // state never bleed into each other when the user switches source.
   const checkDpwhVersion = useBackendMutation<VersionCheckResponse>();
@@ -304,7 +305,7 @@ export function usePricelistPublishedSource() {
       isLoading: dpwhCatalog.isLoading,
       error: dpwhCatalog.error,
       refetch: dpwhCatalog.refetch,
-      load: () => setCatalogEnabled(true),
+      load: loadDpwhCatalog,
     },
   };
 }
