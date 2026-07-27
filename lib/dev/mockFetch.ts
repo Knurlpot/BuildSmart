@@ -68,13 +68,37 @@ export function resolveMockFetch(endpoint: string): unknown {
   // just enough for the deactivate dialog's success state to render in mock mode.
   if (pathname === "/api/account/deactivate") return { status: "Inactive" };
 
-  // --- Quotation Generation, Part 1 — PROVISIONAL, see lib/dev/provisional/. ---
-  // Client is fully provisional (no client table in the consolidated schema — see
-  // quotationGenerationTypes.ts). Quotation create/update and segment endpoints are
-  // real-schema-shaped but their exact paths are unconfirmed guesses, same convention as
+  // --- Quotation Generation, Part 1 — see lib/dev/provisional/. ---
+  // Client is a real table now (types/entities/client.ts); the endpoints below are still
+  // unconfirmed-path guesses (no backend route exists in this branch), same convention as
   // CPRM above: `/new` for create, to avoid colliding with the GET list at the bare path.
   if (pathname === "/api/clients") return clientsFixture;
-  if (pathname === "/api/clients/new") return clientsFixture[0];
+  // Returns the one fixture client with NO linked quotations, so mock mode demonstrates the
+  // honest "first-time client" state right after creating — not one of the 3 returning
+  // clients above, which would misleadingly show fabricated-looking history for a brand new
+  // record.
+  if (pathname === "/api/clients/new") return clientsFixture.find((c) => c.client_id === 5004);
+  if (pathname.startsWith("/api/clients/") && pathname.endsWith("/insights")) {
+    const clientId = Number(pathname.split("/")[3]);
+    const client = clientsFixture.find((c) => c.client_id === clientId);
+    if (!client) return undefined;
+    // Derived from quotationsFixture exactly the way a real backend would compute this —
+    // COUNT/MAX over quotation rows filtered by client_id — never a separate hardcoded
+    // "insights" fixture that could drift out of sync with the quotations list.
+    const ownQuotations = quotationsFixture
+      .filter((q) => q.client_id === clientId)
+      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+    const mostRecent = ownQuotations[0];
+    return {
+      hasHistory: ownQuotations.length > 0,
+      clientType: client.client_type,
+      projectCount: ownQuotations.length,
+      mostRecentProject: mostRecent
+        ? { project_name: mostRecent.project_name, created_at: mostRecent.created_at }
+        : null,
+      downpaymentOnFile: client.default_downpayment_percentage ?? null,
+    };
+  }
   if (pathname === "/api/quotations/new") return { ...quotationsFixture[1], quote_id: 9001, status: "Draft" };
   if (pathname.startsWith("/api/quotations/")) {
     const rest = pathname.slice("/api/quotations/".length);

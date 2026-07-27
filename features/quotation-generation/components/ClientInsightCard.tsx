@@ -1,9 +1,10 @@
 "use client";
 
-import { useState, type CSSProperties } from "react";
-import { History, UserCircle2 } from "lucide-react";
+import { useState, type CSSProperties, type ComponentType } from "react";
+import { Briefcase, Calendar, Hash, History, Mail, MapPin, Percent, Phone, UserCircle2 } from "lucide-react";
 import { useClientInsights } from "@/hooks/useClientInsights";
-import type { Client } from "@/lib/dev/provisional/quotationGenerationTypes";
+import { NEUTRAL_HUE, regionToHue } from "@/lib/regionColor";
+import type { Client } from "@/types/entities";
 
 interface CurrentQuoteFacts {
   projectName: string;
@@ -17,44 +18,73 @@ interface ClientInsightCardProps {
 }
 
 const STACK_DEPTH = 2;
-// Bounded so every region variant stays a recognizable relative of the brand's warm
-// orange/red palette (hue-ROTATING those same colors) rather than drifting into unrelated
-// hues like blue or green that would clash with the rest of the app. ±35deg keeps the
-// brand's ~24deg (orange) base hue within roughly pink-red (349deg) to gold (59deg) —
-// verified visually to stay warm at both extremes, unlike a wider range which starts to
-// read as yellow-green at one end.
-const HUE_ROTATION_RANGE_DEG = 35;
 
-// PART B — region-derived hue is DECORATIVE ONLY. Region is a location, nothing else: this
-// deliberately has no legend, no label, and no red/amber/green (or any) semantic scale —
-// adding one would imply the color means something about the client, which is exactly what
-// the honesty constraint above rules out. It's just a stable hash so the same region always
-// lands on the same hue and different clients feel visually distinct; a blank region (none
-// selected yet) is the neutral default (0deg — the unmodified brand palette).
-function hashString(value: string): number {
-  let hash = 0;
-  for (let i = 0; i < value.length; i++) {
-    hash = (hash * 31 + value.charCodeAt(i)) | 0;
-  }
-  return Math.abs(hash);
+function initials(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return "?";
+  return (parts[0][0] + (parts[1]?.[0] ?? "")).toUpperCase();
 }
 
-function regionHueRotation(region: string): number {
-  if (!region.trim()) return 0;
-  return (hashString(region) % (HUE_ROTATION_RANGE_DEG * 2 + 1)) - HUE_ROTATION_RANGE_DEG;
+function formatDate(iso: string): string {
+  return new Date(iso).toLocaleDateString("en-PH", { year: "numeric", month: "short", day: "numeric" });
 }
 
-// Richly-styled (full ambient glow surface, glassy/frosted content layer) but
-// content-honest shell. ‼️ There is no client entity in the schema yet, so there is no data
-// source for project counts, tiers, averages, or risk/payment flags — none of that is
-// rendered here, ever. See hooks/useClientInsights.ts for the full explanation; this
-// component only has ONE branch (the honest "no history" one) on purpose. It is NOT gated
-// behind a `hasHistory` check with a second, invented branch for "if true" — building that
-// branch would mean guessing at a shape the backend hasn't defined, which is exactly what
-// the honesty constraint rules out. Extend this file (and ClientInsights) the day a real
-// history endpoint exists.
+function DetailRow({
+  icon: Icon,
+  label,
+  value,
+}: {
+  icon: ComponentType<{ className?: string }>;
+  label: string;
+  value: string;
+}) {
+  return (
+    <div className="flex items-start gap-2.5 rounded-lg bg-white/10 px-3 py-2">
+      <Icon className="mt-0.5 h-3.5 w-3.5 shrink-0 text-white/60" />
+      <div className="min-w-0">
+        <p className="text-[9px] font-semibold uppercase tracking-wide text-white/45">{label}</p>
+        <p className="truncate text-xs font-medium text-white">{value}</p>
+      </div>
+    </div>
+  );
+}
+
+function HistoryTile({
+  icon: Icon,
+  label,
+  value,
+}: {
+  icon: ComponentType<{ className?: string }>;
+  label: string;
+  value: string;
+}) {
+  return (
+    <div className="flex flex-col gap-1 rounded-lg bg-white/10 px-3 py-2">
+      <div className="flex items-center gap-1.5 text-white/45">
+        <Icon className="h-3 w-3 shrink-0" />
+        <span className="text-[9px] font-semibold uppercase tracking-wide">{label}</span>
+      </div>
+      <p className="truncate text-xs font-bold text-white">{value}</p>
+    </div>
+  );
+}
+
+// Full-color glow card (Part A) — dark, saturated content layer over the same drifting-blob
+// glow used by AmbientBackground.tsx, colored by a decorative Luzon/Visayas/Mindanao
+// geographic hue spectrum (Part B — see lib/regionColor.ts for the non-ranking guardrail).
+//
+// ‼️ HONESTY LINE — read before adding a block to this card.
+// REAL (shown): client_name/contact_person/contact_email/contact_number/client_address/
+// client_type (real `client` columns), and the "Client History" panel's project count,
+// most recent project, and downpayment-on-file — all derived from real quotation history
+// via useClientInsights (COUNT/MAX over quotation rows, client.default_downpayment_percentage).
+// NOT REAL (never shown): a "usual tier" (no per-quote tier is stored anywhere), "preferred
+// materials" (nothing links a client to materials), or any behavioral/personality note —
+// there is no column anywhere that could back these. Do not add them here no matter how
+// closely this is asked to match a reference design that does show them; extend
+// useClientInsights.ts's ClientInsights shape first, the day a real column exists.
 export function ClientInsightCard({ client, quote }: ClientInsightCardProps) {
-  const { insights } = useClientInsights(client?.client_id ?? null);
+  const { insights, isLoading: insightsLoading, error: insightsError } = useClientInsights(client?.client_id ?? null);
 
   // Swipe/stack animation state — adjusted during render (this codebase's established
   // pattern for "derive state from a prop change", e.g. the account page's deactivate
@@ -71,16 +101,25 @@ export function ClientInsightCard({ client, quote }: ClientInsightCardProps) {
     setSwipeKey((k) => k + 1);
   }
 
-  const hasQuoteFacts = quote.projectName.trim() || quote.projectLocation.trim() || quote.projectRegion.trim();
-  const hueRotation = regionHueRotation(quote.projectRegion);
+  // Part B — absolute-ish target hue for hand-built swatches (avatar/badge/footer); the CSS
+  // blob layer consumes a ROTATION instead (hue-rotate() shifts a base color, it doesn't set
+  // one), so that's offset from the blobs' own baked-in ~24deg brand hue.
+  const hue = regionToHue(quote.projectRegion);
+  const blobRotation = hue - NEUTRAL_HUE;
+  const swatch = (lightness: number, saturation = 70) => `hsl(${hue}deg ${saturation}% ${lightness}%)`;
+
+  // Prefer the real aggregate (has this client actually got quotations?) over the
+  // manually-set client_type field once insights have loaded — a self-reported "Returning"
+  // with zero quotations on file would be a less honest signal than the actual count.
+  const isReturning = insights ? insights.hasHistory : displayed?.client_type === "Returning";
 
   return (
-    <div className="relative" style={{ minHeight: 280 }}>
+    <div className="relative" style={{ minHeight: 320 }}>
       {stack.map((c, i) => (
         <div
           key={c.client_id}
           aria-hidden
-          className="absolute inset-0 rounded-3xl border border-white/50 bg-white/60"
+          className="absolute inset-0 rounded-3xl border border-white/10 bg-black/40"
           style={{
             transform: `translateY(${(i + 1) * 10}px) scale(${1 - (i + 1) * 0.035})`,
             opacity: 0.5 - i * 0.18,
@@ -92,28 +131,21 @@ export function ClientInsightCard({ client, quote }: ClientInsightCardProps) {
 
       <div
         key={swipeKey}
-        className="qg-card-swipe-in relative z-20 flex h-full flex-col overflow-hidden rounded-3xl border border-white/60 bg-white shadow-xl"
-        style={{ minHeight: 280 }}
+        className="qg-card-swipe-in relative z-20 flex h-full flex-col overflow-hidden rounded-3xl border border-white/10 shadow-xl"
+        style={{ minHeight: 320 }}
       >
-        {/* PART A — the whole card is an ambient glow surface now (previously a white
-            panel with a thin accent stripe). Same "drifting blob" primitive as
-            AmbientBackground.tsx (see app/globals.css's qg-blob rules) but richer and more
-            saturated, so this card reads as the focal point against the workflow's much
-            quieter backdrop. --qg-hue is Part B's decorative, non-semantic region hue. */}
+        {/* PART A — the whole card is an ambient glow surface. Same "drifting blob"
+            primitive as AmbientBackground.tsx (see app/globals.css's qg-blob rules) but
+            richer and more saturated, so this card reads as the focal point against the
+            workflow's much quieter backdrop. --qg-hue is Part B's decorative, non-semantic
+            region hue rotation. */}
         <div
           className="qg-card-glow-layer pointer-events-none absolute inset-0"
-          style={{ "--qg-hue": `${hueRotation}deg` } as CSSProperties}
+          style={{ "--qg-hue": `${blobRotation}deg` } as CSSProperties}
         >
           <div
             className="qg-blob qg-blob-a"
-            style={{
-              top: "-22%",
-              left: "-12%",
-              width: "78%",
-              height: "78%",
-              background: "var(--primary)",
-              opacity: 0.55,
-            }}
+            style={{ top: "-22%", left: "-12%", width: "78%", height: "78%", background: "var(--primary)", opacity: 0.75 }}
           />
           <div
             className="qg-blob qg-blob-b"
@@ -123,7 +155,7 @@ export function ClientInsightCard({ client, quote }: ClientInsightCardProps) {
               width: "68%",
               height: "68%",
               background: "var(--brand-gradient-1)",
-              opacity: 0.4,
+              opacity: 0.6,
               animationDelay: "-5s",
             }}
           />
@@ -135,54 +167,98 @@ export function ClientInsightCard({ client, quote }: ClientInsightCardProps) {
               width: "82%",
               height: "82%",
               background: "var(--brand-gradient-3)",
-              opacity: 0.32,
+              opacity: 0.5,
               animationDelay: "-10s",
             }}
           />
         </div>
 
-        {/* Frosted content layer — sits above the glow so text stays legible regardless of
-            how saturated the blobs underneath get. */}
-        <div className="relative z-10 flex h-full flex-col gap-4 bg-white/55 p-6 backdrop-blur-xl">
+        {/* Dark content layer — sits above the glow, saturated colors bleed through
+            underneath rather than being washed out by a pale panel. White text throughout. */}
+        <div
+          className="relative z-10 flex h-full flex-col gap-4 p-6 backdrop-blur-xl"
+          style={{ background: `hsla(${hue}, 45%, 14%, 0.82)` }}
+        >
           {!displayed ? (
-            <div className="flex flex-1 flex-col items-center justify-center gap-2 text-center text-gray-500">
+            <div className="flex flex-1 flex-col items-center justify-center gap-2 text-center text-white/60">
               <UserCircle2 className="h-10 w-10" />
               <p className="text-sm">Select a client to see what&apos;s on file for them.</p>
             </div>
           ) : (
             <>
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Client</p>
-                <h3 className="text-lg font-bold text-gray-900">{displayed.client_name}</h3>
-                {displayed.contact_person && <p className="text-sm text-gray-700">{displayed.contact_person}</p>}
-                {displayed.contact_email && <p className="text-xs text-gray-500">{displayed.contact_email}</p>}
+              {/* Status pill — real state (see isReturning above), top-left. */}
+              <div className="flex items-center gap-1.5 self-start rounded-full bg-white/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-white/85">
+                <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: swatch(60) }} />
+                {isReturning ? "Returning Client" : "New Client"}
               </div>
 
-              {/* The one and only history state — see the file header for why there is no
-                  "if hasHistory" branch here. */}
-              {insights && !insights.hasHistory && (
-                <div className="flex items-start gap-2.5 rounded-xl border border-dashed border-gray-300 bg-white/70 px-3.5 py-3">
-                  <History className="mt-0.5 h-4 w-4 shrink-0 text-gray-500" />
-                  <p className="text-sm text-gray-700">First-time client — no history on file yet.</p>
+              {/* Identity header — avatar + name + email. */}
+              <div className="flex items-center gap-3 rounded-xl bg-white/10 px-3 py-3">
+                <div
+                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-sm font-bold text-white"
+                  style={{ background: swatch(42) }}
+                >
+                  {initials(displayed.client_name)}
                 </div>
-              )}
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-bold text-white">{displayed.client_name}</p>
+                  {(displayed.contact_person || displayed.contact_email) && (
+                    <p className="truncate text-xs text-white/60">{displayed.contact_person || displayed.contact_email}</p>
+                  )}
+                </div>
+              </div>
 
-              {hasQuoteFacts && (
+              {/* Contact blocks. */}
+              <div className="flex flex-col gap-1.5">
+                {displayed.contact_number && <DetailRow icon={Phone} label="Phone" value={displayed.contact_number} />}
+                {displayed.contact_email && <DetailRow icon={Mail} label="Email" value={displayed.contact_email} />}
+                {displayed.client_address && <DetailRow icon={MapPin} label="Address" value={displayed.client_address} />}
+              </div>
+
+              {/* Client History panel — ONLY real, derivable aggregates. See the file
+                  header for exactly what is and isn't shown here and why. */}
+              {insightsLoading && <p className="text-xs text-white/50">Loading history…</p>}
+              {insightsError && <p className="text-xs text-white/50">Couldn&apos;t load client history.</p>}
+              {insights && (
                 <div className="flex flex-col gap-1.5">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">This Quote</p>
-                  {quote.projectName.trim() && <p className="text-sm font-medium text-gray-900">{quote.projectName}</p>}
-                  {(quote.projectLocation.trim() || quote.projectRegion.trim()) && (
-                    <p className="text-xs text-gray-600">
-                      {[quote.projectLocation.trim(), quote.projectRegion.trim()].filter(Boolean).join(" · ")}
-                    </p>
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-white/45">Client History</p>
+                  {insights.hasHistory ? (
+                    <div className="grid grid-cols-2 gap-1.5">
+                      <HistoryTile icon={Hash} label="Projects" value={String(insights.projectCount)} />
+                      {insights.mostRecentProject && (
+                        <HistoryTile
+                          icon={Calendar}
+                          label="Most Recent"
+                          value={formatDate(insights.mostRecentProject.created_at)}
+                        />
+                      )}
+                      {insights.downpaymentOnFile !== null && (
+                        <HistoryTile icon={Percent} label="Downpayment on File" value={`${insights.downpaymentOnFile}%`} />
+                      )}
+                    </div>
+                  ) : (
+                    <div className="flex items-start gap-2.5 rounded-xl border border-dashed border-white/20 bg-white/5 px-3.5 py-3">
+                      <History className="mt-0.5 h-4 w-4 shrink-0 text-white/50" />
+                      <p className="text-sm text-white/75">First-time client — no history on file yet.</p>
+                    </div>
                   )}
                 </div>
               )}
 
-              <p className="mt-auto text-[11px] text-gray-500">
-                {displayed.client_name} has no prior quotations on file
-                {quote.projectName.trim() ? ` — this quote will be their first with you.` : "."}
-              </p>
+              {/* Current quote's project row. */}
+              {(quote.projectName.trim() || quote.projectLocation.trim() || quote.projectRegion.trim()) && (
+                <div className="mt-auto flex flex-col gap-1.5">
+                  {quote.projectName.trim() && <DetailRow icon={Briefcase} label="Project" value={quote.projectName.trim()} />}
+                  {(quote.projectLocation.trim() || quote.projectRegion.trim()) && (
+                    <div className="flex items-center justify-between rounded-xl bg-white/10 px-3 py-2">
+                      <span className="text-[10px] font-semibold uppercase tracking-wide text-white/45">New Project</span>
+                      <span className="truncate pl-3 text-right text-xs font-bold" style={{ color: swatch(72, 80) }}>
+                        {[quote.projectLocation.trim(), quote.projectRegion.trim()].filter(Boolean).join(" · ")}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              )}
             </>
           )}
         </div>

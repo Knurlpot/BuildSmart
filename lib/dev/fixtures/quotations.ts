@@ -2,6 +2,10 @@
 // (types/entities/quotation.ts), same field casing. No is_archived — that column
 // is dead per schema v3; Open Projects' Hide is a client-only session filter that
 // needs no fixture support.
+//
+// client_id links some (not all) rows to lib/dev/provisional/quotationGenerationFixtures.ts's
+// clientsFixture — 3004 and 3006 are deliberately left clientless (null), same as a real
+// quotation created before this feature existed, or created without picking a client.
 import type { Quotation } from "@/types/entities";
 
 export const quotationsFixture: Quotation[] = [
@@ -9,6 +13,7 @@ export const quotationsFixture: Quotation[] = [
     quote_id: 3001,
     company_id: 101,
     user_id: 1001,
+    client_id: 5001,
     project_name: "Rivercrest Residence Renovation",
     project_location: "Quezon City",
     project_region: "NCR",
@@ -24,6 +29,7 @@ export const quotationsFixture: Quotation[] = [
     quote_id: 3002,
     company_id: 101,
     user_id: 1001,
+    client_id: 5002,
     project_name: "Northline Warehouse Roof Retrofit",
     project_location: "Malolos",
     project_region: "Region III",
@@ -39,6 +45,7 @@ export const quotationsFixture: Quotation[] = [
     quote_id: 3003,
     company_id: 101,
     user_id: 1001,
+    client_id: 5003,
     project_name: "Terra Bright Office Fit-out",
     project_location: "Calamba",
     project_region: "Region IV-A",
@@ -54,6 +61,7 @@ export const quotationsFixture: Quotation[] = [
     quote_id: 3004,
     company_id: 101,
     user_id: 1001,
+    client_id: null,
     project_name: "Harborview Condominium Exterior Repaint",
     project_location: "Cebu City",
     project_region: "Region VII",
@@ -69,6 +77,7 @@ export const quotationsFixture: Quotation[] = [
     quote_id: 3005,
     company_id: 101,
     user_id: 1001,
+    client_id: 5001,
     project_name: "Pinnacle Storage Facility Waterproofing",
     project_location: "Pasig",
     project_region: "NCR",
@@ -84,6 +93,7 @@ export const quotationsFixture: Quotation[] = [
     quote_id: 3006,
     company_id: 101,
     user_id: 1001,
+    client_id: null,
     project_name: "Coastal Bridge Access Road Drainage",
     project_location: "Davao City",
     project_region: "Region XI",

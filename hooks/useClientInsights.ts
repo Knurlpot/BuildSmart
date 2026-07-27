@@ -1,31 +1,40 @@
-// ‼️ HONESTY CONSTRAINT — read before touching this file.
+// ‼️ HONESTY CONSTRAINT — read before extending this file.
 //
-// The consolidated schema has NO client entity: `quotation` has no client_id, and there is
-// no table anywhere that could tell us a client's past project count, tiers, averages, or
-// anything else about their history with this company. That is a pending backend decision
-// (a client table + a quotation.client_id FK, at minimum — see
-// lib/dev/provisional/quotationGenerationTypes.ts's Client doc comment for the exact gap).
+// The `client` table (types/entities/client.ts) and `quotation.client_id` FK are now real,
+// so a client's real history CAN be computed: how many quotations they have, the most
+// recent one, and their on-file downpayment preference. That's exactly what this hook
+// returns — nothing more.
 //
-// So this hook does NOT fetch anything and does NOT invent anything. It always returns
-// "no history" — that's not a placeholder loading state, it's the honest answer given what
-// the database can currently prove. ClientInsightCard.tsx renders exactly that: never a
-// fabricated project count, tier, average, or risk/payment flag.
+// Still NOT real, still NOT returned here: a "usual tier" (no per-quote tier/strategy_type
+// is stored against quotation in the consolidated schema), "preferred materials" (nothing
+// links a client to materials), or any behavioral/personality note ("responds to warranty
+// packages," etc — pure invention, no column anywhere could back it). Do not add fields for
+// these. The day the backend adds a tier column to quotation, or a treatment_type linkage,
+// THIS is the file to extend — not before, and not with a guessed field name.
 //
-// The day the backend adds a client entity + history, swap the body below for a real
-// `useFetch<ClientInsights>(`/api/clients/${clientId}/insights`)` call and extend
-// `ClientInsights` with real fields sourced from that endpoint — not before, and not with
-// invented field names guessed ahead of time.
+// Assumed endpoint — UNVERIFIED, confirm with the backend team:
+//   GET /api/clients/:clientId/insights -> ClientInsights
+// No real backend route exists in this branch yet; this follows the same "assumed REST
+// path, clearly labeled" convention as lib/api/auth.ts and hooks/useQuotationGeneration.ts.
+import { useFetch } from './useFetch';
+import type { ClientType } from '@/types/entities';
+
 export interface ClientInsights {
-  hasHistory: false;
+  hasHistory: boolean;
+  clientType: ClientType;
+  projectCount: number;
+  mostRecentProject: { project_name: string; created_at: string } | null;
+  downpaymentOnFile: number | null;
 }
 
 export interface UseClientInsightsResult {
   insights: ClientInsights | null;
   isLoading: boolean;
-  error: null;
+  error: Error | null;
 }
 
-export function useClientInsights(clientId: string | null): UseClientInsightsResult {
-  if (!clientId) return { insights: null, isLoading: false, error: null };
-  return { insights: { hasHistory: false }, isLoading: false, error: null };
+export function useClientInsights(clientId: number | null): UseClientInsightsResult {
+  const endpoint = clientId !== null ? `/api/clients/${clientId}/insights` : null;
+  const { data, isLoading, error } = useFetch<ClientInsights>(endpoint);
+  return { insights: data, isLoading, error };
 }

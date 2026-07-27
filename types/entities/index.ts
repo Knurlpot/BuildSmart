@@ -13,6 +13,7 @@ export * from './supplier-discount-rule';
 export * from './supplier-benchmark';
 export * from './project-segment';
 export * from './segment-tag';
-// supplier_region (schema v3, table 5) intentionally has no type file here: no
-// frontend page/hook references it yet. Add one (and export it above) the day
-// something actually consumes it — don't pre-build against an unused table.
+export * from './client';
+// supplier_region and company_rule (+ its rule_* detail tables) intentionally have no type
+// files here: no frontend page/hook references them yet. Add one (and export it above) the
+// day something actually consumes it — don't pre-build against an unused table.

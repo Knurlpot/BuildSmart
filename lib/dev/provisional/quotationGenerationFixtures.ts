@@ -1,36 +1,70 @@
 // DEV-ONLY fixtures — see lib/dev/mock-toggle.ts. Backs /api/clients and the blueprint
 // extraction mock in lib/dev/mockFetch.ts.
-import type { Client, BlueprintExtractionResult } from './quotationGenerationTypes';
+import type { Client } from '@/types/entities';
+import type { BlueprintExtractionResult } from './quotationGenerationTypes';
 
-// client_type is null for all three — these seed rows predate that field and there's no
-// real basis to guess New vs. Returning for them (see quotationGenerationTypes.ts).
+// client_id values (5001+) link to lib/dev/fixtures/quotations.ts's quotationsFixture —
+// mockFetch.ts derives /api/clients/:id/insights (project count, most recent project) from
+// that link, the same way a real backend would COUNT/MAX over the quotation table.
 export const clientsFixture: Client[] = [
   {
-    client_id: 'cl-1',
+    client_id: 5001,
+    company_id: 101,
     client_name: 'Rivercrest Family Trust',
     contact_number: '+63 917 555 0142',
     contact_email: 'admin@rivercrest.example',
     contact_person: null,
     client_address: null,
-    client_type: null,
+    client_type: 'Returning',
+    default_downpayment_percentage: 30,
+    notes: null,
+    status: 'Active',
+    created_at: '2025-10-20T09:00:00.000Z',
   },
   {
-    client_id: 'cl-2',
+    client_id: 5002,
+    company_id: 101,
     client_name: 'Northline Logistics Corp.',
     contact_number: '+63 918 222 4410',
     contact_email: 'facilities@northline.example',
     contact_person: null,
     client_address: null,
-    client_type: null,
+    client_type: 'Returning',
+    default_downpayment_percentage: null,
+    notes: null,
+    status: 'Active',
+    created_at: '2025-12-01T09:00:00.000Z',
   },
   {
-    client_id: 'cl-3',
+    client_id: 5003,
+    company_id: 101,
     client_name: 'Terra Bright Holdings',
     contact_number: '+63 917 888 3321',
     contact_email: 'ops@terrabright.example',
     contact_person: null,
     client_address: null,
-    client_type: null,
+    client_type: 'Returning',
+    default_downpayment_percentage: 20,
+    notes: null,
+    status: 'Active',
+    created_at: '2025-09-10T09:00:00.000Z',
+  },
+  // Deliberately has NO linked rows in quotationsFixture — this is the "just created,
+  // first-time client" fixture mockFetch.ts's /api/clients/new returns, so mock mode can
+  // demonstrate the honest no-history state alongside the 3 returning clients above.
+  {
+    client_id: 5004,
+    company_id: 101,
+    client_name: 'New Provisional Client',
+    contact_number: null,
+    contact_email: null,
+    contact_person: null,
+    client_address: null,
+    client_type: 'New',
+    default_downpayment_percentage: null,
+    notes: null,
+    status: 'Active',
+    created_at: '2026-01-20T09:00:00.000Z',
   },
 ];
 

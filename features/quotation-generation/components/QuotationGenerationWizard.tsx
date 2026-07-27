@@ -10,8 +10,7 @@ import { QuickMeasurementPanel } from "./QuickMeasurementPanel";
 import { BlueprintUploadPanel } from "./BlueprintUploadPanel";
 import { ConfigureSegmentsStep } from "./ConfigureSegmentsStep";
 import { useUpdateQuotationInputMethod } from "@/hooks/useQuotationGeneration";
-import type { Quotation } from "@/types/entities";
-import type { Client } from "@/lib/dev/provisional/quotationGenerationTypes";
+import type { Quotation, Client } from "@/types/entities";
 import type { DraftSegment } from "../lib/draftSegment";
 
 type WizardStep = "client" | "method" | "quick" | "blueprint" | "configure" | "done";
