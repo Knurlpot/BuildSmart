@@ -15,14 +15,35 @@ import {
 import { useClients } from "@/hooks/useClients";
 import { useCreateQuotation } from "@/hooks/useQuotationGeneration";
 import { ClientInsightCard } from "./ClientInsightCard";
-import { NewClientFormCard, emptyNewClientDraft, type NewClientDraft } from "./NewClientFormCard";
+import { NewClientForm, emptyNewClientDraft, type NewClientDraft } from "./NewClientForm";
 import { PH_REGIONS, type PhRegion } from "@/types/entities/common";
-import { PH_CITIES } from "@/lib/ph-cities";
 import type { Client, Quotation } from "@/types/entities";
 
 const inputCls =
   "w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-2.5 text-sm outline-none transition focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/20";
 const labelCls = "text-xs font-semibold uppercase tracking-wide text-gray-600";
+
+function joinWithAnd(items: string[]): string {
+  if (items.length === 0) return "";
+  if (items.length === 1) return items[0];
+  if (items.length === 2) return `${items[0]} and ${items[1]}`;
+  return `${items.slice(0, -1).join(", ")}, and ${items[items.length - 1]}`;
+}
+
+// Part F — a single reason sentence beside the (disabled) Continue button, replacing
+// per-field red error text. Null once everything required is filled in.
+function buildContinueHint(state: { clientValid: boolean; nameValid: boolean; locationValid: boolean; regionValid: boolean }): string | null {
+  const clauses: string[] = [];
+  if (!state.clientValid) clauses.push("select a client");
+  const missingProjectFields: string[] = [];
+  if (!state.nameValid) missingProjectFields.push("project name");
+  if (!state.locationValid) missingProjectFields.push("location");
+  if (!state.regionValid) missingProjectFields.push("region");
+  if (missingProjectFields.length > 0) clauses.push(`add a ${joinWithAnd(missingProjectFields)}`);
+  if (clauses.length === 0) return null;
+  const sentence = joinWithAnd(clauses);
+  return `${sentence.charAt(0).toUpperCase()}${sentence.slice(1)} to continue.`;
+}
 
 interface ClientPickerProps {
   clients: Client[];
@@ -53,8 +74,12 @@ function ChipRow({ title, subtitle, actionLabel, onAction }: { title: string; su
 
 // Search-select-or-create combobox — outside-click-to-close, same convention as
 // components/forms/SpecializationSelect.tsx. Single-select (unlike that one); "no match"
-// hands off to the parent (Part C: the actual new-client fields live in the right-side
-// card, not inline here) rather than instant-creating from a name alone.
+// hands off to the parent (the actual new-client fields live in the LEFT-column form below
+// this picker, not inline here — see NewClientForm.tsx).
+//
+// Part C — list rows show client_name ONLY (no email/subtitle). A firm may have 100+
+// clients; keeping rows to one line keeps the list scannable. Contact details surface in
+// the card once a client is selected, not here.
 function ClientPicker({
   clients,
   isLoading,
@@ -84,20 +109,22 @@ function ClientPicker({
   const exactMatch = clients.some((c) => c.client_name.toLowerCase() === query.trim().toLowerCase());
 
   if (creatingName !== null) {
-    return <ChipRow title={`Creating "${creatingName}"`} subtitle="Fill in the card below, then Create Client." actionLabel="Cancel" onAction={onCancelCreate} />;
+    return (
+      <ChipRow
+        title={`Creating "${creatingName}"`}
+        subtitle="Fill in the form below, then Create Client."
+        actionLabel="Cancel"
+        onAction={onCancelCreate}
+      />
+    );
   }
 
   if (selected && !open) {
-    return <ChipRow title={selected.client_name} subtitle={selected.contact_email} actionLabel="Change" onAction={() => { setOpen(true); onChangeSelected(); }} />;
+    return <ChipRow title={selected.client_name} actionLabel="Change" onAction={() => { setOpen(true); onChangeSelected(); }} />;
   }
 
   return (
-    // z-30 (well above ClientInsightCard/NewClientFormCard's z-10 content layer sitting
-    // right below in the same column) — without it, that card's backdrop-blur layer forms
-    // its own stacking context and intercepts clicks meant for this dropdown, even though
-    // the dropdown itself is z-20; giving the whole picker a higher explicit stack keeps it
-    // unambiguously on top regardless of the card's internal stacking.
-    <div ref={containerRef} className="relative z-30">
+    <div ref={containerRef} className="relative">
       <div className="relative">
         <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
         <input
@@ -114,7 +141,7 @@ function ClientPicker({
       </div>
 
       {open && (
-        <div className="absolute top-full left-0 z-40 mt-1 max-h-64 w-full overflow-y-auto rounded-xl border border-gray-200 bg-white shadow-lg">
+        <div className="absolute top-full left-0 z-20 mt-1 max-h-64 w-full overflow-y-auto rounded-xl border border-gray-200 bg-white shadow-lg">
           <QueryState isLoading={isLoading} error={error} isEmpty={false} onRetry={refetch} emptyTitle="" minHeight={60}>
             {filtered.map((c) => (
               <button
@@ -125,10 +152,9 @@ function ClientPicker({
                   setOpen(false);
                   setQuery("");
                 }}
-                className="flex w-full flex-col items-start px-3.5 py-2.5 text-left text-sm transition hover:bg-gray-50"
+                className="flex w-full items-center px-3.5 py-2.5 text-left text-sm transition hover:bg-gray-50"
               >
                 <span className="font-medium text-gray-800">{c.client_name}</span>
-                {c.contact_email && <span className="text-xs text-gray-400">{c.contact_email}</span>}
               </button>
             ))}
             {query.trim() && !exactMatch && (
@@ -169,7 +195,6 @@ export function ClientAndProjectStep({ onContinue }: ClientAndProjectStepProps) 
   const [projectName, setProjectName] = useState("");
   const [projectLocation, setProjectLocation] = useState("");
   const [projectRegion, setProjectRegion] = useState<PhRegion | "">("");
-  const [touched, setTouched] = useState(false);
   const [cancelConfirmOpen, setCancelConfirmOpen] = useState(false);
 
   const clientValid = client !== null;
@@ -180,6 +205,8 @@ export function ClientAndProjectStep({ onContinue }: ClientAndProjectStepProps) 
   const hasUnsavedInput =
     client !== null || draft !== null || projectName.trim().length > 0 || projectLocation.trim().length > 0 || projectRegion !== "";
 
+  const continueHint = buildContinueHint({ clientValid, nameValid, locationValid, regionValid });
+
   const handleStartCreate = (name: string) => {
     resetCreate();
     setDraft(emptyNewClientDraft(name));
@@ -188,6 +215,13 @@ export function ClientAndProjectStep({ onContinue }: ClientAndProjectStepProps) 
   const handleCreateSubmit = async () => {
     if (!draft || !draft.client_name.trim()) return;
     try {
+      // Part G — OPEN DECISION, do not resolve here: client persistence happens in Part
+      // 2's quote-save flow; whether a client row is created explicitly (this button) or
+      // auto-saved when the quote is finalized is TBD. This button is the one and only
+      // place a client row gets created from THIS step — never on keystroke, never
+      // implicitly from clicking Continue below. Avoid creating client rows from mere
+      // inquiries (e.g. someone just trying out the search box).
+      //
       // company_id/client_id/status/created_at are never invented here — company_id comes
       // from the session server-side, client_id is read back from the response.
       const created = await createClient({
@@ -209,7 +243,6 @@ export function ClientAndProjectStep({ onContinue }: ClientAndProjectStepProps) 
   };
 
   const handleContinue = async () => {
-    setTouched(true);
     if (!formValid || !client) return;
     try {
       // input_method defaults to 'Manual' here since the method choice is the NEXT step —
@@ -238,13 +271,39 @@ export function ClientAndProjectStep({ onContinue }: ClientAndProjectStepProps) 
 
   return (
     <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+      {/* Part D — no redundant "Client & Project" heading here: the wizard already shows
+          "New Quotation" + "Select a client and the basics of the project" one level up, so
+          this column (and the card beside it) starts right away, higher on the page. */}
       <div className="flex flex-col gap-5">
-        <div>
-          <h2 className="text-base font-bold text-gray-900">Client &amp; Project</h2>
-          <p className="text-xs text-gray-500">
-            Pick who this quotation is for, and the basics of the project it covers.
-          </p>
+        <div className="flex flex-col gap-1.5">
+          <label className={labelCls}>
+            Client <span className="text-red-500">*</span>
+          </label>
+          <ClientPicker
+            clients={clients}
+            isLoading={clientsLoading}
+            error={clientsError}
+            refetch={refetchClients}
+            selected={client}
+            creatingName={draft?.client_name ?? null}
+            onSelect={setClient}
+            onStartCreate={handleStartCreate}
+            onChangeSelected={() => setClient(null)}
+            onCancelCreate={() => setDraft(null)}
+          />
         </div>
+
+        {/* Part B — the new-client CREATE form lives here, on the LEFT, below the picker. */}
+        {draft && (
+          <NewClientForm
+            draft={draft}
+            onChange={setDraft}
+            onCreate={handleCreateSubmit}
+            onCancel={() => setDraft(null)}
+            isCreating={isCreatingClient}
+            createError={createClientError}
+          />
+        )}
 
         <div className="flex flex-col gap-1.5">
           <label className={labelCls}>
@@ -256,7 +315,6 @@ export function ClientAndProjectStep({ onContinue }: ClientAndProjectStepProps) 
             placeholder="e.g. Rivercrest Residence Roof Waterproofing"
             className={inputCls}
           />
-          {touched && !nameValid && <p className="text-xs text-red-500">Project name is required.</p>}
         </div>
 
         <div className="grid grid-cols-2 gap-4">
@@ -264,19 +322,15 @@ export function ClientAndProjectStep({ onContinue }: ClientAndProjectStepProps) 
             <label className={labelCls}>
               Project Location <span className="text-red-500">*</span>
             </label>
+            {/* Part E — plain free text (quotation.project_location, VARCHAR): the user
+                types a city/location, no suggestion dropdown. Region below is the real
+                enum and keeps its <select>; location is not the same thing as region. */}
             <input
-              list="qg-ph-cities-project"
               value={projectLocation}
               onChange={(e) => setProjectLocation(e.target.value)}
               placeholder="e.g. Quezon City"
               className={inputCls}
             />
-            <datalist id="qg-ph-cities-project">
-              {PH_CITIES.map((c) => (
-                <option key={c} value={c} />
-              ))}
-            </datalist>
-            {touched && !locationValid && <p className="text-xs text-red-500">Location is required.</p>}
           </div>
           <div className="flex flex-col gap-1.5">
             <label className={labelCls}>
@@ -292,7 +346,6 @@ export function ClientAndProjectStep({ onContinue }: ClientAndProjectStepProps) 
                 <option key={r}>{r}</option>
               ))}
             </select>
-            {touched && !regionValid && <p className="text-xs text-red-500">Select a region.</p>}
           </div>
         </div>
 
@@ -302,60 +355,38 @@ export function ClientAndProjectStep({ onContinue }: ClientAndProjectStepProps) 
           </p>
         )}
 
-        <div className="flex items-center gap-3">
-          <button
-            type="button"
-            onClick={handleCancelClick}
-            className="rounded-xl border border-gray-200 px-6 py-3 text-sm font-bold text-gray-600 transition hover:bg-gray-50"
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            onClick={handleContinue}
-            disabled={isCreating}
-            className="flex w-fit items-center gap-2 rounded-xl bg-primary px-6 py-3 text-sm font-bold text-primary-foreground shadow-sm transition hover:bg-(--primary-hover) disabled:opacity-60"
-          >
-            {isCreating ? "Starting…" : "Continue"}
-          </button>
+        <div className="flex flex-col gap-2">
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={handleCancelClick}
+              className="rounded-xl border border-gray-200 px-6 py-3 text-sm font-bold text-gray-600 transition hover:bg-gray-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={handleContinue}
+              disabled={!formValid || isCreating}
+              aria-describedby={continueHint ? "continue-hint" : undefined}
+              className="flex w-fit items-center gap-2 rounded-xl bg-primary px-6 py-3 text-sm font-bold text-primary-foreground shadow-sm transition hover:bg-(--primary-hover) disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {isCreating ? "Starting…" : "Continue"}
+            </button>
+          </div>
+          {/* Part F — reason beside Continue instead of per-field error text; disabled
+              buttons are invisible to screen readers on their own, so aria-describedby
+              above ties this hint to the button explicitly. */}
+          {continueHint && (
+            <p id="continue-hint" className="text-xs text-gray-500">
+              {continueHint}
+            </p>
+          )}
         </div>
       </div>
 
-      {/* Right column owns client identity end-to-end (Part C): search/select at the top,
-          then either the read-only insight card (existing client) or the new-client input
-          form (creating), never both at once. */}
-      <div className="flex flex-col gap-3">
-        <label className={labelCls}>
-          Client <span className="text-red-500">*</span>
-        </label>
-        <ClientPicker
-          clients={clients}
-          isLoading={clientsLoading}
-          error={clientsError}
-          refetch={refetchClients}
-          selected={client}
-          creatingName={draft?.client_name ?? null}
-          onSelect={setClient}
-          onStartCreate={handleStartCreate}
-          onChangeSelected={() => setClient(null)}
-          onCancelCreate={() => setDraft(null)}
-        />
-        {touched && !clientValid && <p className="text-xs text-red-500">Select or create a client.</p>}
-
-        {draft ? (
-          <NewClientFormCard
-            draft={draft}
-            onChange={setDraft}
-            onCreate={handleCreateSubmit}
-            onCancel={() => setDraft(null)}
-            isCreating={isCreatingClient}
-            createError={createClientError}
-            region={projectRegion}
-          />
-        ) : (
-          <ClientInsightCard client={client} quote={{ projectName, projectLocation, projectRegion }} />
-        )}
-      </div>
+      {/* Right column — read-only preview only, no inputs (Part B). */}
+      <ClientInsightCard client={client} draft={draft} quote={{ projectName, projectLocation, projectRegion }} />
 
       <Dialog open={cancelConfirmOpen} onOpenChange={setCancelConfirmOpen}>
         <DialogContent>

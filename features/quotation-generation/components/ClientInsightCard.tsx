@@ -4,6 +4,7 @@ import { useState, type CSSProperties, type ComponentType } from "react";
 import { Briefcase, Calendar, Hash, History, Mail, MapPin, Percent, Phone, UserCircle2 } from "lucide-react";
 import { useClientInsights } from "@/hooks/useClientInsights";
 import { NEUTRAL_HUE, regionToHue } from "@/lib/regionColor";
+import type { NewClientDraft } from "./NewClientForm";
 import type { Client } from "@/types/entities";
 
 interface CurrentQuoteFacts {
@@ -14,6 +15,10 @@ interface CurrentQuoteFacts {
 
 interface ClientInsightCardProps {
   client: Client | null;
+  // In-progress, NOT YET saved new-client fields (Part B/G) — preview only. No client_id
+  // exists yet, so no history fetch and no "Client History" section for this state; see
+  // NewClientForm.tsx for where these fields are actually captured and eventually created.
+  draft: NewClientDraft | null;
   quote: CurrentQuoteFacts;
 }
 
@@ -83,21 +88,34 @@ function HistoryTile({
 // there is no column anywhere that could back these. Do not add them here no matter how
 // closely this is asked to match a reference design that does show them; extend
 // useClientInsights.ts's ClientInsights shape first, the day a real column exists.
-export function ClientInsightCard({ client, quote }: ClientInsightCardProps) {
+export function ClientInsightCard({ client, draft, quote }: ClientInsightCardProps) {
   const { insights, isLoading: insightsLoading, error: insightsError } = useClientInsights(client?.client_id ?? null);
+
+  // "Identity mode" this card is currently previewing — a real selected client, an
+  // in-progress (unsaved) new-client draft, or nothing. Keyed coarsely (not by draft
+  // content) so typing into the draft form doesn't replay the swipe animation on every
+  // keystroke — only actual mode/client switches do.
+  const mode: "client" | "draft" | "empty" = client ? "client" : draft ? "draft" : "empty";
+  const identityKey = mode === "client" ? `client-${client!.client_id}` : mode;
 
   // Swipe/stack animation state — adjusted during render (this codebase's established
   // pattern for "derive state from a prop change", e.g. the account page's deactivate
-  // countdown) rather than a setState-in-effect: when the selected client changes, the
-  // previously-displayed client is pushed onto a small fading stack behind the new card,
-  // and a fresh swipeKey remounts the front card so its CSS enter-animation replays.
-  const [displayed, setDisplayed] = useState<Client | null>(client);
+  // countdown) rather than a setState-in-effect: when the previewed identity changes, the
+  // previous one is pushed onto a small fading stack behind the new card, and a fresh
+  // swipeKey remounts the front card so its CSS enter-animation replays.
+  const [displayedMode, setDisplayedMode] = useState(identityKey);
+  const [displayedClient, setDisplayedClient] = useState<Client | null>(client);
   const [stack, setStack] = useState<Client[]>([]);
   const [swipeKey, setSwipeKey] = useState(0);
 
-  if ((client?.client_id ?? null) !== (displayed?.client_id ?? null)) {
-    if (displayed) setStack((prev) => [displayed, ...prev].slice(0, STACK_DEPTH));
-    setDisplayed(client);
+  if (identityKey !== displayedMode) {
+    if (displayedClient) {
+      // Dedupe by client_id before prepending — without this, swiping back to a client
+      // already sitting in the stack renders two stack entries with the same key (Part A).
+      setStack((prev) => [displayedClient, ...prev.filter((c) => c.client_id !== displayedClient.client_id)].slice(0, STACK_DEPTH));
+    }
+    setDisplayedMode(identityKey);
+    setDisplayedClient(client);
     setSwipeKey((k) => k + 1);
   }
 
@@ -111,13 +129,27 @@ export function ClientInsightCard({ client, quote }: ClientInsightCardProps) {
   // Prefer the real aggregate (has this client actually got quotations?) over the
   // manually-set client_type field once insights have loaded — a self-reported "Returning"
   // with zero quotations on file would be a less honest signal than the actual count.
-  const isReturning = insights ? insights.hasHistory : displayed?.client_type === "Returning";
+  const isReturning = insights ? insights.hasHistory : displayedClient?.client_type === "Returning";
+
+  const quoteProjectRow = (quote.projectName.trim() || quote.projectLocation.trim() || quote.projectRegion.trim()) && (
+    <div className="mt-auto flex flex-col gap-1.5">
+      {quote.projectName.trim() && <DetailRow icon={Briefcase} label="Project" value={quote.projectName.trim()} />}
+      {(quote.projectLocation.trim() || quote.projectRegion.trim()) && (
+        <div className="flex items-center justify-between rounded-xl bg-white/10 px-3 py-2">
+          <span className="text-[10px] font-semibold uppercase tracking-wide text-white/45">New Project</span>
+          <span className="truncate pl-3 text-right text-xs font-bold" style={{ color: swatch(72, 80) }}>
+            {[quote.projectLocation.trim(), quote.projectRegion.trim()].filter(Boolean).join(" · ")}
+          </span>
+        </div>
+      )}
+    </div>
+  );
 
   return (
-    <div className="relative" style={{ minHeight: 320 }}>
+    <div className="relative h-full" style={{ minHeight: 320 }}>
       {stack.map((c, i) => (
         <div
-          key={c.client_id}
+          key={`${c.client_id}-${i}`}
           aria-hidden
           className="absolute inset-0 rounded-3xl border border-white/10 bg-black/40"
           style={{
@@ -179,12 +211,14 @@ export function ClientInsightCard({ client, quote }: ClientInsightCardProps) {
           className="relative z-10 flex h-full flex-col gap-4 p-6 backdrop-blur-xl"
           style={{ background: `hsla(${hue}, 45%, 14%, 0.82)` }}
         >
-          {!displayed ? (
+          {mode === "empty" && (
             <div className="flex flex-1 flex-col items-center justify-center gap-2 text-center text-white/60">
               <UserCircle2 className="h-10 w-10" />
               <p className="text-sm">Select a client to see what&apos;s on file for them.</p>
             </div>
-          ) : (
+          )}
+
+          {mode === "client" && displayedClient && (
             <>
               {/* Status pill — real state (see isReturning above), top-left. */}
               <div className="flex items-center gap-1.5 self-start rounded-full bg-white/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-white/85">
@@ -198,21 +232,23 @@ export function ClientInsightCard({ client, quote }: ClientInsightCardProps) {
                   className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-sm font-bold text-white"
                   style={{ background: swatch(42) }}
                 >
-                  {initials(displayed.client_name)}
+                  {initials(displayedClient.client_name)}
                 </div>
                 <div className="min-w-0">
-                  <p className="truncate text-sm font-bold text-white">{displayed.client_name}</p>
-                  {(displayed.contact_person || displayed.contact_email) && (
-                    <p className="truncate text-xs text-white/60">{displayed.contact_person || displayed.contact_email}</p>
+                  <p className="truncate text-sm font-bold text-white">{displayedClient.client_name}</p>
+                  {(displayedClient.contact_person || displayedClient.contact_email) && (
+                    <p className="truncate text-xs text-white/60">
+                      {displayedClient.contact_person || displayedClient.contact_email}
+                    </p>
                   )}
                 </div>
               </div>
 
               {/* Contact blocks. */}
               <div className="flex flex-col gap-1.5">
-                {displayed.contact_number && <DetailRow icon={Phone} label="Phone" value={displayed.contact_number} />}
-                {displayed.contact_email && <DetailRow icon={Mail} label="Email" value={displayed.contact_email} />}
-                {displayed.client_address && <DetailRow icon={MapPin} label="Address" value={displayed.client_address} />}
+                {displayedClient.contact_number && <DetailRow icon={Phone} label="Phone" value={displayedClient.contact_number} />}
+                {displayedClient.contact_email && <DetailRow icon={Mail} label="Email" value={displayedClient.contact_email} />}
+                {displayedClient.client_address && <DetailRow icon={MapPin} label="Address" value={displayedClient.client_address} />}
               </div>
 
               {/* Client History panel — ONLY real, derivable aggregates. See the file
@@ -245,20 +281,46 @@ export function ClientInsightCard({ client, quote }: ClientInsightCardProps) {
                 </div>
               )}
 
-              {/* Current quote's project row. */}
-              {(quote.projectName.trim() || quote.projectLocation.trim() || quote.projectRegion.trim()) && (
-                <div className="mt-auto flex flex-col gap-1.5">
-                  {quote.projectName.trim() && <DetailRow icon={Briefcase} label="Project" value={quote.projectName.trim()} />}
-                  {(quote.projectLocation.trim() || quote.projectRegion.trim()) && (
-                    <div className="flex items-center justify-between rounded-xl bg-white/10 px-3 py-2">
-                      <span className="text-[10px] font-semibold uppercase tracking-wide text-white/45">New Project</span>
-                      <span className="truncate pl-3 text-right text-xs font-bold" style={{ color: swatch(72, 80) }}>
-                        {[quote.projectLocation.trim(), quote.projectRegion.trim()].filter(Boolean).join(" · ")}
-                      </span>
-                    </div>
-                  )}
+              {quoteProjectRow}
+            </>
+          )}
+
+          {mode === "draft" && draft && (
+            <>
+              <div className="flex items-center gap-1.5 self-start rounded-full bg-white/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-white/85">
+                <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: swatch(60) }} />
+                New Client
+              </div>
+
+              <div className="flex items-center gap-3 rounded-xl bg-white/10 px-3 py-3">
+                <div
+                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-sm font-bold text-white"
+                  style={{ background: swatch(42) }}
+                >
+                  {initials(draft.client_name)}
                 </div>
-              )}
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-bold text-white">
+                    {draft.client_name.trim() || <span className="italic text-white/50">Unnamed client</span>}
+                  </p>
+                  {draft.contact_person && <p className="truncate text-xs text-white/60">{draft.contact_person}</p>}
+                </div>
+              </div>
+
+              <div className="flex flex-col gap-1.5">
+                {draft.contact_number && <DetailRow icon={Phone} label="Phone" value={draft.contact_number} />}
+                {draft.contact_email && <DetailRow icon={Mail} label="Email" value={draft.contact_email} />}
+                {draft.client_address && <DetailRow icon={MapPin} label="Address" value={draft.client_address} />}
+              </div>
+
+              {/* No Client History section here — there is no client_id yet to derive one
+                  from (this client hasn't been created; see Part G in ClientAndProjectStep). */}
+              <div className="flex items-start gap-2.5 rounded-xl border border-dashed border-white/20 bg-white/5 px-3.5 py-3">
+                <History className="mt-0.5 h-4 w-4 shrink-0 text-white/50" />
+                <p className="text-sm text-white/75">Not yet saved — fill in the form and use Create Client.</p>
+              </div>
+
+              {quoteProjectRow}
             </>
           )}
         </div>
