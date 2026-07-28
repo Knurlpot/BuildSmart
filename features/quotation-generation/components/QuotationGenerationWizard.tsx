@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Check, CheckCircle2 } from "lucide-react";
+import { CheckCircle2 } from "lucide-react";
+import { WorkflowStepper, type WorkflowStep } from "@/components/layout";
 import { AmbientBackground } from "./AmbientBackground";
 import { ClientAndProjectStep } from "./ClientAndProjectStep";
 import { InputMethodChoice } from "./InputMethodChoice";
@@ -21,41 +22,14 @@ function displayStepNumber(step: WizardStep): 1 | 2 | 3 {
   return 2; // method, quick, blueprint all fall under "Add Segments"
 }
 
-const STEP_LABELS = ["Client & Project", "Add Segments", "Configure Segments"] as const;
-
-function Stepper({ step }: { step: WizardStep }) {
-  const current = displayStepNumber(step);
-  return (
-    <div className="flex items-center gap-2">
-      {STEP_LABELS.map((label, i) => {
-        const n = (i + 1) as 1 | 2 | 3;
-        return (
-          <div key={label} className="flex items-center gap-2">
-            <div className="flex flex-col items-center gap-1">
-              <div
-                className={`flex h-7 w-7 items-center justify-center rounded-full text-xs font-bold transition ${
-                  n < current
-                    ? "bg-primary text-primary-foreground"
-                    : n === current
-                      ? "bg-primary text-primary-foreground ring-4 ring-primary/20"
-                      : "bg-gray-100 text-gray-400"
-                }`}
-              >
-                {n < current ? <Check className="h-3.5 w-3.5" /> : n}
-              </div>
-              <span className={`whitespace-nowrap text-[10px] font-semibold ${n === current ? "text-primary" : "text-gray-400"}`}>
-                {label}
-              </span>
-            </div>
-            {i < STEP_LABELS.length - 1 && (
-              <div className={`mb-3 h-0.5 w-10 rounded transition ${n < current ? "bg-primary" : "bg-gray-100"}`} />
-            )}
-          </div>
-        );
-      })}
-    </div>
-  );
-}
+// Same step state as before (displayStepNumber), just rendered through the new reusable
+// WorkflowStepper (components/layout/WorkflowStepper.tsx) instead of an in-content vertical
+// stepper — no wizard logic changed, only how the current step number is displayed.
+const WIZARD_STEPS: WorkflowStep[] = [
+  { number: 1, label: "Client & Project" },
+  { number: 2, label: "Add Segments" },
+  { number: 3, label: "Configure Segments" },
+];
 
 // Part 1 of 2: start a quotation, get to validated + configured segments. Pricing,
 // derivation, and the Practical/Premium breakdown are Part 2 — not built here (see the
@@ -141,25 +115,28 @@ export function QuotationGenerationWizard() {
     body = <p className="text-sm text-gray-400">Something went wrong with this quotation — start again.</p>;
   }
 
+  // No overflow-hidden on the wrapper below — AmbientBackground already clips its own blobs
+  // via its own `absolute inset-0 overflow-hidden` wrapper. Clipping at this level too used
+  // to hide anything taller than one viewport (e.g. Quick Measurement's segment list +
+  // right-rail Segment Compilation panel stacked on a narrow screen) instead of letting
+  // AppShell's <main overflow-y-auto> scroll down to it.
   return (
-    <div className="relative -m-6 min-h-full overflow-hidden p-6">
+    <div className="relative -m-6 min-h-full p-6">
       {/* Ambient backdrop for the whole workflow — dimmed to near-nothing during blueprint
           review specifically, so it never competes with the polygon overlay (Part B). */}
       <AmbientBackground dimmed={step === "blueprint"} />
-      <div className="relative flex flex-col gap-6">
-        <div className="flex flex-col gap-3">
-          <div>
-            <h1 className="text-xl font-extrabold tracking-tight text-gray-900">New Quotation</h1>
-            {client && quotation ? (
-              <p className="text-sm text-gray-500">
-                Quoting for <span className="font-semibold text-gray-700">{client.client_name}</span> —{" "}
-                {quotation.project_name}
-              </p>
-            ) : (
-              <p className="text-sm text-gray-500">Select a client and the basics of the project.</p>
-            )}
-          </div>
-          <Stepper step={step} />
+      <div className="relative flex flex-col gap-5">
+        <WorkflowStepper steps={WIZARD_STEPS} currentStep={displayStepNumber(step)} />
+        <div className="flex items-baseline gap-2">
+          <h1 className="text-lg font-extrabold tracking-tight text-gray-900">New Quotation</h1>
+          <span className="text-gray-300">·</span>
+          {client && quotation ? (
+            <p className="truncate text-sm text-gray-500">
+              Quoting for <span className="font-semibold text-gray-700">{client.client_name}</span> — {quotation.project_name}
+            </p>
+          ) : (
+            <p className="text-sm text-gray-500">Select a client and the basics of the project.</p>
+          )}
         </div>
         {body}
       </div>

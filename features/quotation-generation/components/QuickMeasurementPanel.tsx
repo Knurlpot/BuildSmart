@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Plus } from "lucide-react";
 import { QuickSegmentEditor } from "./QuickSegmentEditor";
 import { QuickSegmentRow } from "./QuickSegmentRow";
+import { SegmentCompilationPanel } from "./SegmentCompilationPanel";
 import { createManualSegment, isSegmentAreaValid, type DraftSegment } from "../lib/draftSegment";
 
 interface QuickMeasurementPanelProps {
@@ -32,7 +33,6 @@ export function QuickMeasurementPanel({ segments, onChange, onContinue }: QuickM
   const [editingId, setEditingId] = useState<string | null>(null);
 
   const validSegments = segments.filter(isSegmentAreaValid);
-  const totalArea = Math.round(validSegments.reduce((sum, s) => sum + s.area_sqm, 0) * 100) / 100;
   const hasValidSegment = validSegments.length > 0;
 
   const continueHint = !hasValidSegment
@@ -68,82 +68,73 @@ export function QuickMeasurementPanel({ segments, onChange, onContinue }: QuickM
   };
 
   return (
-    <div className="flex max-w-2xl flex-col gap-6">
-      <div>
-        <h2 className="text-base font-bold text-gray-900">Quick Measurement</h2>
-        <p className="text-sm text-gray-600">
-          Add each area you measured on-site. Most waterproofing jobs are a single total
-          area — enter that and you&apos;re done.
-        </p>
-      </div>
-
-      {/* Part C — prominent, reassuring running total. Big number, not a faint sidebar. */}
-      <div className="rounded-2xl border-2 border-primary/25 bg-orange-50/70 px-6 py-5">
-        <p className="text-xs font-bold uppercase tracking-wider text-gray-500">Running Total</p>
-        <div className="mt-1 flex items-baseline gap-2">
-          <span className="text-4xl font-extrabold text-gray-900">{totalArea.toFixed(2)}</span>
-          <span className="text-lg font-bold text-gray-500">sqm</span>
-        </div>
-        {segments.length > 0 && (
-          <p className="mt-1.5 text-sm font-semibold text-gray-600">
-            Across {segments.length} segment{segments.length === 1 ? "" : "s"} — {validSegments.length} of{" "}
-            {segments.length} have an area
+    <div className="flex flex-col gap-6 lg:flex-row lg:items-start">
+      <div className="flex min-w-0 flex-1 flex-col gap-5">
+        <div>
+          <h2 className="text-base font-bold text-gray-900">Quick Measurement</h2>
+          <p className="text-sm text-gray-600">
+            Add each area you measured on-site. Most waterproofing jobs are a single total
+            area — enter that and you&apos;re done.
           </p>
-        )}
-      </div>
+        </div>
 
-      <div className="flex flex-col overflow-hidden rounded-2xl border-2 border-gray-200 bg-white shadow-sm">
-        <div className="flex items-center justify-between border-b-2 border-gray-100 px-5 py-4">
-          <p className="text-sm font-bold uppercase tracking-wider text-gray-500">Segments ({segments.length})</p>
+        <div className="flex flex-col overflow-hidden rounded-2xl border-2 border-gray-200 bg-white shadow-sm">
+          <div className="flex items-center justify-between border-b-2 border-gray-100 px-5 py-4">
+            <p className="text-sm font-bold uppercase tracking-wider text-gray-500">Segments ({segments.length})</p>
+            <button
+              type="button"
+              onClick={handleAdd}
+              className="flex items-center gap-1.5 rounded-xl bg-primary px-4 py-2.5 text-sm font-bold text-primary-foreground transition hover:bg-(--primary-hover)"
+            >
+              <Plus className="h-4 w-4" /> Add Segment
+            </button>
+          </div>
+
+          {segments.length === 0 ? (
+            <div className="flex flex-col items-center gap-2 px-6 py-12 text-center">
+              <p className="text-base text-gray-500">No segments yet — add one to get started.</p>
+            </div>
+          ) : (
+            <div className="flex flex-col divide-y-2 divide-gray-100">
+              {segments.map((seg) =>
+                editingId === seg.draft_id ? (
+                  <div key={seg.draft_id} className="p-4">
+                    <QuickSegmentEditor draft={seg} onSave={handleSaveRow} onCancel={() => handleCancelRow(seg.draft_id)} />
+                  </div>
+                ) : (
+                  <QuickSegmentRow
+                    key={seg.draft_id}
+                    segment={seg}
+                    onEdit={() => setEditingId(seg.draft_id)}
+                    onDelete={() => handleDelete(seg.draft_id)}
+                  />
+                )
+              )}
+            </div>
+          )}
+        </div>
+
+        <div className="flex flex-col gap-2">
           <button
             type="button"
-            onClick={handleAdd}
-            className="flex items-center gap-1.5 rounded-xl bg-primary px-4 py-2.5 text-sm font-bold text-primary-foreground transition hover:bg-(--primary-hover)"
+            onClick={onContinue}
+            disabled={!hasValidSegment}
+            aria-describedby={continueHint ? "quick-measurement-continue-hint" : undefined}
+            className="w-fit rounded-xl bg-primary px-6 py-3.5 text-base font-bold text-primary-foreground shadow-sm transition hover:bg-(--primary-hover) disabled:cursor-not-allowed disabled:opacity-50"
           >
-            <Plus className="h-4 w-4" /> Add Segment
+            Continue with {segments.length} Segment{segments.length === 1 ? "" : "s"}
           </button>
+          {continueHint && (
+            <p id="quick-measurement-continue-hint" className="text-sm text-gray-500">
+              {continueHint}
+            </p>
+          )}
         </div>
-
-        {segments.length === 0 ? (
-          <div className="flex flex-col items-center gap-2 px-6 py-12 text-center">
-            <p className="text-base text-gray-500">No segments yet — add one to get started.</p>
-          </div>
-        ) : (
-          <div className="flex flex-col divide-y-2 divide-gray-100">
-            {segments.map((seg) =>
-              editingId === seg.draft_id ? (
-                <div key={seg.draft_id} className="p-4">
-                  <QuickSegmentEditor draft={seg} onSave={handleSaveRow} onCancel={() => handleCancelRow(seg.draft_id)} />
-                </div>
-              ) : (
-                <QuickSegmentRow
-                  key={seg.draft_id}
-                  segment={seg}
-                  onEdit={() => setEditingId(seg.draft_id)}
-                  onDelete={() => handleDelete(seg.draft_id)}
-                />
-              )
-            )}
-          </div>
-        )}
       </div>
 
-      <div className="flex flex-col gap-2">
-        <button
-          type="button"
-          onClick={onContinue}
-          disabled={!hasValidSegment}
-          aria-describedby={continueHint ? "quick-measurement-continue-hint" : undefined}
-          className="w-fit rounded-xl bg-primary px-6 py-3.5 text-base font-bold text-primary-foreground shadow-sm transition hover:bg-(--primary-hover) disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          Continue with {segments.length} Segment{segments.length === 1 ? "" : "s"}
-        </button>
-        {continueHint && (
-          <p id="quick-measurement-continue-hint" className="text-sm text-gray-500">
-            {continueHint}
-          </p>
-        )}
-      </div>
+      {/* Part B — fills the right-side dead space with a persistent running total; stacks
+          below the segment list on narrow screens (lg:w-80 lg:shrink-0 in the panel itself). */}
+      <SegmentCompilationPanel segments={segments} />
     </div>
   );
 }
