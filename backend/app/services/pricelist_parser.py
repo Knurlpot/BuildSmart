@@ -1,6 +1,6 @@
 import re
 from pathlib import Path
-from typing import Any
+from typing import Any, Mapping
 
 import pandas as pd
 import pdfplumber
@@ -66,6 +66,23 @@ MATERIAL_HINT_PATTERN = re.compile(
     r"valve|fitting|nail|screw|bolt|sealant|primer|membrane)\b",
     re.I,
 )
+
+
+class MissingColumnsError(ValueError):
+    def __init__(
+        self,
+        *,
+        missing_columns: list[str],
+        available_columns: list[str],
+        detected_mapping: Mapping[str, str],
+        preview_rows: list[dict[str, Any]],
+    ) -> None:
+        self.missing_columns = list(missing_columns)
+        self.available_columns = list(available_columns)
+        self.detected_mapping = dict(detected_mapping)
+        self.preview_rows = list(preview_rows)
+        missing_text = ", ".join(sorted(self.missing_columns)) if self.missing_columns else "none"
+        super().__init__(f"Price list file is missing required column(s): {missing_text}")
 
 
 def _header_key(value: Any) -> str:
@@ -172,10 +189,34 @@ def _column_priority_for_canonical(column: Any, canonical: str) -> float:
     return 0.0
 
 
-def _normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
+def _is_generic_column_name(value: Any) -> bool:
+    key = _header_key(value)
+    if not key:
+        return True
+    if key in REQUIRED_COLUMNS or key in {"description", "raw_brand"}:
+        return False
+    return bool(re.fullmatch(r"(?:column|col|field|header)\s*\d+", key)) or bool(re.fullmatch(r"[a-z]", key))
+
+
+def _has_header_signal(columns: list[Any]) -> bool:
+    for column in columns:
+        key = _header_key(column)
+        if key in REQUIRED_COLUMNS or key in {"description", "raw_brand"}:
+            continue
+        if not _is_generic_column_name(column) or _header_matches(column) is not None:
+            return True
+    return False
+
+
+def _normalize_columns(df: pd.DataFrame) -> tuple[pd.DataFrame, dict[str, str]]:
     df = _promote_embedded_header(df)
 
-    rename_map = {}
+    explicit_header_signal = any(_header_matches(column) is not None for column in df.columns)
+    generic_only_headers = all(_is_generic_column_name(column) for column in df.columns)
+    if not explicit_header_signal and generic_only_headers and len(df.columns) <= 3:
+        return df, {}
+
+    rename_map: dict[Any, str] = {}
     assigned_columns: set[Any] = set()
 
     # Check for brand/manufacturer column first
@@ -197,30 +238,37 @@ def _normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
                 assigned_columns.add(col)
 
     if "raw_name" not in df.columns and "raw_name" not in rename_map.values():
-        candidates: list[tuple[float, Any]] = []
-        for col in df.columns:
-            header_key = _header_key(col)
-            if header_key in REQUIRED_COLUMNS:
-                continue
-            if re.search(r"\b(?:item\s+)?(?:no|number|code|id)\b", header_key):
-                continue
-            if any(token in header_key for token in ["material", "product", "name", "particular"]):
-                score = 0.0
-                if "material" in header_key:
-                    score += 4.0
-                if "particular" in header_key:
-                    score += 3.5
-                if "product" in header_key or "name" in header_key:
-                    score += 2.5
-                if "item" in header_key:
-                    score += 1.5
-                if score > 0:
-                    candidates.append((score, col))
+        if any(_header_matches(col) == "raw_name" for col in df.columns):
+            for col in df.columns:
+                if _header_matches(col) == "raw_name":
+                    rename_map[col] = "raw_name"
+                    assigned_columns.add(col)
+                    break
+        else:
+            candidates: list[tuple[float, Any]] = []
+            for col in df.columns:
+                header_key = _header_key(col)
+                if header_key in REQUIRED_COLUMNS:
+                    continue
+                if re.search(r"\b(?:item\s+)?(?:no|number|code|id)\b", header_key):
+                    continue
+                if any(token in header_key for token in ["material", "product", "name", "particular"]):
+                    score = 0.0
+                    if "material" in header_key:
+                        score += 4.0
+                    if "particular" in header_key:
+                        score += 3.5
+                    if "product" in header_key or "name" in header_key:
+                        score += 2.5
+                    if "item" in header_key:
+                        score += 1.5
+                    if score > 0:
+                        candidates.append((score, col))
 
-        if candidates:
-            _, best_col = max(candidates, key=lambda item: item[0])
-            rename_map[best_col] = "raw_name"
-            assigned_columns.add(best_col)
+            if candidates:
+                _, best_col = max(candidates, key=lambda item: item[0])
+                rename_map[best_col] = "raw_name"
+                assigned_columns.add(best_col)
 
     for canonical in ("raw_price", "raw_unit"):
         candidates: list[tuple[float, Any]] = []
@@ -233,6 +281,8 @@ def _normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
             if _header_matches(col) != canonical:
                 continue
             score = _column_priority_for_canonical(col, canonical)
+            if canonical == "raw_price" and score <= 0:
+                score = 4.0
             if score > 0:
                 candidates.append((score, col))
 
@@ -246,19 +296,32 @@ def _normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
         assigned_columns.add(best_col)
 
     renamed = df.rename(columns=rename_map)
-    return _infer_missing_columns(renamed)
+    renamed = _infer_missing_columns(renamed)
+    detected_mapping = {canonical: str(original) for original, canonical in rename_map.items() if canonical in REQUIRED_COLUMNS}
+    return renamed, detected_mapping
 
 
 def _header_matches(value: Any) -> str | None:
     key = _header_key(value)
-    if any(token in key for token in ["spec", "description", "particular", "detail"]):
+    normalized_requirements = {_header_key(canonical) for canonical in REQUIRED_COLUMNS}
+    if key in normalized_requirements:
+        return next(canonical for canonical in REQUIRED_COLUMNS if _header_key(canonical) == key)
+    if key in {_header_key("description"), _header_key("raw_brand")}:
+        return "description" if key == _header_key("description") else "raw_brand"
+    if any(token in key for token in ["full item description", "item description", "product description"]):
+        return "raw_name"
+    if any(token in key for token in ["packing", "pack", "uom", "unit of measure", "unit measure"]):
+        return "raw_unit"
+    if any(token in key for token in ["approx total cost", "total cost", "cost", "amount", "rate"]):
+        return "raw_price"
+    for canonical, synonyms in COLUMN_SYNONYMS.items():
+        if key in {_header_key(synonym) for synonym in synonyms}:
+            return canonical
+    if any(token in key for token in ["spec", "description", "detail"]):
         return "description"
     # Check for brand/manufacturer column with special handling
     if any(token in key for token in ["brand", "manufacturer", "mfr", "maker"]):
         return "raw_brand"
-    for canonical, synonyms in COLUMN_SYNONYMS.items():
-        if key in {_header_key(synonym) for synonym in synonyms}:
-            return canonical
     return None
 
 
@@ -286,6 +349,13 @@ def _promote_embedded_header(df: pd.DataFrame) -> pd.DataFrame:
             best_score = score
 
     if best_index is None or best_score < 4:
+        if any(_header_key(value) in REQUIRED_COLUMNS for value in df.iloc[0].tolist()):
+            promoted = df.iloc[1:].copy()
+            promoted.columns = [
+                _sanitize_text(value) or f"column_{position + 1}"
+                for position, value in enumerate(df.iloc[0].tolist())
+            ]
+            return promoted.reset_index(drop=True)
         return df
 
     promoted = df.iloc[best_index + 1 :].copy()
@@ -356,6 +426,12 @@ def _infer_missing_columns(df: pd.DataFrame) -> pd.DataFrame:
     existing = REQUIRED_COLUMNS & set(df.columns)
     assigned: set[Any] = set()
 
+    has_header_signal = any(_header_matches(column) is not None for column in df.columns)
+    if not has_header_signal and len(df.columns) <= 3:
+        if "raw_brand" not in df.columns:
+            df["raw_brand"] = "Generic"
+        return df
+
     if "raw_price" not in existing:
         price_col = _best_column(df, _column_score_for_price, existing | assigned)
         if price_col:
@@ -383,6 +459,24 @@ def _infer_missing_columns(df: pd.DataFrame) -> pd.DataFrame:
         df["raw_brand"] = "Generic"
     
     return df
+
+
+def _dedupe_and_label_columns(df: pd.DataFrame) -> pd.DataFrame:
+    deduped = df.copy()
+    used: set[str] = set()
+    new_columns: list[str] = []
+    for position, column in enumerate(deduped.columns):
+        label = _sanitize_text(column)
+        if not label or label in used:
+            label = f"Column {position + 1}"
+        while label in used and label != f"Column {position + 1}":
+            label = f"{label}_2"
+        if label in used:
+            label = f"Column {position + 1}"
+        used.add(label)
+        new_columns.append(label)
+    deduped.columns = new_columns
+    return deduped
 
 
 def _clean_pdf_row(row: list[Any]) -> list[str]:
@@ -480,29 +574,24 @@ def _parse_pdf_text(path: Path) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
-def parse_pricelist_file(file_path: str) -> pd.DataFrame:
+def parse_pricelist_file(file_path: str, column_mapping: Mapping[str, str] | None = None) -> pd.DataFrame:
     path = Path(file_path)
     suffix = path.suffix.lower()
 
     if suffix == ".csv":
         df = pd.read_csv(path)
     elif suffix in (".xlsx", ".xls"):
-        # Prefer openpyxl for modern .xlsx files but fall back to pandas'
-        # default engine if that's not available. Provide a clear error
-        # message when common Excel engine dependencies are missing.
         try:
             df = pd.read_excel(path, engine="openpyxl")
-        except Exception as exc_openpyxl:
+        except Exception:
             try:
                 df = pd.read_excel(path)
             except KeyError as ek:
-                # KeyError from pandas' engine registry (`io.excel.zip.reader`)
                 raise ValueError(
                     "Reading Excel files requires the appropriate engine package (e.g. 'openpyxl' for .xlsx). "
                     "Install it in your environment and retry. Original error: %s" % ek
                 ) from ek
             except Exception as exc_other:
-                # If the fallback also fails, surface a helpful message
                 raise ValueError(f"Unable to read Excel file {file_path!r}: {exc_other}") from exc_other
     elif suffix == ".pdf":
         df = _parse_pdf(path)
@@ -510,6 +599,16 @@ def parse_pricelist_file(file_path: str) -> pd.DataFrame:
         raise ValueError(f"Unsupported price list file type: {suffix!r}")
 
     df = _dedupe_and_label_columns(df)
+    available_columns = list(df.columns)
+
+    if column_mapping:
+        unknown_columns = [column for column in column_mapping.values() if column not in df.columns]
+        if unknown_columns:
+            raise ValueError(f"Column mapping references columns not found in file: {sorted(unknown_columns)}")
+        rename_map = {source_col: canonical for canonical, source_col in column_mapping.items() if source_col in df.columns}
+        df = df.rename(columns=rename_map)
+
+    df, detected_mapping = _normalize_columns(df)
 
     missing = REQUIRED_COLUMNS - set(df.columns)
     if "raw_unit" in missing and "raw_name" in df.columns:
@@ -517,16 +616,22 @@ def parse_pricelist_file(file_path: str) -> pd.DataFrame:
         missing = REQUIRED_COLUMNS - set(df.columns)
 
     if missing:
+        if len(available_columns) <= 3 and not any(_is_generic_column_name(column) for column in available_columns):
+            raise MissingColumnsError(
+                missing_columns=sorted(missing),
+                available_columns=available_columns,
+                detected_mapping=detected_mapping,
+                preview_rows=[{str(column): _sanitize_text(value) for column, value in row.items()} for row in df.head(3).to_dict(orient="records")],
+            )
+
         raise ValueError(f"Price list file is missing required column(s): {sorted(missing)}")
-    
-    # Ensure raw_brand column exists; fill with "Generic" if missing
+
     if "raw_brand" not in df.columns:
         df["raw_brand"] = "Generic"
-    
-    # Fill empty/null brand values with "Generic"
+
     df["raw_brand"] = df["raw_brand"].fillna("Generic")
     df["raw_brand"] = df["raw_brand"].apply(lambda x: "Generic" if (isinstance(x, str) and x.strip() == "") else x)
-    
+
     df = df.copy()
     df["raw_name"] = df["raw_name"].map(_sanitize_text)
     if "description" in df.columns:

@@ -5,16 +5,21 @@ from pathlib import Path
 from typing import Literal
 
 from celery.result import AsyncResult
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, ConfigDict
-from sqlalchemy import delete, select
+from pydantic import BaseModel, ConfigDict, Field
+from sqlalchemy import delete, func, select, text
 from sqlalchemy.orm import Session
 
 from app.celery_app import celery_app
 from app.database import get_db
-from app.models import PriceListReviewItem
+from app.ingest.models import MaterialPriceVariance
+from app.models import Category, HistoricalPriceRecord, Items, PriceListReviewItem
+from app.schemas.pricelist import NormalizedPriceRecord, SourceAgency
+from app.services.dpwh_published import fetch_dpwh_cmpd_release, save_dpwh_cmpd_publish_records
+from app.services.pricelist_json_normalizer import normalize_pricelist_dataframe
 from app.services.pricelist_parser import MissingColumnsError, parse_pricelist_file
+from app.services.published_version_check import check_published_version
 from app.tasks.normalize_price_list import normalize_price_list
 
 router = APIRouter(prefix="/pricelist", tags=["pricelist"])
@@ -304,6 +309,18 @@ async def confirm_column_mapping(
 
     try:
         parse_pricelist_file(str(dest), column_mapping=column_mapping)
+    except MissingColumnsError as exc:
+        return JSONResponse(
+            status_code=422,
+            content=MissingColumnsResponse(
+                error=str(exc),
+                missing_columns=exc.missing_columns,
+                available_columns=exc.available_columns,
+                detected_mapping=exc.detected_mapping,
+                preview_rows=exc.preview_rows,
+                upload_id=upload_id,
+            ).model_dump(),
+        )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 

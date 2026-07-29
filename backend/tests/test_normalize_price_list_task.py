@@ -1,5 +1,6 @@
 from pathlib import Path
 
+import pytest
 from sqlalchemy import select
 
 import app.tasks.normalize_price_list as normalize_price_list_module
@@ -8,6 +9,19 @@ from app.services.candidates import get_item_candidates
 from app.tasks.normalize_price_list import normalize_price_list
 
 FIXTURE = Path(__file__).parent / "fixtures" / "sample_pricelist.csv"
+
+
+def test_normalize_price_list_raises_value_error_for_missing_columns(tmp_path, db_session):
+    bad_file = tmp_path / "bad.csv"
+    bad_file.write_text("name,unit\nCement,bag\n")
+
+    with pytest.raises(ValueError, match="missing required column"):
+        normalize_price_list(
+            file_path=str(bad_file),
+            source="Supplier",
+            supplier_id=None,
+            db=db_session,
+        )
 
 
 def test_normalize_price_list_writes_matched_rows_and_flags_new_items(db_session, monkeypatch):

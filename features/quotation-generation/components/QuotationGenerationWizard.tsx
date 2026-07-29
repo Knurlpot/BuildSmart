@@ -9,7 +9,7 @@ import { ClientAndProjectStep } from "./ClientAndProjectStep";
 import { InputMethodChoice } from "./InputMethodChoice";
 import { QuickMeasurementPanel } from "./QuickMeasurementPanel";
 import { BlueprintUploadPanel } from "./BlueprintUploadPanel";
-import { ConfigureSegmentsStep } from "./ConfigureSegmentsStep";
+import { ConfigureSegmentsStep } from "./ConfigureSegmentStep";
 import { useUpdateQuotationInputMethod } from "@/hooks/useQuotationGeneration";
 import type { Quotation, Client } from "@/types/entities";
 import type { DraftSegment } from "../lib/draftSegment";

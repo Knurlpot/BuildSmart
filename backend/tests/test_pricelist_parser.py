@@ -3,7 +3,12 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from app.services.pricelist_parser import _pdf_table_to_dataframe, parse_pricelist_file
+from app.services.pricelist_parser import (
+    MissingColumnsError,
+    _dedupe_and_label_columns,
+    _pdf_table_to_dataframe,
+    parse_pricelist_file,
+)
 
 FIXTURE = Path(__file__).parent / "fixtures" / "sample_pricelist.csv"
 PDF_FIXTURE = Path(__file__).parent / "fixtures" / "sample_pricelist.pdf"

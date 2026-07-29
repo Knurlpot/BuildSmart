@@ -6,7 +6,7 @@ from app.database import SessionLocal
 from app.models import Category, HistoricalPriceRecord, Items, PriceListReviewItem
 from app.services.candidates import get_item_candidates
 from app.services.normalize_batch import normalize_pricelist
-from app.services.pricelist_parser import parse_pricelist_file
+from app.services.pricelist_parser import MissingColumnsError, parse_pricelist_file
 from app.services.normalizer import _fallback_category
 import re
 
@@ -38,14 +38,10 @@ def normalize_price_list(
     session = db if db is not None else SessionLocal()
 
     try:
-<<<<<<< HEAD
-        df = parse_pricelist_file(file_path, column_mapping=column_mapping)
-=======
         # If uploader didn't indicate a source, treat it as a Supplier upload
         source = (source or "").strip() or "Supplier"
-        df = parse_pricelist_file(file_path)
+        df = parse_pricelist_file(file_path, column_mapping=column_mapping)
         _ensure_review_item_description_column(session)
->>>>>>> maintrial
         candidates = get_item_candidates(session)
         results = normalize_pricelist(df, candidates, use_mock=use_mock)
 
@@ -150,6 +146,8 @@ def normalize_price_list(
             "new_items_created": new_items_created,
             "needs_review": needs_review,
         }
+    except MissingColumnsError as exc:
+        raise ValueError(str(exc)) from exc
     finally:
         if owns_session:
             session.close()

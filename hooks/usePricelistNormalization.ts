@@ -53,7 +53,6 @@ export interface PricelistReviewItem {
   created_at: string;
 }
 
-<<<<<<< HEAD
 // Mirrors pricelist_parser.py's REQUIRED_COLUMNS — the 3 fields the backend
 // couldn't place in a file's headers via its exact/synonym/keyword tiers.
 export type NormalizationField = 'raw_name' | 'raw_unit' | 'raw_price';
@@ -83,6 +82,21 @@ class MissingColumnsApiError extends Error {
   }
 }
 
+export type PricelistReviewItemUpdate = Partial<
+  Pick<
+    PricelistReviewItem,
+    | 'raw_name'
+    | 'raw_unit'
+    | 'raw_price'
+    | 'confidence'
+    | 'suggested_category_type'
+    | 'suggested_material'
+    | 'suggested_brand'
+    | 'description'
+    | 'status'
+  >
+>;
+
 async function uploadPricelistFile(form: FormData): Promise<UploadResponse> {
   const res = await fetch(`${NORMALIZATION_API_BASE}/pricelist/upload`, { method: 'POST', body: form });
 
@@ -105,22 +119,6 @@ async function uploadPricelistFile(form: FormData): Promise<UploadResponse> {
   }
   return res.json();
 }
-=======
-export type PricelistReviewItemUpdate = Partial<
-  Pick<
-    PricelistReviewItem,
-    | 'raw_name'
-    | 'raw_unit'
-    | 'raw_price'
-    | 'confidence'
-    | 'suggested_category_type'
-    | 'suggested_material'
-    | 'suggested_brand'
-    | 'description'
-    | 'status'
-  >
->;
->>>>>>> maintrial
 
 // The backend processes one file per task (POST /pricelist/upload takes a
 // single UploadFile) — multi-file support is a client-side queue on top of
@@ -312,7 +310,6 @@ export function usePricelistNormalization() {
     setQueue([...queueRef.current]);
   };
 
-<<<<<<< HEAD
   const [isClearingReview, setIsClearingReview] = useState(false);
   const [clearReviewError, setClearReviewError] = useState<Error | null>(null);
 
@@ -332,7 +329,7 @@ export function usePricelistNormalization() {
       setIsClearingReview(false);
     }
   };
-=======
+
   const updateReviewItem = useCallback(async (reviewId: number, patch: PricelistReviewItemUpdate) => {
     const updated = await normalizationApiClient<PricelistReviewItem>(`/pricelist/review/${reviewId}`, {
       method: 'PATCH',
@@ -356,7 +353,6 @@ export function usePricelistNormalization() {
     });
     setReviewItems((items) => items.filter((item) => item.review_id !== reviewId));
   }, []);
->>>>>>> maintrial
 
   return {
     queue,
