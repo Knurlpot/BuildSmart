@@ -12,6 +12,9 @@ export interface Quotation {
   quote_id: number;
   company_id: number;
   user_id: number;
+  // Nullable at the DB level — a quotation can exist without a client on file. Real column
+  // (client table + this FK both added together); see types/entities/client.ts.
+  client_id?: number | null;
   project_name: string;
   project_location: string;
   project_region: PhRegion;

@@ -6,7 +6,12 @@ import type { SegmentConditionTag } from '@/types/entities/segment-tag';
 import type { SegmentSourceMethod } from '@/types/entities/project-segment';
 import { stagingId, type ExtractedSegment } from '@/lib/dev/provisional/quotationGenerationTypes';
 
-export type SegmentEntryMode = 'dimensions' | 'total_sqm';
+// 'dimensions' = Length × Width (rectangle). 'l_shape' = overall rectangle minus a notch
+// (overall_length × overall_width − notch_length × notch_width). 'running_meter' = a linear
+// length (parapets/edges) — not really an area, but folded into area_sqm the same way total
+// sqm is; see draftSegmentToPayload's comment on why this is the least-lossy option given the
+// schema has no separate "linear meters" column.
+export type SegmentEntryMode = 'dimensions' | 'total_sqm' | 'l_shape' | 'running_meter';
 
 // A segment's own source is always cleanly one or the other — 'Hybrid' only describes a
 // QUOTATION whose segment set mixes the two (see computeQuotationInputMethod below), even
@@ -20,8 +25,16 @@ export interface DraftSegment {
   floor_level: string;
   source_method: DraftSourceMethod;
   entry_mode: SegmentEntryMode;
+  // 'dimensions': a real rectangle length/width. 'running_meter': length doubles as the
+  // linear measurement itself (width stays null). Null in every other mode.
   length: number | null;
   width: number | null;
+  // 'l_shape' only — the schema has no columns for these 4 numbers, so they live here
+  // purely as staging state; only the computed area_sqm survives to the real payload.
+  overall_length: number | null;
+  overall_width: number | null;
+  notch_length: number | null;
+  notch_width: number | null;
   area_sqm: number;
   polygon_coords: [number, number][] | null;
   confidence_score: number | null;
@@ -43,15 +56,45 @@ export function computeAreaFromDimensions(length: number, width: number): number
   return Math.round(length * width * 100) / 100;
 }
 
-export function createManualSegment(): DraftSegment {
+/** Overall rectangle minus a notch, clamped at 0 — a notch that (mistakenly) exceeds the
+ * overall dimensions can't produce a negative area. */
+export function computeAreaFromLShape(overallLength: number, overallWidth: number, notchLength: number, notchWidth: number): number {
+  const area = overallLength * overallWidth - notchLength * notchWidth;
+  return Math.round(Math.max(0, area) * 100) / 100;
+}
+
+export const SEGMENT_ENTRY_MODE_LABEL: Record<SegmentEntryMode, string> = {
+  total_sqm: 'Total sqm',
+  dimensions: 'Length × Width',
+  l_shape: 'L-Shaped',
+  running_meter: 'Running Meter',
+};
+
+/** True once a segment has a usable, non-zero area — the one real validity gate (Part E):
+ * no 0-area segment counts toward the running total or satisfies "at least one segment". */
+export function isSegmentAreaValid(seg: DraftSegment): boolean {
+  return seg.area_sqm > 0;
+}
+
+const SHAPE_FIELD_DEFAULTS = {
+  length: null,
+  width: null,
+  overall_length: null,
+  overall_width: null,
+  notch_length: null,
+  notch_width: null,
+} as const;
+
+/** `defaultName` lets callers pre-fill "Segment 1", "Segment 2"... (Part E: no segment is
+ * ever left nameless) while the user can still rename it inline. */
+export function createManualSegment(defaultName = ''): DraftSegment {
   return {
     draft_id: stagingId('seg'),
-    segment_name: '',
+    segment_name: defaultName,
     floor_level: '',
     source_method: 'Manual',
     entry_mode: 'total_sqm',
-    length: null,
-    width: null,
+    ...SHAPE_FIELD_DEFAULTS,
     area_sqm: 0,
     polygon_coords: null,
     confidence_score: null,
@@ -70,8 +113,7 @@ export function createSegmentFromExtraction(extracted: ExtractedSegment, floorLe
     floor_level: floorLevel,
     source_method: 'Blueprint',
     entry_mode: 'total_sqm',
-    length: null,
-    width: null,
+    ...SHAPE_FIELD_DEFAULTS,
     area_sqm: extracted.area_sqm,
     polygon_coords: extracted.polygon_coords,
     confidence_score: extracted.confidence_score,
@@ -94,8 +136,7 @@ export function mergeSegments(segments: DraftSegment[], newName: string): DraftS
     floor_level: segments[0]?.floor_level ?? '',
     source_method: segments.some((s) => s.source_method === 'Blueprint') ? 'Blueprint' : 'Manual',
     entry_mode: 'total_sqm',
-    length: null,
-    width: null,
+    ...SHAPE_FIELD_DEFAULTS,
     area_sqm: Math.round(segments.reduce((sum, s) => sum + s.area_sqm, 0) * 100) / 100,
     polygon_coords: null,
     confidence_score: confidences.length > 0 ? Math.min(...confidences) : null,
@@ -146,10 +187,13 @@ export function draftSegmentToPayload(seg: DraftSegment): ProjectSegmentPayload 
     // NOT NULL, but the task explicitly wants this optional in the UI.
     floor_level: seg.floor_level.trim() || DEFAULT_FLOOR_LEVEL,
     shape_type: null,
-    length: seg.entry_mode === 'total_sqm' ? seg.area_sqm : (seg.length ?? 0),
-    // "Just enter total sqm" convention for the NOT NULL width column: width=1 keeps
-    // length * width === area_sqm exactly, rather than fabricating real dimensions.
-    width: seg.entry_mode === 'total_sqm' ? 1 : (seg.width ?? 0),
+    // Only 'dimensions' (a plain rectangle) has real length/width to store. Every other
+    // mode — total_sqm, l_shape (the schema has no columns for the 4 numbers that go into
+    // overall-minus-notch), and running_meter (a linear count, not an area) — folds into
+    // the NOT NULL length/width columns the same way: length=area_sqm, width=1, so
+    // length*width===area_sqm stays true and nothing beyond "this is the area" is invented.
+    length: seg.entry_mode === 'dimensions' ? (seg.length ?? 0) : seg.area_sqm,
+    width: seg.entry_mode === 'dimensions' ? (seg.width ?? 0) : 1,
     area_sqm: seg.area_sqm,
     polygon_coords: seg.polygon_coords ? JSON.stringify(seg.polygon_coords) : null,
     confidence_score: seg.confidence_score,

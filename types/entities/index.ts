@@ -13,3 +13,4 @@ export * from './supplier-discount-rule';
 export * from './supplier-benchmark';
 export * from './project-segment';
 export * from './segment-tag';
+export * from './client';

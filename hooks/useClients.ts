@@ -1,6 +1,6 @@
 import { useFetch } from './useFetch';
 import { useMutation } from './useMutation';
-import type { Client } from '@/lib/dev/provisional/quotationGenerationTypes';
+import type { Client } from '@/types/entities';
 
 export function useClients() {
   const { data, isLoading, error, refetch } = useFetch<Client[]>('/api/clients');
@@ -10,7 +10,8 @@ export function useClients() {
     isLoading,
     error,
     refetch,
-    createClient: (payload: Omit<Client, 'client_id'>) => create.mutate('/api/clients/new', payload, 'POST'),
+    createClient: (payload: Omit<Client, 'client_id' | 'company_id' | 'status' | 'created_at'>) =>
+      create.mutate('/api/clients/new', payload, 'POST'),
     isCreating: create.isLoading,
     createError: create.error,
     resetCreate: create.reset,

@@ -165,3 +165,120 @@ input[type="password"]::-ms-clear {
   background-size: 400% 400%;
   animation: bs-gradient-shift 12s ease-in-out infinite;
 }
+
+/* ── Quotation Generation ambient glow system ─────────────────────────────────
+   Shared by the workflow's background (features/quotation-generation/components/
+   AmbientBackground.tsx — very subtle, pastel, recedes) and the client insight card
+   (ClientInsightCard.tsx — richer, more saturated, the focal point). Both are built from
+   the same "drifting blurred blob" primitive so the two read as one family at different
+   volumes, rather than two unrelated effects.
+
+   PERFORMANCE: blobs animate via `transform` only (translate3d + scale), never
+   `background-position` or any property that forces a main-thread repaint — the blur
+   filter is applied once at first paint and then the GPU compositor just moves/scales the
+   already-blurred layer on every frame. `will-change: transform` hints the browser to
+   promote each blob to its own layer up front. This is the difference between "cheap
+   ambient texture" and "large blur filter repainting every frame" that the task explicitly
+   warned against. */
+@keyframes qg-blob-drift-a {
+  0%,
+  100% {
+    transform: translate3d(-4%, -5%, 0) scale(1);
+  }
+  50% {
+    transform: translate3d(5%, 4%, 0) scale(1.12);
+  }
+}
+@keyframes qg-blob-drift-b {
+  0%,
+  100% {
+    transform: translate3d(4%, 4%, 0) scale(1);
+  }
+  50% {
+    transform: translate3d(-5%, -3%, 0) scale(1.08);
+  }
+}
+@keyframes qg-blob-drift-c {
+  0%,
+  100% {
+    transform: translate3d(0%, 5%, 0) scale(1);
+  }
+  50% {
+    transform: translate3d(4%, -5%, 0) scale(1.1);
+  }
+}
+
+.qg-blob {
+  position: absolute;
+  border-radius: 9999px;
+  will-change: transform;
+}
+
+/* animation-name lives in these classes (not inline style, even though position/size/color
+   do) specifically so the prefers-reduced-motion override below — same specificity, later
+   in source order — can win. An inline animation-name on the element would beat ANY
+   stylesheet rule regardless of specificity or !important, silently defeating the toggle. */
+.qg-blob-a {
+  animation-name: qg-blob-drift-a;
+}
+.qg-blob-b {
+  animation-name: qg-blob-drift-b;
+}
+.qg-blob-c {
+  animation-name: qg-blob-drift-c;
+}
+
+/* Background wash — very soft, low-opacity, slow (AmbientBackground.tsx controls overall
+   opacity via a Tailwind class on the container, including the Step-2 dimmed state; kept
+   off this rule for the same source-order reason as before). */
+.qg-ambient-mesh .qg-blob {
+  filter: blur(70px);
+  animation-duration: 34s;
+  animation-timing-function: ease-in-out;
+  animation-iteration-count: infinite;
+}
+
+/* Card glow — richer, more saturated, more visibly animated, and hue-shifted per region
+   via --qg-hue (set inline per instance in ClientInsightCard.tsx; DECORATIVE ONLY, see
+   that file for the honesty/non-semantic constraints on what this hue may and may not
+   imply). hue-rotate is applied to the whole layer rather than each blob individually —
+   cheaper, and guarantees every blob in a given card shifts together. */
+.qg-card-glow-layer {
+  filter: hue-rotate(var(--qg-hue, 0deg));
+}
+.qg-card-glow-layer .qg-blob {
+  filter: blur(36px);
+  animation-duration: 16s;
+  animation-timing-function: ease-in-out;
+  animation-iteration-count: infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .qg-blob {
+    animation: none;
+  }
+}
+
+/* Client insight card swipe-in (features/quotation-generation/components/
+   ClientInsightCard.tsx) — plays once per client change via a `key` remount, so no JS
+   animation library is needed for the "swipe to the new client" effect. */
+@keyframes qg-card-swipe-in {
+  from {
+    transform: translateX(28px) scale(0.97);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0) scale(1);
+    opacity: 1;
+  }
+}
+
+.qg-card-swipe-in {
+  animation: qg-card-swipe-in 420ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .qg-card-swipe-in {
+    animation: none;
+  }
+}

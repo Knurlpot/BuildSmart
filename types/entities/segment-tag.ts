@@ -1,3 +1,6 @@
+// Mirrors segment_tag in the consolidated backend schema (database_schema.sql) — the
+// merged former "Segment Client Preference" + "Segment Site Condition" table. Wire format
+// UNVERIFIED against the backend — confirm before trusting at runtime.
 export type SegmentTagType = 'Preference' | 'Condition';
 
 // CHECK-constrained enum, tag_type = 'Preference'. No UI in Quotation Generation Part 1

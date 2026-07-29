@@ -4,6 +4,9 @@ import type { BlueprintExtractionResult } from '@/lib/dev/provisional/quotationG
 import type { ProjectSegmentPayload } from '@/features/quotation-generation/lib/draftSegment';
 
 export interface CreateQuotationPayload {
+  // Real FK now (types/entities/client.ts) — opaque, always read back from a create/select
+  // response, never invented here. Optional: a quotation can exist without a client on file.
+  client_id?: number | null;
   project_name: string;
   project_location: string;
   project_region: Quotation['project_region'];

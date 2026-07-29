@@ -47,7 +47,8 @@ export const NAV_ITEMS: NavItem[] = [
     label: "Quotation Generation",
     description: "Create accurate project cost estimates",
     icon: FileSpreadsheet,
-    href: "/quotations",
+    // Same entry point as Open Projects -> Create New — one workflow, two doors in.
+    href: "/quotations/new",
     minStep: 2,
     color: "#E07B39",
   },
