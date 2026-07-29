@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { AlertTriangle, CheckCircle2, Circle, Sparkles, Zap } from "lucide-react";
+import { AlertTriangle, ArrowLeft, CheckCircle2, Circle, Sparkles, Zap } from "lucide-react";
 import { useSaveSegments, useUpdateQuotationInputMethod } from "@/hooks/useQuotationGeneration";
 import { TREATMENT_TYPES } from "@/lib/dev/provisional/quotationGenerationTypes";
 import { SEGMENT_CONDITION_TAGS, type SegmentConditionTag } from "@/types/entities/segment-tag";
@@ -9,6 +9,7 @@ import {
   computeQuotationInputMethod,
   draftSegmentToPayload,
   isSegmentConfigured,
+  isSegmentIncluded,
   type DraftSegment,
 } from "../lib/draftSegment";
 
@@ -274,9 +275,11 @@ interface ConfigureSegmentsStepProps {
   segments: DraftSegment[];
   onChange: (next: DraftSegment[]) => void;
   onSaved: (savedCount: number) => void;
+  /** Part H — returns to whichever of Quick Measurement/Upload Blueprint this quotation used. */
+  onBack: () => void;
 }
 
-export function ConfigureSegmentsStep({ quoteId, segments, onChange, onSaved }: ConfigureSegmentsStepProps) {
+export function ConfigureSegmentsStep({ quoteId, segments, onChange, onSaved, onBack }: ConfigureSegmentsStepProps) {
   const { saveSegments, isSaving, saveError } = useSaveSegments();
   const { updateInputMethod } = useUpdateQuotationInputMethod();
   const [selectedId, setSelectedId] = useState<string | null>(segments[0]?.draft_id ?? null);
@@ -289,8 +292,16 @@ export function ConfigureSegmentsStep({ quoteId, segments, onChange, onSaved }: 
   // one already open.
   const [applyRevision, setApplyRevision] = useState(0);
 
-  const configuredCount = segments.filter(isSegmentConfigured).length;
-  const allConfigured = segments.length > 0 && configuredCount === segments.length;
+  // FIX 3/4 — excluded segments (Part F: included_in_quote=false) never have to be
+  // configured. Gating this on ALL segments (the previous behavior) silently reimposed
+  // "every detected room must be complete" right after the Blueprint review step had
+  // already let the user proceed with only a subset included — the exact regression this
+  // task calls out. Excluded segments still submit as real rows at Save time (see
+  // draftSegmentToPayload's UNSPECIFIED_TREATMENT_LABEL fallback below), they just never
+  // block it.
+  const includedSegments = segments.filter(isSegmentIncluded);
+  const configuredCount = includedSegments.filter(isSegmentConfigured).length;
+  const allConfigured = includedSegments.length > 0 && configuredCount === includedSegments.length;
   const selected = segments.find((s) => s.draft_id === selectedId) ?? null;
 
   const updateSegment = (draftId: string, patch: Partial<DraftSegment>) => {
@@ -320,23 +331,39 @@ export function ConfigureSegmentsStep({ quoteId, segments, onChange, onSaved }: 
 
   return (
     <div className="flex flex-col gap-4">
-      <div>
-        <h2 className="text-base font-bold text-gray-900">Configure Each Segment</h2>
-        <p className="text-xs text-gray-500">
-          {configuredCount} of {segments.length} configured — a treatment type is required
-          on every segment before you can continue.
-        </p>
+      <div className="flex items-start gap-3">
+        <button
+          type="button"
+          onClick={onBack}
+          title="Back"
+          className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-gray-200 bg-white text-gray-500 transition hover:border-primary hover:text-primary"
+        >
+          <ArrowLeft className="h-4 w-4" />
+        </button>
+        <div>
+          <h2 className="text-base font-bold text-gray-900">Configure Each Segment</h2>
+          <p className="text-xs text-gray-500">
+            {configuredCount} of {includedSegments.length} included segments configured — a
+            treatment type is required on every INCLUDED segment before you can continue.
+            Excluded segments are shown but never block this.
+          </p>
+        </div>
       </div>
 
       <ApplyToAllPanel segmentCount={segments.length} onApply={applyToAll} />
 
-      <div className="flex overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm" style={{ minHeight: 440 }}>
+      {/* FIX 4 — a FIXED height (not just a minimum) on this box is what actually makes the
+          sidebar list's own overflow-y-auto engage: with only a min-height, a long segment
+          list simply grew the whole box (and the page under it) taller instead of scrolling
+          in place. 440px ≈ 7 rows visible before the list scrolls internally. */}
+      <div className="flex overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm" style={{ height: 440 }}>
         <div className="flex w-80 shrink-0 flex-col border-r border-gray-100">
           <div className="border-b border-gray-100 px-4 py-3">
             <p className="text-xs font-bold uppercase tracking-wider text-gray-400">Segments ({segments.length})</p>
           </div>
           <div className="flex-1 divide-y divide-gray-50 overflow-y-auto">
             {segments.map((seg) => {
+              const included = isSegmentIncluded(seg);
               const configured = isSegmentConfigured(seg);
               const isSelected = seg.draft_id === selectedId;
               return (
@@ -346,9 +373,11 @@ export function ConfigureSegmentsStep({ quoteId, segments, onChange, onSaved }: 
                   onClick={() => setSelectedId(seg.draft_id)}
                   className={`flex w-full items-center gap-2.5 px-4 py-3 text-left transition ${
                     isSelected ? "bg-orange-50/60" : "hover:bg-gray-50"
-                  }`}
+                  } ${!included ? "opacity-60" : ""}`}
                 >
-                  {configured ? (
+                  {!included ? (
+                    <Circle className="h-4 w-4 shrink-0 text-gray-300" />
+                  ) : configured ? (
                     <CheckCircle2 className="h-4 w-4 shrink-0 text-green-500" />
                   ) : (
                     <Circle className="h-4 w-4 shrink-0 text-amber-400" />
@@ -357,6 +386,7 @@ export function ConfigureSegmentsStep({ quoteId, segments, onChange, onSaved }: 
                     <p className="truncate text-sm font-semibold text-gray-800">{seg.segment_name}</p>
                     <p className="text-xs text-gray-400">
                       {seg.floor_level || "—"} · {seg.area_sqm.toFixed(1)} sqm
+                      {!included && <span className="ml-1.5 font-semibold text-gray-400">· Excluded</span>}
                     </p>
                   </div>
                 </button>
@@ -385,7 +415,11 @@ export function ConfigureSegmentsStep({ quoteId, segments, onChange, onSaved }: 
         disabled={!allConfigured || isSaving}
         className="w-fit rounded-xl bg-primary px-6 py-3 text-sm font-bold text-primary-foreground shadow-sm transition hover:bg-(--primary-hover) disabled:opacity-60"
       >
-        {isSaving ? "Saving…" : allConfigured ? `Save ${segments.length} Segments` : `Configure all segments to continue (${configuredCount}/${segments.length})`}
+        {isSaving
+          ? "Saving…"
+          : allConfigured
+            ? `Save ${segments.length} Segments`
+            : `Configure all included segments to continue (${configuredCount}/${includedSegments.length})`}
       </button>
     </div>
   );

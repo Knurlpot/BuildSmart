@@ -1,54 +1,28 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { Check, File as FileIcon, Upload as UploadIcon, X } from "lucide-react";
+import { File as FileIcon, Upload as UploadIcon, X } from "lucide-react";
 import { QuickUploadGuide } from "./QuickUploadGuide";
 import { ColumnMappingStep } from "./ColumnMappingStep";
 import { RowReviewStep } from "./RowReviewStep";
 import { SavedCatalogView } from "./SavedCatalogView";
 import { usePricelistUpload } from "@/hooks/usePricelistUpload";
+import { useWorkflowHeader } from "@/providers/WorkflowHeaderProvider";
 
 const ACCEPTED_EXTENSIONS = [".csv", ".xlsx", ".pdf"];
 
-const STEPS = [
-  { n: 1, label: "Upload File" },
-  { n: 2, label: "Review & Detect" },
-  { n: 3, label: "Map & Confirm" },
-] as const;
-
-function Stepper({ step }: { step: 1 | 2 | 3 }) {
-  return (
-    <div className="flex items-center gap-2">
-      {STEPS.map(({ n, label }, i) => (
-        <div key={n} className="flex items-center gap-2">
-          <div className="flex flex-col items-center gap-1">
-            <div
-              className={`flex h-7 w-7 items-center justify-center rounded-full text-xs font-bold transition ${
-                n < step
-                  ? "bg-primary text-primary-foreground"
-                  : n === step
-                    ? "bg-primary text-primary-foreground ring-4 ring-primary/20"
-                    : "bg-gray-100 text-gray-400"
-              }`}
-            >
-              {n < step ? <Check className="h-3.5 w-3.5" /> : n}
-            </div>
-            <span
-              className={`whitespace-nowrap text-[10px] font-semibold ${
-                n === step ? "text-primary" : "text-gray-400"
-              }`}
-            >
-              {label}
-            </span>
-          </div>
-          {i < STEPS.length - 1 && (
-            <div className={`mb-3 h-0.5 w-10 rounded transition ${n < step ? "bg-primary" : "bg-gray-100"}`} />
-          )}
-        </div>
-      ))}
-    </div>
-  );
-}
+// Part A — the same reusable orange workflow header/arrow-step chrome Quotation Generation
+// registers (see providers/WorkflowHeaderProvider.tsx's header comment: "Pricelist setup
+// later" — this is that later). Registered ONLY while this specific tab is mounted; the
+// other four Pricelist tabs (Published Sources, Source Priority, Price Trends, Price
+// Catalog) never call this hook, so switching to any of them unmounts this component,
+// clears the registration, and the header reverts to its normal white state on its own —
+// nothing else needs to know this tab existed.
+const WORKFLOW_STEPS = [
+  { number: 1, label: "Upload File" },
+  { number: 2, label: "Review & Detect" },
+  { number: 3, label: "Map & Confirm" },
+];
 
 function formatSize(bytes: number) {
   if (bytes < 1024) return `${bytes} B`;
@@ -78,6 +52,8 @@ export function UploadPricelistTab({ onViewCatalog }: { onViewCatalog?: () => vo
   const [files, setFiles] = useState<File[]>([]);
   const [dragging, setDragging] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+
+  useWorkflowHeader({ label: "Upload Pricelist", steps: WORKFLOW_STEPS, currentStep: step });
 
   const addFiles = (incoming: FileList | File[]) => {
     const list = Array.from(incoming);
@@ -114,7 +90,13 @@ export function UploadPricelistTab({ onViewCatalog }: { onViewCatalog?: () => vo
 
   return (
     <div className="flex flex-col gap-5">
-      <Stepper step={step} />
+      <div>
+        <h2 className="text-base font-bold text-gray-900">Upload Pricelist</h2>
+        <p className="text-sm text-gray-500">
+          Upload your company&apos;s internal pricelist for the system to use in Quotation
+          Generation.
+        </p>
+      </div>
 
       {step === 1 && (
         <div className="flex gap-5">

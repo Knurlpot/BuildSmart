@@ -4,7 +4,6 @@ import { useState, type CSSProperties, type ComponentType } from "react";
 import { Briefcase, Calendar, Hash, History, Mail, MapPin, Percent, Phone, UserCircle2 } from "lucide-react";
 import { useClientInsights } from "@/hooks/useClientInsights";
 import { NEUTRAL_HUE, regionToHue } from "@/lib/regionColor";
-import type { NewClientDraft } from "./NewClientForm";
 import type { Client } from "@/types/entities";
 
 interface CurrentQuoteFacts {
@@ -14,11 +13,11 @@ interface CurrentQuoteFacts {
 }
 
 interface ClientInsightCardProps {
+  // Part B — this card no longer renders a new-client DRAFT preview at all: while the user
+  // is creating a client, NewClientForm.tsx occupies this same right-column slot instead
+  // (see ClientAndProjectStep.tsx). This component now only ever shows a real selected
+  // client, or the empty "nothing selected yet" state.
   client: Client | null;
-  // In-progress, NOT YET saved new-client fields (Part B/G) — preview only. No client_id
-  // exists yet, so no history fetch and no "Client History" section for this state; see
-  // NewClientForm.tsx for where these fields are actually captured and eventually created.
-  draft: NewClientDraft | null;
   quote: CurrentQuoteFacts;
 }
 
@@ -88,14 +87,13 @@ function HistoryTile({
 // there is no column anywhere that could back these. Do not add them here no matter how
 // closely this is asked to match a reference design that does show them; extend
 // useClientInsights.ts's ClientInsights shape first, the day a real column exists.
-export function ClientInsightCard({ client, draft, quote }: ClientInsightCardProps) {
+export function ClientInsightCard({ client, quote }: ClientInsightCardProps) {
   const { insights, isLoading: insightsLoading, error: insightsError } = useClientInsights(client?.client_id ?? null);
 
-  // "Identity mode" this card is currently previewing — a real selected client, an
-  // in-progress (unsaved) new-client draft, or nothing. Keyed coarsely (not by draft
-  // content) so typing into the draft form doesn't replay the swipe animation on every
-  // keystroke — only actual mode/client switches do.
-  const mode: "client" | "draft" | "empty" = client ? "client" : draft ? "draft" : "empty";
+  // "Identity mode" this card is currently previewing — a real selected client, or nothing.
+  // Keyed coarsely so unrelated re-renders don't replay the swipe animation — only actual
+  // mode/client switches do.
+  const mode: "client" | "empty" = client ? "client" : "empty";
   const identityKey = mode === "client" ? `client-${client!.client_id}` : mode;
 
   // Swipe/stack animation state — adjusted during render (this codebase's established
@@ -280,45 +278,6 @@ export function ClientInsightCard({ client, draft, quote }: ClientInsightCardPro
                   )}
                 </div>
               )}
-
-              {quoteProjectRow}
-            </>
-          )}
-
-          {mode === "draft" && draft && (
-            <>
-              <div className="flex items-center gap-1.5 self-start rounded-full bg-white/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-white/85">
-                <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: swatch(60) }} />
-                New Client
-              </div>
-
-              <div className="flex items-center gap-3 rounded-xl bg-white/10 px-3 py-3">
-                <div
-                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-sm font-bold text-white"
-                  style={{ background: swatch(42) }}
-                >
-                  {initials(draft.client_name)}
-                </div>
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-bold text-white">
-                    {draft.client_name.trim() || <span className="italic text-white/50">Unnamed client</span>}
-                  </p>
-                  {draft.contact_person && <p className="truncate text-xs text-white/60">{draft.contact_person}</p>}
-                </div>
-              </div>
-
-              <div className="flex flex-col gap-1.5">
-                {draft.contact_number && <DetailRow icon={Phone} label="Phone" value={draft.contact_number} />}
-                {draft.contact_email && <DetailRow icon={Mail} label="Email" value={draft.contact_email} />}
-                {draft.client_address && <DetailRow icon={MapPin} label="Address" value={draft.client_address} />}
-              </div>
-
-              {/* No Client History section here — there is no client_id yet to derive one
-                  from (this client hasn't been created; see Part G in ClientAndProjectStep). */}
-              <div className="flex items-start gap-2.5 rounded-xl border border-dashed border-white/20 bg-white/5 px-3.5 py-3">
-                <History className="mt-0.5 h-4 w-4 shrink-0 text-white/50" />
-                <p className="text-sm text-white/75">Not yet saved — fill in the form and use Create Client.</p>
-              </div>
 
               {quoteProjectRow}
             </>

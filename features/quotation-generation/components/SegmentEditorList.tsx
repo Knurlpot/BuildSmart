@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Check, CheckCircle2, ChevronsUpDown, Circle, Pencil, Plus, Trash2, X } from "lucide-react";
+import { Check, CheckCheck, CheckCircle2, ChevronsUpDown, Circle, Pencil, Plus, Trash2, X } from "lucide-react";
 import {
   computeAreaFromDimensions,
   confidenceBand,
@@ -181,9 +181,25 @@ interface SegmentEditorListProps {
   /** Blueprint validation only — a per-row confirm toggle, see draftSegment.ts's
    * `confirmed` field doc for why Quick Measurement never needs this. */
   showConfirmToggle?: boolean;
+  /** Blueprint validation only (Part F) — a per-row "include in this quote" toggle,
+   * distinct from `confirmed`. Excluding a segment never deletes it (the room is real,
+   * just out of this contractor's scope) — see draftSegment.ts's `included_in_quote`. */
+  showIncludeToggle?: boolean;
   addLabel?: string;
   hoveredId?: string | null;
   onHoverChange?: (id: string | null) => void;
+  /** Part D — the "X / N included confirmed" + "Confirm All Included" control, rendered at
+   * the TOP of this panel (above the segment list) rather than in the page header above
+   * it, so it's visible without scrolling a long list. Counts are supplied by the caller
+   * (not derived from `segments` here) because during blueprint review `segments` is only
+   * the CURRENT FLOOR's rows — the confirm gate is quote-wide, across every floor, which
+   * only BlueprintUploadPanel (holding the full wizard-level list) can compute correctly.
+   * Omitted entirely for Quick Measurement, which has no confirm/include concept. */
+  confirmSummary?: {
+    confirmedCount: number;
+    includedCount: number;
+    onConfirmAll: () => void;
+  } | null;
 }
 
 // Shared editable list: add / edit / delete / group. Used standalone by Quick
@@ -196,9 +212,11 @@ export function SegmentEditorList({
   onChange,
   showConfidence = false,
   showConfirmToggle = false,
+  showIncludeToggle = false,
   addLabel = "Add Segment",
   hoveredId = null,
   onHoverChange,
+  confirmSummary = null,
 }: SegmentEditorListProps) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -254,6 +272,10 @@ export function SegmentEditorList({
     onChange(segments.map((s) => (s.draft_id === draftId ? { ...s, confirmed: !s.confirmed } : s)));
   };
 
+  const toggleIncluded = (draftId: string) => {
+    onChange(segments.map((s) => (s.draft_id === draftId ? { ...s, included_in_quote: !s.included_in_quote } : s)));
+  };
+
   const handleGroup = () => {
     if (selectedIds.size < 2 || !groupName.trim()) return;
     const toMerge = segments.filter((s) => selectedIds.has(s.draft_id));
@@ -264,8 +286,28 @@ export function SegmentEditorList({
     setGrouping(false);
   };
 
+  const allConfirmed = confirmSummary !== null && confirmSummary.includedCount > 0 && confirmSummary.confirmedCount === confirmSummary.includedCount;
+
   return (
     <div className="flex flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
+      {confirmSummary && (
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-100 bg-gray-50/60 px-4 py-2.5">
+          <span className="text-xs font-semibold text-gray-500">
+            <span className={allConfirmed ? "text-green-600" : "text-gray-700"}>{confirmSummary.confirmedCount}</span> /{" "}
+            {confirmSummary.includedCount} included confirmed
+          </span>
+          {!allConfirmed && confirmSummary.includedCount > 0 && (
+            <button
+              type="button"
+              onClick={confirmSummary.onConfirmAll}
+              className="flex items-center gap-1 rounded-lg bg-gray-100 px-2.5 py-1 text-xs font-bold text-gray-600 transition hover:bg-gray-200"
+            >
+              <CheckCheck className="h-3.5 w-3.5" /> Confirm All Included
+            </button>
+          )}
+        </div>
+      )}
+
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-100 px-4 py-3">
         <p className="text-xs font-bold uppercase tracking-wider text-gray-400">Segments ({segments.length})</p>
         <div className="flex items-center gap-2">
@@ -338,12 +380,15 @@ export function SegmentEditorList({
                 }}
                 onMouseEnter={() => onHoverChange?.(seg.draft_id)}
                 onMouseLeave={() => onHoverChange?.(null)}
-                className={`flex items-center gap-3 px-4 py-2.5 transition ${hoveredId === seg.draft_id ? "bg-orange-50/60" : ""}`}
+                className={`flex items-center gap-3 px-4 py-2.5 transition ${hoveredId === seg.draft_id ? "bg-orange-50/60" : ""} ${
+                  showIncludeToggle && !seg.included_in_quote ? "opacity-50" : ""
+                }`}
               >
                 <input
                   type="checkbox"
                   checked={selectedIds.has(seg.draft_id)}
                   onChange={() => toggleSelect(seg.draft_id)}
+                  title="Select for grouping"
                   className="h-4 w-4 shrink-0 rounded border-gray-300 text-primary focus:ring-2 focus:ring-primary/30"
                 />
                 {showConfirmToggle && (
@@ -366,6 +411,23 @@ export function SegmentEditorList({
                     {seg.floor_level || "—"} · {seg.area_sqm.toFixed(1)} sqm
                   </p>
                 </div>
+                {/* Part F — scope vs. confirm: a specialty contractor may only want SOME
+                    detected rooms priced. Excluding never deletes the row (see
+                    draftSegment.ts's included_in_quote doc). */}
+                {showIncludeToggle && (
+                  <button
+                    type="button"
+                    onClick={() => toggleIncluded(seg.draft_id)}
+                    title={seg.included_in_quote ? "In scope for this quote — click to exclude" : "Excluded from this quote — click to include"}
+                    className={`shrink-0 rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide transition ${
+                      seg.included_in_quote
+                        ? "bg-green-100 text-green-700 hover:bg-green-200"
+                        : "bg-gray-100 text-gray-400 hover:bg-gray-200"
+                    }`}
+                  >
+                    {seg.included_in_quote ? "Included" : "Excluded"}
+                  </button>
+                )}
                 {showConfidence && <ConfidenceBadge score={seg.confidence_score} />}
                 <button
                   type="button"

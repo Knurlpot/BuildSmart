@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Minus, Plus, RotateCcw, ScanLine } from "lucide-react";
+import { AlertTriangle, ZoomIn, ZoomOut, RotateCcw, ScanLine } from "lucide-react";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { CONFIDENCE_BAND_LABEL, confidenceBand, polygonCentroidY, type DraftSegment } from "../lib/draftSegment";
 
 const BAND_COLOR: Record<ReturnType<typeof confidenceBand>, string> = {
@@ -27,6 +28,12 @@ interface BlueprintOverlayProps {
   segments: DraftSegment[];
   hoveredId: string | null;
   onHoverChange: (id: string | null) => void;
+  /** Part E — the actual DATA reset (discarding edits/groupings/deletions/manual adds back
+   * to the original extraction) lives in the parent (BlueprintUploadPanel), which is the
+   * one holding the original extraction result. This component only owns the confirm
+   * dialog + the visual scan-replay; once the user confirms, it calls this AND replays its
+   * own local scan animation. */
+  onRescanConfirmed: () => void;
 }
 
 // ‼️ COORDINATE-SYSTEM CONTRACT — the one hard requirement of this component.
@@ -40,14 +47,15 @@ interface BlueprintOverlayProps {
 // automatically and exactly — nothing here hardcodes a pixel position, and none of it
 // changes when a real extraction endpoint replaces the dev-mock fixture: same data shape
 // in (BlueprintFloor from lib/dev/provisional/quotationGenerationTypes.ts), same
-// rendering out.
+// rendering out. Part D copies Replit's dark-canvas LOOK — it does NOT switch to Replit's
+// percentage-box coordinate model.
 //
 // ⚠️ The "scan" animation below (progress bar + sweeping line + progressive polygon
 // reveal) is PURE PRESENTATION over that same data — a visual affordance so the review
 // step doesn't feel like a hard data dump, not a claim that anything is being detected
 // client-side. Every polygon it reveals was already in `segments` the instant this
 // component mounted; the scan only staggers when each one fades in.
-export function BlueprintOverlay({ imageUrl, imageWidth, imageHeight, segments, hoveredId, onHoverChange }: BlueprintOverlayProps) {
+export function BlueprintOverlay({ imageUrl, imageWidth, imageHeight, segments, hoveredId, onHoverChange, onRescanConfirmed }: BlueprintOverlayProps) {
   const containerRef = useRef<HTMLDivElement>(null);
 
   // ── Scan animation — RAF-driven, not setInterval, per the task's explicit ask. ──
@@ -55,10 +63,11 @@ export function BlueprintOverlay({ imageUrl, imageWidth, imageHeight, segments, 
   const [syncedRescanToken, setSyncedRescanToken] = useState(0);
   const [scanProgress, setScanProgress] = useState(0);
   const [scanning, setScanning] = useState(true);
+  const [rescanConfirmOpen, setRescanConfirmOpen] = useState(false);
 
   // Adjusted during render (React's documented pattern for this — see e.g.
   // app/(app)/account/page.tsx's deactivate-dialog countdown) rather than a setState call
-  // inside the effect body below: resets the animation whenever "Rescan" is clicked.
+  // inside the effect body below: resets the animation whenever "Rescan" is confirmed.
   if (rescanToken !== syncedRescanToken) {
     setSyncedRescanToken(rescanToken);
     setScanProgress(0);
@@ -81,6 +90,12 @@ export function BlueprintOverlay({ imageUrl, imageWidth, imageHeight, segments, 
     raf = requestAnimationFrame(step);
     return () => cancelAnimationFrame(raf);
   }, [rescanToken]);
+
+  const handleRescanConfirm = () => {
+    setRescanConfirmOpen(false);
+    onRescanConfirmed();
+    setRescanToken((t) => t + 1);
+  };
 
   // ── Zoom ──
   const [zoom, setZoom] = useState(1);
@@ -122,9 +137,10 @@ export function BlueprintOverlay({ imageUrl, imageWidth, imageHeight, segments, 
           </span>
         </div>
         <div className="flex flex-wrap shrink-0 items-center gap-1">
+          {/* Part E — no longer a silent reset: this only OPENS the confirm dialog below. */}
           <button
             type="button"
-            onClick={() => setRescanToken((t) => t + 1)}
+            onClick={() => setRescanConfirmOpen(true)}
             title="Rescan"
             className="flex items-center gap-1 rounded-lg border border-gray-200 bg-white px-2 py-1 text-xs font-semibold text-gray-500 transition hover:border-primary hover:text-primary"
           >
@@ -132,7 +148,7 @@ export function BlueprintOverlay({ imageUrl, imageWidth, imageHeight, segments, 
           </button>
           <div className="flex items-center overflow-hidden rounded-lg border border-gray-200 bg-white">
             <button type="button" onClick={zoomOut} disabled={zoom <= ZOOM_MIN} title="Zoom out" className="p-1.5 text-gray-500 transition hover:bg-gray-50 disabled:opacity-30">
-              <Minus className="h-3.5 w-3.5" />
+              <ZoomOut className="h-3.5 w-3.5" />
             </button>
             <button
               type="button"
@@ -143,7 +159,7 @@ export function BlueprintOverlay({ imageUrl, imageWidth, imageHeight, segments, 
               {Math.round(zoom * 100)}%
             </button>
             <button type="button" onClick={zoomIn} disabled={zoom >= ZOOM_MAX} title="Zoom in" className="p-1.5 text-gray-500 transition hover:bg-gray-50 disabled:opacity-30">
-              <Plus className="h-3.5 w-3.5" />
+              <ZoomIn className="h-3.5 w-3.5" />
             </button>
           </div>
           {zoom !== 1 && (
@@ -154,10 +170,12 @@ export function BlueprintOverlay({ imageUrl, imageWidth, imageHeight, segments, 
         </div>
       </div>
 
+      {/* Part D — dark-blue canvas (copies Replit's look; the polygon/viewBox rendering
+          underneath is unchanged, see the file header contract). */}
       <div
         ref={containerRef}
         onMouseMove={handleMouseMove}
-        className="relative overflow-auto rounded-xl border border-gray-200 bg-gray-50"
+        className="relative overflow-auto rounded-xl border border-slate-800 bg-slate-900"
         style={{ maxHeight: 560 }}
       >
         <svg
@@ -202,24 +220,24 @@ export function BlueprintOverlay({ imageUrl, imageWidth, imageHeight, segments, 
         </svg>
 
         {scanning && (
-          <div className="pointer-events-none absolute inset-x-0 top-0 flex items-center gap-3 bg-white/90 px-4 py-2 backdrop-blur-sm">
+          <div className="pointer-events-none absolute inset-x-0 top-0 flex items-center gap-3 bg-black/70 px-4 py-2 backdrop-blur-sm">
             <ScanLine className="h-4 w-4 shrink-0 animate-pulse text-primary" />
-            <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-gray-200">
+            <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-white/15">
               <div className="h-full rounded-full bg-primary transition-[width]" style={{ width: `${scanProgress}%` }} />
             </div>
-            <span className="w-20 shrink-0 text-right text-xs font-bold text-gray-600">Scanning… {Math.round(scanProgress)}%</span>
+            <span className="w-20 shrink-0 text-right text-xs font-bold text-white/90">Scanning… {Math.round(scanProgress)}%</span>
           </div>
         )}
 
         {hoveredSegment && cursor && (
           <div
-            className="pointer-events-none absolute z-10 flex w-52 flex-col gap-1 rounded-lg border border-gray-200 bg-white p-3 text-xs shadow-lg"
+            className="pointer-events-none absolute z-10 flex w-52 flex-col gap-1 rounded-lg border border-white/10 bg-slate-800 p-3 text-xs shadow-2xl"
             style={{ left: tooltipLeft, top: tooltipTop }}
           >
-            <p className="truncate font-bold text-gray-900">{hoveredSegment.segment_name || "Untitled segment"}</p>
-            <p className="text-gray-500">{hoveredSegment.area_sqm.toFixed(1)} sqm</p>
+            <p className="truncate font-bold text-white">{hoveredSegment.segment_name || "Untitled segment"}</p>
+            <p className="text-white/60">{hoveredSegment.area_sqm.toFixed(1)} sqm</p>
             {hoveredSegment.confidence_score !== null && (
-              <p className="flex items-center gap-1.5">
+              <p className="flex items-center gap-1.5 text-white/80">
                 <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: BAND_COLOR[confidenceBand(hoveredSegment.confidence_score)] }} />
                 {hoveredSegment.confidence_score}% confidence · {CONFIDENCE_BAND_LABEL[confidenceBand(hoveredSegment.confidence_score)]}
               </p>
@@ -227,6 +245,39 @@ export function BlueprintOverlay({ imageUrl, imageWidth, imageHeight, segments, 
           </div>
         )}
       </div>
+
+      {/* Part E — rescanning RESTARTS: warn before discarding edits, don't silently wipe
+          the user's work. */}
+      <Dialog open={rescanConfirmOpen} onOpenChange={setRescanConfirmOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-4 w-4 shrink-0 text-amber-500" /> Rescan this blueprint?
+            </DialogTitle>
+            <DialogDescription>
+              This restarts the review. Every edit you&apos;ve made — renamed or resized
+              segments, groupings, deletions, and anything added manually — is discarded,
+              and the view returns to the system&apos;s original detected findings.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <button
+              type="button"
+              onClick={() => setRescanConfirmOpen(false)}
+              className="rounded-xl border border-gray-200 px-4 py-2 text-sm font-semibold text-gray-600 transition hover:bg-gray-50"
+            >
+              Keep My Changes
+            </button>
+            <button
+              type="button"
+              onClick={handleRescanConfirm}
+              className="rounded-xl bg-red-600 px-4 py-2 text-sm font-bold text-white transition hover:bg-red-700"
+            >
+              Rescan and Discard Edits
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

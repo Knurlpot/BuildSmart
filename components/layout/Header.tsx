@@ -2,11 +2,15 @@
 
 import { useEffect, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
+import Image from "next/image";
 import { ChevronDown, LogOut } from "lucide-react";
 import { useAuth } from "@/providers/AuthProvider";
 import { useFetch } from "@/hooks/useFetch";
 import type { Company, Users } from "@/types/entities";
+import { logoFrame } from "@/components/logo-frames";
+import type { WorkflowHeaderState } from "@/providers/WorkflowHeaderProvider";
 import { NAV_ITEMS } from "./nav-items";
+import WorkflowStepper from "./WorkflowStepper";
 
 const STATIC_TITLES: Record<string, { title: string; subtitle?: string }> = {
   "/dashboard": { title: "Dashboard", subtitle: "Select a function to get started" },
@@ -24,10 +28,19 @@ function resolveTitle(pathname: string) {
   return { title: "BuildSmart" };
 }
 
+interface HeaderProps {
+  /** OPTIONAL — absent renders the header exactly as it always has (white, page title,
+   * no steps). Present inverts the whole bar to the brand orange with the workflow's
+   * module label + path-aware step sequence in place of the page title. Set via
+   * providers/WorkflowHeaderProvider.tsx (AppShell bridges it in as this prop) — a
+   * workflow registers it with useWorkflowHeader() for as long as it stays mounted. */
+  workflow?: WorkflowHeaderState | null;
+}
+
 // Part B — the ONE profile widget in the app (the sidebar's copy was removed). Logo as
 // avatar, user's name as the primary line, company name underneath, Logout lives in the
 // dropdown this opens.
-export default function Header() {
+export default function Header({ workflow }: HeaderProps) {
   const pathname = usePathname();
   const router = useRouter();
   const { currentUser, logout } = useAuth();
@@ -67,35 +80,66 @@ export default function Header() {
   };
 
   return (
-    <header className="flex h-16 shrink-0 items-center justify-between border-b border-gray-200 bg-white px-6 shadow-sm">
-      <div>
-        <h1 className="text-base font-bold text-gray-900">{title}</h1>
-        {subtitle && <p className="text-xs text-gray-500">{subtitle}</p>}
-      </div>
+    <header
+      className={`flex h-16 shrink-0 items-center justify-between px-6 transition-colors ${
+        workflow ? "bg-primary shadow-md qg-header-shimmer" : "border-b border-gray-200 bg-white shadow-sm"
+      }`}
+    >
+      {workflow ? (
+        <div className="flex min-w-0 flex-1 items-center gap-2.5">
+          <div className="flex shrink-0 items-center gap-1.5 rounded-md bg-white/15 px-2 py-1">
+            {/* Logo "inverts" via brightness-0 invert — the SVG's own brand-orange fill
+                would disappear against this same orange header, so it's forced to solid
+                white here rather than needing a separate logo asset. Same trick used in
+                Sidebar.tsx's logo cell, which turns orange too (Part A) so the whole bar
+                — sidebar corner included — reads as one continuous strip. */}
+            <Image src={logoFrame(13)} alt="" className="h-3.5 w-3.5 brightness-0 invert" />
+            <span className="text-[10px] font-extrabold uppercase tracking-wide text-white">{workflow.label}</span>
+          </div>
+          <div className="hidden h-5 w-px shrink-0 bg-white/20 sm:block" />
+          {/* No overflow-x-auto here — WorkflowStepper only ever receives the ACTIVE
+              part's steps (see workflowSteps.ts's Part 1 / Part 2 split), so it's sized
+              to always fit without needing to scroll. */}
+          <WorkflowStepper steps={workflow.steps} currentStep={workflow.currentStep} />
+        </div>
+      ) : (
+        <div>
+          <h1 className="text-base font-bold text-gray-900">{title}</h1>
+          {subtitle && <p className="text-xs text-gray-500">{subtitle}</p>}
+        </div>
+      )}
 
-      <div ref={menuRef} className="relative">
+      <div ref={menuRef} className="relative shrink-0">
         <button
           type="button"
           onClick={() => setMenuOpen((v) => !v)}
-          className="flex items-center gap-2 rounded-xl px-2 py-1.5 transition hover:bg-gray-50"
+          className={`flex items-center gap-2 rounded-xl px-2 py-1.5 transition ${
+            workflow ? "hover:bg-white/10" : "hover:bg-gray-50"
+          }`}
         >
           {company?.company_logo ? (
             // eslint-disable-next-line @next/next/no-img-element -- arbitrary external URL, not a static asset
             <img
               src={company.company_logo}
               alt=""
-              className="h-9 w-9 shrink-0 rounded-full border border-gray-100 object-cover"
+              className={`h-9 w-9 shrink-0 rounded-full object-cover ${workflow ? "border-2 border-white/40" : "border border-gray-100"}`}
             />
           ) : (
-            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary text-sm font-bold text-primary-foreground">
+            <div
+              className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-sm font-bold ${
+                workflow ? "bg-white text-primary" : "bg-primary text-primary-foreground"
+              }`}
+            >
               {companyInitials}
             </div>
           )}
           <div className="text-left">
-            <p className="text-xs font-semibold leading-tight text-gray-800">{fullName}</p>
-            <p className="text-[10px] text-gray-500">{companyName}</p>
+            <p className={`text-xs font-semibold leading-tight ${workflow ? "text-white" : "text-gray-800"}`}>{fullName}</p>
+            <p className={`text-[10px] ${workflow ? "text-white/70" : "text-gray-500"}`}>{companyName}</p>
           </div>
-          <ChevronDown className={`h-3.5 w-3.5 shrink-0 text-gray-400 transition-transform ${menuOpen ? "rotate-180" : ""}`} />
+          <ChevronDown
+            className={`h-3.5 w-3.5 shrink-0 transition-transform ${workflow ? "text-white/70" : "text-gray-400"} ${menuOpen ? "rotate-180" : ""}`}
+          />
         </button>
 
         {menuOpen && (

@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import Image from "next/image";
 import { Lock } from "lucide-react";
 import { useAuth } from "@/providers/AuthProvider";
+import { useWorkflowHeaderValue } from "@/providers/WorkflowHeaderProvider";
 import { logoFrame } from "@/components/logo-frames";
 import { NAV_ITEMS, type NavItem } from "./nav-items";
 
@@ -43,12 +44,21 @@ export default function Sidebar() {
   const { currentUser } = useAuth();
   const pathname = usePathname();
   const onboardingStep = currentUser?.onboardingStep ?? 0;
+  // Part A — when a workflow is active (e.g. Quotation Generation), the orange header mode
+  // extends into this top-left logo cell too, so the whole bar reads as one continuous
+  // strip edge to edge instead of leaving a white gap in the corner. Same brightness-0
+  // invert trick Header.tsx uses on its own copy of the logo — no separate asset needed.
+  const workflow = useWorkflowHeaderValue();
 
   return (
     <aside className="flex h-screen w-64 flex-shrink-0 flex-col bg-white shadow-[2px_0_8px_rgba(0,0,0,0.08)]">
-      <div className="flex h-16 items-center gap-2 border-b border-gray-100 px-4">
-        <Image src={logoFrame(13)} alt="" className="h-7 w-7" />
-        <span className="text-base font-bold text-gray-900">BuildSmart</span>
+      <div
+        className={`flex h-16 items-center gap-2 px-4 transition-colors ${
+          workflow ? "bg-primary" : "border-b border-gray-100"
+        }`}
+      >
+        <Image src={logoFrame(13)} alt="" className={`h-7 w-7 ${workflow ? "brightness-0 invert" : ""}`} />
+        <span className={`text-base font-bold ${workflow ? "text-white" : "text-gray-900"}`}>BuildSmart</span>
       </div>
 
       {onboardingStep < 2 && (
