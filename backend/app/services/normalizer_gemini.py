@@ -11,6 +11,7 @@ from tenacity import RetryError, retry, stop_after_attempt, wait_exponential
 
 from app.schemas.normalization import MaterialMatch
 from app.services.normalizer_mock import ItemCandidate
+from app.services.categories import CATEGORY_TYPES
 
 # .env lives at the repo root (shared with the Next.js frontend), one level up from backend/.
 load_dotenv(Path(__file__).resolve().parents[3] / ".env")
@@ -46,16 +47,7 @@ _last_call_at = 0.0
 
 _client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
 
-CATEGORY_TYPES = (
-    "Structural",
-    "Architectural",
-    "Electrical",
-    "Mechanical",
-    "Plumbing",
-    "Finishing",
-    "Hardware",
-    "Others",
-)
+"""Use `CATEGORY_TYPES` from the shared categories module for consistency."""
 
 
 def _retry_delay_seconds(exc: BaseException | None) -> float | None:

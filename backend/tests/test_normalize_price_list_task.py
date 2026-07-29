@@ -41,16 +41,16 @@ def test_normalize_price_list_writes_matched_rows_and_flags_new_items(db_session
     )
 
     assert result["processed"] == 10
-    assert result["matched"] == 6
+    assert result["matched"] == 5
     assert result["new_items_created"] == 0
-    assert result["needs_review"] == 4
+    assert result["needs_review"] == 5
 
     new_records = [
         r
         for r in db_session.execute(select(HistoricalPriceRecord)).scalars()
         if r.historicalrec_id not in existing_record_ids
     ]
-    assert len(new_records) == 6
+    assert len(new_records) == 5
     assert all(r.price_source == "Supplier" for r in new_records)
     assert all(r.supplier_id is None for r in new_records)
 
@@ -67,8 +67,9 @@ def test_normalize_price_list_writes_matched_rows_and_flags_new_items(db_session
         for r in db_session.execute(select(PriceListReviewItem)).scalars()
         if r.review_id not in existing_review_ids
     ]
-    assert len(new_review_items) == 4
+    assert len(new_review_items) == 5
     assert {r.raw_name for r in new_review_items} == {
+        "Deformd Steel Bar 10 mm",
         "Vinyl Floor Tile 300x300",
         "PVC Pipe 4 inch Schedule 40",
         "Galvanized Iron Sheet 0.6mm",

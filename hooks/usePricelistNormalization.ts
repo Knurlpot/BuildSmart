@@ -46,12 +46,14 @@ export interface PricelistReviewItem {
   suggested_category_type: string | null;
   suggested_material: string | null;
   suggested_brand: string | null;
+  description: string | null;
   source: string;
   supplier_id: number | null;
   status: string;
   created_at: string;
 }
 
+<<<<<<< HEAD
 // Mirrors pricelist_parser.py's REQUIRED_COLUMNS — the 3 fields the backend
 // couldn't place in a file's headers via its exact/synonym/keyword tiers.
 export type NormalizationField = 'raw_name' | 'raw_unit' | 'raw_price';
@@ -103,6 +105,22 @@ async function uploadPricelistFile(form: FormData): Promise<UploadResponse> {
   }
   return res.json();
 }
+=======
+export type PricelistReviewItemUpdate = Partial<
+  Pick<
+    PricelistReviewItem,
+    | 'raw_name'
+    | 'raw_unit'
+    | 'raw_price'
+    | 'confidence'
+    | 'suggested_category_type'
+    | 'suggested_material'
+    | 'suggested_brand'
+    | 'description'
+    | 'status'
+  >
+>;
+>>>>>>> maintrial
 
 // The backend processes one file per task (POST /pricelist/upload takes a
 // single UploadFile) — multi-file support is a client-side queue on top of
@@ -294,6 +312,7 @@ export function usePricelistNormalization() {
     setQueue([...queueRef.current]);
   };
 
+<<<<<<< HEAD
   const [isClearingReview, setIsClearingReview] = useState(false);
   const [clearReviewError, setClearReviewError] = useState<Error | null>(null);
 
@@ -313,6 +332,31 @@ export function usePricelistNormalization() {
       setIsClearingReview(false);
     }
   };
+=======
+  const updateReviewItem = useCallback(async (reviewId: number, patch: PricelistReviewItemUpdate) => {
+    const updated = await normalizationApiClient<PricelistReviewItem>(`/pricelist/review/${reviewId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(patch),
+    });
+    setReviewItems((items) => {
+      if (updated.status !== 'Pending') {
+        return items.filter((item) => item.review_id !== reviewId);
+      }
+      return items.map((item) => (item.review_id === reviewId ? updated : item));
+    });
+    return updated;
+  }, []);
+
+  const deleteReviewItem = useCallback(async (reviewId: number) => {
+    await normalizationApiClient<PricelistReviewItem>(`/pricelist/review/${reviewId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status: 'Deleted' }),
+    });
+    setReviewItems((items) => items.filter((item) => item.review_id !== reviewId));
+  }, []);
+>>>>>>> maintrial
 
   return {
     queue,
@@ -320,6 +364,8 @@ export function usePricelistNormalization() {
     resolveColumnMapping,
     cancelColumnMapping,
     clearFinishedQueueItems,
+    updateReviewItem,
+    deleteReviewItem,
     reviewItems,
     isLoadingReview,
     reviewError,

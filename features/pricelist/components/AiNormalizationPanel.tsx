@@ -3,10 +3,12 @@
 import { useEffect, useRef, useState } from "react";
 import {
   AlertTriangle,
+  Check,
   CheckCircle2,
   Clock,
   File as FileIcon,
   Loader2,
+  Pencil,
   RefreshCw,
   Sparkles,
   Trash2,
@@ -16,17 +18,25 @@ import {
   Zap,
 } from "lucide-react";
 import { QueryState } from "@/components/feedback/QueryState";
-import { ColumnMappingStep, type DetectedColumn } from "./ColumnMappingStep";
 import {
-  NORMALIZATION_FIELD_LABELS,
   usePricelistNormalization,
-  type NormalizationField,
+  type PricelistReviewItem,
+  type PricelistReviewItemUpdate,
   type QueueItem,
 } from "@/hooks/usePricelistNormalization";
 
-const NORMALIZATION_FIELDS: NormalizationField[] = ["raw_name", "raw_unit", "raw_price"];
-
 const SOURCES = ["DPWH", "PSA", "Supplier", "Internal"] as const;
+const CATEGORIES = [
+  "Uncategorized",
+  "Concrete & Masonry",
+  "Steel & Metals",
+  "Plumbing",
+  "Finishes",
+  "Aggregates",
+  "Lumber & Carpentry",
+  "Electrical",
+  "Roofing & Waterproofing",
+] as const;
 // Backend support confirmed for all three: pricelist_parser.py handles
 // CSV/XLSX via pandas and PDF via pdfplumber (requires an actual ruled table
 // in the PDF, not OCR/scanned images).
@@ -77,6 +87,216 @@ function QueueItemRow({ item }: { item: QueueItem }) {
   );
 }
 
+type ReviewEditDraft = {
+  raw_name: string;
+  raw_unit: string;
+  raw_price: string;
+  confidence: string;
+  suggested_category_type: string;
+  suggested_material: string;
+  suggested_brand: string;
+  description: string;
+};
+
+function reviewItemToDraft(item: PricelistReviewItem): ReviewEditDraft {
+  const initialDescription = item.description || item.suggested_brand || "";
+  const initialBrand = item.description ? item.suggested_brand ?? "" : "";
+
+  return {
+    raw_name: item.raw_name,
+    raw_unit: item.raw_unit,
+    raw_price: String(item.raw_price),
+    confidence: String(Math.round(item.confidence * 100)),
+    suggested_category_type: item.suggested_category_type ?? "Uncategorized",
+    suggested_material: item.suggested_material ?? "",
+    suggested_brand: initialBrand,
+    description: initialDescription,
+  };
+}
+
+function draftToPatch(draft: ReviewEditDraft): PricelistReviewItemUpdate {
+  const confidencePercent = Number(draft.confidence);
+  const resolvedDescription = draft.description.trim() || null;
+  const resolvedBrand = draft.suggested_brand.trim() || (resolvedDescription ? "Generic" : null);
+  return {
+    raw_name: draft.raw_name.trim(),
+    raw_unit: draft.raw_unit.trim(),
+    raw_price: Number(draft.raw_price),
+    confidence: Number.isFinite(confidencePercent) ? confidencePercent / 100 : 0,
+    suggested_category_type: draft.suggested_category_type.trim() || null,
+    suggested_material: draft.suggested_material.trim() || null,
+    suggested_brand: resolvedBrand,
+    description: resolvedDescription,
+  };
+}
+
+function ReviewItemRow({
+  item,
+  isEditing,
+  draft,
+  isSaving,
+  onEdit,
+  onDraftChange,
+  onSave,
+  onDelete,
+}: {
+  item: PricelistReviewItem;
+  isEditing: boolean;
+  draft: ReviewEditDraft;
+  isSaving: boolean;
+  onEdit: () => void;
+  onDraftChange: (patch: Partial<ReviewEditDraft>) => void;
+  onSave: () => void;
+  onDelete: () => void;
+}) {
+  const inputClass =
+    "h-8 w-full min-w-[7rem] rounded-lg border border-gray-200 bg-white px-2 text-sm text-gray-700 outline-none focus:border-primary focus:ring-2 focus:ring-primary/15";
+
+  if (!isEditing) {
+    return (
+      <tr>
+        <td className="py-2 pr-4 font-medium text-gray-800">{item.raw_name}</td>
+        <td className="py-2 pr-4 text-gray-500">{item.raw_unit}</td>
+        <td className="py-2 pr-4 text-gray-500">{fmt(item.raw_price)}</td>
+        <td className="py-2 pr-4 text-gray-500">{(item.confidence * 100).toFixed(0)}%</td>
+        <td className="py-2 pr-4 text-gray-500">{item.suggested_category_type ?? "—"}</td>
+        <td className="py-2 pr-4 text-gray-500">{item.description || item.suggested_brand || "—"}</td>
+        <td className="py-2 pr-4 text-gray-500">{item.suggested_brand || "Generic"}</td>
+        <td className="py-2 pr-4 text-gray-500">{item.source || "Supplier"}</td>
+        <td className="py-2 text-right">
+          <div className="flex justify-end gap-1">
+            <button
+              type="button"
+              disabled={isSaving}
+              onClick={onSave}
+              className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-white transition hover:bg-(--primary-hover) disabled:opacity-60"
+              aria-label={`Save ${item.raw_name}`}
+            >
+              {isSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+            </button>
+            <button
+              type="button"
+              onClick={onEdit}
+              className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 text-gray-500 transition hover:bg-gray-50 hover:text-primary"
+              aria-label={`Edit ${item.raw_name}`}
+            >
+              <Pencil className="h-3.5 w-3.5" />
+            </button>
+            <button
+              type="button"
+              disabled={isSaving}
+              onClick={onDelete}
+              className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 text-gray-500 transition hover:bg-red-50 hover:text-red-600 disabled:opacity-60"
+              aria-label={`Delete ${item.raw_name}`}
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        </td>
+      </tr>
+    );
+  }
+
+  return (
+    <tr className="bg-orange-50/20 align-top">
+      <td className="py-2 pr-4">
+        <input
+          value={draft.raw_name}
+          onChange={(e) => onDraftChange({ raw_name: e.target.value })}
+          className={`${inputClass} min-w-[16rem]`}
+        />
+      </td>
+      <td className="py-2 pr-4">
+        <input
+          value={draft.raw_unit}
+          onChange={(e) => onDraftChange({ raw_unit: e.target.value })}
+          className="h-8 w-24 rounded-lg border border-gray-200 bg-white px-2 text-sm text-gray-700 outline-none focus:border-primary focus:ring-2 focus:ring-primary/15"
+        />
+      </td>
+      <td className="py-2 pr-4">
+        <input
+          type="number"
+          min="0.01"
+          step="0.01"
+          value={draft.raw_price}
+          onChange={(e) => onDraftChange({ raw_price: e.target.value })}
+          className="h-8 w-28 rounded-lg border border-gray-200 bg-white px-2 text-sm text-gray-700 outline-none focus:border-primary focus:ring-2 focus:ring-primary/15"
+        />
+      </td>
+      <td className="py-2 pr-4">
+        <input
+          type="number"
+          min="0"
+          max="100"
+          step="1"
+          value={draft.confidence}
+          onChange={(e) => onDraftChange({ confidence: e.target.value })}
+          className="h-8 w-20 rounded-lg border border-gray-200 bg-white px-2 text-sm text-gray-700 outline-none focus:border-primary focus:ring-2 focus:ring-primary/15"
+        />
+      </td>
+      <td className="py-2 pr-4">
+        <select
+          value={draft.suggested_category_type}
+          onChange={(e) => onDraftChange({ suggested_category_type: e.target.value })}
+          className="h-8 min-w-[12rem] rounded-lg border border-gray-200 bg-white px-2 text-sm text-gray-700 outline-none focus:border-primary focus:ring-2 focus:ring-primary/15"
+        >
+          {CATEGORIES.map((category) => (
+            <option key={category}>{category}</option>
+          ))}
+        </select>
+      </td>
+      <td className="py-2 pr-4">
+        <input
+          value={draft.description}
+          onChange={(e) => onDraftChange({ description: e.target.value })}
+          className={inputClass}
+          placeholder="Specification / Description"
+        />
+      </td>
+      <td className="py-2 pr-4">
+        <input
+          value={draft.suggested_brand}
+          onChange={(e) => onDraftChange({ suggested_brand: e.target.value })}
+          className={inputClass}
+          placeholder="Generic"
+        />
+      </td>
+      <td className="py-2 pr-4 text-gray-500">{item.source}</td>
+      <td className="py-2">
+        <div className="flex justify-end gap-1">
+          <button
+            type="button"
+            disabled={isSaving}
+            onClick={onSave}
+            className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-white transition hover:bg-(--primary-hover) disabled:opacity-60"
+            aria-label={`Save ${item.raw_name}`}
+          >
+            {isSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+          </button>
+          <button
+            type="button"
+            disabled
+            className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 text-primary/60"
+            aria-label={`Edit ${item.raw_name}`}
+            title="Currently editing"
+          >
+            <Pencil className="h-3.5 w-3.5" />
+          </button>
+          <button
+            type="button"
+            disabled={isSaving}
+            onClick={onDelete}
+            className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 text-gray-500 transition hover:bg-red-50 hover:text-red-600 disabled:opacity-60"
+            aria-label={`Delete ${item.raw_name}`}
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      </td>
+    </tr>
+  );
+}
+
 /**
  * Exercises the FastAPI normalization pipeline (POST /pricelist/upload -> poll
  * GET /pricelist/status/{id} -> GET /pricelist/review) directly. Separate from
@@ -88,77 +308,23 @@ export function AiNormalizationPanel() {
   const {
     queue,
     enqueueFiles,
-    resolveColumnMapping,
-    cancelColumnMapping,
     clearFinishedQueueItems,
+    updateReviewItem,
+    deleteReviewItem,
     reviewItems,
     isLoadingReview,
     reviewError,
     refetchReview,
-    clearPendingReview,
-    isClearingReview,
-    clearReviewError,
   } = usePricelistNormalization();
-
-  // Two-click inline confirm rather than a native confirm() dialog — this
-  // permanently deletes every Pending row with no undo.
-  const [confirmingClear, setConfirmingClear] = useState(false);
-
-  const handleClearReview = () => {
-    if (!confirmingClear) {
-      setConfirmingClear(true);
-      return;
-    }
-    setConfirmingClear(false);
-    clearPendingReview().catch(() => {});
-  };
-
-  const mappingItem = queue.find((item) => item.status === "needs_mapping");
-
-  // Draft mapping for whichever file is currently stuck in 'needs_mapping' —
-  // pre-filled from what the backend's tiers 1-3 DID resolve, so the user
-  // only has to pick the field(s) that actually need a human. Only one item
-  // can be in this state at a time (see usePricelistNormalization's queue
-  // guard), so a single draft is enough.
-  const [mappingColumns, setMappingColumns] = useState<DetectedColumn<NormalizationField>[]>([]);
-
-  useEffect(() => {
-    if (!mappingItem?.mappingInfo) return;
-    const { availableColumns, detectedMapping } = mappingItem.mappingInfo;
-    setMappingColumns(
-      availableColumns.map((col) => ({
-        raw_column: col,
-        mapped_field:
-          NORMALIZATION_FIELDS.find((field) => detectedMapping[field] === col) ?? null,
-        source_files: [mappingItem.file.name],
-      }))
-    );
-    // Re-derive only when a (possibly different) file's mapping info shows up, not on every
-    // queue update — otherwise every edit to mappingColumns itself would get clobbered by
-    // this effect re-running off the same mappingItem reference.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mappingItem?.mappingInfo]);
-
-  const updateMappingColumn = (rawColumn: string, mappedField: NormalizationField | null) => {
-    setMappingColumns((prev) => prev.map((c) => (c.raw_column === rawColumn ? { ...c, mapped_field: mappedField } : c)));
-  };
-
-  const mappingComplete = NORMALIZATION_FIELDS.every((field) =>
-    mappingColumns.some((c) => c.mapped_field === field)
-  );
-
-  const handleConfirmMapping = () => {
-    if (!mappingItem || !mappingComplete) return;
-    const mapping = Object.fromEntries(
-      NORMALIZATION_FIELDS.map((field) => [field, mappingColumns.find((c) => c.mapped_field === field)!.raw_column])
-    ) as Record<NormalizationField, string>;
-    resolveColumnMapping(mappingItem.id, mapping);
-  };
 
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
   const [fileTypeError, setFileTypeError] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
   const [source, setSource] = useState<(typeof SOURCES)[number]>("Supplier");
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [editDraft, setEditDraft] = useState<ReviewEditDraft | null>(null);
+  const [savingId, setSavingId] = useState<number | null>(null);
+  const [reviewSaveError, setReviewSaveError] = useState<string | null>(null);
   // Defaults to the instant local matcher rather than the AI path — safer
   // default given how rate-limited/quota-constrained the AI path can be.
   const [useAi, setUseAi] = useState(false);
@@ -195,6 +361,51 @@ export function AiNormalizationPanel() {
     if (pendingFiles.length === 0) return;
     enqueueFiles(pendingFiles, source, useAi);
     setPendingFiles([]);
+  };
+
+  const startEditing = (item: PricelistReviewItem) => {
+    setReviewSaveError(null);
+    setEditingId(item.review_id);
+    setEditDraft(reviewItemToDraft(item));
+  };
+
+  const cancelEditing = () => {
+    setEditingId(null);
+    setEditDraft(null);
+    setReviewSaveError(null);
+  };
+
+  const saveEditing = async () => {
+    if (editingId === null || editDraft === null) return;
+    await saveReviewItem(editingId, { ...draftToPatch(editDraft), status: "Approved" });
+    cancelEditing();
+  };
+
+  const saveReviewItem = async (reviewId: number, patch: PricelistReviewItemUpdate) => {
+    setSavingId(reviewId);
+    setReviewSaveError(null);
+    try {
+      await updateReviewItem(reviewId, patch);
+    } catch (err) {
+      setReviewSaveError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSavingId(null);
+    }
+  };
+
+  const removeReviewItem = async (reviewId: number) => {
+    setSavingId(reviewId);
+    setReviewSaveError(null);
+    try {
+      await deleteReviewItem(reviewId);
+      if (editingId === reviewId) {
+        cancelEditing();
+      }
+    } catch (err) {
+      setReviewSaveError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSavingId(null);
+    }
   };
 
   const isQueueBusy = queue.some((item) =>
@@ -411,8 +622,8 @@ export function AiNormalizationPanel() {
           <div>
             <p className="text-sm font-bold text-gray-900">Pending Review</p>
             <p className="text-xs text-gray-500">
-              Low-confidence matches awaiting a decision. Approve/reject actions aren&apos;t wired up yet —
-              this is read-only.
+              Low-confidence matches awaiting a decision. Use Check to approve and save to the Supplier
+              price catalog.
             </p>
           </div>
           <div className="flex shrink-0 items-center gap-2">
@@ -447,6 +658,7 @@ export function AiNormalizationPanel() {
             </button>
           </div>
         </div>
+        {reviewSaveError && <p className="mb-3 text-xs text-red-500">{reviewSaveError}</p>}
 
         {clearReviewError && (
           <p className="mb-3 text-xs text-red-600">Couldn&apos;t clear review items: {clearReviewError.message}</p>
@@ -468,24 +680,35 @@ export function AiNormalizationPanel() {
                   <th className="py-2 pr-4">Unit</th>
                   <th className="py-2 pr-4">Price</th>
                   <th className="py-2 pr-4">Confidence</th>
-                  <th className="py-2 pr-4">Suggested Category</th>
-                  <th className="py-2 pr-4">Suggested Material</th>
-                  <th className="py-2 pr-4">Suggested Brand</th>
+                  <th className="py-2 pr-4">Category</th>
+                    <th className="py-2 pr-4">Specification</th>
+                  <th className="py-2 pr-4">Brand</th>
                   <th className="py-2 pr-4">Source</th>
+                    <th className="py-2 text-right">Action</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
                 {reviewItems.map((item) => (
-                  <tr key={item.review_id}>
-                    <td className="py-2 pr-4 font-medium text-gray-800">{item.raw_name}</td>
-                    <td className="py-2 pr-4 text-gray-500">{item.raw_unit}</td>
-                    <td className="py-2 pr-4 text-gray-500">{fmt(item.raw_price)}</td>
-                    <td className="py-2 pr-4 text-gray-500">{(item.confidence * 100).toFixed(0)}%</td>
-                    <td className="py-2 pr-4 text-gray-500">{item.suggested_category_type ?? "—"}</td>
-                    <td className="py-2 pr-4 text-gray-500">{item.suggested_material ?? "—"}</td>
-                    <td className="py-2 pr-4 text-gray-500">{item.suggested_brand ?? "—"}</td>
-                    <td className="py-2 pr-4 text-gray-500">{item.source}</td>
-                  </tr>
+                  <ReviewItemRow
+                    key={item.review_id}
+                    item={item}
+                    isEditing={editingId === item.review_id}
+                    draft={editingId === item.review_id && editDraft ? editDraft : reviewItemToDraft(item)}
+                    isSaving={savingId === item.review_id}
+                    onEdit={() => startEditing(item)}
+                    onDraftChange={(patch) => setEditDraft((current) => (current ? { ...current, ...patch } : current))}
+                    onSave={() => {
+                      if (editingId === item.review_id && editDraft) {
+                        void saveEditing();
+                        return;
+                      }
+                      void saveReviewItem(item.review_id, {
+                        ...draftToPatch(reviewItemToDraft(item)),
+                        status: "Approved",
+                      });
+                    }}
+                    onDelete={() => removeReviewItem(item.review_id)}
+                  />
                 ))}
               </tbody>
             </table>

@@ -1,213 +1,509 @@
 import re
 from pathlib import Path
+from typing import Any
 
 import pandas as pd
 import pdfplumber
 
 REQUIRED_COLUMNS = {"raw_name", "raw_unit", "raw_price"}
 
-
-class MissingColumnsError(ValueError):
-    """Raised when tiers 1-3 (exact/synonym/keyword) can't place every required
-    column. Carries enough for a human to resolve it via a mapping UI instead
-    of the parser guessing from cell content — see ColumnMappingStep.tsx."""
-
-    def __init__(
-        self,
-        missing_columns: list[str],
-        available_columns: list[str],
-        detected_mapping: dict[str, str],
-        preview_rows: list[dict],
-    ) -> None:
-        super().__init__(f"Price list file is missing required column(s): {missing_columns}")
-        self.missing_columns = missing_columns
-        self.available_columns = available_columns
-        self.detected_mapping = detected_mapping
-        self.preview_rows = preview_rows
-
-# Explicit synonym list, checked first because it's the least likely to
-# misfire. Real DPWH/PSA/supplier files use human column headers, not these
-# literal field names; this covers common variants so files don't have to be
-# manually renamed first. Matching is case/whitespace-insensitive; first
-# match wins if multiple columns could map to the same canonical name.
-# Anything not covered here falls through to the looser tiers below
-# (_KEYWORD_HINTS, then content-based inference) rather than failing outright.
+# Small, explicit synonym list — not fuzzy/NLP matching. Real DPWH/PSA/supplier
+# files use human column headers, not these literal field names; this covers
+# common variants so files don't have to be manually renamed first. Matching is
+# case/whitespace-insensitive; first match wins if multiple columns could map
+# to the same canonical name. If headers are generic, value-based inference
+# below tries to recover the material, unit, and price columns.
 COLUMN_SYNONYMS: dict[str, set[str]] = {
     "raw_name": {
-        "name", "material", "material name", "material description",
-        "item name", "item description", "description", "product",
-        "product name", "product description", "particulars", "commodity",
+        "name", "item name", "product name", "item", "product",
+        "material", "material name", "material description", "commodity",
+        "particulars", "particular", "item particulars", "items",
+        "product description", "item description", "description",
+    },
+    "description": {
+        "description", "specification", "specifications", "spec desc",
+        "description specification", "specification desc",
+        "item specification", "material specification", "specifications description",
+        "particulars", "particular", "item particulars",
     },
     "raw_unit": {
-        "unit", "uom", "unit of measure", "unit of measurement",
-        "measure", "measurement", "packaging",
+        "unit", "uom", "unit of measure", "unit measure", "unit of measurement",
+        "measure", "measurement", "packaging", "u/m", "u m", "um",
+        "units", "u o m", "unit packaging", "unit/packaging",
     },
     "raw_price": {
         "price", "unit price", "unit cost", "cost", "amount", "rate",
-        "unit rate", "selling price", "srp", "value",
+        "unit rate", "market price", "selling price", "price php", "cost php",
+        "unit price php", "unit cost php", "abc unit", "dupa rate",
+        "material cost", "list price", "srp", "supplier price", "quoted price",
+        "unit amount", "price per unit", "rate cost", "latest price",
+    },
+    "raw_brand": {
+        "brand", "brand name", "manufacturer", "brand / manufacturer",
+        "brand/manufacturer", "mfr", "make", "maker", "supplier name",
     },
 }
 
-# Looser fallback for headers the synonym list doesn't cover exactly — matched
-# by substring containment instead of full-header equality, e.g. "Approx. Unit
-# Cost 2026" still hits "cost". Checked in this order (price, then unit, then
-# name) because "price"/"cost"/"rate" are unambiguous, while "name" is broad
-# enough to false-positive on an identifier column like "Material ID" if it
-# were checked against every column instead of only what's left unclaimed.
-_KEYWORD_HINTS: dict[str, tuple[str, ...]] = {
-    "raw_price": ("price", "cost", "amount", "rate", "value", "peso"),
-    "raw_unit": ("unit", "uom", "measure", "pack"),
-    "raw_name": ("name", "desc", "item", "material", "product", "particular", "commodity"),
+UNIT_ALIASES = {
+    "bg", "bag", "bags", "sack", "sacks",
+    "pc", "pcs", "piece", "pieces", "pza", "ea", "each",
+    "m3", "cum", "cu.m", "cu.m.", "cu m", "cubic meter", "cubic meters",
+    "kg", "kgs", "kilo", "kilogram", "kilograms",
+    "lng", "length", "ln.m", "l.m", "lm", "m", "meter", "meters",
+    "sheet", "sht", "roll", "box", "bundle", "bd.ft", "bd ft", "board foot",
+    "gal", "gallon", "liter", "litre",
 }
 
-# Columns whose header identifies them as an ID/code/index rather than actual
-# data — excluded from the keyword fallback tier so "Material ID" never gets
-# mistaken for the name column just because it contains "material".
-_IDENTIFIER_HEADER_RE = re.compile(r"\b(id|code|sku|no|number)\b|#")
+NON_MATERIAL_PATTERNS = [
+    re.compile(r"^\s*(item\s*no\.?|no\.?|qty|quantity|unit|uom|description|particulars|materials?)\s*$", re.I),
+    re.compile(r"\b(grand\s+total|sub\s*total|subtotal|total\s+amount|summary|page\s+\d+)\b", re.I),
+    re.compile(r"\b(section|division|category|chapter|approved budget|abc|bill of quantities)\b", re.I),
+]
+
+MATERIAL_HINT_PATTERN = re.compile(
+    r"\b(cement|concrete|rebar|bar|steel|plywood|lumber|paint|pipe|pvc|gi|sheet|"
+    r"sand|gravel|aggregate|bitumen|asphalt|tile|wire|cable|conduit|block|chb|"
+    r"valve|fitting|nail|screw|bolt|sealant|primer|membrane)\b",
+    re.I,
+)
 
 
-_TRAILING_CURRENCY_RE = re.compile(r"\s+(php|usd|eur|gbp|jpy)$")
+def _header_key(value: Any) -> str:
+    key = re.sub(r"\s+", " ", str(value or "")).strip().lower()
+    key = re.sub(r"\s*\([^)]*\)\s*$", "", key).strip()
+    key = key.replace("_", " ").replace("-", " ").replace("/", " ")
+    key = re.sub(r"[^a-z0-9. ]", "", key)
+    return re.sub(r"\s+", " ", key).strip()
 
 
-def _header_key(col: object) -> str:
-    # Collapse embedded newlines (PDF headers often wrap across two lines
-    # within one cell, e.g. "Unit\nPrice") and underscores (spreadsheet
-    # exports commonly use "Item_Name" / "Unit_Price_PHP") into a single
-    # space before matching.
-    return re.sub(r"[\s_]+", " ", str(col)).strip().lower()
+def _sanitize_text(value: Any) -> str:
+    if value is None or (isinstance(value, float) and pd.isna(value)):
+        return ""
+    return re.sub(r"\s+", " ", str(value).replace("\u00a0", " ")).strip()
 
 
-def _dedupe_and_label_columns(df: pd.DataFrame) -> pd.DataFrame:
-    # A blank or duplicate header (both seen from real pdfplumber extractions —
-    # a merged banner cell, or a repeated ruling line read as an extra empty
-    # column) isn't something a human can pick out of a mapping dropdown, so
-    # give every column a distinct, non-empty label before anything downstream
-    # (matching or the mapping UI) has to reference it by name.
-    seen: dict[str, int] = {}
-    labels = []
-    for i, col in enumerate(df.columns):
-        label = str(col).strip() or f"Column {i + 1}"
-        if label in seen:
-            seen[label] += 1
-            label = f"{label} ({seen[label]})"
+def _is_blank(value: Any) -> bool:
+    return _sanitize_text(value) == ""
+
+
+def _parse_price_value(value: Any) -> float | None:
+    if value is None or (isinstance(value, float) and pd.isna(value)):
+        return None
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return float(value) if float(value) > 0 else None
+
+    text = _sanitize_text(value)
+    if not text:
+        return None
+    has_currency_marker = bool(re.search(r"[₱$]|\b(?:php|peso|pesos)\b", text, re.I))
+    text = re.sub(r"\b(?:php|peso|pesos)\b", "", text, flags=re.I)
+    text = text.replace("₱", "").replace("$", "").replace(",", "")
+    text = text.replace("(", "-").replace(")", "")
+    has_unit_suffix = bool(re.match(r"^\s*-?\d+(?:\.\d+)?\s*(?:/|per)\s*[a-z]", text, re.I))
+    if re.search(r"[a-z]", text, re.I) and not (has_currency_marker or has_unit_suffix):
+        return None
+    match = re.search(r"-?\d+(?:\.\d+)?", text)
+    if not match:
+        return None
+    try:
+        parsed = float(match.group(0))
+    except ValueError:
+        return None
+    return parsed if parsed > 0 else None
+
+
+def _is_probably_sequence(values: list[float]) -> bool:
+    if len(values) < 3:
+        return False
+    ints = [int(value) for value in values if float(value).is_integer()]
+    if len(ints) < len(values) * 0.8:
+        return False
+    expected = list(range(ints[0], ints[0] + len(ints)))
+    return ints == expected
+
+
+def _is_unit_value(value: Any) -> bool:
+    text = _header_key(value)
+    if text in UNIT_ALIASES:
+        return True
+    return bool(re.fullmatch(r"\d+\s?(?:kg|mm|m|in|inch|inches)", text))
+
+
+def _extract_unit_from_text(value: Any) -> str:
+    text = _sanitize_text(value)
+    lowered = text.lower()
+    for alias in sorted(UNIT_ALIASES, key=len, reverse=True):
+        escaped = re.escape(alias).replace(r"\ ", r"\s+")
+        if re.search(rf"\b{escaped}\b", lowered):
+            return alias
+    package_match = re.search(r"\b\d+\s?(kg|mm|m|in|inch|inches)\b", lowered)
+    return package_match.group(1) if package_match else ""
+
+
+def _is_non_material_row(raw_name: Any, raw_price: Any) -> bool:
+    name = _sanitize_text(raw_name)
+    if not name:
+        return True
+    if _parse_price_value(raw_price) is None:
+        return True
+    if any(pattern.search(name) for pattern in NON_MATERIAL_PATTERNS):
+        return True
+    if len(name) <= 2 and not MATERIAL_HINT_PATTERN.search(name):
+        return True
+    return False
+
+
+def _column_priority_for_canonical(column: Any, canonical: str) -> float:
+    key = _header_key(column)
+    if canonical == "raw_name":
+        if any(token in key for token in ["item", "product", "name"]):
+            return 8.0
+        if any(token in key for token in ["material", "commodity"]):
+            return 4.0
+        return 1.0
+    if canonical == "description":
+        if any(token in key for token in ["spec", "description", "particular", "detail"]):
+            return 8.0
+        return 0.0
+    if canonical == "raw_unit":
+        return 4.0 if key in {"unit", "uom", "measure", "measurement", "packaging"} else 0.0
+    if canonical == "raw_price":
+        return 4.0 if key in {"price", "cost", "amount", "rate"} else 0.0
+    return 0.0
+
+
+def _normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
+    df = _promote_embedded_header(df)
+
+    rename_map = {}
+    assigned_columns: set[Any] = set()
+
+    # Check for brand/manufacturer column first
+    for col in df.columns:
+        header_key = _header_key(col)
+        if "raw_brand" not in df.columns and "raw_brand" not in rename_map.values():
+            if any(token in header_key for token in ["brand", "manufacturer", "mfr", "maker"]):
+                rename_map[col] = "raw_brand"
+                assigned_columns.add(col)
+                break
+
+    for col in df.columns:
+        header_key = _header_key(col)
+        if header_key in REQUIRED_COLUMNS:
+            continue
+        if any(token in header_key for token in ["spec", "description", "detail"]):
+            if "description" not in df.columns and "description" not in rename_map.values():
+                rename_map[col] = "description"
+                assigned_columns.add(col)
+
+    if "raw_name" not in df.columns and "raw_name" not in rename_map.values():
+        candidates: list[tuple[float, Any]] = []
+        for col in df.columns:
+            header_key = _header_key(col)
+            if header_key in REQUIRED_COLUMNS:
+                continue
+            if re.search(r"\b(?:item\s+)?(?:no|number|code|id)\b", header_key):
+                continue
+            if any(token in header_key for token in ["material", "product", "name", "particular"]):
+                score = 0.0
+                if "material" in header_key:
+                    score += 4.0
+                if "particular" in header_key:
+                    score += 3.5
+                if "product" in header_key or "name" in header_key:
+                    score += 2.5
+                if "item" in header_key:
+                    score += 1.5
+                if score > 0:
+                    candidates.append((score, col))
+
+        if candidates:
+            _, best_col = max(candidates, key=lambda item: item[0])
+            rename_map[best_col] = "raw_name"
+            assigned_columns.add(best_col)
+
+    for canonical in ("raw_price", "raw_unit"):
+        candidates: list[tuple[float, Any]] = []
+        for col in df.columns:
+            if col in assigned_columns or col in REQUIRED_COLUMNS:
+                continue
+            header_key = _header_key(col)
+            if header_key in REQUIRED_COLUMNS:
+                continue
+            if _header_matches(col) != canonical:
+                continue
+            score = _column_priority_for_canonical(col, canonical)
+            if score > 0:
+                candidates.append((score, col))
+
+        if not candidates:
+            continue
+
+        best_score, best_col = max(candidates, key=lambda item: item[0])
+        if best_score <= 0:
+            continue
+        rename_map[best_col] = canonical
+        assigned_columns.add(best_col)
+
+    renamed = df.rename(columns=rename_map)
+    return _infer_missing_columns(renamed)
+
+
+def _header_matches(value: Any) -> str | None:
+    key = _header_key(value)
+    if any(token in key for token in ["spec", "description", "particular", "detail"]):
+        return "description"
+    # Check for brand/manufacturer column with special handling
+    if any(token in key for token in ["brand", "manufacturer", "mfr", "maker"]):
+        return "raw_brand"
+    for canonical, synonyms in COLUMN_SYNONYMS.items():
+        if key in {_header_key(synonym) for synonym in synonyms}:
+            return canonical
+    return None
+
+
+def _row_header_score(row: pd.Series) -> int:
+    score = 0
+    seen: set[str] = set()
+    for value in row:
+        canonical = _header_matches(value)
+        if canonical and canonical not in seen:
+            score += 2
+            seen.add(canonical)
+    return score
+
+
+def _promote_embedded_header(df: pd.DataFrame) -> pd.DataFrame:
+    if REQUIRED_COLUMNS & set(df.columns):
+        return df
+
+    best_index: int | None = None
+    best_score = 0
+    for index, row in df.head(12).iterrows():
+        score = _row_header_score(row)
+        if score > best_score:
+            best_index = index
+            best_score = score
+
+    if best_index is None or best_score < 4:
+        return df
+
+    promoted = df.iloc[best_index + 1 :].copy()
+    promoted.columns = [
+        _sanitize_text(value) or f"column_{position + 1}"
+        for position, value in enumerate(df.iloc[best_index].tolist())
+    ]
+    promoted = promoted.dropna(how="all")
+    return promoted.reset_index(drop=True)
+
+
+def _column_score_for_price(series: pd.Series) -> float:
+    parsed_values = [_parse_price_value(value) for value in series]
+    values = [value for value in parsed_values if value is not None]
+    if not values:
+        return 0
+
+    score = float(len(values) * 3)
+    if _is_probably_sequence(values):
+        score -= len(values) * 4
+    for raw_value in series:
+        text = _sanitize_text(raw_value)
+        if re.search(r"[₱$]|php|\d,\d{3}|\d+\.\d{2}\b", text, re.I):
+            score += 1
+    if sum(value >= 20 for value in values) >= max(1, len(values) // 2):
+        score += 2
+    return max(score, 0)
+
+
+def _column_score_for_unit(series: pd.Series) -> float:
+    values = [value for value in series if not _is_blank(value)]
+    if not values:
+        return 0
+    unit_count = sum(_is_unit_value(value) for value in values)
+    return float(unit_count * 3 - (len(values) - unit_count))
+
+
+def _column_score_for_name(series: pd.Series) -> float:
+    score = 0.0
+    for value in series:
+        text = _sanitize_text(value)
+        if len(text) < 3 or _parse_price_value(text) is not None or _is_unit_value(text):
+            continue
+
+        lower_text = text.lower()
+        if any(token in lower_text for token in ["spec", "description", "particular", "article", "product"]):
+            score += 6
+        if MATERIAL_HINT_PATTERN.search(text):
+            score += 4
         else:
-            seen[label] = 1
-        labels.append(label)
-    df = df.copy()
-    df.columns = labels
+            score += 1
+        if len(text) > 12:
+            score += 1
+    return score
+
+
+def _best_column(df: pd.DataFrame, scorer, excluded: set[Any]) -> Any | None:
+    candidates = [(scorer(df[col]), position, col) for position, col in enumerate(df.columns) if col not in excluded]
+    candidates = [candidate for candidate in candidates if candidate[0] > 0]
+    if not candidates:
+        return None
+    candidates.sort(key=lambda candidate: (candidate[0], candidate[1]), reverse=True)
+    return candidates[0][2]
+
+
+def _infer_missing_columns(df: pd.DataFrame) -> pd.DataFrame:
+    rename_map: dict[Any, str] = {}
+    existing = REQUIRED_COLUMNS & set(df.columns)
+    assigned: set[Any] = set()
+
+    if "raw_price" not in existing:
+        price_col = _best_column(df, _column_score_for_price, existing | assigned)
+        if price_col:
+            rename_map[price_col] = "raw_price"
+            existing.add("raw_price")
+            assigned.add(price_col)
+
+    if "raw_unit" not in existing:
+        unit_col = _best_column(df, _column_score_for_unit, existing | assigned)
+        if unit_col:
+            rename_map[unit_col] = "raw_unit"
+            existing.add("raw_unit")
+            assigned.add(unit_col)
+
+    if "raw_name" not in existing:
+        name_col = _best_column(df, _column_score_for_name, existing | assigned)
+        if name_col:
+            rename_map[name_col] = "raw_name"
+
+    if rename_map:
+        df = df.rename(columns=rename_map)
+    
+    # Ensure raw_brand column exists; fill with "Generic" if missing
+    if "raw_brand" not in df.columns:
+        df["raw_brand"] = "Generic"
+    
     return df
 
 
-def _synonym_rename_map(df: pd.DataFrame) -> dict:
-    lookup = {
-        synonym: canonical for canonical, synonyms in COLUMN_SYNONYMS.items() for synonym in synonyms
-    }
-
-    rename_map = {}
-    for col in df.columns:
-        key = _header_key(col)
-        if key in REQUIRED_COLUMNS:
-            continue
-        # Try again with a trailing currency annotation stripped — either
-        # parenthetical ("Price (PHP)") or bare ("Unit_Price_PHP") — real
-        # price lists commonly tack a currency/unit hint onto an otherwise-
-        # recognized header.
-        stripped_key = re.sub(r"\s*\([^)]*\)\s*$", "", key).strip()
-        stripped_key = _TRAILING_CURRENCY_RE.sub("", stripped_key).strip()
-        canonical = lookup.get(key) or lookup.get(stripped_key)
-        if canonical and canonical not in df.columns and canonical not in rename_map.values():
-            rename_map[col] = canonical
-
-    return rename_map
+def _clean_pdf_row(row: list[Any]) -> list[str]:
+    return [_sanitize_text(cell) for cell in row]
 
 
-def _looks_like_identifier(header_key: str) -> bool:
-    return bool(_IDENTIFIER_HEADER_RE.search(header_key))
+def _pad_pdf_rows(rows: list[list[str]], width: int) -> list[list[str]]:
+    return [row + [""] * (width - len(row)) for row in rows]
 
 
-def _keyword_fallback_match(df: pd.DataFrame, unclaimed: list, missing: set[str]) -> dict:
-    rename_map: dict = {}
-    for canonical in ("raw_price", "raw_unit", "raw_name"):
-        if canonical not in missing:
-            continue
-        for col in unclaimed:
-            if col in rename_map:
-                continue
-            key = _header_key(col)
-            if _looks_like_identifier(key):
-                continue
-            if any(hint in key for hint in _KEYWORD_HINTS[canonical]):
-                rename_map[col] = canonical
-                break
-    return rename_map
+def _pdf_table_to_dataframe(table: list[list[Any]]) -> pd.DataFrame | None:
+    cleaned_rows = [_clean_pdf_row(row) for row in table if row and any(not _is_blank(cell) for cell in row)]
+    if not cleaned_rows:
+        return None
 
+    width = max(len(row) for row in cleaned_rows)
+    padded_rows = _pad_pdf_rows(cleaned_rows, width)
 
-def _known_header_hits(row: list[str]) -> int:
-    known_keys = REQUIRED_COLUMNS | {
-        synonym for synonyms in COLUMN_SYNONYMS.values() for synonym in synonyms
-    }
-    hits = 0
-    for cell in row:
-        key = _header_key(cell)
-        stripped_key = _TRAILING_CURRENCY_RE.sub(
-            "", re.sub(r"\s*\([^)]*\)\s*$", "", key).strip()
-        ).strip()
-        if key in known_keys or stripped_key in known_keys:
-            hits += 1
-    return hits
+    header_index: int | None = None
+    header_score = 0
+    for index, row in enumerate(padded_rows[:12]):
+        non_blank_count = sum(not _is_blank(cell) for cell in row)
+        score = _row_header_score(pd.Series(row))
+        if non_blank_count >= 2 and score > header_score:
+            header_index = index
+            header_score = score
+
+    if header_index is not None and header_score >= 4:
+        header = [
+            _sanitize_text(value) or f"column_{position + 1}"
+            for position, value in enumerate(padded_rows[header_index])
+        ]
+        body = [
+            row
+            for row in padded_rows[header_index + 1 :]
+            if [_header_key(cell) for cell in row] != [_header_key(cell) for cell in header]
+        ]
+    else:
+        header = [f"column_{position + 1}" for position in range(width)]
+        body = padded_rows
+
+    if not body:
+        return None
+    return pd.DataFrame(body, columns=header)
 
 
 def _parse_pdf(path: Path) -> pd.DataFrame:
     # Relies on pdfplumber detecting an actual ruled/gridded table in the PDF
     # (as DPWH/PSA/supplier price-list PDFs typically have) — this is not OCR
     # and won't extract a table from a plain text layout or a scanned image.
-    rows: list[list[str]] = []
-    header: list[str] | None = None
+    frames: list[pd.DataFrame] = []
 
     with pdfplumber.open(path) as pdf:
         for page in pdf.pages:
             for table in page.extract_tables():
-                if not table:
-                    continue
-                cleaned = [[str(cell or "").strip() for cell in row] for row in table]
-                if header is None:
-                    # A title/date banner above the table is sometimes merged
-                    # into the same extracted table as row 0 (e.g. a report
-                    # header spanning the full width) — scan for the first
-                    # row that actually looks like a header instead of
-                    # assuming row 0 is it.
-                    header_idx = next(
-                        (i for i, r in enumerate(cleaned) if _known_header_hits(r) >= 2),
-                        0,
-                    )
-                    header = cleaned[header_idx]
-                    body = cleaned[header_idx + 1 :]
-                elif cleaned[0] == header:
-                    body = cleaned[1:]  # repeated header row on a later page/table
-                else:
-                    body = cleaned
-                rows.extend(body)
+                frame = _pdf_table_to_dataframe(table)
+                if frame is not None:
+                    frames.append(frame)
 
-    if header is None:
-        raise ValueError("No table found in PDF price list")
+    if not frames:
+        return _parse_pdf_text(path)
 
-    df = pd.DataFrame(rows, columns=header)
+    df = pd.concat(frames, ignore_index=True, sort=False)
     df = df.map(lambda cell: cell.strip() if isinstance(cell, str) else cell)
     return df
 
 
-def parse_pricelist_file(file_path: str, column_mapping: dict[str, str] | None = None) -> pd.DataFrame:
-    """column_mapping, when given, is canonical -> original header (e.g.
-    {"raw_name": "Full Item Description", ...}) — a human-confirmed mapping
-    from ColumnMappingStep.tsx, taking precedence over auto-detection so a
-    file that tiers 1-3 couldn't place doesn't need a second guess."""
+def _parse_pdf_text(path: Path) -> pd.DataFrame:
+    rows: list[dict[str, str]] = []
+    with pdfplumber.open(path) as pdf:
+        for page in pdf.pages:
+            text = page.extract_text() or ""
+            for raw_line in text.splitlines():
+                line = re.sub(r"\s+", " ", raw_line).strip()
+                if not line:
+                    continue
+                price_match = re.search(r"(?:₱|PHP|Php)?\s*\d[\d,]*(?:\.\d{1,2})\s*$", line)
+                if not price_match:
+                    continue
+                price_text = price_match.group(0)
+                before_price = line[: price_match.start()].strip()
+                parts = [part.strip() for part in re.split(r"\s{2,}|\|", before_price) if part.strip()]
+                if len(parts) >= 2 and _is_unit_value(parts[-1]):
+                    raw_name = " ".join(parts[:-1])
+                    raw_unit = parts[-1]
+                else:
+                    unit_match = re.search(r"\b(bg|bags?|pcs?|pza|piece|m3|cum|cu\.?m|kg|kilo|lng|length|sheet|sht|roll|box|bundle|gal|gallon)\b", before_price, re.I)
+                    if not unit_match:
+                        continue
+                    raw_name = before_price[: unit_match.start()].strip()
+                    raw_unit = unit_match.group(0)
+                rows.append({"raw_name": raw_name, "raw_unit": raw_unit, "raw_price": price_text})
+    if not rows:
+        raise ValueError("No table found in PDF price list")
+    return pd.DataFrame(rows)
+
+
+def parse_pricelist_file(file_path: str) -> pd.DataFrame:
     path = Path(file_path)
     suffix = path.suffix.lower()
 
     if suffix == ".csv":
         df = pd.read_csv(path)
     elif suffix in (".xlsx", ".xls"):
-        df = pd.read_excel(path)
+        # Prefer openpyxl for modern .xlsx files but fall back to pandas'
+        # default engine if that's not available. Provide a clear error
+        # message when common Excel engine dependencies are missing.
+        try:
+            df = pd.read_excel(path, engine="openpyxl")
+        except Exception as exc_openpyxl:
+            try:
+                df = pd.read_excel(path)
+            except KeyError as ek:
+                # KeyError from pandas' engine registry (`io.excel.zip.reader`)
+                raise ValueError(
+                    "Reading Excel files requires the appropriate engine package (e.g. 'openpyxl' for .xlsx). "
+                    "Install it in your environment and retry. Original error: %s" % ek
+                ) from ek
+            except Exception as exc_other:
+                # If the fallback also fails, surface a helpful message
+                raise ValueError(f"Unable to read Excel file {file_path!r}: {exc_other}") from exc_other
     elif suffix == ".pdf":
         df = _parse_pdf(path)
     else:
@@ -215,57 +511,29 @@ def parse_pricelist_file(file_path: str, column_mapping: dict[str, str] | None =
 
     df = _dedupe_and_label_columns(df)
 
-    if column_mapping is not None:
-        unknown = set(column_mapping.values()) - set(df.columns)
-        if unknown:
-            raise ValueError(f"Column mapping references column(s) not found in file: {sorted(unknown)}")
-        missing_fields = REQUIRED_COLUMNS - set(column_mapping.keys())
-        if missing_fields:
-            raise ValueError(f"Column mapping is missing required field(s): {sorted(missing_fields)}")
-        df = df.rename(columns={original: canonical for canonical, original in column_mapping.items()})
-    else:
-        original_columns = list(df.columns)
-        preview_rows = df.head(5).astype(str).to_dict(orient="records")
-
-        rename_map = _synonym_rename_map(df)
-        df = df.rename(columns=rename_map)
-
+    missing = REQUIRED_COLUMNS - set(df.columns)
+    if "raw_unit" in missing and "raw_name" in df.columns:
+        df["raw_unit"] = df["raw_name"].map(_extract_unit_from_text)
         missing = REQUIRED_COLUMNS - set(df.columns)
-        if missing:
-            unclaimed = [c for c in df.columns if c not in REQUIRED_COLUMNS]
-            keyword_map = _keyword_fallback_match(df, unclaimed, missing)
-            rename_map.update(keyword_map)
-            df = df.rename(columns=keyword_map)
-            missing = REQUIRED_COLUMNS - set(df.columns)
 
-        if missing:
-            # raw_name has no safe way to guess past this point: unlike price
-            # (numeric-heavy) or unit (small vocabulary), there's no reliable
-            # cell-content signal for "this is the item name" — the wrong
-            # guess would silently mislabel e.g. a Category column as the
-            # item name. Surface what tiers 1-3 DID resolve plus every raw
-            # header so ColumnMappingStep.tsx can let a human finish it.
-            detected_mapping = {canonical: original for original, canonical in rename_map.items()}
-            raise MissingColumnsError(
-                missing_columns=sorted(missing),
-                available_columns=original_columns,
-                detected_mapping=detected_mapping,
-                preview_rows=preview_rows,
-            )
-
-    if not pd.api.types.is_numeric_dtype(df["raw_price"]):
-        # pandas 3.x infers a proper string dtype (not the legacy numpy
-        # `object` dtype) for text columns like PDF-extracted cells, so
-        # checking dtype == object here would miss them entirely. Real PDF
-        # price lists commonly format four-figure prices with a thousands
-        # separator (e.g. "4,200.00") — strip it before coercion, or
-        # to_numeric silently turns the whole cell into NaN.
-        cleaned_price = df["raw_price"].astype(str).str.replace(",", "", regex=False)
-        df["raw_price"] = pd.to_numeric(cleaned_price, errors="coerce")
-
-    # Drop blank rows (e.g. a footer/page-break artifact picked up as an
-    # extra table row) — an empty raw_name isn't a real line item and would
-    # otherwise surface as a garbage entry in the review queue.
-    df = df[df["raw_name"].astype(str).str.strip() != ""].reset_index(drop=True)
+    if missing:
+        raise ValueError(f"Price list file is missing required column(s): {sorted(missing)}")
+    
+    # Ensure raw_brand column exists; fill with "Generic" if missing
+    if "raw_brand" not in df.columns:
+        df["raw_brand"] = "Generic"
+    
+    # Fill empty/null brand values with "Generic"
+    df["raw_brand"] = df["raw_brand"].fillna("Generic")
+    df["raw_brand"] = df["raw_brand"].apply(lambda x: "Generic" if (isinstance(x, str) and x.strip() == "") else x)
+    
+    df = df.copy()
+    df["raw_name"] = df["raw_name"].map(_sanitize_text)
+    if "description" in df.columns:
+        df["description"] = df["description"].map(_sanitize_text)
+    df["raw_unit"] = df["raw_unit"].map(_sanitize_text)
+    df["raw_price"] = df["raw_price"].map(_parse_price_value)
+    df = df[~df.apply(lambda row: _is_non_material_row(row["raw_name"], row["raw_price"]), axis=1)]
+    df = df.reset_index(drop=True)
 
     return df
