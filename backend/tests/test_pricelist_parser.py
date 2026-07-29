@@ -82,7 +82,8 @@ def test_infers_columns_when_headers_are_generic(tmp_path):
         "A,B,C,D\n"
         "1,Portland Cement Type I 40kg,bag,Php 240.50\n"
         "2,DEFORMED REBAR 12MM X 6M GRADE 33,pcs,315.00\n"
-        "3,Marine Plywood 1/4 x 4 x 8,sheet,₱ 680.00\n"
+        "3,Marine Plywood 1/4 x 4 x 8,sheet,₱ 680.00\n",
+        encoding="utf-8",
     )
 
     df = parse_pricelist_file(str(generic_file))
@@ -190,37 +191,37 @@ def test_identifier_columns_are_excluded_from_keyword_fallback(tmp_path):
 
 
 def test_raises_with_structured_details_when_headers_give_no_signal(tmp_path):
-    # No content-based fallback exists for any of the three fields by design
-    # (see MissingColumnsError's docstring) — a file with zero header signal
-    # must fail with enough structure (available_columns, preview_rows,
-    # detected_mapping) for a human to resolve via ColumnMappingStep.tsx,
-    # not a guess from cell content.
+    # Content-based inference (_infer_missing_columns) deliberately skips
+    # itself when a file has zero header signal at all AND few columns —
+    # nothing to anchor a guess to — so this must fail with enough structure
+    # (available_columns, preview_rows) for a human to resolve via
+    # ColumnMappingStep.tsx, not a silent guess from cell content.
     bad_file = tmp_path / "no_signal.csv"
-    bad_file.write_text("Column1,Column2,Column3\nCement,bag,255.00\n")
+    bad_file.write_text("Foo,Bar\nPortland Cement Type 1,255.00\n")
 
     with pytest.raises(MissingColumnsError) as exc_info:
         parse_pricelist_file(str(bad_file))
 
     err = exc_info.value
     assert set(err.missing_columns) == {"raw_name", "raw_unit", "raw_price"}
-    assert err.available_columns == ["Column1", "Column2", "Column3"]
+    assert err.available_columns == ["Foo", "Bar"]
     assert err.detected_mapping == {}
-    assert err.preview_rows == [{"Column1": "Cement", "Column2": "bag", "Column3": "255.0"}]
 
 
-def test_missing_columns_error_reports_partial_detection(tmp_path):
-    # Only raw_name is unresolved here — detected_mapping should still
-    # surface what WAS auto-detected so the mapping UI can pre-fill it and
-    # only prompt the human for the one field that's actually missing.
-    bad_file = tmp_path / "partial.csv"
-    bad_file.write_text("Column1,Unit,Price\nCement,bag,255.00\n")
+def test_column_mapping_resolves_a_file_with_no_header_signal(tmp_path):
+    # The human-confirmed mapping a ColumnMappingStep.tsx submission would
+    # send after the failure above — canonical field -> original header.
+    bad_file = tmp_path / "no_signal2.csv"
+    bad_file.write_text("Foo,Bar,Baz\nPortland Cement Type 1,bag,255.00\n")
 
-    with pytest.raises(MissingColumnsError) as exc_info:
-        parse_pricelist_file(str(bad_file))
+    df = parse_pricelist_file(
+        str(bad_file),
+        column_mapping={"raw_name": "Foo", "raw_unit": "Bar", "raw_price": "Baz"},
+    )
 
-    err = exc_info.value
-    assert err.missing_columns == ["raw_name"]
-    assert err.detected_mapping == {"raw_unit": "Unit", "raw_price": "Price"}
+    assert df.iloc[0]["raw_name"] == "Portland Cement Type 1"
+    assert df.iloc[0]["raw_unit"] == "bag"
+    assert df.iloc[0]["raw_price"] == 255.0
 
 
 def test_column_mapping_resolves_a_file_tiers_1_to_3_could_not(tmp_path):

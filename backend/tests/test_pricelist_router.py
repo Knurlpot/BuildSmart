@@ -48,7 +48,11 @@ def test_upload_triggers_task_without_a_real_worker():
 
 
 def test_upload_with_unrecognized_columns_returns_structured_422():
-    csv_bytes = b"Column1,Column2,Column3\nCement,bag,255.00\n"
+    # "Foo"/"Bar" give zero header signal and aren't generic-named (unlike
+    # "Column1" etc, which the parser's content-based inference gate treats
+    # differently — see parse_pricelist_file) — this is the combination that
+    # reliably reaches the structured MissingColumnsError path.
+    csv_bytes = b"Foo,Bar\nPortland Cement Type 1,255.00\n"
 
     with patch.object(pricelist_router.normalize_price_list, "delay") as mock_delay:
         response = client.post(
@@ -61,7 +65,7 @@ def test_upload_with_unrecognized_columns_returns_structured_422():
     assert response.status_code == 422
     body = response.json()
     assert set(body["missing_columns"]) == {"raw_name", "raw_unit", "raw_price"}
-    assert body["available_columns"] == ["Column1", "Column2", "Column3"]
+    assert body["available_columns"] == ["Foo", "Bar"]
     assert body["detected_mapping"] == {}
     assert "upload_id" in body
 
@@ -69,7 +73,7 @@ def test_upload_with_unrecognized_columns_returns_structured_422():
 
 
 def test_confirm_mapping_triggers_task_after_manual_resolution():
-    csv_bytes = b"Column1,Column2,Column3\nCement,bag,255.00\n"
+    csv_bytes = b"Foo,Bar,Baz\nPortland Cement Type 1,bag,255.00\n"
     fake_result = SimpleNamespace(id="fake-task-id-2")
 
     upload_response = client.post(
@@ -83,9 +87,9 @@ def test_confirm_mapping_triggers_task_after_manual_resolution():
         response = client.post(
             f"/pricelist/upload/{upload_id}/confirm-mapping",
             data={
-                "raw_name_column": "Column1",
-                "raw_unit_column": "Column2",
-                "raw_price_column": "Column3",
+                "raw_name_column": "Foo",
+                "raw_unit_column": "Bar",
+                "raw_price_column": "Baz",
                 "source": "Supplier",
             },
         )
@@ -94,7 +98,7 @@ def test_confirm_mapping_triggers_task_after_manual_resolution():
     assert response.json() == {"task_id": "fake-task-id-2"}
     assert mock_delay.call_count == 1
     saved_path, source, supplier_id, use_mock, column_mapping = mock_delay.call_args.args
-    assert column_mapping == {"raw_name": "Column1", "raw_unit": "Column2", "raw_price": "Column3"}
+    assert column_mapping == {"raw_name": "Foo", "raw_unit": "Bar", "raw_price": "Baz"}
 
     _cleanup_upload(upload_id)
 
@@ -180,6 +184,56 @@ def test_review_list_returns_only_pending_items(db_session):
     assert matched["raw_name"] == "Vinyl Floor Tile 300x300"
     assert matched["status"] == "Pending"
     assert matched["suggested_category_type"] == "Structural"
+
+
+def test_clear_pending_review_deletes_only_pending_items(db_session):
+    pending_item = PriceListReviewItem(
+        raw_name="Vinyl Floor Tile 300x300",
+        raw_unit="box",
+        raw_price=620.00,
+        confidence=0.2717,
+        suggested_category_type="Structural",
+        suggested_material="Cement",
+        suggested_brand="Holcim",
+        source="Supplier",
+        supplier_id=None,
+    )
+    approved_item = PriceListReviewItem(
+        raw_name="Already Reviewed Item",
+        raw_unit="pc",
+        raw_price=100.00,
+        confidence=0.5,
+        suggested_category_type="Finishing",
+        suggested_material="Paint",
+        suggested_brand="Boysen",
+        source="Supplier",
+        supplier_id=None,
+        status="Approved",
+    )
+    db_session.add_all([pending_item, approved_item])
+    db_session.flush()
+    approved_id = approved_item.review_id
+
+    def override_get_db():
+        yield db_session
+
+    app.dependency_overrides[get_db] = override_get_db
+    try:
+        response = client.delete("/pricelist/review")
+        list_response = client.get("/pricelist/review")
+    finally:
+        del app.dependency_overrides[get_db]
+
+    assert response.status_code == 200
+    assert response.json()["deleted_count"] >= 1  # at least this test's own pending row
+
+    remaining_ids = {item["review_id"] for item in list_response.json()}
+    assert remaining_ids == set()  # every Pending row is gone, this test's included
+
+    # The Approved row must survive — DELETE only targets status == "Pending".
+    still_there = db_session.get(PriceListReviewItem, approved_id)
+    assert still_there is not None
+    assert still_there.status == "Approved"
 
 
 def test_update_review_item_edits_pending_row(db_session):

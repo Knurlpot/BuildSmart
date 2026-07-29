@@ -18,3 +18,4 @@ camelot-py==0.11.1
 pdf2image==1.17.0
 pytesseract==0.13.0
 apscheduler==3.10.1
+beautifulsoup4==4.15.0

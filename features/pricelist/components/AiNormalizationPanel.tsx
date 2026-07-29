@@ -18,12 +18,17 @@ import {
   Zap,
 } from "lucide-react";
 import { QueryState } from "@/components/feedback/QueryState";
+import { ColumnMappingStep, type DetectedColumn } from "./ColumnMappingStep";
 import {
+  NORMALIZATION_FIELD_LABELS,
   usePricelistNormalization,
+  type NormalizationField,
   type PricelistReviewItem,
   type PricelistReviewItemUpdate,
   type QueueItem,
 } from "@/hooks/usePricelistNormalization";
+
+const NORMALIZATION_FIELDS: NormalizationField[] = ["raw_name", "raw_unit", "raw_price"];
 
 const SOURCES = ["DPWH", "PSA", "Supplier", "Internal"] as const;
 const CATEGORIES = [
@@ -308,6 +313,8 @@ export function AiNormalizationPanel() {
   const {
     queue,
     enqueueFiles,
+    resolveColumnMapping,
+    cancelColumnMapping,
     clearFinishedQueueItems,
     updateReviewItem,
     deleteReviewItem,
@@ -315,7 +322,65 @@ export function AiNormalizationPanel() {
     isLoadingReview,
     reviewError,
     refetchReview,
+    clearPendingReview,
+    isClearingReview,
+    clearReviewError,
   } = usePricelistNormalization();
+
+  const mappingItem = queue.find((item) => item.status === "needs_mapping");
+
+  // Draft mapping for whichever file is currently stuck in 'needs_mapping' —
+  // pre-filled from what the backend's tiers 1-3 DID resolve, so the user
+  // only has to pick the field(s) that actually need a human. Only one item
+  // can be in this state at a time (see usePricelistNormalization's queue
+  // guard), so a single draft is enough.
+  const [mappingColumns, setMappingColumns] = useState<DetectedColumn<NormalizationField>[]>([]);
+
+  useEffect(() => {
+    if (!mappingItem?.mappingInfo) return;
+    const { availableColumns, detectedMapping } = mappingItem.mappingInfo;
+    setMappingColumns(
+      availableColumns.map((col) => ({
+        raw_column: col,
+        mapped_field:
+          NORMALIZATION_FIELDS.find((field) => detectedMapping[field] === col) ?? null,
+        source_files: [mappingItem.file.name],
+      }))
+    );
+    // Re-derive only when a (possibly different) file's mapping info shows up, not on every
+    // queue update — otherwise every edit to mappingColumns itself would get clobbered by
+    // this effect re-running off the same mappingItem reference.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mappingItem?.mappingInfo]);
+
+  const updateMappingColumn = (rawColumn: string, mappedField: NormalizationField | null) => {
+    setMappingColumns((prev) => prev.map((c) => (c.raw_column === rawColumn ? { ...c, mapped_field: mappedField } : c)));
+  };
+
+  const mappingComplete = NORMALIZATION_FIELDS.every((field) =>
+    mappingColumns.some((c) => c.mapped_field === field)
+  );
+
+  const handleConfirmMapping = () => {
+    if (!mappingItem || !mappingComplete) return;
+    const mapping = Object.fromEntries(
+      NORMALIZATION_FIELDS.map((field) => [field, mappingColumns.find((c) => c.mapped_field === field)!.raw_column])
+    ) as Record<NormalizationField, string>;
+    resolveColumnMapping(mappingItem.id, mapping);
+  };
+
+  // Two-click inline confirm rather than a native confirm() dialog — this
+  // permanently deletes every Pending row with no undo.
+  const [confirmingClear, setConfirmingClear] = useState(false);
+
+  const handleClearReview = () => {
+    if (!confirmingClear) {
+      setConfirmingClear(true);
+      return;
+    }
+    setConfirmingClear(false);
+    clearPendingReview().catch(() => {});
+  };
 
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
   const [fileTypeError, setFileTypeError] = useState<string | null>(null);

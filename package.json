@@ -11,6 +11,7 @@
   "dependencies": {
     "@tanstack/react-table": "^8.21.3",
     "@types/pg": "^8.20.0",
+    "class-variance-authority": "^0.7.1",
     "lucide-react": "^1.24.0",
     "mysql2": "^3.23.0",
     "next": "16.2.9",

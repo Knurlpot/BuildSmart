@@ -152,9 +152,15 @@ class ResolveBulkRequest(BaseModel):
 
 def _resolve_category_id(db: Session, category_type: str | None) -> int:
     if category_type:
+        # .first() rather than .scalar_one_or_none() — category_type has no
+        # uniqueness constraint, and the real catalog already has more than
+        # one "Structural" row; picking the lowest id is deterministic and
+        # avoids crashing approval on a pre-existing data duplicate.
         category = db.execute(
-            select(Category).where(Category.category_type == category_type.strip())
-        ).scalar_one_or_none()
+            select(Category)
+            .where(Category.category_type == category_type.strip())
+            .order_by(Category.category_id)
+        ).scalars().first()
         if category is not None:
             return category.category_id
 
@@ -281,6 +287,13 @@ async def upload_pricelist(
                 upload_id=upload_id,
             ).model_dump(),
         )
+    except ValueError as exc:
+        # Not every column-match failure qualifies for the structured
+        # MissingColumnsError path (see parse_pricelist_file's narrow gate for
+        # it) — an unsupported extension, unreadable file, or a wide/generic
+        # header set still raises a plain ValueError, and that must reach the
+        # client as a clean 4xx too, not bubble up as an unhandled 500.
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     task = normalize_price_list.delay(str(dest), source, supplier_id, use_mock)
     return UploadResponse(task_id=task.id)
@@ -351,6 +364,19 @@ def list_review_items(db: Session = Depends(get_db)):
         select(PriceListReviewItem).where(PriceListReviewItem.status == "Pending")
     ).scalars().all()
     return rows
+
+
+@router.delete("/review", response_model=ClearReviewResponse)
+def clear_pending_review(db: Session = Depends(get_db)):
+    # Scoped to Pending only, matching list_review_items — an Approved/Rejected/
+    # Deleted row (from the per-row PATCH workflow below) isn't shown in this
+    # list and shouldn't be touched by a button whose whole premise is "clear
+    # what I see". Hard DELETE (not a status flip like the per-row path) is
+    # intentional here — this is a bulk "wipe pipeline-test clutter" action,
+    # not a reviewed decision that needs an audit trail.
+    result = db.execute(delete(PriceListReviewItem).where(PriceListReviewItem.status == "Pending"))
+    db.commit()
+    return ClearReviewResponse(deleted_count=result.rowcount)
 
 
 @router.patch("/review/{review_id}", response_model=ReviewItemResponse)
