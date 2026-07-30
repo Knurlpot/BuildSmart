@@ -1,24 +1,27 @@
 "use client";
 
-import { AlertTriangle, ChevronDown, ChevronUp, ListOrdered } from "lucide-react";
+import { useState } from "react";
+import { GripVertical, ListOrdered } from "lucide-react";
 import { QueryState } from "@/components/feedback/QueryState";
 import { usePricelistSourcePriority } from "@/hooks/usePricelistSourcePriority";
 
-export function SourcePriorityTab() {
-  const { list, isLoading, error, refetch, move, isDirty, saveOrder, isSaving, saveError, saved } =
-    usePricelistSourcePriority();
+interface SourcePriorityTabProps {
+  companyId?: number | null;
+}
+
+export function SourcePriorityTab({ companyId }: SourcePriorityTabProps) {
+  const { list, isLoading, error, refetch, reorder, isDirty, saveOrder, isSaving, saveError, saved } =
+    usePricelistSourcePriority(companyId ?? undefined);
+  const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
+  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
+
+  const finishDrag = () => {
+    setDraggedIndex(null);
+    setDragOverIndex(null);
+  };
 
   return (
     <div className="flex flex-col gap-5">
-      <div className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-        <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-        <span>
-          There is no source-priority table in the authoritative 13-table schema yet — this is modeled
-          against a guessed shape so the page is reviewable now, not a confirmed contract. Persisting this
-          rule needs a backend schema addition.
-        </span>
-      </div>
-
       <div className="rounded-2xl border border-gray-200 bg-white p-5">
         <div className="mb-4 flex items-center gap-2">
           <ListOrdered className="h-4 w-4 text-gray-400" />
@@ -40,31 +43,40 @@ export function SourcePriorityTab() {
           <div className="flex flex-col gap-2">
             {list.map((entry, i) => (
               <div
-                key={entry.source}
-                className="flex items-center gap-3 rounded-xl border border-gray-100 bg-gray-50/60 px-4 py-3"
+                key={entry.price_source}
+                draggable
+                onDragStart={(event) => {
+                  setDraggedIndex(i);
+                  event.dataTransfer.effectAllowed = "move";
+                  event.dataTransfer.setData("text/plain", entry.price_source);
+                }}
+                onDragOver={(event) => {
+                  event.preventDefault();
+                  event.dataTransfer.dropEffect = "move";
+                  setDragOverIndex(i);
+                }}
+                onDragLeave={() => setDragOverIndex((current) => (current === i ? null : current))}
+                onDrop={(event) => {
+                  event.preventDefault();
+                  if (draggedIndex !== null) {
+                    reorder(draggedIndex, i);
+                  }
+                  finishDrag();
+                }}
+                onDragEnd={finishDrag}
+                className={`flex cursor-grab items-center gap-3 rounded-xl border px-4 py-3 transition active:cursor-grabbing ${
+                  draggedIndex === i
+                    ? "border-primary/40 bg-orange-50 opacity-70"
+                    : dragOverIndex === i
+                      ? "border-primary/50 bg-orange-50/60"
+                      : "border-gray-100 bg-gray-50/60 hover:border-gray-200 hover:bg-white"
+                }`}
               >
+                <GripVertical className="h-4 w-4 shrink-0 text-gray-300" aria-hidden="true" />
                 <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary text-xs font-bold text-primary-foreground">
                   {i + 1}
                 </span>
-                <span className="flex-1 text-sm font-semibold text-gray-800">{entry.source}</span>
-                <div className="flex gap-1">
-                  <button
-                    type="button"
-                    disabled={i === 0}
-                    onClick={() => move(i, -1)}
-                    className="rounded-lg border border-gray-200 bg-white p-1.5 text-gray-500 transition hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-30"
-                  >
-                    <ChevronUp className="h-3.5 w-3.5" />
-                  </button>
-                  <button
-                    type="button"
-                    disabled={i === list.length - 1}
-                    onClick={() => move(i, 1)}
-                    className="rounded-lg border border-gray-200 bg-white p-1.5 text-gray-500 transition hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-30"
-                  >
-                    <ChevronDown className="h-3.5 w-3.5" />
-                  </button>
-                </div>
+                <span className="flex-1 text-sm font-semibold text-gray-800">{entry.price_source}</span>
               </div>
             ))}
           </div>

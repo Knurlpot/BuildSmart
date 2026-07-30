@@ -84,7 +84,7 @@ export default function PricelistPage() {
 
         {activeTab === "upload" && <AiNormalizationPanel companyId={companyId} />}
         {activeTab === "published" && <PublishedSourceTab onViewCatalog={goToCatalog} />}
-        {activeTab === "priority" && <SourcePriorityTab />}
+        {activeTab === "priority" && <SourcePriorityTab companyId={companyId} />}
         {activeTab === "trends" && <PriceTrendsPanel compact />}
         {activeTab === "catalog" && <PriceCatalogTab />}
       </div>

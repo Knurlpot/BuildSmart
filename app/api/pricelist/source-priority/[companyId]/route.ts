@@ -4,10 +4,10 @@ const API_BASE = process.env.NEXT_PUBLIC_NORMALIZATION_API_BASE_URL || "http://l
 
 export async function GET(
   request: Request,
-  { params }: { params: { companyId: string } }
+  { params }: { params: Promise<{ companyId: string }> }
 ) {
   try {
-    const { companyId } = params;
+    const { companyId } = await params;
 
     const response = await fetch(`${API_BASE}/pricelist/source-priority/${companyId}`, {
       method: "GET",
@@ -35,10 +35,10 @@ export async function GET(
 
 export async function POST(
   request: Request,
-  { params }: { params: { companyId: string } }
+  { params }: { params: Promise<{ companyId: string }> }
 ) {
   try {
-    const { companyId } = params;
+    const { companyId } = await params;
     const body = await request.json();
 
     const response = await fetch(`${API_BASE}/pricelist/source-priority/${companyId}`, {

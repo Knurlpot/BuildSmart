@@ -148,6 +148,11 @@ type ReviewEditDraft = {
   color: string;
 };
 
+type PendingFileEntry = {
+  id: string;
+  file: File;
+};
+
 function reviewItemToDraft(item: PricelistReviewItem): ReviewEditDraft {
   const initialDescription = item.description || item.suggested_brand || "";
   const initialBrand = item.description ? item.suggested_brand ?? "" : "";
@@ -426,7 +431,7 @@ export function AiNormalizationPanel({ companyId }: AiNormalizationPanelProps) {
     resolveColumnMapping(mappingItem.id, mapping);
   };
 
-  const [pendingFiles, setPendingFiles] = useState<File[]>([]);
+  const [pendingFiles, setPendingFiles] = useState<PendingFileEntry[]>([]);
   const [fileTypeError, setFileTypeError] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
   const [source, setSource] = useState<(typeof SOURCES)[number]>("Supplier");
@@ -448,13 +453,16 @@ export function AiNormalizationPanel({ companyId }: AiNormalizationPanelProps) {
   const fileRef = useRef<HTMLInputElement>(null);
 
   const acceptFiles = (candidates: FileList | File[]) => {
-    const accepted: File[] = [];
+    const accepted: PendingFileEntry[] = [];
     const rejected: string[] = [];
 
     for (const candidate of Array.from(candidates)) {
       const ext = "." + (candidate.name.split(".").pop() ?? "").toLowerCase();
       if (ACCEPTED_EXTENSIONS.includes(ext)) {
-        accepted.push(candidate);
+        accepted.push({
+          id: `${candidate.name}-${candidate.size}-${candidate.lastModified}-${crypto.randomUUID()}`,
+          file: candidate,
+        });
       } else {
         rejected.push(candidate.name);
       }
@@ -470,13 +478,13 @@ export function AiNormalizationPanel({ companyId }: AiNormalizationPanelProps) {
     }
   };
 
-  const removePendingFile = (name: string) => {
-    setPendingFiles((prev) => prev.filter((f) => f.name !== name));
+  const removePendingFile = (id: string) => {
+    setPendingFiles((prev) => prev.filter((entry) => entry.id !== id));
   };
 
   const handleUpload = () => {
     if (pendingFiles.length === 0) return;
-    enqueueFiles(pendingFiles, source);
+    enqueueFiles(pendingFiles.map((entry) => entry.file), source);
     setPendingFiles([]);
   };
 
@@ -802,15 +810,15 @@ export function AiNormalizationPanel({ companyId }: AiNormalizationPanelProps) {
                   Selected Files ({pendingFiles.length})
                 </p>
                 <div className="flex flex-col divide-y divide-gray-100">
-                  {pendingFiles.map((f) => (
-                    <div key={f.name} className="flex items-center gap-3 py-2">
+                  {pendingFiles.map((entry) => (
+                    <div key={entry.id} className="flex items-center gap-3 py-2">
                       <FileIcon className="h-4 w-4 shrink-0 text-gray-400" />
-                      <span className="flex-1 truncate text-sm text-gray-700">{f.name}</span>
+                      <span className="flex-1 truncate text-sm text-gray-700">{entry.file.name}</span>
                       <button
                         type="button"
                         onClick={(e) => {
                           e.stopPropagation();
-                          removePendingFile(f.name);
+                          removePendingFile(entry.id);
                         }}
                         className="shrink-0 rounded p-1 text-gray-300 transition hover:bg-red-50 hover:text-red-500"
                       >

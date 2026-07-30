@@ -157,12 +157,12 @@ class ResolveBulkRequest(BaseModel):
 class SourcePriorityResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
-    priority_id: int
+    priority_id: int | None = None
     company_id: int
     price_source: str
     priority_rank: int
-    created_at: datetime
-    updated_at: datetime
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
 
 
 class SourcePriorityUpdateRequest(BaseModel):
@@ -604,10 +604,10 @@ def get_source_priority(company_id: int, db: Session = Depends(get_db)):
     if not priorities:
         # Return default priorities if none exist
         default_sources = [
-            {"price_source": "Internal", "priority_rank": 1},
-            {"price_source": "Supplier", "priority_rank": 2},
-            {"price_source": "PSA", "priority_rank": 3},
-            {"price_source": "DPWH", "priority_rank": 4},
+            {"priority_id": None, "company_id": company_id, "price_source": "Internal", "priority_rank": 1},
+            {"priority_id": None, "company_id": company_id, "price_source": "Supplier", "priority_rank": 2},
+            {"priority_id": None, "company_id": company_id, "price_source": "PSA", "priority_rank": 3},
+            {"priority_id": None, "company_id": company_id, "price_source": "DPWH", "priority_rank": 4},
         ]
         return default_sources
     

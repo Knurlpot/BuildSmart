@@ -8,10 +8,15 @@ export interface SourcePriorityEntry {
   priority_rank: number; // 1 = highest priority
 }
 
+interface SourcePriorityResponse extends SourcePriorityEntry {
+  priority_id: number | null;
+  company_id: number;
+}
+
 export function usePricelistSourcePriority(companyId?: number) {
   const endpoint = companyId ? `/api/pricelist/source-priority/${companyId}` : null;
-  const { data: rawData, isLoading, error, refetch } = useFetch<any[]>(endpoint);
-  const save = useMutation<any[]>();
+  const { data: rawData, isLoading, error, refetch } = useFetch<SourcePriorityResponse[]>(endpoint);
+  const save = useMutation<SourcePriorityResponse[]>();
   const [order, setOrder] = useState<SourcePriorityEntry[] | null>(null);
 
   // Transform raw data to SourcePriorityEntry format
@@ -25,8 +30,16 @@ export function usePricelistSourcePriority(companyId?: number) {
   const move = (index: number, direction: -1 | 1) => {
     const target = index + direction;
     if (target < 0 || target >= list.length) return;
+    reorder(index, target);
+  };
+
+  const reorder = (fromIndex: number, toIndex: number) => {
+    if (fromIndex === toIndex || fromIndex < 0 || toIndex < 0 || fromIndex >= list.length || toIndex >= list.length) {
+      return;
+    }
     const next = [...list];
-    [next[index], next[target]] = [next[target], next[index]];
+    const [moved] = next.splice(fromIndex, 1);
+    next.splice(toIndex, 0, moved);
     setOrder(next.map((entry, i) => ({ ...entry, priority_rank: i + 1 })));
   };
 
@@ -45,6 +58,7 @@ export function usePricelistSourcePriority(companyId?: number) {
     error,
     refetch,
     move,
+    reorder,
     isDirty: order !== null,
     saveOrder,
     isSaving: save.isLoading,
