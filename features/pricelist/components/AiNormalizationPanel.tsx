@@ -858,6 +858,27 @@ export function AiNormalizationPanel() {
             </p>
           </div>
           <div className="flex shrink-0 flex-wrap items-center gap-2">
+            {!isEditingAll && (
+              <button
+                type="button"
+                onClick={approveSelectedReviewItems}
+                disabled={selectedReviewIds.size === 0 || isBulkApproving || isBulkDeleting}
+                className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-bold text-primary-foreground shadow-sm transition hover:bg-(--primary-hover) disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {isBulkApproving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+                {isBulkApproving ? "Approving…" : `Approve Selected (${selectedReviewIds.size})`}
+              </button>
+            )}
+            {!isEditingAll && (
+              <button
+                type="button"
+                onClick={toggleSelectAllReviewItems}
+                disabled={reviewItems.length === 0 || isBulkApproving || isBulkDeleting}
+                className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-600 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {allReviewItemsSelected ? "Deselect All" : "Select All"}
+              </button>
+            )}
             <button
               type="button"
               onClick={isEditingAll ? cancelEditingAll : startEditingAll}
@@ -880,23 +901,6 @@ export function AiNormalizationPanel() {
             )}
             {!isEditingAll && (
               <>
-                <button
-                  type="button"
-                  onClick={toggleSelectAllReviewItems}
-                  disabled={reviewItems.length === 0 || isBulkApproving || isBulkDeleting}
-                  className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-600 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  {allReviewItemsSelected ? "Deselect All" : "Select All"}
-                </button>
-                <button
-                  type="button"
-                  onClick={approveSelectedReviewItems}
-                  disabled={selectedReviewIds.size === 0 || isBulkApproving || isBulkDeleting}
-                  className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-bold text-primary-foreground shadow-sm transition hover:bg-(--primary-hover) disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  {isBulkApproving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
-                  {isBulkApproving ? "Approving…" : `Approve Selected (${selectedReviewIds.size})`}
-                </button>
                 {confirmingDelete && (
                   <button
                     type="button"

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { ColumnDef } from "@tanstack/react-table";
 import { Loader2, Pencil, RefreshCw, Save, Search, Trash2 } from "lucide-react";
 import { QueryState } from "@/components/feedback/QueryState";
@@ -207,6 +207,18 @@ export function PriceCatalogTab() {
   const [isSavingAll, setIsSavingAll] = useState(false);
   const [savingId, setSavingId] = useState<number | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
+
+  // Cell renderers read this instead of `editDrafts` directly. Every
+  // keystroke updates editDrafts, and if that were a dep of the
+  // `supplierColumns` useMemo below, the whole columns array (and every cell
+  // render function inside it) would get a new identity on every keystroke —
+  // tanstack-table's flexRender then treats each cell as a brand-new
+  // component type and remounts it, which drops input focus after exactly
+  // one character. Keeping editDrafts out of that memo and reading the
+  // latest value from a ref (updated synchronously during render, not in an
+  // effect, so it's never a render behind) avoids the remount entirely.
+  const editDraftsRef = useRef(editDrafts);
+  editDraftsRef.current = editDrafts;
 
   useEffect(() => {
     setConfirmingId(null);
@@ -466,7 +478,7 @@ export function PriceCatalogTab() {
         cell: ({ row }) => {
           const rec = row.original;
           if (isEditingAll && rec.historicalrec_id !== null) {
-            const draft = editDrafts[rec.historicalrec_id] ?? supplierRowToDraft(rec);
+            const draft = editDraftsRef.current[rec.historicalrec_id] ?? supplierRowToDraft(rec);
             return (
               <EditableTextCell
                 value={draft.item_name}
@@ -484,7 +496,7 @@ export function PriceCatalogTab() {
         cell: ({ row }) => {
           const rec = row.original;
           if (isEditingAll && rec.historicalrec_id !== null) {
-            const draft = editDrafts[rec.historicalrec_id] ?? supplierRowToDraft(rec);
+            const draft = editDraftsRef.current[rec.historicalrec_id] ?? supplierRowToDraft(rec);
             return <EditableTextCell value={draft.brand} onChange={(value) => updateSupplierDraft(rec, { brand: value })} />;
           }
           return <span>{rec.brand}</span>;
@@ -496,7 +508,7 @@ export function PriceCatalogTab() {
         cell: ({ row }) => {
           const rec = row.original;
           if (isEditingAll && rec.historicalrec_id !== null) {
-            const draft = editDrafts[rec.historicalrec_id] ?? supplierRowToDraft(rec);
+            const draft = editDraftsRef.current[rec.historicalrec_id] ?? supplierRowToDraft(rec);
             return (
               <EditableTextCell
                 value={draft.description_material}
@@ -515,7 +527,7 @@ export function PriceCatalogTab() {
         cell: ({ row }) => {
           const rec = row.original;
           if (isEditingAll && rec.historicalrec_id !== null) {
-            const draft = editDrafts[rec.historicalrec_id] ?? supplierRowToDraft(rec);
+            const draft = editDraftsRef.current[rec.historicalrec_id] ?? supplierRowToDraft(rec);
             return (
               <EditableTextCell
                 value={draft.unit}
@@ -534,7 +546,7 @@ export function PriceCatalogTab() {
         cell: ({ row }) => {
           const rec = row.original;
           if (isEditingAll && rec.historicalrec_id !== null) {
-            const draft = editDrafts[rec.historicalrec_id] ?? supplierRowToDraft(rec);
+            const draft = editDraftsRef.current[rec.historicalrec_id] ?? supplierRowToDraft(rec);
             return (
               <input
                 type="number"
@@ -566,7 +578,9 @@ export function PriceCatalogTab() {
         ),
       },
     ],
-    [confirmingId, deletingId, selectedIds, isBulkDeleting, isEditingAll, editDrafts]
+    // editDrafts is deliberately NOT a dep — see editDraftsRef above.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [confirmingId, deletingId, selectedIds, isBulkDeleting, isEditingAll]
   );
 
   const active = subTab === "dpwh"
