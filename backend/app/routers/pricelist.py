@@ -153,23 +153,29 @@ class ResolveBulkRequest(BaseModel):
 
 def _resolve_category_id(db: Session, category_type: str | None) -> int:
     if category_type:
+        category_type = category_type.strip()
         # .first() rather than .scalar_one_or_none() — category_type has no
         # uniqueness constraint, and the real catalog already has more than
         # one "Structural" row; picking the lowest id is deterministic and
         # avoids crashing approval on a pre-existing data duplicate.
         category = db.execute(
             select(Category)
-            .where(Category.category_type == category_type.strip())
+            .where(Category.category_type == category_type)
             .order_by(Category.category_id)
         ).scalars().first()
         if category is not None:
             return category.category_id
 
+        created = Category(category_type=category_type, category_desc=f"{category_type} materials")
+        db.add(created)
+        db.flush()
+        return created.category_id
+
     fallback = db.execute(select(Category).order_by(Category.category_id)).scalars().first()
     if fallback is not None:
         return fallback.category_id
 
-    created = Category(category_type="Others", category_desc="Auto-generated category")
+    created = Category(category_type="Others", category_desc="Others materials")
     db.add(created)
     db.flush()
     return created.category_id

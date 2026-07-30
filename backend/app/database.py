@@ -19,6 +19,16 @@ class Base(DeclarativeBase):
     pass
 
 
+def init_db() -> None:
+    # Import model modules so their tables are registered on Base.metadata before
+    # create_all runs. create_all only creates missing tables; it does not drop
+    # or overwrite existing data.
+    from app import models  # noqa: F401
+    from app.ingest import models as ingest_models  # noqa: F401
+
+    Base.metadata.create_all(bind=engine)
+
+
 def get_db():
     db = SessionLocal()
     try:

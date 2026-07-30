@@ -1,4 +1,4 @@
-from sqlalchemy import inspect, select, text
+from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
 from app.celery_app import celery_app
@@ -8,18 +8,41 @@ from app.services.candidates import get_item_candidates
 from app.services.match_cache import get_cache_lookup
 from app.services.normalize_batch import normalize_pricelist
 from app.services.pricelist_parser import MissingColumnsError, parse_pricelist_file
-from app.services.normalizer import _fallback_category
+from app.services.normalizer import determine_category
 import re
 
 CONFIDENCE_THRESHOLD = 0.85
 
 
-def _ensure_review_item_description_column(session: Session) -> None:
-    if session.bind is None:
-        return
-    columns = {column["name"] for column in inspect(session.bind).get_columns("pricelist_review_item")}
-    if "description" not in columns:
-        session.execute(text("ALTER TABLE pricelist_review_item ADD COLUMN description VARCHAR(255)"))
+def _prepare_fast_session(session: Session) -> None:
+    # A local dev transaction can otherwise leave Celery waiting forever on a
+    # row/table lock. Fail the task with a real API-visible error instead of
+    # letting the UI spin for minutes.
+    session.execute(text("SET LOCAL lock_timeout = '1500ms'"))
+    session.execute(text("SET LOCAL statement_timeout = '30000ms'"))
+
+
+def _get_or_create_category(session: Session, category_type: str) -> Category:
+    category = session.execute(
+        select(Category)
+        .where(Category.category_type == category_type)
+        .order_by(Category.category_id)
+    ).scalars().first()
+    if category is not None:
+        return category
+
+    fallback = session.execute(
+        select(Category)
+        .where(Category.category_type == "Others")
+        .order_by(Category.category_id)
+    ).scalars().first()
+    if fallback is not None:
+        return fallback
+
+    fallback = Category(category_type="Others", category_desc="Others materials")
+    session.add(fallback)
+    session.flush()
+    return fallback
 
 
 @celery_app.task
@@ -38,10 +61,10 @@ def normalize_price_list(
     session = db if db is not None else SessionLocal()
 
     try:
+        _prepare_fast_session(session)
         # If uploader didn't indicate a source, treat it as a Supplier upload
         source = (source or "").strip() or "Supplier"
         df = parse_pricelist_file(file_path, column_mapping=column_mapping)
-        _ensure_review_item_description_column(session)
         candidates = get_item_candidates(session)
         cache_lookup = get_cache_lookup(session)
         results = normalize_pricelist(df, candidates, cache_lookup=cache_lookup)
@@ -97,7 +120,7 @@ def normalize_price_list(
                         raw_unit=row.raw_unit,
                         raw_price=float(row.raw_price),
                         confidence=match.confidence,
-                        suggested_category_type=match.category_type or _fallback_category(review_name or ""),
+                        suggested_category_type=match.category_type or determine_category(review_name or ""),
                         suggested_material=match.material,
                         suggested_brand=match.brand,
                         description=review_description,
@@ -111,11 +134,8 @@ def normalize_price_list(
             item_code = match.matched_item_code
 
             if match.is_new_item:
-                # Use match.category_type when present, otherwise infer from raw name
-                category_type_to_use = match.category_type or _fallback_category(getattr(row, "raw_name", "") or (match.material or ""))
-                category = session.execute(
-                    select(Category).where(Category.category_type == category_type_to_use)
-                ).scalar_one()
+                category_type_to_use = match.category_type or determine_category(getattr(row, "raw_name", "") or (match.material or ""))
+                category = _get_or_create_category(session, category_type_to_use)
                 new_item = Items(
                     category_id=category.category_id,
                     item_name=match.item_name,
