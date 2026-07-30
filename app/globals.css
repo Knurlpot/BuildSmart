@@ -282,3 +282,79 @@ input[type="password"]::-ms-clear {
     animation: none;
   }
 }
+
+/* Part E — Generate step's decorative "shuffling cards" loading flourish (see
+   GeneratingQuotationAnimation.tsx). Two blank placeholder cards drift/rotate past each
+   other, transform-only (same perf convention as the qg-blob system above). Purely
+   ambient — there is nothing numeric in these cards to keep in sync with real data. */
+@keyframes qg-generate-shuffle-a {
+  0%,
+  100% {
+    transform: translate3d(-46%, -6%, 0) rotate(-8deg) scale(1);
+  }
+  50% {
+    transform: translate3d(-40%, 2%, 0) rotate(-4deg) scale(1.03);
+  }
+}
+@keyframes qg-generate-shuffle-b {
+  0%,
+  100% {
+    transform: translate3d(46%, 6%, 0) rotate(8deg) scale(1);
+  }
+  50% {
+    transform: translate3d(40%, -2%, 0) rotate(4deg) scale(1.03);
+  }
+}
+
+.qg-generate-card {
+  will-change: transform;
+  animation-duration: 2.6s;
+  animation-timing-function: ease-in-out;
+  animation-iteration-count: infinite;
+}
+.qg-generate-card-practical {
+  animation-name: qg-generate-shuffle-a;
+}
+.qg-generate-card-premium {
+  animation-name: qg-generate-shuffle-b;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .qg-generate-card {
+    animation: none;
+    transform: translate3d(-46%, 0, 0) rotate(-6deg);
+  }
+  .qg-generate-card-premium {
+    transform: translate3d(46%, 0, 0) rotate(6deg);
+  }
+}
+
+/* Fix 2 — subtle moving highlight across the orange workflow header (components/layout/
+   Header.tsx's `workflow` mode) — the same header both Quotation Generation and the
+   Pricelist Upload tab register into (see providers/WorkflowHeaderProvider.tsx), so one
+   rule here covers both. A soft lighter band sweeps left to right on a slow loop;
+   background-position only (cheap, no layout/paint of the rest of the header), and the
+   base bg-primary color underneath is untouched — the header stays unmistakably solid
+   orange, this just adds motion on top of it. */
+.qg-header-shimmer {
+  background-image: linear-gradient(100deg, transparent 35%, rgba(255, 255, 255, 0.16) 50%, transparent 65%);
+  background-size: 60% 100%;
+  background-repeat: no-repeat;
+  animation: qg-header-shimmer-sweep 6s linear infinite;
+}
+
+@keyframes qg-header-shimmer-sweep {
+  0% {
+    background-position: -60% 0;
+  }
+  100% {
+    background-position: 160% 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .qg-header-shimmer {
+    animation: none;
+    background-image: none;
+  }
+}

@@ -74,8 +74,8 @@ function ChipRow({ title, subtitle, actionLabel, onAction }: { title: string; su
 
 // Search-select-or-create combobox — outside-click-to-close, same convention as
 // components/forms/SpecializationSelect.tsx. Single-select (unlike that one); "no match"
-// hands off to the parent (the actual new-client fields live in the LEFT-column form below
-// this picker, not inline here — see NewClientForm.tsx).
+// hands off to the parent (the actual new-client fields live in the RIGHT-column card, not
+// inline here — see NewClientForm.tsx).
 //
 // Part C — list rows show client_name ONLY (no email/subtitle). A firm may have 100+
 // clients; keeping rows to one line keeps the list scannable. Contact details surface in
@@ -224,18 +224,40 @@ export function ClientAndProjectStep({ onContinue }: ClientAndProjectStepProps) 
       //
       // company_id/client_id/status/created_at are never invented here — company_id comes
       // from the session server-side, client_id is read back from the response.
+      const trimmedNumber = draft.contact_number.trim();
+      const contactNumber = trimmedNumber && trimmedNumber !== "+63" ? trimmedNumber : null;
       const created = await createClient({
         client_name: draft.client_name.trim(),
         contact_person: draft.contact_person.trim() || null,
         contact_email: draft.contact_email.trim() || null,
-        contact_number: draft.contact_number.trim() || null,
+        // "+63 " on its own (the untouched default — see emptyNewClientDraft) isn't a real
+        // contact number; treat it the same as blank rather than saving a placeholder.
+        contact_number: contactNumber,
         client_address: draft.client_address.trim() || null,
-        // schema DEFAULTs to 'New' if unset at the DB level — supplying the same default
-        // here just makes the client-side ClientInsights badge correct immediately,
-        // without waiting on a refetch.
-        client_type: draft.client_type || "New",
+        // Part B — never a user choice at creation: every client this form creates starts
+        // 'New'. "Returning" is a system-derived state set once a later quotation actually
+        // references this client, not something picked here.
+        client_type: "New",
       });
-      setClient(created);
+      // FIX 1 — lib/dev/mockFetch.ts's /api/clients/new always echoes back the SAME fixture
+      // row (client_id 5004, "New Provisional Client") no matter what was submitted — that
+      // mock layer deliberately ignores request bodies (see its file header). Trusting
+      // `created` verbatim here is exactly what made "Create Client" look like it looped
+      // back to a stale provisional client: the name/details on screen were the fixture's,
+      // never what was actually typed. Same fix CPRM's forms already use for the identical
+      // mock limitation — keep only what only the server can assign (client_id, company_id,
+      // status, created_at) and rebuild every user-entered field from the draft itself. A
+      // real backend will echo the submitted fields back exactly, at which point `created`
+      // alone becomes sufficient again.
+      setClient({
+        ...created,
+        client_name: draft.client_name.trim(),
+        contact_person: draft.contact_person.trim() || null,
+        contact_email: draft.contact_email.trim() || null,
+        contact_number: contactNumber,
+        client_address: draft.client_address.trim() || null,
+        client_type: "New",
+      });
       setDraft(null);
     } catch {
       // surfaced via createClientError below — no fabricated success
@@ -248,13 +270,29 @@ export function ClientAndProjectStep({ onContinue }: ClientAndProjectStepProps) 
       // input_method defaults to 'Manual' here since the method choice is the NEXT step —
       // corrected to 'Blueprint'/'Hybrid' later via useUpdateQuotationInputMethod once the
       // actual path (and, for Hybrid, the final segment mix) is known.
-      const quotation = await createQuotation({
+      const created = await createQuotation({
         client_id: client.client_id,
         project_name: projectName.trim(),
         project_location: projectLocation.trim(),
         project_region: projectRegion as PhRegion,
         input_method: "Manual",
       });
+      // Same fix as Create Client (NewClientForm) — lib/dev/mockFetch.ts's /api/quotations/
+      // new echoes back a FIXED fixture row regardless of what was submitted (that mock
+      // layer deliberately ignores request bodies). Left untouched, everything downstream
+      // — the wizard's own header, and now Open Projects (P2's whole point) — would show a
+      // stale fixture project name/location/region instead of what was actually typed here.
+      // Keep only what only the server can assign (quote_id, company_id, status,
+      // timestamps) and rebuild every user-entered field from this form. A real backend
+      // will echo the submitted fields back exactly, at which point `created` alone becomes
+      // sufficient again.
+      const quotation: Quotation = {
+        ...created,
+        project_name: projectName.trim(),
+        project_location: projectLocation.trim(),
+        project_region: projectRegion as PhRegion,
+        input_method: "Manual",
+      };
       onContinue(quotation, client);
     } catch {
       // surfaced via createError below — no fabricated success
@@ -292,18 +330,6 @@ export function ClientAndProjectStep({ onContinue }: ClientAndProjectStepProps) 
             onCancelCreate={() => setDraft(null)}
           />
         </div>
-
-        {/* Part B — the new-client CREATE form lives here, on the LEFT, below the picker. */}
-        {draft && (
-          <NewClientForm
-            draft={draft}
-            onChange={setDraft}
-            onCreate={handleCreateSubmit}
-            onCancel={() => setDraft(null)}
-            isCreating={isCreatingClient}
-            createError={createClientError}
-          />
-        )}
 
         <div className="flex flex-col gap-1.5">
           <label className={labelCls}>
@@ -385,8 +411,23 @@ export function ClientAndProjectStep({ onContinue }: ClientAndProjectStepProps) 
         </div>
       </div>
 
-      {/* Right column — read-only preview only, no inputs (Part B). */}
-      <ClientInsightCard client={client} draft={draft} quote={{ projectName, projectLocation, projectRegion }} />
+      {/* Right column — Part B: while a new client is being entered, this slot becomes the
+          actual editable form (NewClientForm), not a read-only preview; the left column
+          never grows a second client-fields block for it. Once a client is selected (or
+          nothing is), ClientInsightCard resumes its normal read-only preview/empty state. */}
+      {draft ? (
+        <NewClientForm
+          draft={draft}
+          onChange={setDraft}
+          onCreate={handleCreateSubmit}
+          onCancel={() => setDraft(null)}
+          isCreating={isCreatingClient}
+          createError={createClientError}
+          region={projectRegion}
+        />
+      ) : (
+        <ClientInsightCard client={client} quote={{ projectName, projectLocation, projectRegion }} />
+      )}
 
       <Dialog open={cancelConfirmOpen} onOpenChange={setCancelConfirmOpen}>
         <DialogContent>

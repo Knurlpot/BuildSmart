@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Plus } from "lucide-react";
+import { ArrowLeft, Plus } from "lucide-react";
 import { QuickSegmentEditor } from "./QuickSegmentEditor";
 import { QuickSegmentRow } from "./QuickSegmentRow";
 import { SegmentCompilationPanel } from "./SegmentCompilationPanel";
@@ -11,6 +11,8 @@ interface QuickMeasurementPanelProps {
   segments: DraftSegment[];
   onChange: (next: DraftSegment[]) => void;
   onContinue: () => void;
+  /** Part H — returns to the input-method choice overlay. */
+  onBack: () => void;
 }
 
 // Part E — every segment gets a name by construction; never "Segment 1" colliding with an
@@ -29,7 +31,7 @@ function nextSegmentName(segments: DraftSegment[]): string {
 // Simple by default, capable on demand: Total sqm is the default field for every new
 // segment (QuickSegmentEditor); Length×Width / L-Shaped / Running Meter are one click away
 // via "Measure it differently," never shown as four permanently-open panels.
-export function QuickMeasurementPanel({ segments, onChange, onContinue }: QuickMeasurementPanelProps) {
+export function QuickMeasurementPanel({ segments, onChange, onContinue, onBack }: QuickMeasurementPanelProps) {
   const [editingId, setEditingId] = useState<string | null>(null);
 
   const validSegments = segments.filter(isSegmentAreaValid);
@@ -70,12 +72,22 @@ export function QuickMeasurementPanel({ segments, onChange, onContinue }: QuickM
   return (
     <div className="flex flex-col gap-6 lg:flex-row lg:items-start">
       <div className="flex min-w-0 flex-1 flex-col gap-5">
-        <div>
-          <h2 className="text-base font-bold text-gray-900">Quick Measurement</h2>
-          <p className="text-sm text-gray-600">
-            Add each area you measured on-site. Most waterproofing jobs are a single total
-            area — enter that and you&apos;re done.
-          </p>
+        <div className="flex items-start gap-3">
+          <button
+            type="button"
+            onClick={onBack}
+            title="Back"
+            className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-gray-200 bg-white text-gray-500 transition hover:border-primary hover:text-primary"
+          >
+            <ArrowLeft className="h-4 w-4" />
+          </button>
+          <div>
+            <h2 className="text-base font-bold text-gray-900">Quick Measurement</h2>
+            <p className="text-sm text-gray-600">
+              Add each area you measured on-site. Most waterproofing jobs are a single total
+              area — enter that and you&apos;re done.
+            </p>
+          </div>
         </div>
 
         <div className="flex flex-col overflow-hidden rounded-2xl border-2 border-gray-200 bg-white shadow-sm">
