@@ -8,7 +8,7 @@ interface MutationState<T> {
 }
 
 export interface UseMutationResult<T> extends MutationState<T> {
-  mutate: (endpoint: string, body: unknown, method?: 'PATCH' | 'POST' | 'PUT') => Promise<T>;
+  mutate: (endpoint: string, body: unknown, method?: 'PATCH' | 'POST' | 'PUT' | 'DELETE') => Promise<T>;
   reset: () => void;
 }
 
@@ -25,7 +25,7 @@ export interface UseMutationResult<T> extends MutationState<T> {
 export function useMutation<T = unknown>(): UseMutationResult<T> {
   const [state, setState] = useState<MutationState<T>>({ data: null, error: null, isLoading: false });
 
-  const mutate = async (endpoint: string, body: unknown, method: 'PATCH' | 'POST' | 'PUT' = 'PATCH') => {
+  const mutate = async (endpoint: string, body: unknown, method: 'PATCH' | 'POST' | 'PUT' | 'DELETE' = 'PATCH') => {
     setState({ data: null, error: null, isLoading: true });
     try {
       const isFormData = typeof FormData !== 'undefined' && body instanceof FormData;

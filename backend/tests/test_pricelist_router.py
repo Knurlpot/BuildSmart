@@ -724,3 +724,90 @@ def test_get_dpwh_catalog_returns_rows(db_session):
     assert body[0]["quarter"] == "Q1"
     assert body[0]["year"] == 2026
     assert body[0]["price"] == 270.0
+
+
+def test_delete_dpwh_catalog_record_removes_only_that_record(db_session):
+    item = db_session.query(Items).filter_by(item_name="Portland Cement Type 1").first()
+    assert item is not None
+
+    to_delete = HistoricalPriceRecord(
+        item_code=item.item_code,
+        supplier_id=None,
+        price_source="DPWH",
+        region="NCR",
+        quarter="Q1",
+        year=2026,
+        price=270.0,
+    )
+    to_keep = HistoricalPriceRecord(
+        item_code=item.item_code,
+        supplier_id=None,
+        price_source="DPWH",
+        region="NCR",
+        quarter="Q2",
+        year=2026,
+        price=280.0,
+    )
+    db_session.add_all([to_delete, to_keep])
+    db_session.flush()
+    deleted_id = to_delete.historicalrec_id
+    kept_id = to_keep.historicalrec_id
+
+    def override_get_db():
+        yield db_session
+
+    app.dependency_overrides[get_db] = override_get_db
+    try:
+        response = client.delete(f"/pricelist/catalog/dpwh/{deleted_id}")
+    finally:
+        del app.dependency_overrides[get_db]
+
+    assert response.status_code == 200
+    assert response.json() == {"deleted": True}
+
+    assert db_session.get(HistoricalPriceRecord, deleted_id) is None
+    # The sibling record for the same item — and the item itself — must survive.
+    assert db_session.get(HistoricalPriceRecord, kept_id) is not None
+    assert db_session.get(Items, item.item_code) is not None
+
+
+def test_delete_dpwh_catalog_record_404s_for_unknown_id(db_session):
+    def override_get_db():
+        yield db_session
+
+    app.dependency_overrides[get_db] = override_get_db
+    try:
+        response = client.delete("/pricelist/catalog/dpwh/999999999")
+    finally:
+        del app.dependency_overrides[get_db]
+
+    assert response.status_code == 404
+
+
+def test_delete_dpwh_catalog_record_404s_for_non_dpwh_source(db_session):
+    item = db_session.query(Items).filter_by(item_name="Portland Cement Type 1").first()
+    assert item is not None
+
+    supplier_record = HistoricalPriceRecord(
+        item_code=item.item_code,
+        supplier_id=None,
+        price_source="Supplier",
+        price=250.0,
+    )
+    db_session.add(supplier_record)
+    db_session.flush()
+    record_id = supplier_record.historicalrec_id
+
+    def override_get_db():
+        yield db_session
+
+    app.dependency_overrides[get_db] = override_get_db
+    try:
+        # Scoped to price_source == "DPWH" — this endpoint must not delete a
+        # Supplier-sourced record just because the id happens to exist.
+        response = client.delete(f"/pricelist/catalog/dpwh/{record_id}")
+    finally:
+        del app.dependency_overrides[get_db]
+
+    assert response.status_code == 404
+    assert db_session.get(HistoricalPriceRecord, record_id) is not None

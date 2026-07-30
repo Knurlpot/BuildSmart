@@ -8,9 +8,14 @@
 // this view does not attempt to diff or badge anything as changed/new/spiked.
 import { useCallback, useState } from 'react';
 import { useFetch } from './useFetch';
+import { useMutation } from './useMutation';
 
 export interface SavedPriceRecord {
-  historicalrec_id: number;
+  // Null when the item has no Supplier-sourced historical_price_record yet —
+  // the route's LEFT JOIN LATERAL still returns the Items row itself in that
+  // case (see app/api/pricelist/catalog/route.ts). Nothing to delete for such
+  // a row until a price is actually recorded against it.
+  historicalrec_id: number | null;
   item_code: number;
   item_name: string;
   brand: string;
@@ -27,6 +32,7 @@ export function usePricelistCatalog() {
   const { data, isLoading, error, refetch } = useFetch<SavedPriceRecord[]>(
     enabled ? '/api/pricelist/catalog' : null
   );
+  const deleteMutation = useMutation<{ deleted: boolean }>();
 
   const load = useCallback(() => {
     if (!enabled) {
@@ -36,11 +42,21 @@ export function usePricelistCatalog() {
     refetch();
   }, [enabled, refetch]);
 
+  // Deletes just this one price record (see the route's own scoping) — the
+  // underlying item and any other price history for it are untouched.
+  const remove = async (historicalrecId: number) => {
+    await deleteMutation.mutate(`/api/pricelist/catalog/${historicalrecId}`, undefined, 'DELETE');
+    refetch();
+  };
+
   return {
     records: data ?? [],
     isLoading,
     error,
     refetch,
     load,
+    remove,
+    isRemoving: deleteMutation.isLoading,
+    removeError: deleteMutation.error,
   };
 }

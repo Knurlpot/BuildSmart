@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import type { ColumnDef } from "@tanstack/react-table";
-import { Search } from "lucide-react";
+import { Loader2, Search, Trash2 } from "lucide-react";
 import { QueryState } from "@/components/feedback/QueryState";
 import { DataTable } from "@/components/data-table/DataTable";
 import { usePricelistPublishedSource, type DpwhCatalogRow } from "@/hooks/usePricelistPublishedSource";
@@ -19,10 +19,74 @@ function formatDate(iso: string) {
   return d.toLocaleDateString("en-PH", { month: "short", day: "numeric", year: "numeric" });
 }
 
-// Canonical, read-only catalog view — historical_price_record filtered by price_source.
+function DeleteCell({
+  id,
+  confirmingId,
+  deletingId,
+  onConfirm,
+  onStartConfirm,
+  onCancel,
+}: {
+  id: number | null;
+  confirmingId: number | null;
+  deletingId: number | null;
+  onConfirm: (id: number) => void;
+  onStartConfirm: (id: number) => void;
+  onCancel: () => void;
+}) {
+  if (id === null) {
+    return (
+      <span className="text-xs text-gray-300" title="No price record saved for this item yet">
+        —
+      </span>
+    );
+  }
+
+  const isConfirming = confirmingId === id;
+  const isDeleting = deletingId === id;
+
+  if (isConfirming) {
+    return (
+      <div className="flex justify-end gap-1">
+        <button
+          type="button"
+          disabled={isDeleting}
+          onClick={() => onConfirm(id)}
+          className="rounded-lg border border-red-200 bg-red-50 px-2 py-1 text-[10px] font-bold text-red-600 transition hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {isDeleting ? <Loader2 className="h-3 w-3 animate-spin" /> : "Confirm"}
+        </button>
+        <button
+          type="button"
+          disabled={isDeleting}
+          onClick={onCancel}
+          className="rounded-lg border border-gray-200 bg-white px-2 py-1 text-[10px] font-semibold text-gray-500 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          Cancel
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex justify-end">
+      <button
+        type="button"
+        onClick={() => onStartConfirm(id)}
+        className="rounded-lg p-1.5 text-gray-400 transition hover:bg-red-50 hover:text-red-600"
+        aria-label="Remove this price record"
+      >
+        <Trash2 className="h-3.5 w-3.5" />
+      </button>
+    </div>
+  );
+}
+
+// Canonical catalog view — historical_price_record filtered by price_source.
 // The post-upload "Saved Catalog" summary and the Published Sources post-resolution recap
 // both link here instead of rendering their own full catalog table; this is the one place
-// that does.
+// that does. Values aren't editable here, but a row can be removed (deletes just that one
+// price record, not the underlying Items row) — see DeleteCell.
 export function PriceCatalogTab() {
   const [subTab, setSubTab] = useState<"dpwh" | "supplier">("dpwh");
   const [search, setSearch] = useState("");
@@ -37,6 +101,44 @@ export function PriceCatalogTab() {
     if (subTab === "dpwh") dpwhLoad();
     else supplierLoad();
   }, [subTab, dpwhLoad, supplierLoad]);
+
+  // Two-click inline confirm per row (matches the pattern used for "Clear" in
+  // AiNormalizationPanel) rather than a native confirm() dialog — deletes only
+  // the one historical_price_record shown, not the underlying Items row.
+  const [confirmingId, setConfirmingId] = useState<number | null>(null);
+  const [deletingId, setDeletingId] = useState<number | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setConfirmingId(null);
+    setDeleteError(null);
+  }, [subTab]);
+
+  const handleDeleteDpwh = async (historicalrecId: number) => {
+    setDeletingId(historicalrecId);
+    setDeleteError(null);
+    try {
+      await dpwhCatalog.remove(historicalrecId);
+    } catch (err) {
+      setDeleteError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setDeletingId(null);
+      setConfirmingId(null);
+    }
+  };
+
+  const handleDeleteSupplier = async (historicalrecId: number) => {
+    setDeletingId(historicalrecId);
+    setDeleteError(null);
+    try {
+      await supplierCatalog.remove(historicalrecId);
+    } catch (err) {
+      setDeleteError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setDeletingId(null);
+      setConfirmingId(null);
+    }
+  };
 
   const dpwhRows = useMemo(
     () => dpwhCatalog.records.filter((r) => region === "All" || r.region === region),
@@ -75,8 +177,24 @@ export function PriceCatalogTab() {
         enableGlobalFilter: false,
         cell: ({ getValue }) => <span className="font-semibold text-gray-900">{fmt(getValue<number>())}</span>,
       },
+      {
+        id: "__delete",
+        header: "",
+        enableGlobalFilter: false,
+        enableSorting: false,
+        cell: ({ row }) => (
+          <DeleteCell
+            id={row.original.historicalrec_id}
+            confirmingId={confirmingId}
+            deletingId={deletingId}
+            onConfirm={handleDeleteDpwh}
+            onStartConfirm={setConfirmingId}
+            onCancel={() => setConfirmingId(null)}
+          />
+        ),
+      },
     ],
-    []
+    [confirmingId, deletingId]
   );
 
   const supplierColumns = useMemo<ColumnDef<SavedPriceRecord>[]>(
@@ -98,8 +216,24 @@ export function PriceCatalogTab() {
         enableGlobalFilter: false,
         cell: ({ getValue }) => <span className="font-semibold text-gray-900">{fmt(getValue<number>())}</span>,
       },
+      {
+        id: "__delete",
+        header: "",
+        enableGlobalFilter: false,
+        enableSorting: false,
+        cell: ({ row }) => (
+          <DeleteCell
+            id={row.original.historicalrec_id}
+            confirmingId={confirmingId}
+            deletingId={deletingId}
+            onConfirm={handleDeleteSupplier}
+            onStartConfirm={setConfirmingId}
+            onCancel={() => setConfirmingId(null)}
+          />
+        ),
+      },
     ],
-    []
+    [confirmingId, deletingId]
   );
 
   const active = subTab === "dpwh"
@@ -108,11 +242,18 @@ export function PriceCatalogTab() {
 
   return (
     <div className="flex flex-col gap-5">
+      {deleteError && (
+        <p className="rounded-xl border border-red-200 bg-red-50 px-4 py-2.5 text-xs text-red-600">
+          Couldn&apos;t remove that record: {deleteError}
+        </p>
+      )}
+
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="text-base font-bold text-gray-900">Price Catalog</h2>
           <p className="text-xs text-gray-500">
-            The canonical, read-only view of your saved price records — no editing here.
+            The canonical view of your saved price records — values aren&apos;t editable here, but a
+            record can be removed.
           </p>
         </div>
         <div className="flex w-fit gap-1 rounded-xl border border-gray-200 bg-gray-50 p-1">

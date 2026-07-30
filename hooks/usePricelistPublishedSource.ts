@@ -86,7 +86,7 @@ interface MutationState<T> {
 function useBackendMutation<T = unknown>() {
   const [state, setState] = useState<MutationState<T>>({ data: null, error: null, isLoading: false });
 
-  const mutate = async (endpoint: string, body: unknown, method: 'PATCH' | 'POST' | 'PUT' = 'PATCH') => {
+  const mutate = async (endpoint: string, body: unknown, method: 'PATCH' | 'POST' | 'PUT' | 'DELETE' = 'PATCH') => {
     setState({ data: null, error: null, isLoading: true });
     try {
       const isFormData = typeof FormData !== 'undefined' && body instanceof FormData;
@@ -235,6 +235,14 @@ export function usePricelistPublishedSource() {
   const [catalogEnabled, setCatalogEnabled] = useState(false);
   const dpwhCatalog = useBackendFetch<DpwhCatalogRow[]>(catalogEnabled ? '/pricelist/catalog/dpwh' : null);
   const loadDpwhCatalog = useCallback(() => setCatalogEnabled(true), []);
+  const deleteDpwhRecord = useBackendMutation<{ deleted: boolean }>();
+  // Deletes just this one price record (see the endpoint's own scoping to
+  // price_source == "DPWH") — the underlying item and its other price
+  // history are untouched.
+  const removeDpwhCatalogRecord = async (historicalrecId: number) => {
+    await deleteDpwhRecord.mutate(`/pricelist/catalog/dpwh/${historicalrecId}`, undefined, 'DELETE');
+    dpwhCatalog.refetch();
+  };
   // Separate instances (not one shared mutation) so DPWH's and PSA's loading/error/result
   // state never bleed into each other when the user switches source.
   const checkDpwhVersion = useBackendMutation<VersionCheckResponse>();
@@ -306,6 +314,9 @@ export function usePricelistPublishedSource() {
       error: dpwhCatalog.error,
       refetch: dpwhCatalog.refetch,
       load: loadDpwhCatalog,
+      remove: removeDpwhCatalogRecord,
+      isRemoving: deleteDpwhRecord.isLoading,
+      removeError: deleteDpwhRecord.error,
     },
   };
 }

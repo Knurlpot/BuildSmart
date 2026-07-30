@@ -504,6 +504,21 @@ def get_dpwh_catalog(db: Session = Depends(get_db)):
     ]
 
 
+@router.delete("/catalog/dpwh/{historicalrec_id}", response_model=dict)
+def delete_dpwh_catalog_record(historicalrec_id: int, db: Session = Depends(get_db)):
+    # Scoped to price_source == "DPWH" so this endpoint can't be used to delete a
+    # Supplier/PSA/Internal record by guessing an id — matches the same scoping
+    # get_dpwh_catalog reads with. Deletes only this one price observation, not
+    # the underlying Items row or its other price history (see Price Catalog's
+    # "remove a record, not the catalog item" scope).
+    record = db.get(HistoricalPriceRecord, historicalrec_id)
+    if record is None or record.price_source != "DPWH":
+        raise HTTPException(status_code=404, detail="DPWH price record not found")
+    db.delete(record)
+    db.commit()
+    return {"deleted": True}
+
+
 @router.post("/deviations/resolve", response_model=dict)
 def resolve_deviation(
     payload: ResolveDeviationRequest = Body(...),
