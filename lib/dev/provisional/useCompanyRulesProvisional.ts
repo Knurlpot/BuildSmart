@@ -80,7 +80,7 @@ function makeExistingRulesSnapshot(state: Store): ExistingRuleSummary[] {
       rule_id: rule.rule_id,
       rule_kind: "material-rule" as const,
       label: rule.preferred_item_name,
-      detail: `${rule.category} · ${rule.fallback_rule}`,
+      detail: `${rule.category} · ${rule.material_priority} - ${rule.priority_source} · ${rule.fallback_rule}`,
       effective_date: rule.effective_date,
       status: rule.is_active ? "Active" as const : "Disabled" as const,
     })),

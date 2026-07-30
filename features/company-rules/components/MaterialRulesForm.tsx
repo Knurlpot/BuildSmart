@@ -5,14 +5,16 @@ import { AlertTriangle, CheckCircle2, Pencil, Search, X } from "lucide-react";
 import { RuleListDetailPanel } from "./RuleListDetailPanel";
 import { useMaterialRules, useCheckRuleUsage, stagingId } from "@/lib/dev/provisional/useCompanyRulesProvisional";
 import { useEditableRuleList } from "@/lib/dev/provisional/useEditableRuleList";
-import { isPositiveNumber } from "@/lib/dev/provisional/ruleValidation";
 import {
   MATERIAL_FALLBACK_RULES,
   type MaterialFallbackRule,
   type MaterialRuleEntry,
+  type PriceSource,
 } from "@/lib/dev/provisional/companyRulesTypes";
 import { useItemsCatalog } from "@/hooks/useItemsCatalog";
 import { useCategories } from "@/hooks/useCategories";
+import { usePricelistSourcePriority, type SourcePriorityEntry } from "@/hooks/usePricelistSourcePriority";
+import { useAuth } from "@/providers/AuthProvider";
 import { CATEGORY_TYPES, type CategoryType } from "@/types/entities/category";
 import type { Items } from "@/types/entities/items";
 
@@ -20,7 +22,7 @@ const inputCls =
   "w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm outline-none transition focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/20";
 
 interface ItemConfig {
-  priority: number | "";
+  priority: SourcePriorityEntry | null;
   fallback: MaterialFallbackRule | "";
 }
 
@@ -42,6 +44,15 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
   const editable = useEditableRuleList<MaterialRuleEntry>({ checkUsage, update, supersede, idPrefix: "mr" });
   const { items, isLoading: itemsLoading, error: itemsError } = useItemsCatalog();
   const { categories } = useCategories();
+  const { currentUser } = useAuth();
+  const companyId =
+    typeof currentUser?.companyId === "number"
+      ? currentUser.companyId
+      : Number.isFinite(Number(currentUser?.companyId))
+        ? Number(currentUser?.companyId)
+        : undefined;
+  const { list: sourcePriority, isLoading: sourcePriorityLoading } = usePricelistSourcePriority(companyId);
+  const sourcePriorityReady = companyId !== undefined && !sourcePriorityLoading;
 
   const allRules = editable.applyOverrides([...editable.localExtra, ...rules]);
 
@@ -56,7 +67,7 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
   const [categoryFilter, setCategoryFilter] = useState<CategoryType | "">("");
   const [checkedItemCodes, setCheckedItemCodes] = useState<Set<string>>(new Set());
   const [perItemConfig, setPerItemConfig] = useState<Record<string, ItemConfig>>({});
-  const [editPriority, setEditPriority] = useState<number | "">("");
+  const [editPriority, setEditPriority] = useState<SourcePriorityEntry | null>(null);
   const [editFallback, setEditFallback] = useState<MaterialFallbackRule | "">("");
   const [touched, setTouched] = useState(false);
   const [savedMessage, setSavedMessage] = useState(false);
@@ -71,6 +82,32 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
     const matchesCategory = categoryFilter === "" || categoryTypeOf(item) === categoryFilter;
     return matchesSearch && matchesCategory;
   });
+
+  const itemMeta = (item: Items) =>
+    [
+      item.description?.trim(),
+      categoryTypeOf(item) ?? "Uncategorized",
+      item.brand,
+      item.unit,
+    ].filter(Boolean).join(" · ");
+
+  const priorityForSource = (source: PriceSource): SourcePriorityEntry | null =>
+    sourcePriority.find((entry) => entry.price_source === source) ?? null;
+
+  const priorityLabel = (priority: SourcePriorityEntry | null) =>
+    priority ? `${priority.priority_rank} - ${priority.price_source}` : "Source priority not set";
+
+  const sourcePriorityValue = (priority: SourcePriorityEntry | null) =>
+    priority ? priority.price_source : "";
+
+  const priorityFromValue = (value: string): SourcePriorityEntry | null =>
+    value === "" ? null : priorityForSource(value as PriceSource);
+
+  const rulePriority = (rule: MaterialRuleEntry): SourcePriorityEntry =>
+    priorityForSource(rule.priority_source) ?? {
+      price_source: rule.priority_source,
+      priority_rank: rule.material_priority,
+    };
 
   const checkedItems = items.filter((i) => checkedItemCodes.has(String(i.item_code)));
 
@@ -99,7 +136,7 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
       const next = { ...prev };
       for (const item of checkedItems) {
         const code = String(item.item_code);
-        if (!next[code]) next[code] = { priority: 1, fallback: "" };
+        if (!next[code]) next[code] = { priority: priorityForSource(item.item_source), fallback: "" };
       }
       return next;
     });
@@ -109,7 +146,7 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
 
   const startEdit = (r: MaterialRuleEntry) => {
     setMode("edit");
-    setEditPriority(r.material_priority);
+    setEditPriority(rulePriority(r));
     setEditFallback(r.fallback_rule);
     setTouched(false);
     setSavedMessage(false);
@@ -117,7 +154,7 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
 
   const configValid = (code: string) => {
     const cfg = perItemConfig[code];
-    return !!cfg && cfg.priority !== "" && isPositiveNumber(Number(cfg.priority)) && cfg.fallback !== "";
+    return !!cfg && cfg.priority !== null && cfg.fallback !== "";
   };
   const allConfigValid = checkedItems.length > 0 && checkedItems.every((i) => configValid(String(i.item_code)));
 
@@ -134,7 +171,8 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
           category,
           preferred_item_code: code,
           preferred_item_name: item.item_name,
-          material_priority: Number(cfg.priority),
+          material_priority: cfg.priority.priority_rank,
+          priority_source: cfg.priority.price_source,
           fallback_rule: cfg.fallback as MaterialFallbackRule,
         };
         await save(payload);
@@ -152,18 +190,17 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
     }
   };
 
-  const editValid = editPriority !== "" && isPositiveNumber(Number(editPriority)) && editFallback !== "";
-
   const handleSaveEdit = async () => {
     setTouched(true);
-    if (!editValid || !selectedId) return;
+    if (!selectedId || editPriority === null || editFallback === "") return;
     const current = allRules.find((r) => r.rule_id === selectedId);
     if (!current) return;
     const payload = {
       category: current.category,
       preferred_item_code: current.preferred_item_code,
       preferred_item_name: current.preferred_item_name,
-      material_priority: Number(editPriority),
+      material_priority: editPriority.priority_rank,
+      priority_source: editPriority.price_source,
       fallback_rule: editFallback as MaterialFallbackRule,
     };
     const resultId = await editable.saveEdit(selectedId, payload);
@@ -205,7 +242,9 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
           <div className="flex flex-col gap-0.5">
             <span className="text-sm font-semibold text-gray-800">{r.preferred_item_name}</span>
             <span className="text-xs text-gray-400">{r.category}</span>
-            <span className="text-[10px] text-gray-400">Priority {r.material_priority}</span>
+            <span className="text-[10px] text-gray-400">
+              Priority source {priorityLabel(rulePriority(r))}
+            </span>
           </div>
         )}
         detail={
@@ -265,9 +304,7 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
                         />
                         <div className="min-w-0 flex-1">
                           <p className="truncate text-sm font-medium text-gray-800">{item.item_name}</p>
-                          <p className="truncate text-[11px] text-gray-400">
-                            {categoryTypeOf(item) ?? "Uncategorized"} · {item.brand} · {item.unit}
-                          </p>
+                          <p className="truncate text-[11px] text-gray-400">{itemMeta(item)}</p>
                         </div>
                       </label>
                     );
@@ -277,11 +314,11 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
 
               <button
                 type="button"
-                disabled={checkedItems.length === 0}
+                disabled={checkedItems.length === 0 || !sourcePriorityReady}
                 onClick={goToConfigure}
                 className="w-fit rounded-xl bg-primary px-5 py-2.5 text-sm font-bold text-primary-foreground shadow-sm transition hover:bg-(--primary-hover) disabled:opacity-60"
               >
-                Continue with {checkedItems.length} selected
+                {!sourcePriorityReady ? "Loading source priority..." : `Continue with ${checkedItems.length} selected`}
               </button>
             </div>
           ) : mode === "configure" ? (
@@ -296,28 +333,34 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
               <div className="flex flex-col gap-3">
                 {checkedItems.map((item) => {
                   const code = String(item.item_code);
-                  const cfg = perItemConfig[code] ?? { priority: "", fallback: "" };
+                  const cfg = perItemConfig[code] ?? { priority: priorityForSource(item.item_source), fallback: "" };
                   const invalid = touched && !configValid(code);
                   return (
                     <div key={code} className="rounded-xl border border-gray-100 bg-gray-50/60 p-3">
                       <p className="mb-2 text-sm font-semibold text-gray-800">{item.item_name}</p>
-                      <div className="grid grid-cols-2 gap-3">
-                        <div className="flex flex-col gap-1">
+	                      <div className="grid grid-cols-2 gap-3">
+	                        <div className="flex flex-col gap-1">
                           <label className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">
-                            Priority
+                            Priority Source
                           </label>
-                          <input
-                            type="number"
-                            min={1}
-                            value={cfg.priority}
+                          <select
+                            value={sourcePriorityValue(cfg.priority)}
+                            disabled={sourcePriorityLoading}
                             onChange={(e) =>
                               setPerItemConfig((prev) => ({
                                 ...prev,
-                                [code]: { ...cfg, priority: e.target.value === "" ? "" : Number(e.target.value) },
+                                [code]: { ...cfg, priority: priorityFromValue(e.target.value) },
                               }))
                             }
                             className={inputCls}
-                          />
+                          >
+                            <option value="">Select…</option>
+                            {sourcePriority.map((priority) => (
+                              <option key={priority.price_source} value={priority.price_source}>
+                                {priorityLabel(priority)}
+                              </option>
+                            ))}
+                          </select>
                         </div>
                         <div className="flex flex-col gap-1">
                           <label className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">
@@ -340,7 +383,11 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
                           </select>
                         </div>
                       </div>
-                      {invalid && <p className="mt-1.5 text-[11px] text-red-500">Set both a priority and a fallback rule.</p>}
+                      {invalid && (
+                        <p className="mt-1.5 text-[11px] text-red-500">
+                          Set both a priority source and a fallback rule.
+                        </p>
+                      )}
                     </div>
                   );
                 })}
@@ -393,22 +440,26 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
                 <p className="text-xs text-gray-400">{selected.category}</p>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div className="flex flex-col gap-1.5">
+	              <div className="grid grid-cols-2 gap-4">
+	                <div className="flex flex-col gap-1.5">
                   <label className="text-xs font-semibold text-gray-600">
-                    Priority <span className="text-red-500">*</span>
+                    Priority Source <span className="text-red-500">*</span>
                   </label>
-                  <input
-                    type="number"
-                    min={1}
-                    value={editPriority}
-                    onChange={(e) => setEditPriority(e.target.value === "" ? "" : Number(e.target.value))}
+                  <select
+                    value={sourcePriorityValue(editPriority)}
+                    disabled={sourcePriorityLoading}
+                    onChange={(e) => setEditPriority(priorityFromValue(e.target.value))}
                     className={inputCls}
-                  />
-                  {touched && !(editPriority !== "" && isPositiveNumber(Number(editPriority))) && (
-                    <p className="text-xs text-red-500">Must be greater than 0.</p>
-                  )}
-                </div>
+                  >
+                    <option value="">Select…</option>
+                    {sourcePriority.map((priority) => (
+                      <option key={priority.price_source} value={priority.price_source}>
+                        {priorityLabel(priority)}
+                      </option>
+                    ))}
+                  </select>
+	                  {touched && editPriority === null && <p className="text-xs text-red-500">Required.</p>}
+	                </div>
                 <div className="flex flex-col gap-1.5">
                   <label className="text-xs font-semibold text-gray-600">
                     Fallback Rule <span className="text-red-500">*</span>
@@ -468,8 +519,8 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
               </div>
               <dl className="grid grid-cols-2 gap-4 text-sm">
                 <div>
-                  <dt className="text-xs font-semibold uppercase tracking-wide text-gray-400">Priority</dt>
-                  <dd className="text-gray-700">{selected.material_priority}</dd>
+                  <dt className="text-xs font-semibold uppercase tracking-wide text-gray-400">Priority Source</dt>
+                  <dd className="text-gray-700">{priorityLabel(rulePriority(selected))}</dd>
                 </div>
                 <div>
                   <dt className="text-xs font-semibold uppercase tracking-wide text-gray-400">Fallback Rule</dt>

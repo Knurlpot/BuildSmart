@@ -3,6 +3,8 @@ import type { PhRegion } from "@/types/entities/common";
 
 export const MATERIAL_FALLBACK_RULES = ["Lowest Equivalent", "Nearest", "Manual"] as const;
 export type MaterialFallbackRule = (typeof MATERIAL_FALLBACK_RULES)[number];
+export const PRICE_SOURCES = ["DPWH", "PSA", "Supplier", "Internal"] as const;
+export type PriceSource = (typeof PRICE_SOURCES)[number];
 
 export const QUOTATION_TIERS = ["Practical", "Standard", "Premium"] as const;
 export type QuotationTier = (typeof QUOTATION_TIERS)[number];
@@ -35,6 +37,7 @@ export interface MaterialRuleEntry extends RuleBase {
   preferred_item_code: string;
   preferred_item_name: string;
   material_priority: number;
+  priority_source: PriceSource;
   fallback_rule: MaterialFallbackRule;
 }
 
