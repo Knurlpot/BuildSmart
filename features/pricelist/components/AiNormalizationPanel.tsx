@@ -10,6 +10,7 @@ import {
   Loader2,
   Pencil,
   RefreshCw,
+  Save,
   Trash2,
   Upload,
   UploadCloud,
@@ -238,7 +239,8 @@ function ReviewItemRow({
               disabled={isSaving}
               onClick={onSave}
               className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-white transition hover:bg-(--primary-hover) disabled:opacity-60"
-              aria-label={`Save ${item.raw_name}`}
+              aria-label={`Approve ${item.raw_name}`}
+              title="Approve — saves to the Supplier price catalog"
             >
               {isSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
             </button>
@@ -338,9 +340,10 @@ function ReviewItemRow({
             disabled={isSaving}
             onClick={onSave}
             className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-white transition hover:bg-(--primary-hover) disabled:opacity-60"
-            aria-label={`Save ${item.raw_name}`}
+            aria-label={`Save changes to ${item.raw_name}`}
+            title="Save changes — stays in Pending Review, doesn't touch the price catalog"
           >
-            {isSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+            {isSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
           </button>
           <button
             type="button"
@@ -433,19 +436,6 @@ export function AiNormalizationPanel() {
     resolveColumnMapping(mappingItem.id, mapping);
   };
 
-  // Two-click inline confirm rather than a native confirm() dialog — this
-  // permanently deletes every Pending row with no undo.
-  const [confirmingClear, setConfirmingClear] = useState(false);
-
-  const handleClearReview = () => {
-    if (!confirmingClear) {
-      setConfirmingClear(true);
-      return;
-    }
-    setConfirmingClear(false);
-    clearPendingReview().catch(() => {});
-  };
-
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
   const [fileTypeError, setFileTypeError] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
@@ -456,6 +446,11 @@ export function AiNormalizationPanel() {
   const [reviewSaveError, setReviewSaveError] = useState<string | null>(null);
   const [selectedReviewIds, setSelectedReviewIds] = useState<Set<number>>(new Set());
   const [isBulkApproving, setIsBulkApproving] = useState(false);
+  const [isBulkDeleting, setIsBulkDeleting] = useState(false);
+  // Two-click inline confirm rather than a native confirm() dialog — one
+  // button that deletes just the checked rows if any are selected, otherwise
+  // every Pending row. Either way there's no undo.
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const acceptFiles = (candidates: FileList | File[]) => {
@@ -503,9 +498,12 @@ export function AiNormalizationPanel() {
     setReviewSaveError(null);
   };
 
+  // Saves the edited fields only — no status change, so the row stays
+  // "Pending" and nothing is written to the price catalog yet. Approving
+  // (committing) is a separate, explicit action (see onSave below).
   const saveEditing = async () => {
     if (editingId === null || editDraft === null) return;
-    await saveReviewItem(editingId, { ...draftToPatch(editDraft), status: "Approved" });
+    await saveReviewItem(editingId, draftToPatch(editDraft));
     cancelEditing();
   };
 
@@ -585,6 +583,55 @@ export function AiNormalizationPanel() {
     setIsBulkApproving(false);
     if (failedNames.length > 0) {
       setReviewSaveError(`Failed to approve: ${failedNames.join(", ")}`);
+    }
+  };
+
+  const deleteSelectedReviewItems = async () => {
+    const ids = Array.from(selectedReviewIds);
+    if (ids.length === 0) return;
+
+    setIsBulkDeleting(true);
+    setReviewSaveError(null);
+    const failedNames: string[] = [];
+
+    for (const reviewId of ids) {
+      const item = reviewItems.find((r) => r.review_id === reviewId);
+      if (!item) continue;
+      setSavingId(reviewId);
+      try {
+        await deleteReviewItem(reviewId);
+        if (editingId === reviewId) {
+          cancelEditing();
+        }
+        setSelectedReviewIds((prev) => {
+          const next = new Set(prev);
+          next.delete(reviewId);
+          return next;
+        });
+      } catch (err) {
+        failedNames.push(item.raw_name);
+      }
+    }
+
+    setSavingId(null);
+    setIsBulkDeleting(false);
+    if (failedNames.length > 0) {
+      setReviewSaveError(`Failed to delete: ${failedNames.join(", ")}`);
+    }
+  };
+
+  // One button, two targets: whatever's checked if anything is, otherwise
+  // every Pending row (the old "Clear").
+  const handleDeleteReview = () => {
+    if (!confirmingDelete) {
+      setConfirmingDelete(true);
+      return;
+    }
+    setConfirmingDelete(false);
+    if (selectedReviewIds.size > 0) {
+      deleteSelectedReviewItems().catch(() => {});
+    } else {
+      clearPendingReview().catch(() => {});
     }
   };
 
@@ -791,15 +838,15 @@ export function AiNormalizationPanel() {
           <div>
             <p className="text-sm font-bold text-gray-900">Pending Review</p>
             <p className="text-xs text-gray-500">
-              Low-confidence matches awaiting a decision. Use Check to approve and save to the Supplier
-              price catalog.
+              Low-confidence matches awaiting a decision. Save keeps your edits pending; Approve commits
+              a row to the Supplier price catalog. Tick rows to bulk-approve or delete them.
             </p>
           </div>
-          <div className="flex shrink-0 items-center gap-2">
+          <div className="flex shrink-0 flex-wrap items-center gap-2">
             <button
               type="button"
               onClick={toggleSelectAllReviewItems}
-              disabled={reviewItems.length === 0 || isBulkApproving}
+              disabled={reviewItems.length === 0 || isBulkApproving || isBulkDeleting}
               className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-600 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {allReviewItemsSelected ? "Deselect All" : "Select All"}
@@ -807,16 +854,16 @@ export function AiNormalizationPanel() {
             <button
               type="button"
               onClick={approveSelectedReviewItems}
-              disabled={selectedReviewIds.size === 0 || isBulkApproving}
+              disabled={selectedReviewIds.size === 0 || isBulkApproving || isBulkDeleting}
               className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-bold text-primary-foreground shadow-sm transition hover:bg-(--primary-hover) disabled:cursor-not-allowed disabled:opacity-50"
             >
               {isBulkApproving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
               {isBulkApproving ? "Approving…" : `Approve Selected (${selectedReviewIds.size})`}
             </button>
-            {confirmingClear && (
+            {confirmingDelete && (
               <button
                 type="button"
-                onClick={() => setConfirmingClear(false)}
+                onClick={() => setConfirmingDelete(false)}
                 className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-600 transition hover:bg-gray-50"
               >
                 Cancel
@@ -824,16 +871,31 @@ export function AiNormalizationPanel() {
             )}
             <button
               type="button"
-              onClick={handleClearReview}
-              disabled={reviewItems.length === 0 || isClearingReview}
+              onClick={handleDeleteReview}
+              disabled={
+                (selectedReviewIds.size === 0 && reviewItems.length === 0) ||
+                isClearingReview ||
+                isBulkDeleting ||
+                isBulkApproving
+              }
               className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-50 ${
-                confirmingClear
+                confirmingDelete
                   ? "border-red-200 bg-red-50 text-red-600 hover:bg-red-100"
                   : "border-gray-200 bg-white text-gray-600 hover:bg-gray-50"
               }`}
             >
-              <Trash2 className="h-3.5 w-3.5" />
-              {isClearingReview ? "Clearing…" : confirmingClear ? "Confirm — delete all?" : "Clear"}
+              {isClearingReview || isBulkDeleting ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Trash2 className="h-3.5 w-3.5" />
+              )}
+              {isClearingReview || isBulkDeleting
+                ? "Deleting…"
+                : confirmingDelete
+                  ? `Confirm — delete ${selectedReviewIds.size > 0 ? selectedReviewIds.size : "all"}?`
+                  : selectedReviewIds.size > 0
+                    ? `Delete Selected (${selectedReviewIds.size})`
+                    : "Delete"}
             </button>
             <button
               type="button"
@@ -883,7 +945,7 @@ export function AiNormalizationPanel() {
                     draft={editingId === item.review_id && editDraft ? editDraft : reviewItemToDraft(item)}
                     isSaving={savingId === item.review_id}
                     isSelected={selectedReviewIds.has(item.review_id)}
-                    selectionDisabled={isBulkApproving}
+                    selectionDisabled={isBulkApproving || isBulkDeleting}
                     onToggleSelect={() => toggleSelectReviewItem(item.review_id)}
                     onEdit={() => startEditing(item)}
                     onDraftChange={(patch) => setEditDraft((current) => (current ? { ...current, ...patch } : current))}
