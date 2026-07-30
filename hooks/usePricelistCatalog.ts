@@ -27,12 +27,25 @@ export interface SavedPriceRecord {
   recorded_at: string;
 }
 
+// item_name/brand/description/unit live on the shared items row behind a
+// record, not on the record itself — see the PATCH route's own comment.
+// Editing them here is scoped to Supplier (and, once it exists, Internal)
+// catalog data only; DPWH/PSA stay read-only, so there's no equivalent here.
+export interface SupplierCatalogEdit {
+  item_name?: string;
+  brand?: string;
+  description?: string;
+  unit?: string;
+  price?: number;
+}
+
 export function usePricelistCatalog() {
   const [enabled, setEnabled] = useState(false);
   const { data, isLoading, error, refetch } = useFetch<SavedPriceRecord[]>(
     enabled ? '/api/pricelist/catalog' : null
   );
   const deleteMutation = useMutation<{ deleted: boolean }>();
+  const updateMutation = useMutation<SavedPriceRecord>();
 
   const load = useCallback(() => {
     if (!enabled) {
@@ -49,6 +62,12 @@ export function usePricelistCatalog() {
     refetch();
   };
 
+  const update = async (historicalrecId: number, patch: SupplierCatalogEdit) => {
+    const updated = await updateMutation.mutate(`/api/pricelist/catalog/${historicalrecId}`, patch, 'PATCH');
+    refetch();
+    return updated;
+  };
+
   return {
     records: data ?? [],
     isLoading,
@@ -58,5 +77,8 @@ export function usePricelistCatalog() {
     remove,
     isRemoving: deleteMutation.isLoading,
     removeError: deleteMutation.error,
+    update,
+    isUpdating: updateMutation.isLoading,
+    updateError: updateMutation.error,
   };
 }

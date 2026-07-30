@@ -2,11 +2,11 @@
 
 import { useEffect, useMemo, useState } from "react";
 import type { ColumnDef } from "@tanstack/react-table";
-import { Loader2, Search, Trash2 } from "lucide-react";
+import { Loader2, Pencil, RefreshCw, Save, Search, Trash2 } from "lucide-react";
 import { QueryState } from "@/components/feedback/QueryState";
 import { DataTable } from "@/components/data-table/DataTable";
 import { usePricelistPublishedSource, type DpwhCatalogRow } from "@/hooks/usePricelistPublishedSource";
-import { usePricelistCatalog, type SavedPriceRecord } from "@/hooks/usePricelistCatalog";
+import { usePricelistCatalog, type SavedPriceRecord, type SupplierCatalogEdit } from "@/hooks/usePricelistCatalog";
 import { REGIONS } from "@/lib/regions";
 
 function fmt(n: number) {
@@ -82,11 +82,91 @@ function DeleteCell({
   );
 }
 
+function SelectCell({
+  id,
+  isSelected,
+  disabled,
+  onToggle,
+}: {
+  id: number | null;
+  isSelected: boolean;
+  disabled: boolean;
+  onToggle: (id: number) => void;
+}) {
+  // Nothing to select for a row with no historical_price_record yet (see
+  // DeleteCell's own null case) — render a blank spacer, not a checkbox.
+  if (id === null) {
+    return <span className="block h-4 w-4" aria-hidden />;
+  }
+  return (
+    <input
+      type="checkbox"
+      checked={isSelected}
+      disabled={disabled}
+      onChange={() => onToggle(id)}
+      className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary/40 disabled:cursor-not-allowed disabled:opacity-50"
+      aria-label="Select this price record"
+    />
+  );
+}
+
+// Supplier-only: DPWH/PSA are externally published data and stay read-only
+// (see the PATCH route's own comment for why the scope stops here).
+type SupplierRowDraft = {
+  item_name: string;
+  brand: string;
+  description_material: string;
+  unit: string;
+  price: string;
+};
+
+function supplierRowToDraft(row: SavedPriceRecord): SupplierRowDraft {
+  return {
+    item_name: row.item_name,
+    brand: row.brand,
+    description_material: row.description_material,
+    unit: row.unit,
+    price: String(row.price),
+  };
+}
+
+function supplierDraftToPatch(draft: SupplierRowDraft): SupplierCatalogEdit {
+  return {
+    item_name: draft.item_name.trim(),
+    brand: draft.brand.trim(),
+    description: draft.description_material.trim(),
+    unit: draft.unit.trim(),
+    price: Number(draft.price),
+  };
+}
+
+function EditableTextCell({
+  value,
+  onChange,
+  className,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  className?: string;
+}) {
+  return (
+    <input
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      className={
+        className ??
+        "h-8 w-full min-w-[7rem] rounded-lg border border-gray-200 bg-white px-2 text-sm text-gray-700 outline-none focus:border-primary focus:ring-2 focus:ring-primary/15"
+      }
+    />
+  );
+}
+
 // Canonical catalog view — historical_price_record filtered by price_source.
 // The post-upload "Saved Catalog" summary and the Published Sources post-resolution recap
 // both link here instead of rendering their own full catalog table; this is the one place
-// that does. Values aren't editable here, but a row can be removed (deletes just that one
-// price record, not the underlying Items row) — see DeleteCell.
+// that does. A row can always be removed (deletes just that one price record, not the
+// underlying Items row) — see DeleteCell. Supplier rows can also be bulk-edited (see
+// isEditingAll below); DPWH/PSA stay read-only since that data is externally published.
 export function PriceCatalogTab() {
   const [subTab, setSubTab] = useState<"dpwh" | "supplier">("dpwh");
   const [search, setSearch] = useState("");
@@ -109,9 +189,33 @@ export function PriceCatalogTab() {
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
+  // Bulk selection/delete — mirrors Pending Review's toolbar (Select All +
+  // one Delete button that targets the selection if any, otherwise every
+  // selectable row currently in view). No "Approve" here: unlike Pending
+  // Review, a Price Catalog row is already a saved, committed record —
+  // there's nothing left to approve.
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [isBulkDeleting, setIsBulkDeleting] = useState(false);
+  const [confirmingBulkDelete, setConfirmingBulkDelete] = useState(false);
+
+  // Global edit mode — Supplier only (see the PATCH route's own comment on
+  // why DPWH/PSA never get this). Every row with a saved price record edits
+  // at once, committed with one "Save All Changes" click, mirroring Pending
+  // Review's global edit.
+  const [isEditingAll, setIsEditingAll] = useState(false);
+  const [editDrafts, setEditDrafts] = useState<Record<number, SupplierRowDraft>>({});
+  const [isSavingAll, setIsSavingAll] = useState(false);
+  const [savingId, setSavingId] = useState<number | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
+
   useEffect(() => {
     setConfirmingId(null);
     setDeleteError(null);
+    setSelectedIds(new Set());
+    setConfirmingBulkDelete(false);
+    setIsEditingAll(false);
+    setEditDrafts({});
+    setSaveError(null);
   }, [subTab]);
 
   const handleDeleteDpwh = async (historicalrecId: number) => {
@@ -149,8 +253,151 @@ export function PriceCatalogTab() {
     [supplierCatalog.records, region]
   );
 
+  // Rows in the currently active sub-tab's (region/region-filtered) view that
+  // actually have a record to select — excludes a Supplier row with no
+  // historical_price_record yet (historicalrec_id null, see SelectCell).
+  const selectableIds = useMemo(() => {
+    const rows = subTab === "dpwh" ? dpwhRows : supplierRows;
+    return rows
+      .map((r) => r.historicalrec_id)
+      .filter((id): id is number => id !== null);
+  }, [subTab, dpwhRows, supplierRows]);
+
+  const allSelected = selectableIds.length > 0 && selectableIds.every((id) => selectedIds.has(id));
+
+  const toggleSelectAll = () => {
+    setSelectedIds(allSelected ? new Set() : new Set(selectableIds));
+  };
+
+  const toggleSelectOne = (id: number) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
+
+  // Sequential, same rationale as AiNormalizationPanel's bulk actions — each
+  // call hits its own DELETE endpoint, and this reuses the single-row
+  // deletingId spinner DeleteCell already renders, one row at a time.
+  const deleteRecords = async (ids: number[]) => {
+    if (ids.length === 0) return;
+    setIsBulkDeleting(true);
+    setDeleteError(null);
+    const removeOne = subTab === "dpwh" ? dpwhCatalog.remove : supplierCatalog.remove;
+    let failedCount = 0;
+
+    for (const id of ids) {
+      setDeletingId(id);
+      try {
+        await removeOne(id);
+      } catch {
+        failedCount += 1;
+      }
+      setSelectedIds((prev) => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+    }
+
+    setDeletingId(null);
+    setIsBulkDeleting(false);
+    if (failedCount > 0) {
+      setDeleteError(`Failed to remove ${failedCount} record${failedCount !== 1 ? "s" : ""}`);
+    }
+  };
+
+  // One button, two targets — whatever's checked if anything is, otherwise
+  // every selectable row currently in view (search/region-filtered).
+  const handleDeleteToolbar = () => {
+    if (!confirmingBulkDelete) {
+      setConfirmingBulkDelete(true);
+      return;
+    }
+    setConfirmingBulkDelete(false);
+    const ids = selectedIds.size > 0 ? Array.from(selectedIds) : selectableIds;
+    deleteRecords(ids).catch(() => {});
+  };
+
+  // Seeds every currently-visible Supplier row's draft (skipping rows with
+  // no price record yet — nothing there to edit, see EditableTextCell usage
+  // below) and switches every one of them into the editing layout at once.
+  const startEditingAll = () => {
+    setSaveError(null);
+    const drafts: Record<number, SupplierRowDraft> = {};
+    supplierRows.forEach((row) => {
+      if (row.historicalrec_id !== null) {
+        drafts[row.historicalrec_id] = supplierRowToDraft(row);
+      }
+    });
+    setEditDrafts(drafts);
+    setIsEditingAll(true);
+  };
+
+  const cancelEditingAll = () => {
+    setIsEditingAll(false);
+    setEditDrafts({});
+    setSaveError(null);
+  };
+
+  const updateSupplierDraft = (row: SavedPriceRecord, patch: Partial<SupplierRowDraft>) => {
+    if (row.historicalrec_id === null) return;
+    const id = row.historicalrec_id;
+    setEditDrafts((prev) => {
+      const current = prev[id] ?? supplierRowToDraft(row);
+      return { ...prev, [id]: { ...current, ...patch } };
+    });
+  };
+
+  // Commits every edited row's draft in one shot. Exits edit mode only once
+  // every row has saved — a failure stays editable so nothing typed is lost.
+  const saveAllSupplierEdits = async () => {
+    setIsSavingAll(true);
+    setSaveError(null);
+    const failedNames: string[] = [];
+
+    for (const row of supplierRows) {
+      if (row.historicalrec_id === null) continue;
+      const draft = editDrafts[row.historicalrec_id] ?? supplierRowToDraft(row);
+      setSavingId(row.historicalrec_id);
+      try {
+        await supplierCatalog.update(row.historicalrec_id, supplierDraftToPatch(draft));
+      } catch (err) {
+        failedNames.push(row.item_name);
+      }
+    }
+
+    setSavingId(null);
+    setIsSavingAll(false);
+    if (failedNames.length > 0) {
+      setSaveError(`Failed to save: ${failedNames.join(", ")}`);
+    } else {
+      setIsEditingAll(false);
+      setEditDrafts({});
+    }
+  };
+
   const dpwhColumns = useMemo<ColumnDef<DpwhCatalogRow>[]>(
     () => [
+      {
+        id: "__select",
+        header: "",
+        enableGlobalFilter: false,
+        enableSorting: false,
+        cell: ({ row }) => (
+          <SelectCell
+            id={row.original.historicalrec_id}
+            isSelected={selectedIds.has(row.original.historicalrec_id)}
+            disabled={isBulkDeleting}
+            onToggle={toggleSelectOne}
+          />
+        ),
+      },
       {
         accessorKey: "item_name",
         header: "Material",
@@ -194,27 +441,113 @@ export function PriceCatalogTab() {
         ),
       },
     ],
-    [confirmingId, deletingId]
+    [confirmingId, deletingId, selectedIds, isBulkDeleting]
   );
 
   const supplierColumns = useMemo<ColumnDef<SavedPriceRecord>[]>(
     () => [
       {
+        id: "__select",
+        header: "",
+        enableGlobalFilter: false,
+        enableSorting: false,
+        cell: ({ row }) => (
+          <SelectCell
+            id={row.original.historicalrec_id}
+            isSelected={row.original.historicalrec_id !== null && selectedIds.has(row.original.historicalrec_id)}
+            disabled={isBulkDeleting || isEditingAll}
+            onToggle={toggleSelectOne}
+          />
+        ),
+      },
+      {
         accessorKey: "item_name",
         header: "Item Name",
-        cell: ({ row }) => <span className="font-medium text-gray-800">{row.original.item_name}</span>,
+        cell: ({ row }) => {
+          const rec = row.original;
+          if (isEditingAll && rec.historicalrec_id !== null) {
+            const draft = editDrafts[rec.historicalrec_id] ?? supplierRowToDraft(rec);
+            return (
+              <EditableTextCell
+                value={draft.item_name}
+                onChange={(value) => updateSupplierDraft(rec, { item_name: value })}
+                className="h-8 w-full min-w-[12rem] rounded-lg border border-gray-200 bg-white px-2 text-sm text-gray-700 outline-none focus:border-primary focus:ring-2 focus:ring-primary/15"
+              />
+            );
+          }
+          return <span className="font-medium text-gray-800">{rec.item_name}</span>;
+        },
       },
-      { accessorKey: "brand", header: "Brand" },
+      {
+        accessorKey: "brand",
+        header: "Brand",
+        cell: ({ row }) => {
+          const rec = row.original;
+          if (isEditingAll && rec.historicalrec_id !== null) {
+            const draft = editDrafts[rec.historicalrec_id] ?? supplierRowToDraft(rec);
+            return <EditableTextCell value={draft.brand} onChange={(value) => updateSupplierDraft(rec, { brand: value })} />;
+          }
+          return <span>{rec.brand}</span>;
+        },
+      },
       {
         accessorKey: "description_material",
         header: "Description/Material",
+        cell: ({ row }) => {
+          const rec = row.original;
+          if (isEditingAll && rec.historicalrec_id !== null) {
+            const draft = editDrafts[rec.historicalrec_id] ?? supplierRowToDraft(rec);
+            return (
+              <EditableTextCell
+                value={draft.description_material}
+                onChange={(value) => updateSupplierDraft(rec, { description_material: value })}
+                className="h-8 w-full min-w-[14rem] rounded-lg border border-gray-200 bg-white px-2 text-sm text-gray-700 outline-none focus:border-primary focus:ring-2 focus:ring-primary/15"
+              />
+            );
+          }
+          return <span>{rec.description_material}</span>;
+        },
       },
-      { accessorKey: "unit", header: "Unit", enableGlobalFilter: false },
+      {
+        accessorKey: "unit",
+        header: "Unit",
+        enableGlobalFilter: false,
+        cell: ({ row }) => {
+          const rec = row.original;
+          if (isEditingAll && rec.historicalrec_id !== null) {
+            const draft = editDrafts[rec.historicalrec_id] ?? supplierRowToDraft(rec);
+            return (
+              <EditableTextCell
+                value={draft.unit}
+                onChange={(value) => updateSupplierDraft(rec, { unit: value })}
+                className="h-8 w-20 rounded-lg border border-gray-200 bg-white px-2 text-sm text-gray-700 outline-none focus:border-primary focus:ring-2 focus:ring-primary/15"
+              />
+            );
+          }
+          return <span>{rec.unit}</span>;
+        },
+      },
       {
         accessorKey: "price",
         header: "Price",
         enableGlobalFilter: false,
-        cell: ({ getValue }) => <span className="font-semibold text-gray-900">{fmt(getValue<number>())}</span>,
+        cell: ({ row }) => {
+          const rec = row.original;
+          if (isEditingAll && rec.historicalrec_id !== null) {
+            const draft = editDrafts[rec.historicalrec_id] ?? supplierRowToDraft(rec);
+            return (
+              <input
+                type="number"
+                min="0.01"
+                step="0.01"
+                value={draft.price}
+                onChange={(e) => updateSupplierDraft(rec, { price: e.target.value })}
+                className="h-8 w-28 rounded-lg border border-gray-200 bg-white px-2 text-sm text-gray-700 outline-none focus:border-primary focus:ring-2 focus:ring-primary/15"
+              />
+            );
+          }
+          return <span className="font-semibold text-gray-900">{fmt(rec.price)}</span>;
+        },
       },
       {
         id: "__delete",
@@ -233,7 +566,7 @@ export function PriceCatalogTab() {
         ),
       },
     ],
-    [confirmingId, deletingId]
+    [confirmingId, deletingId, selectedIds, isBulkDeleting, isEditingAll, editDrafts]
   );
 
   const active = subTab === "dpwh"
@@ -252,8 +585,9 @@ export function PriceCatalogTab() {
         <div>
           <h2 className="text-base font-bold text-gray-900">Price Catalog</h2>
           <p className="text-xs text-gray-500">
-            The canonical view of your saved price records — values aren&apos;t editable here, but a
-            record can be removed.
+            {subTab === "supplier"
+              ? "Supplier records can be edited or removed — this is your own catalog data."
+              : "DPWH is externally published data — read-only here, but a record can still be removed."}
           </p>
         </div>
         <div className="flex w-fit gap-1 rounded-xl border border-gray-200 bg-gray-50 p-1">
@@ -303,6 +637,83 @@ export function PriceCatalogTab() {
           {active.count} record{active.count !== 1 ? "s" : ""}
         </span>
       </div>
+
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        {subTab === "supplier" && (
+          <button
+            type="button"
+            onClick={isEditingAll ? cancelEditingAll : startEditingAll}
+            disabled={supplierRows.length === 0 || isBulkDeleting || isSavingAll}
+            className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-600 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <Pencil className="h-3.5 w-3.5" />
+            {isEditingAll ? "Cancel Editing" : "Edit"}
+          </button>
+        )}
+        {isEditingAll && (
+          <button
+            type="button"
+            onClick={saveAllSupplierEdits}
+            disabled={isSavingAll}
+            className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-bold text-primary-foreground shadow-sm transition hover:bg-(--primary-hover) disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {isSavingAll ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+            {isSavingAll ? "Saving…" : "Save All Changes"}
+          </button>
+        )}
+        {!isEditingAll && (
+          <>
+            <button
+              type="button"
+              onClick={toggleSelectAll}
+              disabled={selectableIds.length === 0 || isBulkDeleting}
+              className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-600 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {allSelected ? "Deselect All" : "Select All"}
+            </button>
+            {confirmingBulkDelete && (
+              <button
+                type="button"
+                onClick={() => setConfirmingBulkDelete(false)}
+                className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-600 transition hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={handleDeleteToolbar}
+              disabled={(selectedIds.size === 0 && selectableIds.length === 0) || isBulkDeleting}
+              className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-50 ${
+                confirmingBulkDelete
+                  ? "border-red-200 bg-red-50 text-red-600 hover:bg-red-100"
+                  : "border-gray-200 bg-white text-gray-600 hover:bg-gray-50"
+              }`}
+            >
+              {isBulkDeleting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+              {isBulkDeleting
+                ? "Deleting…"
+                : confirmingBulkDelete
+                  ? `Confirm — delete ${selectedIds.size > 0 ? selectedIds.size : "all"}?`
+                  : selectedIds.size > 0
+                    ? `Delete Selected (${selectedIds.size})`
+                    : "Delete"}
+            </button>
+          </>
+        )}
+        <button
+          type="button"
+          onClick={active.refetch}
+          className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-600 transition hover:bg-gray-50"
+        >
+          <RefreshCw className="h-3.5 w-3.5" /> Refresh
+        </button>
+      </div>
+      {saveError && (
+        <p className="rounded-xl border border-red-200 bg-red-50 px-4 py-2.5 text-xs text-red-600">
+          {saveError}
+        </p>
+      )}
 
       <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
         <QueryState

@@ -187,9 +187,8 @@ function ReviewItemRow({
   isSelected,
   selectionDisabled,
   onToggleSelect,
-  onEdit,
   onDraftChange,
-  onSave,
+  onApprove,
   onDelete,
 }: {
   item: PricelistReviewItem;
@@ -199,9 +198,8 @@ function ReviewItemRow({
   isSelected: boolean;
   selectionDisabled: boolean;
   onToggleSelect: () => void;
-  onEdit: () => void;
   onDraftChange: (patch: Partial<ReviewEditDraft>) => void;
-  onSave: () => void;
+  onApprove: () => void;
   onDelete: () => void;
 }) {
   const inputClass =
@@ -237,20 +235,12 @@ function ReviewItemRow({
             <button
               type="button"
               disabled={isSaving}
-              onClick={onSave}
+              onClick={onApprove}
               className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-white transition hover:bg-(--primary-hover) disabled:opacity-60"
               aria-label={`Approve ${item.raw_name}`}
               title="Approve — saves to the Supplier price catalog"
             >
               {isSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
-            </button>
-            <button
-              type="button"
-              onClick={onEdit}
-              className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 text-gray-500 transition hover:bg-gray-50 hover:text-primary"
-              aria-label={`Edit ${item.raw_name}`}
-            >
-              <Pencil className="h-3.5 w-3.5" />
             </button>
             <button
               type="button"
@@ -338,25 +328,6 @@ function ReviewItemRow({
           <button
             type="button"
             disabled={isSaving}
-            onClick={onSave}
-            className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-white transition hover:bg-(--primary-hover) disabled:opacity-60"
-            aria-label={`Save changes to ${item.raw_name}`}
-            title="Save changes — stays in Pending Review, doesn't touch the price catalog"
-          >
-            {isSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
-          </button>
-          <button
-            type="button"
-            disabled
-            className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 text-primary/60"
-            aria-label={`Edit ${item.raw_name}`}
-            title="Currently editing"
-          >
-            <Pencil className="h-3.5 w-3.5" />
-          </button>
-          <button
-            type="button"
-            disabled={isSaving}
             onClick={onDelete}
             className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 text-gray-500 transition hover:bg-red-50 hover:text-red-600 disabled:opacity-60"
             aria-label={`Delete ${item.raw_name}`}
@@ -440,8 +411,12 @@ export function AiNormalizationPanel() {
   const [fileTypeError, setFileTypeError] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
   const [source, setSource] = useState<(typeof SOURCES)[number]>("Supplier");
-  const [editingId, setEditingId] = useState<number | null>(null);
-  const [editDraft, setEditDraft] = useState<ReviewEditDraft | null>(null);
+  // Global edit mode — every row edits at once (see startEditingAll/
+  // saveAllEdits below), rather than one row at a time. editDrafts is keyed
+  // by review_id so each row keeps its own in-progress values.
+  const [isEditingAll, setIsEditingAll] = useState(false);
+  const [editDrafts, setEditDrafts] = useState<Record<number, ReviewEditDraft>>({});
+  const [isSavingAll, setIsSavingAll] = useState(false);
   const [savingId, setSavingId] = useState<number | null>(null);
   const [reviewSaveError, setReviewSaveError] = useState<string | null>(null);
   const [selectedReviewIds, setSelectedReviewIds] = useState<Set<number>>(new Set());
@@ -486,25 +461,59 @@ export function AiNormalizationPanel() {
     setPendingFiles([]);
   };
 
-  const startEditing = (item: PricelistReviewItem) => {
+  // Seeds every currently-visible row's draft from its live values and
+  // switches every row into the editing layout at once.
+  const startEditingAll = () => {
     setReviewSaveError(null);
-    setEditingId(item.review_id);
-    setEditDraft(reviewItemToDraft(item));
+    const drafts: Record<number, ReviewEditDraft> = {};
+    reviewItems.forEach((item) => {
+      drafts[item.review_id] = reviewItemToDraft(item);
+    });
+    setEditDrafts(drafts);
+    setIsEditingAll(true);
   };
 
-  const cancelEditing = () => {
-    setEditingId(null);
-    setEditDraft(null);
+  const cancelEditingAll = () => {
+    setIsEditingAll(false);
+    setEditDrafts({});
     setReviewSaveError(null);
   };
 
-  // Saves the edited fields only — no status change, so the row stays
-  // "Pending" and nothing is written to the price catalog yet. Approving
-  // (committing) is a separate, explicit action (see onSave below).
-  const saveEditing = async () => {
-    if (editingId === null || editDraft === null) return;
-    await saveReviewItem(editingId, draftToPatch(editDraft));
-    cancelEditing();
+  const updateRowDraft = (item: PricelistReviewItem, patch: Partial<ReviewEditDraft>) => {
+    setEditDrafts((prev) => {
+      const current = prev[item.review_id] ?? reviewItemToDraft(item);
+      return { ...prev, [item.review_id]: { ...current, ...patch } };
+    });
+  };
+
+  // Commits every row's current draft in one shot — fields only, no status
+  // change, so rows stay "Pending" and nothing is written to the price
+  // catalog yet (approving a row is still a separate, explicit action).
+  // Exits edit mode only once every row has saved; failures stay editable so
+  // nothing already typed is lost, and the user can retry.
+  const saveAllEdits = async () => {
+    setIsSavingAll(true);
+    setReviewSaveError(null);
+    const failedNames: string[] = [];
+
+    for (const item of reviewItems) {
+      const draft = editDrafts[item.review_id] ?? reviewItemToDraft(item);
+      setSavingId(item.review_id);
+      try {
+        await updateReviewItem(item.review_id, draftToPatch(draft));
+      } catch (err) {
+        failedNames.push(item.raw_name);
+      }
+    }
+
+    setSavingId(null);
+    setIsSavingAll(false);
+    if (failedNames.length > 0) {
+      setReviewSaveError(`Failed to save: ${failedNames.join(", ")}`);
+    } else {
+      setIsEditingAll(false);
+      setEditDrafts({});
+    }
   };
 
   const saveReviewItem = async (reviewId: number, patch: PricelistReviewItemUpdate) => {
@@ -524,9 +533,12 @@ export function AiNormalizationPanel() {
     setReviewSaveError(null);
     try {
       await deleteReviewItem(reviewId);
-      if (editingId === reviewId) {
-        cancelEditing();
-      }
+      setEditDrafts((prev) => {
+        if (!(reviewId in prev)) return prev;
+        const next = { ...prev };
+        delete next[reviewId];
+        return next;
+      });
     } catch (err) {
       setReviewSaveError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -600,9 +612,12 @@ export function AiNormalizationPanel() {
       setSavingId(reviewId);
       try {
         await deleteReviewItem(reviewId);
-        if (editingId === reviewId) {
-          cancelEditing();
-        }
+        setEditDrafts((prev) => {
+          if (!(reviewId in prev)) return prev;
+          const next = { ...prev };
+          delete next[reviewId];
+          return next;
+        });
         setSelectedReviewIds((prev) => {
           const next = new Set(prev);
           next.delete(reviewId);
@@ -845,58 +860,82 @@ export function AiNormalizationPanel() {
           <div className="flex shrink-0 flex-wrap items-center gap-2">
             <button
               type="button"
-              onClick={toggleSelectAllReviewItems}
-              disabled={reviewItems.length === 0 || isBulkApproving || isBulkDeleting}
-              className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-600 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+              onClick={isEditingAll ? cancelEditingAll : startEditingAll}
+              disabled={reviewItems.length === 0 || isBulkApproving || isBulkDeleting || isSavingAll}
+              className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-600 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {allReviewItemsSelected ? "Deselect All" : "Select All"}
+              <Pencil className="h-3.5 w-3.5" />
+              {isEditingAll ? "Cancel Editing" : "Edit"}
             </button>
-            <button
-              type="button"
-              onClick={approveSelectedReviewItems}
-              disabled={selectedReviewIds.size === 0 || isBulkApproving || isBulkDeleting}
-              className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-bold text-primary-foreground shadow-sm transition hover:bg-(--primary-hover) disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {isBulkApproving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
-              {isBulkApproving ? "Approving…" : `Approve Selected (${selectedReviewIds.size})`}
-            </button>
-            {confirmingDelete && (
+            {isEditingAll && (
               <button
                 type="button"
-                onClick={() => setConfirmingDelete(false)}
-                className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-600 transition hover:bg-gray-50"
+                onClick={saveAllEdits}
+                disabled={isSavingAll}
+                className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-bold text-primary-foreground shadow-sm transition hover:bg-(--primary-hover) disabled:cursor-not-allowed disabled:opacity-50"
               >
-                Cancel
+                {isSavingAll ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+                {isSavingAll ? "Saving…" : "Save All Changes"}
               </button>
             )}
-            <button
-              type="button"
-              onClick={handleDeleteReview}
-              disabled={
-                (selectedReviewIds.size === 0 && reviewItems.length === 0) ||
-                isClearingReview ||
-                isBulkDeleting ||
-                isBulkApproving
-              }
-              className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-50 ${
-                confirmingDelete
-                  ? "border-red-200 bg-red-50 text-red-600 hover:bg-red-100"
-                  : "border-gray-200 bg-white text-gray-600 hover:bg-gray-50"
-              }`}
-            >
-              {isClearingReview || isBulkDeleting ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              ) : (
-                <Trash2 className="h-3.5 w-3.5" />
-              )}
-              {isClearingReview || isBulkDeleting
-                ? "Deleting…"
-                : confirmingDelete
-                  ? `Confirm — delete ${selectedReviewIds.size > 0 ? selectedReviewIds.size : "all"}?`
-                  : selectedReviewIds.size > 0
-                    ? `Delete Selected (${selectedReviewIds.size})`
-                    : "Delete"}
-            </button>
+            {!isEditingAll && (
+              <>
+                <button
+                  type="button"
+                  onClick={toggleSelectAllReviewItems}
+                  disabled={reviewItems.length === 0 || isBulkApproving || isBulkDeleting}
+                  className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-600 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {allReviewItemsSelected ? "Deselect All" : "Select All"}
+                </button>
+                <button
+                  type="button"
+                  onClick={approveSelectedReviewItems}
+                  disabled={selectedReviewIds.size === 0 || isBulkApproving || isBulkDeleting}
+                  className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-bold text-primary-foreground shadow-sm transition hover:bg-(--primary-hover) disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {isBulkApproving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+                  {isBulkApproving ? "Approving…" : `Approve Selected (${selectedReviewIds.size})`}
+                </button>
+                {confirmingDelete && (
+                  <button
+                    type="button"
+                    onClick={() => setConfirmingDelete(false)}
+                    className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-600 transition hover:bg-gray-50"
+                  >
+                    Cancel
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={handleDeleteReview}
+                  disabled={
+                    (selectedReviewIds.size === 0 && reviewItems.length === 0) ||
+                    isClearingReview ||
+                    isBulkDeleting ||
+                    isBulkApproving
+                  }
+                  className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-50 ${
+                    confirmingDelete
+                      ? "border-red-200 bg-red-50 text-red-600 hover:bg-red-100"
+                      : "border-gray-200 bg-white text-gray-600 hover:bg-gray-50"
+                  }`}
+                >
+                  {isClearingReview || isBulkDeleting ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <Trash2 className="h-3.5 w-3.5" />
+                  )}
+                  {isClearingReview || isBulkDeleting
+                    ? "Deleting…"
+                    : confirmingDelete
+                      ? `Confirm — delete ${selectedReviewIds.size > 0 ? selectedReviewIds.size : "all"}?`
+                      : selectedReviewIds.size > 0
+                        ? `Delete Selected (${selectedReviewIds.size})`
+                        : "Delete"}
+                </button>
+              </>
+            )}
             <button
               type="button"
               onClick={refetchReview}
@@ -941,24 +980,19 @@ export function AiNormalizationPanel() {
                   <ReviewItemRow
                     key={item.review_id}
                     item={item}
-                    isEditing={editingId === item.review_id}
-                    draft={editingId === item.review_id && editDraft ? editDraft : reviewItemToDraft(item)}
+                    isEditing={isEditingAll}
+                    draft={editDrafts[item.review_id] ?? reviewItemToDraft(item)}
                     isSaving={savingId === item.review_id}
                     isSelected={selectedReviewIds.has(item.review_id)}
-                    selectionDisabled={isBulkApproving || isBulkDeleting}
+                    selectionDisabled={isBulkApproving || isBulkDeleting || isEditingAll}
                     onToggleSelect={() => toggleSelectReviewItem(item.review_id)}
-                    onEdit={() => startEditing(item)}
-                    onDraftChange={(patch) => setEditDraft((current) => (current ? { ...current, ...patch } : current))}
-                    onSave={() => {
-                      if (editingId === item.review_id && editDraft) {
-                        void saveEditing();
-                        return;
-                      }
+                    onDraftChange={(patch) => updateRowDraft(item, patch)}
+                    onApprove={() =>
                       void saveReviewItem(item.review_id, {
                         ...draftToPatch(reviewItemToDraft(item)),
                         status: "Approved",
-                      });
-                    }}
+                      })
+                    }
                     onDelete={() => removeReviewItem(item.review_id)}
                   />
                 ))}
