@@ -5,6 +5,7 @@ from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.database import init_db
 from app.ingest.router import router as ingest_router
 from app.routers import pricelist
 from app.scheduler import setup_scheduler
@@ -13,6 +14,8 @@ from app.scheduler import setup_scheduler
 load_dotenv(Path(__file__).resolve().parents[2] / ".env")
 
 FRONTEND_ORIGIN = os.environ["FRONTEND_ORIGIN"]
+
+init_db()
 
 app = FastAPI(title="BuildSmart API")
 app.add_middleware(

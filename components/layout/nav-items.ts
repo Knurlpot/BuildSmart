@@ -20,7 +20,7 @@ export interface NavItem {
 
 export const NAV_ITEMS: NavItem[] = [
   {
-    label: "Account & Company Profile",
+    label: "Profile",
     description: "Update your profile and company details",
     icon: User,
     href: "/account",

@@ -29,16 +29,20 @@ FALLBACK_CATEGORY_PATTERNS: list[tuple[re.Pattern[str], str]] = [
 ]
 
 
-def _fallback_category(raw_name: str) -> str:
+def determine_category(raw_name: str) -> str:
     raw = (raw_name or "").strip()
     for pattern, category in FALLBACK_CATEGORY_PATTERNS:
         if pattern.search(raw):
             return category
     # Prefer 'Finishing' for vague interior terms, otherwise fall back to
-    # the legacy 'Uncategorized' label when nothing matches.
+    # the broad catch-all category when nothing matches.
     if re.search(r"\b(paint|finish|plaster|drywall|tile|floor)\b", raw, re.I):
         return "Finishing"
-    return "Uncategorized"
+    return "Others"
+
+
+def _fallback_category(raw_name: str) -> str:
+    return determine_category(raw_name)
 
 
 def normalize_material(
@@ -60,6 +64,10 @@ def normalize_material(
         )
 
     result = normalize_material_mock(raw_name, raw_unit, candidates)
+
+    if result.is_new_item:
+        result.category_type = determine_category(raw_name)
+        result.material = raw_name
 
     # Override brand with raw_brand if it was provided
     if raw_brand and raw_brand != "Generic":

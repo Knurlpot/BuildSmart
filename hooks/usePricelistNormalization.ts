@@ -163,7 +163,8 @@ export function usePricelistNormalization() {
   }, []);
 
   useEffect(() => {
-    refetchReview();
+    const timeoutId = window.setTimeout(refetchReview, 0);
+    return () => window.clearTimeout(timeoutId);
   }, [refetchReview]);
 
   const updateItem = (id: string, patch: Partial<QueueItem>) => {
@@ -201,40 +202,40 @@ export function usePricelistNormalization() {
 
   const processQueue = async () => {
     if (processingRef.current) return;
-    // A file awaiting a human-confirmed mapping blocks the rest of the batch
-    // — resuming here would let a later file's match run ahead of a decision
-    // the user hasn't made yet, out of the upload order they expect.
-    if (queueRef.current.some((item) => item.status === 'needs_mapping')) return;
     processingRef.current = true;
 
-    while (true) {
-      const next = queueRef.current.find((item) => item.status === 'queued');
-      if (!next) break;
+    const queuedItems = queueRef.current.filter((item) => item.status === 'queued');
 
-      updateItem(next.id, { status: 'uploading' });
+    await Promise.all(
+      queuedItems.map(async (item) => {
+        updateItem(item.id, { status: 'uploading' });
 
-      const form = new FormData();
-      form.append('file', next.file);
-      form.append('source', next.source);
+        const form = new FormData();
+        form.append('file', item.file);
+        form.append('source', item.source);
 
-      try {
-        const res = await uploadPricelistFile(form);
-        updateItem(next.id, { status: 'pending', taskId: res.task_id });
-        await pollTaskStatus(next.id, res.task_id);
-        refetchReview();
-      } catch (err) {
-        if (err instanceof MissingColumnsApiError) {
-          updateItem(next.id, { status: 'needs_mapping', mappingInfo: err.info });
-          break; // pause here — see the guard above for why
+        try {
+          const res = await uploadPricelistFile(form);
+          updateItem(item.id, { status: 'pending', taskId: res.task_id });
+          await pollTaskStatus(item.id, res.task_id);
+          refetchReview();
+        } catch (err) {
+          if (err instanceof MissingColumnsApiError) {
+            updateItem(item.id, { status: 'needs_mapping', mappingInfo: err.info });
+            return;
+          }
+          updateItem(item.id, {
+            status: 'failed',
+            failureReason: err instanceof Error ? err.message : String(err),
+          });
         }
-        updateItem(next.id, {
-          status: 'failed',
-          failureReason: err instanceof Error ? err.message : String(err),
-        });
-      }
-    }
+      })
+    );
 
     processingRef.current = false;
+    if (queueRef.current.some((item) => item.status === 'queued')) {
+      processQueue().catch(() => {});
+    }
   };
 
   const enqueueFiles = (files: File[], source: string) => {

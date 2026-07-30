@@ -173,19 +173,46 @@ function LoadErrorBanner({
   return null;
 }
 
-function CompanySection() {
+function UserProfileSection() {
   const { currentUser } = useAuth();
+  const userId = currentUser?.id;
   const companyId = currentUser?.companyId;
-  const endpoint =
+  const userEndpoint = userId !== undefined && userId !== null ? `/api/users/${userId}` : null;
+  const companyEndpoint =
     companyId !== undefined && companyId !== null ? `/api/company/${companyId}` : null;
-  const { data, isLoading, error, refetch } = useFetch<Company>(endpoint);
-  const update = useMutation<Company>();
+
+  // Fetch user data
+  const {
+    data: userData,
+    isLoading: userLoading,
+    error: userError,
+    refetch: refetchUser,
+  } = useFetch<Users>("/api/auth/me");
+
+  // Fetch company data
+  const {
+    data: companyData,
+    isLoading: companyLoading,
+    error: companyError,
+    refetch: refetchCompany,
+  } = useFetch<Company>(companyEndpoint);
+
+  const updateUser = useMutation<Users>();
+  const updateCompany = useMutation<Company>();
   const logoUpload = useMutation<{ url: string }>();
-  const [form, setForm] = useState<Company>(EMPTY_COMPANY);
-  const [syncedData, setSyncedData] = useState<Company | null>(null);
-  if (data !== syncedData) {
-    setSyncedData(data);
-    if (data) setForm(data);
+
+  const [userForm, setUserForm] = useState<Users>(EMPTY_USER);
+  const [companyForm, setCompanyForm] = useState<Company>(EMPTY_COMPANY);
+  const [syncedUserData, setSyncedUserData] = useState<Users | null>(null);
+  const [syncedCompanyData, setSyncedCompanyData] = useState<Company | null>(null);
+
+  if (userData !== syncedUserData) {
+    setSyncedUserData(userData);
+    if (userData) setUserForm(userData);
+  }
+  if (companyData !== syncedCompanyData) {
+    setSyncedCompanyData(companyData);
+    if (companyData) setCompanyForm(companyData);
   }
 
   const [editing, setEditing] = useState(false);
@@ -199,7 +226,7 @@ function CompanySection() {
     body.append("file", file);
     try {
       const { url } = await logoUpload.mutate("/api/uploads/company-logo", body, "POST");
-      setForm((current) => ({ ...current, company_logo: url }));
+      setCompanyForm((current) => ({ ...current, company_logo: url }));
     } catch {
       // surfaced via logoUpload.error below
     }
@@ -211,14 +238,16 @@ function CompanySection() {
   };
 
   const removeLogo = () => {
-    setForm((current) => ({ ...current, company_logo: "" }));
+    setCompanyForm((current) => ({ ...current, company_logo: "" }));
     setLogoFileName("");
     logoUpload.reset();
   };
 
   const handleCancel = () => {
-    if (data) setForm(data);
-    update.reset();
+    if (userData) setUserForm(userData);
+    if (companyData) setCompanyForm(companyData);
+    updateUser.reset();
+    updateCompany.reset();
     logoUpload.reset();
     setLogoFileName("");
     setSpecializationError("");
@@ -227,41 +256,64 @@ function CompanySection() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!endpoint) return;
-    if (columnsToSpecializations(form).length === 0) {
+    if (!userEndpoint || !companyEndpoint) return;
+
+    if (columnsToSpecializations(companyForm).length === 0) {
       setSpecializationError("At least one specialization is required");
       return;
     }
     setSpecializationError("");
-    const body: Partial<Company> = { ...form };
-    body.company_logo = normalizeLogoUrl(body.company_logo);
-    delete body.company_id;
+
     try {
-      const saved = await update.mutate(endpoint, body, "PATCH");
-      setForm(saved);
+      // Update user profile
+      const userBody: Partial<Users> = { ...userForm };
+      delete userBody.user_id;
+      const savedUser = await updateUser.mutate(userEndpoint, userBody, "PATCH");
+      setUserForm(savedUser);
+
+      // Update company profile
+      const companyBody: Partial<Company> = { ...companyForm };
+      companyBody.company_logo = normalizeLogoUrl(companyBody.company_logo);
+      delete companyBody.company_id;
+      const savedCompany = await updateCompany.mutate(companyEndpoint, companyBody, "PATCH");
+      setCompanyForm(savedCompany);
       window.dispatchEvent(new Event("company-profile-updated"));
+
       setEditing(false);
     } catch {
       // surfaced via update.error below — no fabricated success
     }
   };
 
-  const initials = (form.company_name || "?").slice(0, 2).toUpperCase();
+  const fullName = [userForm.first_name, userForm.middle_name, userForm.last_name]
+    .filter((s) => s && s.trim())
+    .join(" ");
+
+  const isLoading = userLoading || companyLoading;
+  const error = userError || companyError;
+  const refetch = () => {
+    refetchUser();
+    refetchCompany();
+  };
+
+  const initials = (companyForm.company_name || "?").slice(0, 2).toUpperCase();
+  const specializations = formatSpecializations(columnsToSpecializations(companyForm));
 
   return (
     <section className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
       <div className="mb-4 flex items-center justify-between">
-        <p className="font-bold text-gray-900">Company Profile</p>
+        <p className="font-bold text-gray-900">Profile</p>
         {!editing && <EditButton onClick={() => setEditing(true)} />}
       </div>
       <LoadErrorBanner isLoading={isLoading} error={error} onRetry={refetch} />
 
       {!editing ? (
-        <div className="flex flex-col gap-4">
+        <div className="flex flex-col gap-6">
+          {/* User Info */}
           <div className="flex items-center gap-4">
-            {getLogoCandidates(form.company_logo).length > 0 ? (
+            {getLogoCandidates(companyForm.company_logo).length > 0 ? (
               <LogoImage
-                value={form.company_logo}
+                value={companyForm.company_logo}
                 alt="Company logo"
                 className="h-14 w-14 shrink-0 rounded-xl border border-gray-200 object-cover"
               />
@@ -271,244 +323,192 @@ function CompanySection() {
               </div>
             )}
             <div>
-              <p className="text-lg font-bold text-gray-900">{form.company_name || "—"}</p>
-              <p className="text-sm text-gray-500">{form.company_address || "—"}</p>
+              <p className="text-lg font-bold text-gray-900">{fullName || "—"}</p>
+              <p className="text-sm text-gray-500">{userForm.email || "—"}</p>
             </div>
           </div>
+
+          {/* Combined Info Grid */}
           <dl className="grid grid-cols-2 gap-4 sm:grid-cols-3">
-            <ReadOnlyRow label="Contact Email" value={form.contact_email} />
-            <ReadOnlyRow label="Contact Number" value={form.contact_number} />
-            <ReadOnlyRow label="Specialization" value={formatSpecializations(columnsToSpecializations(form))} />
+            <ReadOnlyRow label="User Name" value={fullName || undefined} />
+            <ReadOnlyRow label="User Email" value={userForm.email} />
+            <ReadOnlyRow label="User Role" value={userForm.user_role} />
+            <ReadOnlyRow label="Company Name" value={companyForm.company_name} />
+            <ReadOnlyRow label="Company Address" value={companyForm.company_address} />
+            <ReadOnlyRow label="Company Contact Email" value={companyForm.contact_email} />
+            <ReadOnlyRow label="Company Contact Number" value={companyForm.contact_number} />
+            <ReadOnlyRow label="Specializations" value={specializations} />
           </dl>
         </div>
       ) : (
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <Field label="Company Name">
-              <input
-                required
-                value={form.company_name}
-                onChange={(e) => setForm({ ...form, company_name: e.target.value })}
-                className={inputCls}
-              />
-            </Field>
-            <Field label="Company Address">
-              <input
-                required
-                value={form.company_address}
-                onChange={(e) => setForm({ ...form, company_address: e.target.value })}
-                className={inputCls}
-              />
-            </Field>
-            <Field label="Contact Email">
-              <input
-                type="email"
-                required
-                value={form.contact_email}
-                onChange={(e) => setForm({ ...form, contact_email: e.target.value })}
-                className={inputCls}
-              />
-            </Field>
-            <Field label="Contact Number">
-              <input
-                required
-                value={form.contact_number}
-                onChange={(e) => setForm({ ...form, contact_number: e.target.value })}
-                className={inputCls}
-              />
-            </Field>
-            <div className="sm:col-span-2">
-              <SpecializationSelect
-                selected={columnsToSpecializations(form)}
-                onChange={(next) => {
-                  setForm({ ...form, ...specializationsToColumns(next) });
-                  if (next.length > 0) setSpecializationError("");
-                }}
-                error={specializationError}
-              />
-            </div>
-            <div className="sm:col-span-2 flex flex-col gap-1.5">
-              <span className={labelCls}>Company Logo</span>
-              {getLogoCandidates(form.company_logo).length > 0 ? (
-                <div className="flex items-center gap-3 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5">
-                  <LogoImage
-                    value={form.company_logo}
-                    alt="Company logo preview"
-                    className="h-10 w-10 shrink-0 rounded-lg border border-gray-200 object-cover"
-                  />
-                  <span className="flex-1 truncate text-sm text-gray-700">
-                    {logoFileName ? `Selected: ${logoFileName}` : "Logo"}
-                  </span>
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => logoInputRef.current?.click()}
-                      className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm font-semibold text-gray-700 transition hover:bg-gray-100"
-                    >
-                      {logoUpload.isLoading ? "Uploading..." : "Upload Image"}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={removeLogo}
-                      title="Remove logo"
-                      className="shrink-0 text-gray-400 transition hover:text-red-500"
-                    >
-                      <X className="h-4 w-4" />
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => logoInputRef.current?.click()}
-                  className="flex w-full items-center justify-center gap-2 rounded-xl border border-gray-200 bg-gray-50 px-4 py-2.5 text-sm font-semibold text-gray-700 transition hover:bg-gray-100"
+          {/* User Fields */}
+          <div className="mb-4 border-b border-gray-200 pb-4">
+            <p className="mb-3 text-sm font-semibold text-gray-700">User Information</p>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <Field label="First Name">
+                <input
+                  required
+                  value={userForm.first_name}
+                  onChange={(e) => setUserForm({ ...userForm, first_name: e.target.value })}
+                  className={inputCls}
+                />
+              </Field>
+              <Field label="Last Name">
+                <input
+                  required
+                  value={userForm.last_name}
+                  onChange={(e) => setUserForm({ ...userForm, last_name: e.target.value })}
+                  className={inputCls}
+                />
+              </Field>
+              <Field label="Middle Name">
+                <input
+                  value={userForm.middle_name ?? ""}
+                  onChange={(e) => setUserForm({ ...userForm, middle_name: e.target.value })}
+                  className={inputCls}
+                />
+              </Field>
+              <Field label="Email">
+                <input
+                  type="email"
+                  required
+                  value={userForm.email}
+                  onChange={(e) => setUserForm({ ...userForm, email: e.target.value })}
+                  className={inputCls}
+                />
+              </Field>
+              <Field label="Role">
+                <select
+                  value={userForm.user_role}
+                  onChange={(e) => setUserForm({ ...userForm, user_role: e.target.value as Users["user_role"] })}
+                  className={inputCls}
                 >
-                  <Upload className="h-4 w-4" />
-                  {logoUpload.isLoading ? "Uploading..." : "Upload Company Logo"}
-                </button>
-              )}
-              <input
-                ref={logoInputRef}
-                type="file"
-                accept="image/*"
-                onChange={handleLogoFileChange}
-                className="hidden"
-              />
-              {logoUpload.error && (
-                <p className="text-xs text-red-500">Couldn&apos;t upload logo: {logoUpload.error.message}</p>
-              )}
+                  {USER_ROLES.map((r) => (
+                    <option key={r}>{r}</option>
+                  ))}
+                </select>
+              </Field>
             </div>
           </div>
+
+          {/* Company Fields */}
+          <div className="mb-4 border-b border-gray-200 pb-4">
+            <p className="mb-3 text-sm font-semibold text-gray-700">Company Information</p>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <Field label="Company Name">
+                <input
+                  required
+                  value={companyForm.company_name}
+                  onChange={(e) => setCompanyForm({ ...companyForm, company_name: e.target.value })}
+                  className={inputCls}
+                />
+              </Field>
+              <Field label="Company Address">
+                <input
+                  required
+                  value={companyForm.company_address}
+                  onChange={(e) => setCompanyForm({ ...companyForm, company_address: e.target.value })}
+                  className={inputCls}
+                />
+              </Field>
+              <Field label="Contact Email">
+                <input
+                  type="email"
+                  required
+                  value={companyForm.contact_email}
+                  onChange={(e) => setCompanyForm({ ...companyForm, contact_email: e.target.value })}
+                  className={inputCls}
+                />
+              </Field>
+              <Field label="Contact Number">
+                <input
+                  required
+                  value={companyForm.contact_number}
+                  onChange={(e) => setCompanyForm({ ...companyForm, contact_number: e.target.value })}
+                  className={inputCls}
+                />
+              </Field>
+              <div className="sm:col-span-2">
+                <SpecializationSelect
+                  selected={columnsToSpecializations(companyForm)}
+                  onChange={(next) => {
+                    setCompanyForm({ ...companyForm, ...specializationsToColumns(next) });
+                    if (next.length > 0) setSpecializationError("");
+                  }}
+                  error={specializationError}
+                />
+              </div>
+              <div className="sm:col-span-2 flex flex-col gap-1.5">
+                <span className={labelCls}>Company Logo</span>
+                {getLogoCandidates(companyForm.company_logo).length > 0 ? (
+                  <div className="flex items-center gap-3 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5">
+                    <LogoImage
+                      value={companyForm.company_logo}
+                      alt="Company logo preview"
+                      className="h-10 w-10 shrink-0 rounded-lg border border-gray-200 object-cover"
+                    />
+                    <span className="flex-1 truncate text-sm text-gray-700">
+                      {logoFileName ? `Selected: ${logoFileName}` : "Logo"}
+                    </span>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => logoInputRef.current?.click()}
+                        className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm font-semibold text-gray-700 transition hover:bg-gray-100"
+                      >
+                        {logoUpload.isLoading ? "Uploading..." : "Upload Image"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={removeLogo}
+                        title="Remove logo"
+                        className="shrink-0 text-gray-400 transition hover:text-red-500"
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => logoInputRef.current?.click()}
+                    className="flex w-full items-center justify-center gap-2 rounded-xl border border-gray-200 bg-gray-50 px-4 py-2.5 text-sm font-semibold text-gray-700 transition hover:bg-gray-100"
+                  >
+                    <Upload className="h-4 w-4" />
+                    {logoUpload.isLoading ? "Uploading..." : "Upload Company Logo"}
+                  </button>
+                )}
+                <input
+                  ref={logoInputRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={handleLogoFileChange}
+                  className="hidden"
+                />
+                {logoUpload.error && (
+                  <p className="text-xs text-red-500">Couldn&apos;t upload logo: {logoUpload.error.message}</p>
+                )}
+              </div>
+            </div>
+          </div>
+
           <div className="flex items-center gap-3">
-            <button type="submit" disabled={update.isLoading || !endpoint} className={btnCls}>
-              {update.isLoading ? "Saving…" : "Save Company Profile"}
+            <button
+              type="submit"
+              disabled={updateUser.isLoading || updateCompany.isLoading || !userEndpoint || !companyEndpoint}
+              className={btnCls}
+            >
+              {updateUser.isLoading || updateCompany.isLoading ? "Saving…" : "Save Profile"}
             </button>
             <button type="button" onClick={handleCancel} className={cancelBtnCls}>
               Cancel
             </button>
-            {update.error && <p className="text-xs text-red-500">{update.error.message}</p>}
-          </div>
-        </form>
-      )}
-    </section>
-  );
-}
-
-function UserSection() {
-  const { currentUser } = useAuth();
-  const userId = currentUser?.id;
-  const endpoint = userId !== undefined && userId !== null ? `/api/users/${userId}` : null;
-
-  const { data, isLoading, error, refetch } = useFetch<Users>("/api/auth/me");
-  const update = useMutation<Users>();
-
-  const [form, setForm] = useState<Users>(EMPTY_USER);
-  const [syncedData, setSyncedData] = useState<Users | null>(null);
-  if (data !== syncedData) {
-    setSyncedData(data);
-    if (data) setForm(data);
-  }
-
-  const [editing, setEditing] = useState(false);
-
-  const handleCancel = () => {
-    if (data) setForm(data);
-    update.reset();
-    setEditing(false);
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!endpoint) return;
-    // user_id lives in the URL (from the authenticated session, never form state) —
-    // strip it from the body so an invented/placeholder id is never sent.
-    const body: Partial<Users> = { ...form };
-    delete body.user_id;
-    try {
-      const saved = await update.mutate(endpoint, body, "PATCH");
-      setForm(saved);
-      setEditing(false);
-    } catch {
-      // surfaced via update.error below — no fabricated success
-    }
-  };
-
-  const fullName = [form.first_name, form.middle_name, form.last_name].filter((s) => s && s.trim()).join(" ");
-
-  return (
-    <section className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
-      <div className="mb-4 flex items-center justify-between">
-        <p className="font-bold text-gray-900">User Profile</p>
-        {!editing && <EditButton onClick={() => setEditing(true)} />}
-      </div>
-      <LoadErrorBanner isLoading={isLoading} error={error} onRetry={refetch} />
-
-      {!editing ? (
-        <div className="flex flex-col gap-4">
-          <div>
-            <p className="text-lg font-bold text-gray-900">{fullName || "—"}</p>
-            <p className="text-sm text-gray-500">{form.email || "—"}</p>
-          </div>
-          <dl className="grid grid-cols-2 gap-4 sm:grid-cols-3">
-            <ReadOnlyRow label="Role" value={form.user_role} />
-          </dl>
-        </div>
-      ) : (
-        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <Field label="First Name">
-              <input
-                required
-                value={form.first_name}
-                onChange={(e) => setForm({ ...form, first_name: e.target.value })}
-                className={inputCls}
-              />
-            </Field>
-            <Field label="Last Name">
-              <input
-                required
-                value={form.last_name}
-                onChange={(e) => setForm({ ...form, last_name: e.target.value })}
-                className={inputCls}
-              />
-            </Field>
-            <Field label="Middle Name">
-              <input
-                value={form.middle_name ?? ""}
-                onChange={(e) => setForm({ ...form, middle_name: e.target.value })}
-                className={inputCls}
-              />
-            </Field>
-            <Field label="Email">
-              <input
-                type="email"
-                required
-                value={form.email}
-                onChange={(e) => setForm({ ...form, email: e.target.value })}
-                className={inputCls}
-              />
-            </Field>
-            <Field label="Role">
-              <select
-                value={form.user_role}
-                onChange={(e) => setForm({ ...form, user_role: e.target.value as Users["user_role"] })}
-                className={inputCls}
-              >
-                {USER_ROLES.map((r) => (
-                  <option key={r}>{r}</option>
-                ))}
-              </select>
-            </Field>
-          </div>
-
-          <div className="flex items-center gap-3">
-            <button type="submit" disabled={update.isLoading || !endpoint} className={btnCls}>
-              {update.isLoading ? "Saving…" : "Save User Profile"}
-            </button>
-            <button type="button" onClick={handleCancel} className={cancelBtnCls}>
-              Cancel
-            </button>
-            {update.error && <p className="text-xs text-red-500">{update.error.message}</p>}
+            {(updateUser.error || updateCompany.error) && (
+              <p className="text-xs text-red-500">
+                {updateUser.error?.message || updateCompany.error?.message}
+              </p>
+            )}
           </div>
         </form>
       )}
@@ -777,8 +777,7 @@ export default function AccountPage() {
   return (
     <RequireAuth>
       <div className="flex flex-col gap-5">
-        <CompanySection />
-        <UserSection />
+        <UserProfileSection />
         <PasswordSection />
         <DeactivateAccountSection />
       </div>
