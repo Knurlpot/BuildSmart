@@ -61,7 +61,7 @@ export const NAV_ITEMS: NavItem[] = [
     color: "#f59e0b",
   },
   {
-    label: "Analyze Market Intelligence",
+    label: "Price Trends",
     description: "Analyze material price trends",
     icon: TrendingUp,
     href: "/market-intelligence",

@@ -44,6 +44,12 @@ export interface DraftSegment {
   // authored directly (manual add, or the result of grouping) start confirmed since
   // there's nothing "detected" to second-guess.
   confirmed: boolean;
+  // Maps to the real project_segments.included_in_quote column. A specialty contractor
+  // may only want SOME detected rooms priced (e.g. tiling only quotes the bathroom/
+  // kitchen) — excluding a segment here does NOT delete it (the room is real; it's just
+  // out of scope for this quote). Defaults true everywhere a segment is created: nothing
+  // is silently left out until a human explicitly excludes it.
+  included_in_quote: boolean;
   // Step 3 config — PROVISIONAL, no schema column yet (see quotationGenerationTypes.ts).
   treatment_type: string | null;
   is_rush: boolean;
@@ -76,6 +82,12 @@ export function isSegmentAreaValid(seg: DraftSegment): boolean {
   return seg.area_sqm > 0;
 }
 
+/** Segments the user has chosen to keep in THIS quote's scope — excluded segments stay in
+ * the list (still detected, still real) but don't count toward validation/totals gates. */
+export function isSegmentIncluded(seg: DraftSegment): boolean {
+  return seg.included_in_quote;
+}
+
 const SHAPE_FIELD_DEFAULTS = {
   length: null,
   width: null,
@@ -99,6 +111,7 @@ export function createManualSegment(defaultName = ''): DraftSegment {
     polygon_coords: null,
     confidence_score: null,
     confirmed: true,
+    included_in_quote: true,
     treatment_type: null,
     is_rush: false,
     condition_tags: [],
@@ -118,6 +131,7 @@ export function createSegmentFromExtraction(extracted: ExtractedSegment, floorLe
     polygon_coords: extracted.polygon_coords,
     confidence_score: extracted.confidence_score,
     confirmed: false,
+    included_in_quote: true,
     treatment_type: null,
     is_rush: false,
     condition_tags: [],
@@ -142,6 +156,9 @@ export function mergeSegments(segments: DraftSegment[], newName: string): DraftS
     confidence_score: confidences.length > 0 ? Math.min(...confidences) : null,
     // Combining is itself a deliberate, reviewed action — nothing left to second-guess.
     confirmed: true,
+    // Grouping only offers segments already in scope (see the Part F selection UI) — the
+    // merged result stays included.
+    included_in_quote: true,
     treatment_type: null,
     is_rush: false,
     condition_tags: [],
@@ -164,7 +181,7 @@ export interface ProjectSegmentPayload {
   area_sqm: number;
   polygon_coords: string | null;
   confidence_score: number | null;
-  included_in_quote: true;
+  included_in_quote: boolean;
   scope_of_work: string;
   work_type: string;
   notes: string | null;
@@ -197,7 +214,10 @@ export function draftSegmentToPayload(seg: DraftSegment): ProjectSegmentPayload 
     area_sqm: seg.area_sqm,
     polygon_coords: seg.polygon_coords ? JSON.stringify(seg.polygon_coords) : null,
     confidence_score: seg.confidence_score,
-    included_in_quote: true,
+    // Part F — a specialty contractor may only want SOME detected rooms priced. Excluded
+    // segments still submit as real rows (the room was genuinely detected/measured); this
+    // is the ONLY thing that changes for them, never their presence in the payload.
+    included_in_quote: seg.included_in_quote,
     // scope_of_work/work_type are both NOT NULL with no CHECK enum and no distinct UI
     // field in Part 1's spec — mapped from treatment_type (the only segment-level
     // classification Part 1 collects) until backend clarifies whether they're meant to

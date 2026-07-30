@@ -1,6 +1,8 @@
 "use client";
 
-import { useCallback, useSyncExternalStore } from "react";
+import { useCallback } from "react";
+import { useFetch } from "@/hooks/useFetch";
+import { useMutation } from "@/hooks/useMutation";
 import type {
   ExistingRuleSummary,
   LaborRule,
@@ -9,190 +11,107 @@ import type {
   ScopeTemplate,
   UnitRule,
 } from "./companyRulesTypes";
-import { laborRuleScope } from "./companyRulesTypes";
 
-type SaveState<T> = {
-  data: T[];
-  isLoading: boolean;
-  error: Error | null;
-};
-
-const NO_ERROR: Error | null = null;
-
-type Store = {
+type CompanyRulesPayload = {
   scopeTemplates: ScopeTemplate[];
   materialRules: MaterialRuleEntry[];
   laborRules: LaborRule[];
   pricingStrategies: PricingStrategyRule[];
   unitRules: UnitRule[];
+  existingRules: ExistingRuleSummary[];
 };
 
-const today = () => new Date().toISOString().slice(0, 10);
-
-const store: Store = {
+const EMPTY_RULES: CompanyRulesPayload = {
   scopeTemplates: [],
   materialRules: [],
   laborRules: [],
   pricingStrategies: [],
   unitRules: [],
+  existingRules: [],
 };
 
-const listeners = new Set<() => void>();
 let nextId = 1;
-
-function emit() {
-  listeners.forEach((listener) => listener());
-}
-
-function subscribe(listener: () => void) {
-  listeners.add(listener);
-  return () => listeners.delete(listener);
-}
-
-function getSnapshot() {
-  return store;
-}
 
 export function stagingId(prefix: string) {
   nextId += 1;
   return `${prefix}-${nextId}`;
 }
 
-function replaceById<T extends { rule_id: string }>(items: T[], ruleId: string, next: T) {
-  return items.map((item) => (item.rule_id === ruleId ? next : item));
+function useCompanyRulesData() {
+  const { data, isLoading, error, refetch } = useFetch<CompanyRulesPayload>("/api/company-rules");
+  return { data: data ?? EMPTY_RULES, isLoading, error, refetch };
 }
 
-function createSaveState<T>(data: T[]): SaveState<T> {
-  return { data, isLoading: false, error: null };
-}
+function useRuleMutation<T>(kind: string, refetch: () => void) {
+  const mutation = useMutation<CompanyRulesPayload>();
 
-function makeExistingRulesSnapshot(state: Store): ExistingRuleSummary[] {
-  return [
-    ...state.scopeTemplates.map((rule) => ({
-      rule_id: rule.rule_id,
-      rule_kind: "scope-template" as const,
-      label: rule.template_name,
-      detail: rule.service_specialization,
-      effective_date: rule.effective_date,
-      status: rule.is_active ? "Active" as const : "Disabled" as const,
-    })),
-    ...state.materialRules.map((rule) => ({
-      rule_id: rule.rule_id,
-      rule_kind: "material-rule" as const,
-      label: rule.preferred_item_name,
-      detail: `${rule.category} · ${rule.material_priority} - ${rule.priority_source} · ${rule.fallback_rule}`,
-      effective_date: rule.effective_date,
-      status: rule.is_active ? "Active" as const : "Disabled" as const,
-    })),
-    ...state.laborRules.map((rule) => ({
-      rule_id: rule.rule_id,
-      rule_kind: "labor-rule" as const,
-      label:
-        laborRuleScope(rule) === "Treatment"
-          ? (rule.treatment_type ?? "Treatment Rule")
-          : laborRuleScope(rule) === "Trade"
-            ? (rule.labor_trade ?? "Trade Rule")
-            : "General Labor Rule",
-      detail:
-        laborRuleScope(rule) === "Trade"
-          ? `${rule.region ?? "Any region"} · ₱${rule.labor_rate}`
-          : `₱${rule.labor_rate}`,
-      effective_date: rule.effective_date,
-      status: rule.is_active ? "Active" as const : "Disabled" as const,
-    })),
-    ...state.pricingStrategies.map((rule) => ({
-      rule_id: rule.rule_id,
-      rule_kind: "pricing-strategy" as const,
-      label: `${rule.quotation_tier} Tier`,
-      detail: `${rule.markup_percentage}% markup`,
-      effective_date: rule.effective_date,
-      status: rule.is_active ? "Active" as const : "Disabled" as const,
-    })),
-    ...state.unitRules.map((rule) => ({
-      rule_id: rule.rule_id,
-      rule_kind: "unit-rule" as const,
-      label: rule.item_name ?? rule.category ?? "Unit Rule",
-      detail: `${rule.wastage_allowance_percentage}% wastage`,
-      effective_date: rule.effective_date,
-      status: rule.is_active ? "Active" as const : "Disabled" as const,
-    })),
-  ];
-}
-
-function useRuleStore() {
-  return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
-}
-
-function createRuleActions<K extends keyof Store, T extends Store[K][number]>(key: K) {
-  return {
-    async save(payload: Omit<T, "rule_id" | "is_active" | "effective_date">) {
-      const next = {
-        ...payload,
-        rule_id: stagingId(String(key).slice(0, 2)),
-        is_active: true,
-        effective_date: today(),
-      } as T;
-      store[key] = [...store[key], next] as Store[K];
-      emit();
-      return next;
-    },
-    async update(ruleId: string, payload: Partial<T>) {
-      const current = (store[key] as T[]).find((item) => item.rule_id === ruleId);
-      if (!current) throw new Error("Rule not found.");
-      const next = { ...current, ...payload } as T;
-      store[key] = replaceById(store[key] as T[], ruleId, next) as Store[K];
-      emit();
-      return next;
-    },
-    async supersede(ruleId: string, payload: Partial<T>) {
-      const current = (store[key] as T[]).find((item) => item.rule_id === ruleId);
-      if (!current) throw new Error("Rule not found.");
-      const next = {
-        ...current,
-        ...payload,
-        rule_id: stagingId(String(key).slice(0, 2)),
-        is_active: true,
-        effective_date: today(),
-      } as T;
-      const disabledCurrent = { ...current, is_active: false } as T;
-      store[key] = [...replaceById(store[key] as T[], ruleId, disabledCurrent), next] as Store[K];
-      emit();
-      return next;
-    },
+  const save = async (payload: Omit<T, "rule_id" | "is_active" | "effective_date">) => {
+    const next = await mutation.mutate(`/api/company-rules/${kind}`, payload, "POST");
+    refetch();
+    return latestForKind<T>(kind, next);
   };
+
+  const update = async (ruleId: string, payload: Partial<T>) => {
+    const next = await mutation.mutate(`/api/company-rules/${kind}/${ruleId}`, payload, "PATCH");
+    refetch();
+    return latestForKind<T>(kind, next);
+  };
+
+  const supersede = update;
+
+  return {
+    save,
+    update,
+    supersede,
+    isSaving: mutation.isLoading,
+    saveError: mutation.error,
+    resetSave: mutation.reset,
+  };
+}
+
+function latestForKind<T>(kind: string, payload: CompanyRulesPayload): T {
+  const list =
+    kind === "scope-templates"
+      ? payload.scopeTemplates
+      : kind === "material-rules"
+        ? payload.materialRules
+        : kind === "labor-rules"
+          ? payload.laborRules
+          : kind === "pricing-strategy"
+            ? payload.pricingStrategies
+            : payload.unitRules;
+  return list[0] as T;
 }
 
 export function useCheckRuleUsage() {
   return {
-    checkUsage: useCallback(async (_ruleId: string) => ({ in_use: false }), []),
+    checkUsage: useCallback(async (ruleId: string) => {
+      void ruleId;
+      return { in_use: false };
+    }, []),
   };
 }
 
 export function useScopeTemplates() {
-  const snapshot = useRuleStore();
-  const actions = createRuleActions<"scopeTemplates", ScopeTemplate>("scopeTemplates");
+  const { data, isLoading, error, refetch } = useCompanyRulesData();
+  const actions = useRuleMutation<ScopeTemplate>("scope-templates", refetch);
   return {
-    templates: createSaveState(snapshot.scopeTemplates).data,
-    isLoading: false,
-    error: NO_ERROR,
-    refetch: async () => {},
-    save: actions.save,
-    isSaving: false,
-    saveError: NO_ERROR,
-    resetSave: () => {},
-    update: actions.update,
-    supersede: actions.supersede,
+    templates: data.scopeTemplates,
+    isLoading,
+    error,
+    refetch,
+    ...actions,
   };
 }
 
 export function useMaterialRules() {
-  const snapshot = useRuleStore();
-  const actions = createRuleActions<"materialRules", MaterialRuleEntry>("materialRules");
+  const { data, isLoading, error, refetch } = useCompanyRulesData();
+  const actions = useRuleMutation<MaterialRuleEntry>("material-rules", refetch);
   return {
-    rules: snapshot.materialRules,
-    isLoading: false,
-    error: NO_ERROR,
-    refetch: async () => {},
+    rules: data.materialRules,
+    isLoading,
+    error,
+    refetch,
     save: actions.save,
     update: actions.update,
     supersede: actions.supersede,
@@ -206,83 +125,71 @@ export function useLaborTradeOptions() {
 }
 
 export function useLaborRules() {
-  const snapshot = useRuleStore();
-  const actions = createRuleActions<"laborRules", LaborRule>("laborRules");
+  const { data, isLoading, error, refetch } = useCompanyRulesData();
+  const actions = useRuleMutation<LaborRule>("labor-rules", refetch);
   return {
-    rules: snapshot.laborRules,
-    isLoading: false,
-    error: NO_ERROR,
-    refetch: async () => {},
-    save: actions.save,
-    isSaving: false,
-    saveError: NO_ERROR,
-    resetSave: () => {},
-    update: actions.update,
-    supersede: actions.supersede,
+    rules: data.laborRules,
+    isLoading,
+    error,
+    refetch,
+    ...actions,
   };
 }
 
 export function usePricingStrategies() {
-  const snapshot = useRuleStore();
-  const actions = createRuleActions<"pricingStrategies", PricingStrategyRule>("pricingStrategies");
+  const { data, isLoading, error, refetch } = useCompanyRulesData();
+  const actions = useRuleMutation<PricingStrategyRule>("pricing-strategy", refetch);
   return {
-    strategies: snapshot.pricingStrategies,
-    isLoading: false,
-    error: NO_ERROR,
-    refetch: async () => {},
-    save: actions.save,
-    isSaving: false,
-    saveError: NO_ERROR,
-    resetSave: () => {},
-    update: actions.update,
-    supersede: actions.supersede,
+    strategies: data.pricingStrategies,
+    isLoading,
+    error,
+    refetch,
+    ...actions,
   };
 }
 
 export function useUnitRules() {
-  const snapshot = useRuleStore();
-  const actions = createRuleActions<"unitRules", UnitRule>("unitRules");
+  const { data, isLoading, error, refetch } = useCompanyRulesData();
+  const actions = useRuleMutation<UnitRule>("unit-rules", refetch);
   return {
-    rules: snapshot.unitRules,
-    isLoading: false,
-    error: NO_ERROR,
-    refetch: async () => {},
-    save: actions.save,
-    isSaving: false,
-    saveError: NO_ERROR,
-    resetSave: () => {},
-    update: actions.update,
-    supersede: actions.supersede,
+    rules: data.unitRules,
+    isLoading,
+    error,
+    refetch,
+    ...actions,
   };
 }
 
 export function useExistingRules() {
-  const snapshot = useRuleStore();
-  const rules = makeExistingRulesSnapshot(snapshot);
+  const { data, isLoading, error, refetch } = useCompanyRulesData();
+  const disableMutation = useMutation<CompanyRulesPayload>();
 
   return {
-    rules,
-    isLoading: false,
-    error: NO_ERROR,
-    refetch: async () => {},
-    checkUsage: async (_ruleId: string) => ({ in_use: false }),
+    rules: data.existingRules,
+    isLoading,
+    error,
+    refetch,
+    checkUsage: async (ruleId: string) => {
+      void ruleId;
+      return { in_use: false };
+    },
     isCheckingUsage: false,
     disable: async (ruleId: string) => {
-      const collections: (keyof Store)[] = ["scopeTemplates", "materialRules", "laborRules", "pricingStrategies", "unitRules"];
-      for (const key of collections) {
-        const current = store[key].find((item) => item.rule_id === ruleId);
-        if (current) {
-          const nextCollection = replaceById(store[key] as Array<{ rule_id: string; is_active: boolean }>, ruleId, {
-            ...current,
-            is_active: false,
-          });
-          (store as Record<string, unknown>)[key] = nextCollection;
-          emit();
-          return;
-        }
-      }
+      const kind = data.existingRules.find((rule) => rule.rule_id === ruleId)?.rule_kind;
+      const routeKind =
+        kind === "scope-template"
+          ? "scope-templates"
+          : kind === "material-rule"
+            ? "material-rules"
+            : kind === "labor-rule"
+              ? "labor-rules"
+              : kind === "pricing-strategy"
+                ? "pricing-strategy"
+                : "unit-rules";
+      await disableMutation.mutate(`/api/company-rules/${routeKind}/${ruleId}`, undefined, "DELETE");
+      refetch();
     },
-    isDisabling: false,
-    disableError: NO_ERROR,
+    isDisabling: disableMutation.isLoading,
+    disableError: disableMutation.error,
   };
 }

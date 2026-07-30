@@ -167,6 +167,7 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
         const category = categoryTypeOf(item);
         if (!category) continue; // shouldn't happen — every catalog item has a resolvable category
         const cfg = perItemConfig[code];
+        if (!cfg.priority) continue;
         const payload = {
           category,
           preferred_item_code: code,
