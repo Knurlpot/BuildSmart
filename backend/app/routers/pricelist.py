@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 from app.celery_app import celery_app
 from app.database import get_db
 from app.ingest.models import MaterialPriceVariance
-from app.models import Category, HistoricalPriceRecord, Items, PriceListReviewItem
+from app.models import Category, HistoricalPriceRecord, Items, PriceListReviewItem, SourcePriority
 from app.schemas.pricelist import NormalizedPriceRecord, SourceAgency
 from app.services.dpwh_published import fetch_dpwh_cmpd_release, save_dpwh_cmpd_publish_records
 from app.services.match_cache import invalidate_cached_match, upsert_cached_match
@@ -73,6 +73,8 @@ class ReviewItemResponse(BaseModel):
     suggested_material: str | None
     suggested_brand: str | None
     description: str | None
+    color: str | None
+    company_id: int | None
     source: str
     supplier_id: int | None
     status: str
@@ -88,6 +90,7 @@ class ReviewItemUpdateRequest(BaseModel):
     suggested_material: str | None = Field(default=None, max_length=100)
     suggested_brand: str | None = Field(default=None, max_length=100)
     description: str | None = Field(default=None, max_length=255)
+    color: str | None = Field(default=None, max_length=50)
     status: str | None = Field(default=None, min_length=1, max_length=20)
 
 
@@ -151,6 +154,21 @@ class ResolveBulkRequest(BaseModel):
     action: Literal["approve", "reject"]
 
 
+class SourcePriorityResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    priority_id: int
+    company_id: int
+    price_source: str
+    priority_rank: int
+    created_at: datetime
+    updated_at: datetime
+
+
+class SourcePriorityUpdateRequest(BaseModel):
+    priorities: list[dict[str, int]]  # [{"price_source": "DPWH", "priority_rank": 1}, ...]
+
+
 def _resolve_category_id(db: Session, category_type: str | None) -> int:
     if category_type:
         category_type = category_type.strip()
@@ -189,16 +207,21 @@ def _find_existing_item(
     brand: str,
     unit: str,
     item_source: str,
+    company_id: int | None,
 ) -> Items | None:
-    return db.execute(
+    statement = (
         select(Items)
         .where(func.lower(Items.item_name) == item_name.lower())
         .where(func.lower(Items.material) == material.lower())
         .where(func.lower(Items.brand) == brand.lower())
         .where(func.lower(Items.unit) == unit.lower())
         .where(func.lower(Items.item_source) == item_source.lower())
-        .order_by(Items.item_code.desc())
-    ).scalars().first()
+    )
+    if company_id is None:
+        statement = statement.where(Items.company_id.is_(None))
+    else:
+        statement = statement.where(Items.company_id == company_id)
+    return db.execute(statement.order_by(Items.item_code.desc())).scalars().first()
 
 
 def _save_review_item_to_catalog(row: PriceListReviewItem, db: Session) -> None:
@@ -206,8 +229,11 @@ def _save_review_item_to_catalog(row: PriceListReviewItem, db: Session) -> None:
     unit = row.raw_unit.strip()
     material = (row.suggested_material or row.raw_name).strip() or row.raw_name.strip()
     brand = (row.suggested_brand or "Generic").strip() or "Generic"
+    description = (row.description or "").strip() or None
+    color = (row.color or "").strip() or None
     source = row.source.strip()
     supplier_id = row.supplier_id
+    company_id = row.company_id
 
     if supplier_id is not None:
         supplier_exists = db.execute(
@@ -224,21 +250,29 @@ def _save_review_item_to_catalog(row: PriceListReviewItem, db: Session) -> None:
         brand=brand,
         unit=unit,
         item_source=source,
+        company_id=company_id,
     )
 
     if existing is None:
         item = Items(
             category_id=_resolve_category_id(db, row.suggested_category_type),
+            company_id=company_id,
             item_name=item_name,
             material=material,
             brand=brand,
             unit=unit,
+            color=color,
             item_source=source,
+            description=description,
         )
         db.add(item)
         db.flush()
     else:
         item = existing
+        if color and not item.color:
+            item.color = color
+        if description and not item.description:
+            item.description = description
 
     # Avoid duplicate historical rows from repeated approve clicks.
     duplicate = db.execute(
@@ -272,6 +306,7 @@ async def upload_pricelist(
     file: UploadFile = File(...),
     source: str = Form(...),
     supplier_id: int | None = Form(None),
+    company_id: int | None = Form(None),
 ):
     suffix = Path(file.filename).suffix
     upload_id = str(uuid.uuid4())
@@ -307,7 +342,7 @@ async def upload_pricelist(
         # client as a clean 4xx too, not bubble up as an unhandled 500.
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
-    task = normalize_price_list.delay(str(dest), source, supplier_id)
+    task = normalize_price_list.delay(str(dest), source, supplier_id, None, company_id)
     return UploadResponse(task_id=task.id)
 
 
@@ -319,6 +354,7 @@ async def confirm_column_mapping(
     raw_price_column: str = Form(...),
     source: str = Form(...),
     supplier_id: int | None = Form(None),
+    company_id: int | None = Form(None),
 ):
     matches = list(UPLOAD_DIR.glob(f"{upload_id}.*"))
     if not matches:
@@ -348,7 +384,7 @@ async def confirm_column_mapping(
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
-    task = normalize_price_list.delay(str(dest), source, supplier_id, column_mapping)
+    task = normalize_price_list.delay(str(dest), source, supplier_id, column_mapping, company_id)
     return UploadResponse(task_id=task.id)
 
 
@@ -554,3 +590,90 @@ async def normalize_pricelist_file(
     df = parse_pricelist_file(str(dest))
     records = normalize_pricelist_dataframe(df, source_agency=source, region=region)
     return records
+
+
+@router.get("/source-priority/{company_id}", response_model=list[SourcePriorityResponse])
+def get_source_priority(company_id: int, db: Session = Depends(get_db)):
+    """Get the source priority ranking for a company."""
+    priorities = db.execute(
+        select(SourcePriority)
+        .where(SourcePriority.company_id == company_id)
+        .order_by(SourcePriority.priority_rank)
+    ).scalars().all()
+    
+    if not priorities:
+        # Return default priorities if none exist
+        default_sources = [
+            {"price_source": "Internal", "priority_rank": 1},
+            {"price_source": "Supplier", "priority_rank": 2},
+            {"price_source": "PSA", "priority_rank": 3},
+            {"price_source": "DPWH", "priority_rank": 4},
+        ]
+        return default_sources
+    
+    return priorities
+
+
+@router.post("/source-priority/{company_id}", response_model=list[SourcePriorityResponse])
+def update_source_priority(
+    company_id: int,
+    request: SourcePriorityUpdateRequest,
+    db: Session = Depends(get_db),
+):
+    """Update the source priority ranking for a company."""
+    # Validate that all required sources are provided
+    valid_sources = {"DPWH", "PSA", "Supplier", "Internal"}
+    provided_sources = {item["price_source"] for item in request.priorities}
+    
+    if not provided_sources.issubset(valid_sources):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid price sources. Must be one of: {', '.join(valid_sources)}"
+        )
+    
+    if len(provided_sources) != len(valid_sources):
+        raise HTTPException(
+            status_code=400,
+            detail=f"All price sources must be included. Missing: {', '.join(valid_sources - provided_sources)}"
+        )
+    
+    # Validate ranks are sequential starting from 1
+    ranks = {item["priority_rank"] for item in request.priorities}
+    expected_ranks = set(range(1, len(valid_sources) + 1))
+    if ranks != expected_ranks:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Priority ranks must be sequential from 1 to {len(valid_sources)}"
+        )
+    
+    # Delete existing priorities for this company
+    db.execute(delete(SourcePriority).where(SourcePriority.company_id == company_id))
+    
+    # Insert new priorities
+    new_priorities = []
+    for item in request.priorities:
+        sp = SourcePriority(
+            company_id=company_id,
+            price_source=item["price_source"],
+            priority_rank=item["priority_rank"]
+        )
+        db.add(sp)
+        new_priorities.append(sp)
+    
+    db.commit()
+    
+    return new_priorities
+
+
+@router.get("/categories", response_model=list[dict])
+def get_categories(db: Session = Depends(get_db)):
+    """Get all construction material categories."""
+    categories = db.execute(select(Category)).scalars().all()
+    return [
+        {
+            "category_id": cat.category_id,
+            "category_type": cat.category_type,
+            "category_desc": cat.category_desc,
+        }
+        for cat in categories
+    ]

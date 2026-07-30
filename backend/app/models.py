@@ -43,7 +43,7 @@ class Items(Base):
     unit: Mapped[str] = mapped_column(String(30))
     size_width: Mapped[float | None] = mapped_column(Numeric(8, 2))
     size_length: Mapped[float | None] = mapped_column(Numeric(8, 2))
-    color: Mapped[str | None] = mapped_column(String(40))
+    color: Mapped[str | None] = mapped_column(String(50))
     item_source: Mapped[str] = mapped_column(String(20))
     description: Mapped[str | None] = mapped_column(String(255))
 
@@ -76,6 +76,8 @@ class PriceListReviewItem(Base):
     suggested_material: Mapped[str | None] = mapped_column(String(100))
     suggested_brand: Mapped[str | None] = mapped_column(String(100))
     description: Mapped[str | None] = mapped_column(String(255))
+    color: Mapped[str | None] = mapped_column(String(50))
+    company_id: Mapped[int | None]
     source: Mapped[str] = mapped_column(String(20))
     # No Suppliers model mapped yet, matching the same plain-int pattern used by
     # HistoricalPriceRecord.supplier_id.
@@ -100,3 +102,14 @@ class ApprovedMatchCache(Base):
     __table_args__ = (
         UniqueConstraint("normalized_name", "normalized_unit", name="uq_approved_match_cache_key"),
     )
+
+
+class SourcePriority(Base):
+    __tablename__ = "source_priority"
+
+    priority_id: Mapped[int] = mapped_column(primary_key=True)
+    company_id: Mapped[int] = mapped_column(ForeignKey("company.company_id", ondelete="CASCADE"))
+    price_source: Mapped[str] = mapped_column(String(20))
+    priority_rank: Mapped[int] = mapped_column()
+    created_at: Mapped[datetime] = mapped_column(TIMESTAMP, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(TIMESTAMP, server_default=func.now(), onupdate=func.now())

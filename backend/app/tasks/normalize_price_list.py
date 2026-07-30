@@ -51,6 +51,7 @@ def normalize_price_list(
     source: str,
     supplier_id: int | None = None,
     column_mapping: dict[str, str] | None = None,
+    company_id: int | None = None,
     db: Session | None = None,
 ) -> dict:
     # `db` lets tests inject a session bound to their own rollback-wrapped
@@ -74,10 +75,12 @@ def normalize_price_list(
         needs_review = 0
 
         for row, match in zip(df.itertuples(), results):
+            row_color = (getattr(row, "color", None) or "").strip() or None
+            row_description = (getattr(row, "description", None) or "").strip() or None
             # Only records strictly above 85% confidence are auto-persisted.
             if match.confidence <= CONFIDENCE_THRESHOLD:
                 review_name = (getattr(row, "raw_name", None) or "").strip() or (match.material or "").strip()
-                review_description = (getattr(row, "description", None) or "").strip()
+                review_description = row_description or ""
                 # If parser didn't map a description column, try to infer one from
                 # other columns: prefer columns whose header contains 'spec' or
                 # 'desc', otherwise pick the longest non-empty textual column.
@@ -124,6 +127,8 @@ def normalize_price_list(
                         suggested_material=match.material,
                         suggested_brand=match.brand,
                         description=review_description,
+                        color=row_color,
+                        company_id=company_id,
                         source=source,
                         supplier_id=supplier_id,
                     )
@@ -138,16 +143,28 @@ def normalize_price_list(
                 category = _get_or_create_category(session, category_type_to_use)
                 new_item = Items(
                     category_id=category.category_id,
+                    company_id=company_id,
                     item_name=match.item_name,
                     material=match.material,
                     brand=match.brand,
                     unit=match.unit,
+                    color=row_color,
                     item_source=source,
+                    description=row_description,
                 )
                 session.add(new_item)
                 session.flush()
                 item_code = new_item.item_code
                 new_items_created += 1
+            elif item_code is not None and (row_color or row_description or company_id is not None):
+                existing_item = session.get(Items, item_code)
+                if existing_item is not None:
+                    if row_color and not existing_item.color:
+                        existing_item.color = row_color
+                    if row_description and not existing_item.description:
+                        existing_item.description = row_description
+                    if company_id is not None and existing_item.company_id is None and source == "Supplier":
+                        existing_item.company_id = company_id
 
             session.add(
                 HistoricalPriceRecord(

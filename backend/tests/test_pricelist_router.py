@@ -38,9 +38,11 @@ def test_upload_triggers_task_without_a_real_worker():
     assert response.json() == {"task_id": "fake-task-id"}
 
     assert mock_delay.call_count == 1
-    saved_path, source, supplier_id = mock_delay.call_args.args
+    saved_path, source, supplier_id, column_mapping, company_id = mock_delay.call_args.args
     assert source == "Supplier"
     assert supplier_id == 7
+    assert column_mapping is None
+    assert company_id is None
     saved_file = Path(saved_path)
     assert saved_file.exists()
     assert saved_file.suffix == ".csv"
@@ -97,8 +99,11 @@ def test_confirm_mapping_triggers_task_after_manual_resolution():
     assert response.status_code == 200
     assert response.json() == {"task_id": "fake-task-id-2"}
     assert mock_delay.call_count == 1
-    saved_path, source, supplier_id, column_mapping = mock_delay.call_args.args
+    saved_path, source, supplier_id, column_mapping, company_id = mock_delay.call_args.args
+    assert source == "Supplier"
+    assert supplier_id is None
     assert column_mapping == {"raw_name": "Foo", "raw_unit": "Bar", "raw_price": "Baz"}
+    assert company_id is None
 
     _cleanup_upload(upload_id)
 

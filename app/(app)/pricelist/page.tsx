@@ -24,6 +24,12 @@ export default function PricelistPage() {
   const [activeTab, setActiveTab] = useState<TabId>("upload");
   const goToCatalog = () => setActiveTab("catalog");
   const { currentUser, updateOnboardingStep } = useAuth();
+  const companyId =
+    typeof currentUser?.companyId === "number"
+      ? currentUser.companyId
+      : Number.isFinite(Number(currentUser?.companyId))
+        ? Number(currentUser?.companyId)
+        : null;
   const supplierCatalog = usePricelistCatalog();
   const { dpwhCatalog } = usePricelistPublishedSource();
 
@@ -76,7 +82,7 @@ export default function PricelistPage() {
           })}
         </div>
 
-        {activeTab === "upload" && <AiNormalizationPanel />}
+        {activeTab === "upload" && <AiNormalizationPanel companyId={companyId} />}
         {activeTab === "published" && <PublishedSourceTab onViewCatalog={goToCatalog} />}
         {activeTab === "priority" && <SourcePriorityTab />}
         {activeTab === "trends" && <PriceTrendsPanel compact />}

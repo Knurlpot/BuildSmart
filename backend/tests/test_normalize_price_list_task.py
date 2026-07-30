@@ -1,7 +1,8 @@
 from pathlib import Path
 
 import pytest
-from sqlalchemy import select
+import pandas as pd
+from sqlalchemy import select, text
 
 import app.tasks.normalize_price_list as normalize_price_list_module
 from app.models import ApprovedMatchCache, HistoricalPriceRecord, Items, PriceListReviewItem
@@ -154,3 +155,52 @@ def test_normalize_price_list_uses_cached_match_and_skips_review(db_session, mon
         if r.review_id not in existing_review_ids
     ]
     assert "Deformd Steel Bar 10 mm" not in {r.raw_name for r in new_review_items}
+
+
+def test_normalize_price_list_stores_uploaded_item_metadata_for_matched_rows(tmp_path, db_session, monkeypatch):
+    cement_item_code = next(
+        i.item_code
+        for i in db_session.execute(select(Items)).scalars()
+        if i.item_code in db_session.seeded_item_codes and i.item_name == "Portland Cement Type 1"
+    )
+
+    def scoped_get_item_candidates(db):
+        return [c for c in get_item_candidates(db) if c["item_code"] == cement_item_code]
+
+    monkeypatch.setattr(normalize_price_list_module, "get_item_candidates", scoped_get_item_candidates)
+
+    upload = tmp_path / "metadata.csv"
+    pd.DataFrame(
+        [
+            {
+                "Material": "Portland Cement Type 1",
+                "Unit": "bag",
+                "Price": 250,
+                "Description": "Class A 40kg bag",
+                "Color": "Gray",
+            }
+        ]
+    ).to_csv(upload, index=False)
+
+    company_id = db_session.execute(
+        text(
+            "INSERT INTO company (company_name, company_address, contact_email, contact_number, specialization_1) "
+            "VALUES ('Metadata Test Co', 'Test Address', 'metadata@example.com', '09170000000', 'General Contractor') "
+            "RETURNING company_id"
+        )
+    ).scalar_one()
+
+    result = normalize_price_list(
+        file_path=str(upload),
+        source="Supplier",
+        supplier_id=None,
+        company_id=company_id,
+        db=db_session,
+    )
+
+    assert result["matched"] == 1
+    saved_item = db_session.get(Items, cement_item_code)
+    assert saved_item is not None
+    assert saved_item.company_id == company_id
+    assert saved_item.description == "Class A 40kg bag"
+    assert saved_item.color == "Gray"

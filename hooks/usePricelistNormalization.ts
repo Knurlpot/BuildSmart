@@ -47,6 +47,8 @@ export interface PricelistReviewItem {
   suggested_material: string | null;
   suggested_brand: string | null;
   description: string | null;
+  color: string | null;
+  company_id: number | null;
   source: string;
   supplier_id: number | null;
   status: string;
@@ -93,6 +95,7 @@ export type PricelistReviewItemUpdate = Partial<
     | 'suggested_material'
     | 'suggested_brand'
     | 'description'
+    | 'color'
     | 'status'
   >
 >;
@@ -131,6 +134,7 @@ export interface QueueItem {
   id: string;
   file: File;
   source: string;
+  companyId?: number | null;
   status: QueueItemStatus;
   taskId?: string;
   result?: NormalizationSummary;
@@ -140,7 +144,7 @@ export interface QueueItem {
 
 const POLL_INTERVAL_MS = 2000;
 
-export function usePricelistNormalization() {
+export function usePricelistNormalization(companyId?: number | null) {
   const queueRef = useRef<QueueItem[]>([]);
   const [queue, setQueue] = useState<QueueItem[]>([]);
   const processingRef = useRef(false);
@@ -213,6 +217,9 @@ export function usePricelistNormalization() {
         const form = new FormData();
         form.append('file', item.file);
         form.append('source', item.source);
+        if (item.companyId != null) {
+          form.append('company_id', String(item.companyId));
+        }
 
         try {
           const res = await uploadPricelistFile(form);
@@ -243,6 +250,7 @@ export function usePricelistNormalization() {
       id: `${file.name}-${file.size}-${Date.now()}-${Math.random()}`,
       file,
       source,
+      companyId,
       status: 'queued',
     }));
     queueRef.current = [...queueRef.current, ...newItems];
@@ -264,6 +272,9 @@ export function usePricelistNormalization() {
     form.append('raw_unit_column', mapping.raw_unit);
     form.append('raw_price_column', mapping.raw_price);
     form.append('source', item.source);
+    if (item.companyId != null) {
+      form.append('company_id', String(item.companyId));
+    }
 
     try {
       const res = await normalizationApiClient<UploadResponse>(

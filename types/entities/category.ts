@@ -1,14 +1,27 @@
-// Mirrors category in schema v3 (BuildSmart_schema_v3.sql). Wire format
-// (snake_case vs camelCase) UNVERIFIED against the backend — confirm before
-// trusting at runtime.
+// Mirrors CATEGORY_TYPES from backend/app/services/categories.py
+// Must stay in sync with database CHECK constraint in category table
 export const CATEGORY_TYPES = [
   'Structural',
-  'Architectural',
-  'Electrical',
-  'Mechanical',
-  'Plumbing',
+  'Concrete & Masonry',
+  'Reinforcement & Steel',
+  'Timber & Lumber',
+  'Roofing',
+  'Insulation & Waterproofing',
+  'Masonry Units & Blocks',
+  'Doors, Windows & Glazing',
   'Finishing',
-  'Hardware',
+  'Flooring & Tiles',
+  'Ceilings & Suspended Systems',
+  'Paints, Coatings & Sealants',
+  'Plumbing & Pipework',
+  'HVAC & Mechanical',
+  'Electrical & Lighting',
+  'Hardware & Fasteners',
+  'Adhesives & Tapes',
+  'Tools, Equipment & Consumables',
+  'Safety & PPE',
+  'Landscaping & Siteworks',
+  'Specialty Materials & Systems',
   'Others',
 ] as const;
 

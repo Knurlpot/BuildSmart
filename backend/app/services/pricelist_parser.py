@@ -26,6 +26,11 @@ COLUMN_SYNONYMS: dict[str, set[str]] = {
         "item specification", "material specification", "specifications description",
         "particulars", "particular", "item particulars",
     },
+    "color": {
+        "color", "colour", "material color", "material colour",
+        "item color", "item colour", "product color", "product colour",
+        "finish color", "finish colour",
+    },
     "raw_unit": {
         "unit", "uom", "unit of measure", "unit measure", "unit of measurement",
         "measure", "measurement", "packaging", "u/m", "u m", "um",
@@ -66,6 +71,12 @@ MATERIAL_HINT_PATTERN = re.compile(
     r"valve|fitting|nail|screw|bolt|sealant|primer|membrane)\b",
     re.I,
 )
+
+COLOR_WORDS = {
+    "black", "blue", "brown", "charcoal", "cream", "dark", "gray", "green",
+    "grey", "ivory", "natural", "off-white", "orange", "red", "silver",
+    "white", "wood", "yellow", "zinc",
+}
 
 
 class MissingColumnsError(ValueError):
@@ -193,7 +204,7 @@ def _is_generic_column_name(value: Any) -> bool:
     key = _header_key(value)
     if not key:
         return True
-    if key in REQUIRED_COLUMNS or key in {"description", "raw_brand"}:
+    if key in REQUIRED_COLUMNS or key in {"description", "raw_brand", "color"}:
         return False
     return bool(re.fullmatch(r"(?:column|col|field|header)\s*\d+", key)) or bool(re.fullmatch(r"[a-z]", key))
 
@@ -201,7 +212,7 @@ def _is_generic_column_name(value: Any) -> bool:
 def _has_header_signal(columns: list[Any]) -> bool:
     for column in columns:
         key = _header_key(column)
-        if key in REQUIRED_COLUMNS or key in {"description", "raw_brand"}:
+        if key in REQUIRED_COLUMNS or key in {"description", "raw_brand", "color"}:
             continue
         if not _is_generic_column_name(column) or _header_matches(column) is not None:
             return True
@@ -225,6 +236,14 @@ def _normalize_columns(df: pd.DataFrame) -> tuple[pd.DataFrame, dict[str, str]]:
         if "raw_brand" not in df.columns and "raw_brand" not in rename_map.values():
             if any(token in header_key for token in ["brand", "manufacturer", "mfr", "maker"]):
                 rename_map[col] = "raw_brand"
+                assigned_columns.add(col)
+                break
+
+    for col in df.columns:
+        header_key = _header_key(col)
+        if "color" not in df.columns and "color" not in rename_map.values():
+            if any(token in header_key for token in ["color", "colour"]):
+                rename_map[col] = "color"
                 assigned_columns.add(col)
                 break
 
@@ -306,8 +325,12 @@ def _header_matches(value: Any) -> str | None:
     normalized_requirements = {_header_key(canonical) for canonical in REQUIRED_COLUMNS}
     if key in normalized_requirements:
         return next(canonical for canonical in REQUIRED_COLUMNS if _header_key(canonical) == key)
-    if key in {_header_key("description"), _header_key("raw_brand")}:
-        return "description" if key == _header_key("description") else "raw_brand"
+    if key in {_header_key("description"), _header_key("raw_brand"), _header_key("color")}:
+        if key == _header_key("description"):
+            return "description"
+        if key == _header_key("raw_brand"):
+            return "raw_brand"
+        return "color"
     if any(token in key for token in ["full item description", "item description", "product description"]):
         return "raw_name"
     if any(token in key for token in ["packing", "pack", "uom", "unit of measure", "unit measure"]):
@@ -319,6 +342,8 @@ def _header_matches(value: Any) -> str | None:
             return canonical
     if any(token in key for token in ["spec", "description", "detail"]):
         return "description"
+    if any(token in key for token in ["color", "colour"]):
+        return "color"
     # Check for brand/manufacturer column with special handling
     if any(token in key for token in ["brand", "manufacturer", "mfr", "maker"]):
         return "raw_brand"
@@ -544,6 +569,122 @@ def _parse_pdf(path: Path) -> pd.DataFrame:
     return df
 
 
+def _is_pdf_noise_line(line: str) -> bool:
+    return (
+        not line
+        or bool(re.match(r"^\d+\.\s+[A-Z][A-Z &,]+$", line))
+        or line in {"PRICE", "(₱)", "GENERAL TERMS & NOTES"}
+        or line.startswith("# MATERIAL NAME")
+        or line.startswith("CONSTRUCTION MATERIALS")
+        or line.startswith("Currency:")
+        or line.startswith("Standard Price")
+        or line.startswith("Construction Materials Reference Catalog")
+        or line.startswith("•")
+    )
+
+
+def _looks_like_color_fragment(line: str) -> bool:
+    words = [word.lower() for word in re.findall(r"[A-Za-z-]+", line)]
+    return bool(words) and all(word in COLOR_WORDS for word in words)
+
+
+def _extract_color_before_unit(tokens: list[str], unit_index: int) -> tuple[str | None, int]:
+    color_tokens: list[str] = []
+    i = unit_index - 1
+    while i >= 0:
+        token = tokens[i].strip("/,").lower()
+        if token in COLOR_WORDS or tokens[i] == "/":
+            color_tokens.insert(0, tokens[i].strip(","))
+            i -= 1
+            continue
+        break
+    return (" ".join(color_tokens).strip(" /") or None), i + 1
+
+
+def _parse_collapsed_pdf_item(text: str) -> dict[str, str] | None:
+    clean = re.sub(r"\s+", " ", text).strip()
+    item_match = re.search(r"\b\d+\.\d+\s+", clean)
+    if not item_match:
+        return None
+    price_matches = list(re.finditer(r"(?<![A-Za-z'\"])\d[\d,]*(?:\.\d{1,2})(?![A-Za-z'\"])", clean))
+    if not price_matches:
+        return None
+    price_match = price_matches[-1]
+
+    body = clean[item_match.end() : price_match.start()].strip()
+    tokens = body.split()
+    if len(tokens) < 4:
+        return None
+
+    unit_index = None
+    for index in range(len(tokens) - 1, -1, -1):
+        if _is_unit_value(tokens[index]):
+            unit_index = index
+            break
+    if unit_index is None:
+        return None
+
+    unit = tokens[unit_index]
+    color, color_start = _extract_color_before_unit(tokens, unit_index)
+    brand_end = color_start if color_start < unit_index else unit_index
+    brand_start = max(1, brand_end - 2)
+    brand_tokens = tokens[brand_start:brand_end]
+
+    name_desc_tokens = tokens[:brand_start]
+    split_at = min(len(name_desc_tokens), 4)
+    for index, token in enumerate(name_desc_tokens[1:], start=1):
+        if token.lower().strip(",") in {
+            "hydraulic", "blended", "grade", "non-load", "load", "water",
+            "interior", "standard", "g.i.", "gauge", "series", "pn20",
+            "plug-in", "unglazed", "rib", "permacoat", "premium", "alkyd",
+        }:
+            split_at = index
+            break
+
+    return {
+        "raw_name": " ".join(name_desc_tokens[:split_at]).strip(),
+        "description": " ".join(name_desc_tokens[split_at:]).strip(),
+        "raw_brand": " ".join(brand_tokens).strip() or "Generic",
+        "color": color or "",
+        "raw_unit": unit,
+        "raw_price": price_match.group(0),
+    }
+
+
+def _parse_collapsed_pdf_text(path: Path) -> pd.DataFrame | None:
+    rows: list[dict[str, str]] = []
+    current: list[str] = []
+    pending_prefix: list[str] = []
+
+    def flush_current() -> None:
+        nonlocal current
+        if current:
+            parsed = _parse_collapsed_pdf_item(" ".join(current))
+            if parsed is not None:
+                rows.append(parsed)
+        current = []
+
+    with pdfplumber.open(path) as pdf:
+        for page in pdf.pages:
+            for raw_line in (page.extract_text() or "").splitlines():
+                line = re.sub(r"\s+", " ", raw_line).strip()
+                if _is_pdf_noise_line(line):
+                    continue
+                if re.match(r"^\d+\.\d+\s+", line):
+                    flush_current()
+                    current = pending_prefix + [line]
+                    pending_prefix = []
+                    continue
+                if current:
+                    current.append(line)
+                elif _looks_like_color_fragment(line):
+                    pending_prefix = [line]
+            flush_current()
+            pending_prefix = []
+
+    return pd.DataFrame(rows) if rows else None
+
+
 def _parse_pdf_text(path: Path) -> pd.DataFrame:
     rows: list[dict[str, str]] = []
     with pdfplumber.open(path) as pdf:
@@ -636,9 +777,24 @@ def parse_pricelist_file(file_path: str, column_mapping: Mapping[str, str] | Non
     df["raw_name"] = df["raw_name"].map(_sanitize_text)
     if "description" in df.columns:
         df["description"] = df["description"].map(_sanitize_text)
+    if "color" in df.columns:
+        df["color"] = df["color"].map(_sanitize_text)
     df["raw_unit"] = df["raw_unit"].map(_sanitize_text)
     df["raw_price"] = df["raw_price"].map(_parse_price_value)
     df = df[~df.apply(lambda row: _is_non_material_row(row["raw_name"], row["raw_price"]), axis=1)]
+
+    if df.empty and suffix == ".pdf" and column_mapping is None:
+        collapsed = _parse_collapsed_pdf_text(path)
+        if collapsed is not None:
+            df = collapsed
+            df["raw_name"] = df["raw_name"].map(_sanitize_text)
+            df["description"] = df["description"].map(_sanitize_text)
+            df["color"] = df["color"].map(_sanitize_text)
+            df["raw_brand"] = df["raw_brand"].fillna("Generic")
+            df["raw_unit"] = df["raw_unit"].map(_sanitize_text)
+            df["raw_price"] = df["raw_price"].map(_parse_price_value)
+            df = df[~df.apply(lambda row: _is_non_material_row(row["raw_name"], row["raw_price"]), axis=1)]
+
     df = df.reset_index(drop=True)
 
     return df

@@ -145,6 +145,7 @@ type ReviewEditDraft = {
   suggested_material: string;
   suggested_brand: string;
   description: string;
+  color: string;
 };
 
 function reviewItemToDraft(item: PricelistReviewItem): ReviewEditDraft {
@@ -160,6 +161,7 @@ function reviewItemToDraft(item: PricelistReviewItem): ReviewEditDraft {
     suggested_material: item.suggested_material ?? "",
     suggested_brand: initialBrand,
     description: initialDescription,
+    color: item.color ?? "",
   };
 }
 
@@ -176,6 +178,7 @@ function draftToPatch(draft: ReviewEditDraft): PricelistReviewItemUpdate {
     suggested_material: draft.suggested_material.trim() || null,
     suggested_brand: resolvedBrand,
     description: resolvedDescription,
+    color: draft.color.trim() || null,
   };
 }
 
@@ -225,9 +228,10 @@ function ReviewItemRow({
         <td className="py-2 pr-4 font-medium text-gray-800">{item.raw_name}</td>
         <td className="py-2 pr-4 text-gray-500">{item.raw_unit}</td>
         <td className="py-2 pr-4 text-gray-500">{fmt(item.raw_price)}</td>
-        <td className="py-2 pr-4 text-gray-500">{(item.confidence * 100).toFixed(0)}%</td>
+        <td className="py-2 pr-4 text-gray-500">{item.confidence <= 0 ? "New" : `${(item.confidence * 100).toFixed(0)}%`}</td>
         <td className="py-2 pr-4 text-gray-500">{item.suggested_category_type ?? "—"}</td>
         <td className="py-2 pr-4 text-gray-500">{item.description || item.suggested_brand || "—"}</td>
+        <td className="py-2 pr-4 text-gray-500">{item.color || "—"}</td>
         <td className="py-2 pr-4 text-gray-500">{item.suggested_brand || "Generic"}</td>
         <td className="py-2 pr-4 text-gray-500">{item.source || "Supplier"}</td>
         <td className="py-2 text-right">
@@ -316,6 +320,14 @@ function ReviewItemRow({
       </td>
       <td className="py-2 pr-4">
         <input
+          value={draft.color}
+          onChange={(e) => onDraftChange({ color: e.target.value })}
+          className={inputClass}
+          placeholder="Color"
+        />
+      </td>
+      <td className="py-2 pr-4">
+        <input
           value={draft.suggested_brand}
           onChange={(e) => onDraftChange({ suggested_brand: e.target.value })}
           className={inputClass}
@@ -347,7 +359,11 @@ function ReviewItemRow({
  * column-mapping upload flow against a different (not yet built) backend
  * contract — see the Step 7 gap report for why these aren't merged.
  */
-export function AiNormalizationPanel() {
+interface AiNormalizationPanelProps {
+  companyId?: number | null;
+}
+
+export function AiNormalizationPanel({ companyId }: AiNormalizationPanelProps) {
   const {
     queue,
     enqueueFiles,
@@ -363,7 +379,7 @@ export function AiNormalizationPanel() {
     clearPendingReview,
     isClearingReview,
     clearReviewError,
-  } = usePricelistNormalization();
+  } = usePricelistNormalization(companyId);
 
   const mappingItem = queue.find((item) => item.status === "needs_mapping");
 
@@ -377,14 +393,17 @@ export function AiNormalizationPanel() {
   useEffect(() => {
     if (!mappingItem?.mappingInfo) return;
     const { availableColumns, detectedMapping } = mappingItem.mappingInfo;
-    setMappingColumns(
-      availableColumns.map((col) => ({
-        raw_column: col,
-        mapped_field:
-          NORMALIZATION_FIELDS.find((field) => detectedMapping[field] === col) ?? null,
-        source_files: [mappingItem.file.name],
-      }))
-    );
+    const timeoutId = window.setTimeout(() => {
+      setMappingColumns(
+        availableColumns.map((col) => ({
+          raw_column: col,
+          mapped_field:
+            NORMALIZATION_FIELDS.find((field) => detectedMapping[field] === col) ?? null,
+          source_files: [mappingItem.file.name],
+        }))
+      );
+    }, 0);
+    return () => window.clearTimeout(timeoutId);
     // Re-derive only when a (possibly different) file's mapping info shows up, not on every
     // queue update — otherwise every edit to mappingColumns itself would get clobbered by
     // this effect re-running off the same mappingItem reference.
@@ -973,10 +992,11 @@ export function AiNormalizationPanel() {
                   <th className="py-2 pr-4">Price</th>
                   <th className="py-2 pr-4">Confidence</th>
                   <th className="py-2 pr-4">Category</th>
-                    <th className="py-2 pr-4">Specification</th>
+                  <th className="py-2 pr-4">Specification</th>
+                  <th className="py-2 pr-4">Color</th>
                   <th className="py-2 pr-4">Brand</th>
                   <th className="py-2 pr-4">Source</th>
-                    <th className="py-2 text-right">Action</th>
+                  <th className="py-2 text-right">Action</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">

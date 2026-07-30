@@ -112,6 +112,19 @@ def test_preserves_material_as_item_name_and_extracts_specification_as_descripti
     assert df.iloc[1]["description"] == "Grade 33 Deformed Bar 12mm x 6m"
 
 
+def test_detects_color_column(tmp_path):
+    csv_file = tmp_path / "colors.csv"
+    csv_file.write_text(
+        "Material,Unit,Price,Color\n"
+        "Ceramic Floor Tile,pc,120,Glossy White\n"
+    )
+
+    df = parse_pricelist_file(str(csv_file))
+
+    assert "color" in df.columns
+    assert df.iloc[0]["color"] == "Glossy White"
+
+
 def test_promotes_embedded_header_after_report_title_rows(tmp_path):
     report_file = tmp_path / "report.csv"
     report_file.write_text(
