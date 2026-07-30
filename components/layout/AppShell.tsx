@@ -1,14 +1,26 @@
+"use client";
+
 import Sidebar from "./Sidebar";
 import Header from "./Header";
+import { WorkflowHeaderProvider, useWorkflowHeaderValue } from "@/providers/WorkflowHeaderProvider";
 
-export default function AppShell({ children }: { children: React.ReactNode }) {
+function AppShellBody({ children }: { children: React.ReactNode }) {
+  const workflow = useWorkflowHeaderValue();
   return (
     <div className="flex h-screen w-full overflow-hidden bg-gray-50">
       <Sidebar />
       <div className="flex flex-1 flex-col overflow-hidden">
-        <Header />
+        <Header workflow={workflow} />
         <main className="flex-1 overflow-y-auto p-6">{children}</main>
       </div>
     </div>
+  );
+}
+
+export default function AppShell({ children }: { children: React.ReactNode }) {
+  return (
+    <WorkflowHeaderProvider>
+      <AppShellBody>{children}</AppShellBody>
+    </WorkflowHeaderProvider>
   );
 }
