@@ -3,7 +3,7 @@ import { pool } from "@/lib/server/db";
 import { readSession } from "@/lib/server/session";
 
 type SupplierCatalogRecord = {
-  historicalrec_id: number | null;
+  historicalrec_id: number;
   item_code: number;
   item_name: string;
   brand: string;
@@ -122,11 +122,14 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   }
 }
 
-// Deletes only this one Supplier price observation, not the underlying Items
-// row or its other price history — matches how the sibling GET in
-// ../route.ts scopes to price_source = 'Supplier' and the caller's own
-// company, so a guessed id can't delete another company's or another
-// source's record.
+// Deletes EVERY Supplier price record for the item behind the row shown, not
+// just the one historicalrec_id — the catalog only ever displays an item's
+// latest record (see the JOIN LATERAL in ../route.ts), so removing just that
+// one left older history underneath, silently re-surfacing the row with an
+// older price instead of making it disappear. Still scoped to Supplier +
+// the caller's own company, so a guessed id can't touch another company's or
+// another source's data — just widened from "this one row" to "this item's
+// whole Supplier history".
 export async function DELETE(request: NextRequest, { params }: { params: Promise<{ historicalrecId: string }> }) {
   const session = readSession(request);
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -137,20 +140,25 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
     return NextResponse.json({ error: "Invalid record id" }, { status: 400 });
   }
 
-  const result = await pool.query(
-    `DELETE FROM historical_price_record hp
-     USING items i
+  const lookup = await pool.query<{ item_code: number }>(
+    `SELECT i.item_code
+     FROM historical_price_record hp
+     JOIN items i ON i.item_code = hp.item_code
      WHERE hp.historicalrec_id = $1
-       AND hp.item_code = i.item_code
        AND hp.price_source = 'Supplier'
-       AND (i.company_id IS NULL OR i.company_id = (SELECT company_id FROM users WHERE user_id = $2))
-     RETURNING hp.historicalrec_id`,
+       AND (i.company_id IS NULL OR i.company_id = (SELECT company_id FROM users WHERE user_id = $2))`,
     [recordId, session.userId]
   );
 
-  if (result.rowCount === 0) {
+  const itemCode = lookup.rows[0]?.item_code;
+  if (!itemCode) {
     return NextResponse.json({ error: "Price record not found" }, { status: 404 });
   }
 
-  return NextResponse.json({ deleted: true });
+  const result = await pool.query(
+    `DELETE FROM historical_price_record WHERE item_code = $1 AND price_source = 'Supplier' RETURNING historicalrec_id`,
+    [itemCode]
+  );
+
+  return NextResponse.json({ deleted: true, deletedCount: result.rowCount });
 }

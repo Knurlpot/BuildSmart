@@ -3,7 +3,7 @@ import { pool } from "@/lib/server/db";
 import { readSession } from "@/lib/server/session";
 
 type SupplierCatalogRecord = {
-  historicalrec_id: number | null;
+  historicalrec_id: number;
   item_code: number;
   item_name: string;
   brand: string;
@@ -33,7 +33,7 @@ export async function GET(request: NextRequest) {
        'Supplier Upload' AS source,
        COALESCE(h.recorded_at::text, NOW()::text) AS recorded_at
      FROM items i
-     LEFT JOIN LATERAL (
+     JOIN LATERAL (
        SELECT
          hp.historicalrec_id,
          hp.price,
@@ -47,7 +47,7 @@ export async function GET(request: NextRequest) {
      ) h ON TRUE
      WHERE i.item_source = 'Supplier'
        AND (i.company_id IS NULL OR i.company_id = (SELECT company_id FROM users WHERE user_id = $1))
-     ORDER BY COALESCE(h.recorded_at, NOW()) DESC, i.item_code DESC`,
+     ORDER BY h.recorded_at DESC, i.item_code DESC`,
     values
   );
 
