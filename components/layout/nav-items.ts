@@ -1,5 +1,4 @@
 import {
-  User,
   Tag,
   SlidersHorizontal,
   FileSpreadsheet,
@@ -19,14 +18,6 @@ export interface NavItem {
 }
 
 export const NAV_ITEMS: NavItem[] = [
-  {
-    label: "Profile",
-    description: "Update your profile and company details",
-    icon: User,
-    href: "/account",
-    minStep: 0,
-    color: "#64748b",
-  },
   {
     label: "Manage Pricelist",
     description: "Manage your material price catalog",

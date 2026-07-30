@@ -3,7 +3,8 @@
 import { useEffect, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import Image from "next/image";
-import { ChevronDown, LogOut } from "lucide-react";
+import Link from "next/link";
+import { ChevronDown, LogOut, User } from "lucide-react";
 import { useAuth } from "@/providers/AuthProvider";
 import { useFetch } from "@/hooks/useFetch";
 import type { Company, Users } from "@/types/entities";
@@ -19,6 +20,10 @@ const STATIC_TITLES: Record<string, { title: string; subtitle?: string }> = {
     title: "Setup — Step 2 of 2",
     subtitle: "Set your company preferences and rules",
   },
+  // No longer in NAV_ITEMS (the sidebar/dashboard tab was removed in favor of
+  // the header dropdown link below), so resolveTitle's NAV_ITEMS lookup can't
+  // find this page's title/subtitle anymore — pinned here instead.
+  "/account": { title: "Profile", subtitle: "Update your profile and company details" },
 };
 
 function resolveTitle(pathname: string) {
@@ -37,9 +42,9 @@ interface HeaderProps {
   workflow?: WorkflowHeaderState | null;
 }
 
-// Part B — the ONE profile widget in the app (the sidebar's copy was removed). Logo as
-// avatar, user's name as the primary line, company name underneath, Logout lives in the
-// dropdown this opens.
+// Part B — the ONE profile widget in the app (the sidebar/dashboard nav tab was removed).
+// Logo as avatar, user's name as the primary line, company name underneath; the dropdown
+// this opens holds Log out, then a Profile link underneath it.
 export default function Header({ workflow }: HeaderProps) {
   const pathname = usePathname();
   const router = useRouter();
@@ -157,6 +162,13 @@ export default function Header({ workflow }: HeaderProps) {
             >
               <LogOut className="h-4 w-4" /> Log out
             </button>
+            <Link
+              href="/account"
+              onClick={() => setMenuOpen(false)}
+              className="flex w-full items-center gap-2 border-t border-gray-100 px-4 py-2.5 text-left text-sm text-gray-600 transition hover:bg-gray-50 hover:text-primary"
+            >
+              <User className="h-4 w-4" /> Profile
+            </Link>
           </div>
         )}
       </div>
