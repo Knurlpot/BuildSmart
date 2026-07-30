@@ -9,8 +9,9 @@ from sqlalchemy import select
 from app.database import get_db
 from app.ingest.models import MaterialPriceVariance
 from app.main import app
-from app.models import HistoricalPriceRecord, Items, PriceListReviewItem
+from app.models import ApprovedMatchCache, HistoricalPriceRecord, Items, PriceListReviewItem
 from app.routers import pricelist as pricelist_router
+from app.services.match_cache import normalize_match_key
 
 FIXTURE = Path(__file__).parent / "fixtures" / "sample_pricelist.csv"
 
@@ -37,10 +38,9 @@ def test_upload_triggers_task_without_a_real_worker():
     assert response.json() == {"task_id": "fake-task-id"}
 
     assert mock_delay.call_count == 1
-    saved_path, source, supplier_id, use_mock = mock_delay.call_args.args
+    saved_path, source, supplier_id = mock_delay.call_args.args
     assert source == "Supplier"
     assert supplier_id == 7
-    assert use_mock is None  # not specified in this request's form data
     saved_file = Path(saved_path)
     assert saved_file.exists()
     assert saved_file.suffix == ".csv"
@@ -97,7 +97,7 @@ def test_confirm_mapping_triggers_task_after_manual_resolution():
     assert response.status_code == 200
     assert response.json() == {"task_id": "fake-task-id-2"}
     assert mock_delay.call_count == 1
-    saved_path, source, supplier_id, use_mock, column_mapping = mock_delay.call_args.args
+    saved_path, source, supplier_id, column_mapping = mock_delay.call_args.args
     assert column_mapping == {"raw_name": "Foo", "raw_unit": "Bar", "raw_price": "Baz"}
 
     _cleanup_upload(upload_id)
@@ -408,6 +408,178 @@ def test_update_review_item_approve_creates_supplier_item_even_if_internal_exist
         .where(Items.item_source == "Supplier")
     ).scalars().first()
     assert supplier_item is not None
+
+
+def test_approving_review_item_writes_approved_match_cache_entry(db_session):
+    item = PriceListReviewItem(
+        raw_name="Portland Cement Type 1 40kg",
+        raw_unit="bag",
+        raw_price=255.50,
+        confidence=0.82,
+        suggested_category_type="Structural",
+        suggested_material="Cement",
+        suggested_brand="Holcim",
+        source="Supplier",
+        supplier_id=None,
+    )
+    db_session.add(item)
+    db_session.flush()
+
+    def override_get_db():
+        yield db_session
+
+    app.dependency_overrides[get_db] = override_get_db
+    try:
+        response = client.patch(
+            f"/pricelist/review/{item.review_id}",
+            json={"status": "Approved"},
+        )
+    finally:
+        del app.dependency_overrides[get_db]
+
+    assert response.status_code == 200
+
+    saved_item = db_session.execute(
+        select(Items)
+        .where(Items.item_name == "Portland Cement Type 1 40kg")
+        .where(Items.brand == "Holcim")
+        .where(Items.unit == "bag")
+        .where(Items.item_source == "Supplier")
+    ).scalars().first()
+    assert saved_item is not None
+
+    normalized_name, normalized_unit = normalize_match_key("Portland Cement Type 1 40kg", "bag")
+    cached = db_session.execute(
+        select(ApprovedMatchCache)
+        .where(ApprovedMatchCache.normalized_name == normalized_name)
+        .where(ApprovedMatchCache.normalized_unit == normalized_unit)
+    ).scalars().first()
+    assert cached is not None
+    assert cached.item_code == saved_item.item_code
+
+
+def test_correcting_and_reapproving_same_raw_text_updates_cache_entry(db_session):
+    def override_get_db():
+        yield db_session
+
+    app.dependency_overrides[get_db] = override_get_db
+    try:
+        first = PriceListReviewItem(
+            raw_name="Duplicate Raw Text Item",
+            raw_unit="pc",
+            raw_price=100.00,
+            confidence=0.5,
+            suggested_category_type="Finishing",
+            suggested_material="Paint",
+            suggested_brand="Holcim",  # initially matched under the wrong brand
+            source="Supplier",
+            supplier_id=None,
+        )
+        db_session.add(first)
+        db_session.flush()
+        client.patch(f"/pricelist/review/{first.review_id}", json={"status": "Approved"})
+
+        first_saved_item = db_session.execute(
+            select(Items)
+            .where(Items.item_name == "Duplicate Raw Text Item")
+            .where(Items.brand == "Holcim")
+        ).scalars().first()
+        assert first_saved_item is not None
+
+        # Same raw text/unit resurfaces and a human corrects the brand this time.
+        second = PriceListReviewItem(
+            raw_name="Duplicate Raw Text Item",
+            raw_unit="pc",
+            raw_price=105.00,
+            confidence=0.5,
+            suggested_category_type="Finishing",
+            suggested_material="Paint",
+            suggested_brand="Boysen",
+            source="Supplier",
+            supplier_id=None,
+        )
+        db_session.add(second)
+        db_session.flush()
+        client.patch(f"/pricelist/review/{second.review_id}", json={"status": "Approved"})
+
+        second_saved_item = db_session.execute(
+            select(Items)
+            .where(Items.item_name == "Duplicate Raw Text Item")
+            .where(Items.brand == "Boysen")
+        ).scalars().first()
+        assert second_saved_item is not None
+        assert second_saved_item.item_code != first_saved_item.item_code
+    finally:
+        del app.dependency_overrides[get_db]
+
+    normalized_name, normalized_unit = normalize_match_key("Duplicate Raw Text Item", "pc")
+    matching_cache_rows = db_session.execute(
+        select(ApprovedMatchCache)
+        .where(ApprovedMatchCache.normalized_name == normalized_name)
+        .where(ApprovedMatchCache.normalized_unit == normalized_unit)
+    ).scalars().all()
+
+    # The correction overwrote the stale entry rather than leaving it alongside a new one.
+    assert len(matching_cache_rows) == 1
+    assert matching_cache_rows[0].item_code == second_saved_item.item_code
+
+
+def test_rejecting_review_item_invalidates_matching_cache_entry(db_session):
+    def override_get_db():
+        yield db_session
+
+    app.dependency_overrides[get_db] = override_get_db
+    try:
+        approved = PriceListReviewItem(
+            raw_name="Latex Paint White 4L",
+            raw_unit="gallon",
+            raw_price=850.00,
+            confidence=0.7,
+            suggested_category_type="Finishing",
+            suggested_material="Paint",
+            suggested_brand="Boysen",
+            source="Supplier",
+            supplier_id=None,
+        )
+        db_session.add(approved)
+        db_session.flush()
+        client.patch(f"/pricelist/review/{approved.review_id}", json={"status": "Approved"})
+
+        normalized_name, normalized_unit = normalize_match_key("Latex Paint White 4L", "gallon")
+        cached_before = db_session.execute(
+            select(ApprovedMatchCache)
+            .where(ApprovedMatchCache.normalized_name == normalized_name)
+            .where(ApprovedMatchCache.normalized_unit == normalized_unit)
+        ).scalars().first()
+        assert cached_before is not None
+
+        # A human later dismisses a row with the same raw text/unit as wrong.
+        dismissed = PriceListReviewItem(
+            raw_name="Latex Paint White 4L",
+            raw_unit="gallon",
+            raw_price=860.00,
+            confidence=0.5,
+            suggested_category_type="Finishing",
+            suggested_material="Paint",
+            suggested_brand="Boysen",
+            source="Supplier",
+            supplier_id=None,
+        )
+        db_session.add(dismissed)
+        db_session.flush()
+        # "Rejected" is the value the DB's CHECK constraint on this column
+        # actually allows (Pending/Approved/Rejected) — not "Deleted", which the
+        # frontend's deleteReviewItem hook sends and which the DB rejects.
+        client.patch(f"/pricelist/review/{dismissed.review_id}", json={"status": "Rejected"})
+    finally:
+        del app.dependency_overrides[get_db]
+
+    cached_after = db_session.execute(
+        select(ApprovedMatchCache)
+        .where(ApprovedMatchCache.normalized_name == normalized_name)
+        .where(ApprovedMatchCache.normalized_unit == normalized_unit)
+    ).scalars().first()
+    assert cached_after is None
 
 
 def test_check_version_returns_new_available():

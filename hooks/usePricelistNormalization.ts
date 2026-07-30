@@ -122,23 +122,15 @@ async function uploadPricelistFile(form: FormData): Promise<UploadResponse> {
 
 // The backend processes one file per task (POST /pricelist/upload takes a
 // single UploadFile) — multi-file support is a client-side queue on top of
-// that, uploaded one at a time rather than concurrently. Sequential matters
-// most for AI Match: several files firing rate-limited Gemini calls at once
-// would just make each other wait anyway, so there's no throughput to gain
-// and it'd make the adaptive pacing in normalizer_gemini.py harder to reason
-// about (multiple call sites racing to update the same shared interval). It
-// also means at most one file can be sitting in 'needs_mapping' at a time —
-// the queue pauses there until a human resolves or cancels it.
+// that, uploaded one at a time rather than concurrently. This also means at
+// most one file can be sitting in 'needs_mapping' at a time — the queue
+// pauses there until a human resolves or cancels it.
 export type QueueItemStatus = 'queued' | 'uploading' | 'needs_mapping' | NormalizationTaskStatus;
 
 export interface QueueItem {
   id: string;
   file: File;
-  // Captured per-file at enqueue time (not passed as loop-level params) so
-  // that changing "Matching Mode" while an earlier batch is still processing
-  // can't silently leak into files added afterward.
   source: string;
-  useAi: boolean;
   status: QueueItemStatus;
   taskId?: string;
   result?: NormalizationSummary;
@@ -210,8 +202,8 @@ export function usePricelistNormalization() {
   const processQueue = async () => {
     if (processingRef.current) return;
     // A file awaiting a human-confirmed mapping blocks the rest of the batch
-    // — resuming here would let a later file's Quick/AI Match run ahead of a
-    // decision the user hasn't made yet, out of the upload order they expect.
+    // — resuming here would let a later file's match run ahead of a decision
+    // the user hasn't made yet, out of the upload order they expect.
     if (queueRef.current.some((item) => item.status === 'needs_mapping')) return;
     processingRef.current = true;
 
@@ -224,8 +216,6 @@ export function usePricelistNormalization() {
       const form = new FormData();
       form.append('file', next.file);
       form.append('source', next.source);
-      // Backend's use_mock is the inverse of the UI's "AI Match" choice.
-      form.append('use_mock', String(!next.useAi));
 
       try {
         const res = await uploadPricelistFile(form);
@@ -247,12 +237,11 @@ export function usePricelistNormalization() {
     processingRef.current = false;
   };
 
-  const enqueueFiles = (files: File[], source: string, useAi: boolean) => {
+  const enqueueFiles = (files: File[], source: string) => {
     const newItems: QueueItem[] = files.map((file) => ({
       id: `${file.name}-${file.size}-${Date.now()}-${Math.random()}`,
       file,
       source,
-      useAi,
       status: 'queued',
     }));
     queueRef.current = [...queueRef.current, ...newItems];
@@ -274,7 +263,6 @@ export function usePricelistNormalization() {
     form.append('raw_unit_column', mapping.raw_unit);
     form.append('raw_price_column', mapping.raw_price);
     form.append('source', item.source);
-    form.append('use_mock', String(!item.useAi));
 
     try {
       const res = await normalizationApiClient<UploadResponse>(
@@ -349,7 +337,9 @@ export function usePricelistNormalization() {
     await normalizationApiClient<PricelistReviewItem>(`/pricelist/review/${reviewId}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ status: 'Deleted' }),
+      // 'Rejected' is the value the DB's status CHECK constraint actually allows
+      // (Pending/Approved/Rejected) — 'Deleted' was rejected at the DB level.
+      body: JSON.stringify({ status: 'Rejected' }),
     });
     setReviewItems((items) => items.filter((item) => item.review_id !== reviewId));
   }, []);

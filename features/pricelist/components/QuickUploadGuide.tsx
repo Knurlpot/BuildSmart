@@ -1,8 +1,8 @@
 import { FileSpreadsheet, ListChecks } from "lucide-react";
 
-// Confirmed behavior ONLY. Do not add: mixed-supplier support, spike detection,
-// re-upload/price-update behavior, dedup/auto-matching, messy-file handling, confidence
-// scoring, or a "recommended structure" claim — none of that is confirmed to exist yet.
+// Describes AiNormalizationPanel's actual pipeline (FastAPI /pricelist/upload
+// -> Celery normalize_price_list task) — keep this in sync with that flow,
+// not with the separate (unwired) UploadPricelistTab/usePricelistUpload one.
 export function QuickUploadGuide() {
   return (
     <div className="flex w-72 shrink-0 flex-col gap-3 rounded-2xl border border-gray-200 bg-white p-5">
@@ -35,11 +35,11 @@ export function QuickUploadGuide() {
           <p className="text-xs font-bold text-gray-700">What happens</p>
         </div>
         <p className="text-xs leading-relaxed text-gray-500">
-          You can select multiple files at once — for example, an item pricelist plus a
-          separate supplier info file. After you confirm, the system extracts the rows and
-          shows you the detected columns to map to BuildSmart&apos;s item and supplier fields.
-          You then review and confirm the rows before anything saves — nothing is written to
-          your catalog until you approve.
+          Each file is queued and processed on its own. The backend auto-detects the material
+          name, unit, and price columns — if it can&apos;t, you&apos;ll be asked to map them by
+          hand. Every row is then matched against your existing catalog: confident matches save
+          immediately, and anything uncertain lands in Pending Review below for you to confirm,
+          correct, or reject.
         </p>
       </div>
     </div>

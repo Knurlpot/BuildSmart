@@ -17,6 +17,7 @@ from app.ingest.models import MaterialPriceVariance
 from app.models import Category, HistoricalPriceRecord, Items, PriceListReviewItem
 from app.schemas.pricelist import NormalizedPriceRecord, SourceAgency
 from app.services.dpwh_published import fetch_dpwh_cmpd_release, save_dpwh_cmpd_publish_records
+from app.services.match_cache import invalidate_cached_match, upsert_cached_match
 from app.services.pricelist_json_normalizer import normalize_pricelist_dataframe
 from app.services.pricelist_parser import MissingColumnsError, parse_pricelist_file
 from app.services.published_version_check import check_published_version
@@ -253,13 +254,18 @@ def _save_review_item_to_catalog(row: PriceListReviewItem, db: Session) -> None:
             )
         )
 
+    # Remember this human-confirmed mapping so future uploads of the same raw
+    # text skip re-scoring entirely (see app.services.match_cache). Keyed on
+    # the row's raw text as originally submitted, not the resolved item_name —
+    # that's what a future upload's raw row will actually look like.
+    upsert_cached_match(db, row.raw_name, row.raw_unit, item.item_code)
+
 
 @router.post("/upload", response_model=UploadResponse)
 async def upload_pricelist(
     file: UploadFile = File(...),
     source: str = Form(...),
     supplier_id: int | None = Form(None),
-    use_mock: bool | None = Form(None),
 ):
     suffix = Path(file.filename).suffix
     upload_id = str(uuid.uuid4())
@@ -295,7 +301,7 @@ async def upload_pricelist(
         # client as a clean 4xx too, not bubble up as an unhandled 500.
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
-    task = normalize_price_list.delay(str(dest), source, supplier_id, use_mock)
+    task = normalize_price_list.delay(str(dest), source, supplier_id)
     return UploadResponse(task_id=task.id)
 
 
@@ -307,7 +313,6 @@ async def confirm_column_mapping(
     raw_price_column: str = Form(...),
     source: str = Form(...),
     supplier_id: int | None = Form(None),
-    use_mock: bool | None = Form(None),
 ):
     matches = list(UPLOAD_DIR.glob(f"{upload_id}.*"))
     if not matches:
@@ -337,7 +342,7 @@ async def confirm_column_mapping(
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
-    task = normalize_price_list.delay(str(dest), source, supplier_id, use_mock, column_mapping)
+    task = normalize_price_list.delay(str(dest), source, supplier_id, column_mapping)
     return UploadResponse(task_id=task.id)
 
 
@@ -397,6 +402,12 @@ def update_review_item(
 
     if row.status == "Approved":
         _save_review_item_to_catalog(row, db)
+    elif row.status in ("Deleted", "Rejected"):
+        # A human just dismissed this raw text/unit combination — if a prior
+        # approval had cached it, don't keep trusting that mapping on future
+        # uploads. A miss just falls through to normal scoring, same as if it
+        # had never been cached.
+        invalidate_cached_match(db, row.raw_name, row.raw_unit)
 
     db.commit()
     db.refresh(row)

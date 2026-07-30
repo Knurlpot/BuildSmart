@@ -1,15 +1,3 @@
-import os
-
-# Force mock routing for the whole test session before any app.* module is
-# imported. Without this, collecting test_normalizer_gemini.py (even when its
-# gemini_live-marked tests are deselected) still executes normalizer_gemini.py's
-# module-level load_dotenv(), which sets USE_MOCK_AI from .env — currently
-# "false". python-dotenv's load_dotenv() doesn't override an already-set var,
-# so setting it here first keeps every other test on the mock path regardless
-# of .env, as they assume. The gemini_live tests call normalize_material_gemini()
-# directly, bypassing the router, so this doesn't affect them.
-os.environ["USE_MOCK_AI"] = "true"
-
 import pytest
 from sqlalchemy.orm import Session
 

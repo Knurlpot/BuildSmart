@@ -1,4 +1,3 @@
-import os
 import re
 
 from app.schemas.normalization import MaterialMatch
@@ -47,7 +46,6 @@ def normalize_material(
     raw_unit: str,
     candidates: list[ItemCandidate],
     raw_brand: str | None = None,
-    use_mock: bool | None = None,
 ) -> MaterialMatch:
     if not candidates:
         return MaterialMatch(
@@ -61,18 +59,8 @@ def normalize_material(
             is_new_item=True,
         )
 
-    # Explicit per-call override (e.g. a per-upload UI choice) takes precedence
-    # over the process-wide USE_MOCK_AI env var default.
-    if use_mock is None:
-        use_mock = os.getenv("USE_MOCK_AI", "true").lower() == "true"
+    result = normalize_material_mock(raw_name, raw_unit, candidates)
 
-    if use_mock:
-        result = normalize_material_mock(raw_name, raw_unit, candidates)
-    else:
-        from app.services.normalizer_gemini import normalize_material_gemini
-
-        result = normalize_material_gemini(raw_name, raw_unit, candidates)
-    
     # Override brand with raw_brand if it was provided
     if raw_brand and raw_brand != "Generic":
         result.brand = raw_brand

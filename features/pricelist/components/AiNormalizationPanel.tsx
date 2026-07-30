@@ -10,15 +10,14 @@ import {
   Loader2,
   Pencil,
   RefreshCw,
-  Sparkles,
   Trash2,
   Upload,
   UploadCloud,
   X,
-  Zap,
 } from "lucide-react";
 import { QueryState } from "@/components/feedback/QueryState";
 import { ColumnMappingStep, type DetectedColumn } from "./ColumnMappingStep";
+import { QuickUploadGuide } from "./QuickUploadGuide";
 import {
   NORMALIZATION_FIELD_LABELS,
   usePricelistNormalization,
@@ -51,6 +50,51 @@ function fmt(n: number) {
   return "₱" + n.toLocaleString("en-PH", { minimumFractionDigits: 2 });
 }
 
+const STEPS = [
+  { n: 1, label: "Upload File" },
+  { n: 2, label: "Review & Detect" },
+  { n: 3, label: "Map & Confirm" },
+] as const;
+
+// Purely a progress indicator derived from queue/review state (see
+// `currentStep` below) — it doesn't gate which sections render. Pending
+// Review in particular is a persistent queue that can hold rows from many
+// past uploads, not a one-shot wizard screen, so it stays visible regardless
+// of which step is "current".
+function Stepper({ step }: { step: 1 | 2 | 3 }) {
+  return (
+    <div className="flex items-center gap-2">
+      {STEPS.map(({ n, label }, i) => (
+        <div key={n} className="flex items-center gap-2">
+          <div className="flex flex-col items-center gap-1">
+            <div
+              className={`flex h-7 w-7 items-center justify-center rounded-full text-xs font-bold transition ${
+                n < step
+                  ? "bg-primary text-primary-foreground"
+                  : n === step
+                    ? "bg-primary text-primary-foreground ring-4 ring-primary/20"
+                    : "bg-gray-100 text-gray-400"
+              }`}
+            >
+              {n < step ? <Check className="h-3.5 w-3.5" /> : n}
+            </div>
+            <span
+              className={`whitespace-nowrap text-[10px] font-semibold ${
+                n === step ? "text-primary" : "text-gray-400"
+              }`}
+            >
+              {label}
+            </span>
+          </div>
+          {i < STEPS.length - 1 && (
+            <div className={`mb-3 h-0.5 w-10 rounded transition ${n < step ? "bg-primary" : "bg-gray-100"}`} />
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function QueueItemRow({ item }: { item: QueueItem }) {
   return (
     <div className="flex items-start gap-3 rounded-xl border border-gray-100 bg-gray-50 px-3 py-2.5 text-sm">
@@ -63,8 +107,7 @@ function QueueItemRow({ item }: { item: QueueItem }) {
             <Loader2 className="h-3 w-3 animate-spin" />
             {item.status === "uploading" && "Uploading…"}
             {item.status === "pending" && "Waiting to start…"}
-            {item.status === "processing" &&
-              (item.useAi ? "Normalizing via AI Match (rate-limited, can take a while)…" : "Normalizing…")}
+            {item.status === "processing" && "Normalizing…"}
           </p>
         )}
         {item.status === "done" && item.result && (
@@ -140,6 +183,9 @@ function ReviewItemRow({
   isEditing,
   draft,
   isSaving,
+  isSelected,
+  selectionDisabled,
+  onToggleSelect,
   onEdit,
   onDraftChange,
   onSave,
@@ -149,6 +195,9 @@ function ReviewItemRow({
   isEditing: boolean;
   draft: ReviewEditDraft;
   isSaving: boolean;
+  isSelected: boolean;
+  selectionDisabled: boolean;
+  onToggleSelect: () => void;
   onEdit: () => void;
   onDraftChange: (patch: Partial<ReviewEditDraft>) => void;
   onSave: () => void;
@@ -157,9 +206,23 @@ function ReviewItemRow({
   const inputClass =
     "h-8 w-full min-w-[7rem] rounded-lg border border-gray-200 bg-white px-2 text-sm text-gray-700 outline-none focus:border-primary focus:ring-2 focus:ring-primary/15";
 
+  const checkboxCell = (
+    <td className="w-8 py-2 pr-2">
+      <input
+        type="checkbox"
+        checked={isSelected}
+        disabled={selectionDisabled}
+        onChange={onToggleSelect}
+        className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary/40 disabled:cursor-not-allowed disabled:opacity-50"
+        aria-label={`Select ${item.raw_name}`}
+      />
+    </td>
+  );
+
   if (!isEditing) {
     return (
       <tr>
+        {checkboxCell}
         <td className="py-2 pr-4 font-medium text-gray-800">{item.raw_name}</td>
         <td className="py-2 pr-4 text-gray-500">{item.raw_unit}</td>
         <td className="py-2 pr-4 text-gray-500">{fmt(item.raw_price)}</td>
@@ -204,6 +267,7 @@ function ReviewItemRow({
 
   return (
     <tr className="bg-orange-50/20 align-top">
+      {checkboxCell}
       <td className="py-2 pr-4">
         <input
           value={draft.raw_name}
@@ -390,9 +454,8 @@ export function AiNormalizationPanel() {
   const [editDraft, setEditDraft] = useState<ReviewEditDraft | null>(null);
   const [savingId, setSavingId] = useState<number | null>(null);
   const [reviewSaveError, setReviewSaveError] = useState<string | null>(null);
-  // Defaults to the instant local matcher rather than the AI path — safer
-  // default given how rate-limited/quota-constrained the AI path can be.
-  const [useAi, setUseAi] = useState(false);
+  const [selectedReviewIds, setSelectedReviewIds] = useState<Set<number>>(new Set());
+  const [isBulkApproving, setIsBulkApproving] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const acceptFiles = (candidates: FileList | File[]) => {
@@ -424,7 +487,7 @@ export function AiNormalizationPanel() {
 
   const handleUpload = () => {
     if (pendingFiles.length === 0) return;
-    enqueueFiles(pendingFiles, source, useAi);
+    enqueueFiles(pendingFiles, source);
     setPendingFiles([]);
   };
 
@@ -473,20 +536,73 @@ export function AiNormalizationPanel() {
     }
   };
 
+  const toggleSelectReviewItem = (reviewId: number) => {
+    setSelectedReviewIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(reviewId)) {
+        next.delete(reviewId);
+      } else {
+        next.add(reviewId);
+      }
+      return next;
+    });
+  };
+
+  const allReviewItemsSelected = reviewItems.length > 0 && selectedReviewIds.size === reviewItems.length;
+
+  const toggleSelectAllReviewItems = () => {
+    setSelectedReviewIds(allReviewItemsSelected ? new Set() : new Set(reviewItems.map((item) => item.review_id)));
+  };
+
+  const approveSelectedReviewItems = async () => {
+    const ids = Array.from(selectedReviewIds);
+    if (ids.length === 0) return;
+
+    setIsBulkApproving(true);
+    setReviewSaveError(null);
+    const failedNames: string[] = [];
+
+    // Sequential rather than Promise.all — each approval writes to the shared
+    // catalog/approval-cache, and this reuses the same savingId spinner the
+    // single-row Save button already shows, one row at a time.
+    for (const reviewId of ids) {
+      const item = reviewItems.find((r) => r.review_id === reviewId);
+      if (!item) continue;
+      setSavingId(reviewId);
+      try {
+        await updateReviewItem(reviewId, { ...draftToPatch(reviewItemToDraft(item)), status: "Approved" });
+        setSelectedReviewIds((prev) => {
+          const next = new Set(prev);
+          next.delete(reviewId);
+          return next;
+        });
+      } catch (err) {
+        failedNames.push(item.raw_name);
+      }
+    }
+
+    setSavingId(null);
+    setIsBulkApproving(false);
+    if (failedNames.length > 0) {
+      setReviewSaveError(`Failed to approve: ${failedNames.join(", ")}`);
+    }
+  };
+
   const isQueueBusy = queue.some((item) =>
     ["queued", "uploading", "pending", "processing"].includes(item.status)
   );
   const hasFinishedItems = queue.some((item) => item.status === "done" || item.status === "failed");
 
+  // Column detection / row matching is in flight (or needs a human to map
+  // columns) -> step 2. Nothing in flight but rows are waiting on a decision
+  // -> step 3. Otherwise idle, ready for the next upload -> step 1.
+  const currentStep: 1 | 2 | 3 = mappingItem || isQueueBusy ? 2 : reviewItems.length > 0 ? 3 : 1;
+
   return (
     <div className="flex flex-col gap-5">
+      <Stepper step={currentStep} />
+
       <div className="rounded-2xl border border-gray-200 bg-white p-5">
-        <p className="mb-1 text-sm font-bold text-gray-900">AI Material Normalization (pipeline test)</p>
-        <p className="mb-4 text-xs text-gray-500">
-          Uploads raw price lists to the FastAPI normalization service, which auto-matches each row against
-          the existing item catalog by name/unit similarity. Multiple files are queued and processed one at a
-          time.
-        </p>
         {mappingItem?.mappingInfo ? (
           <div className="flex flex-col gap-4">
             {mappingItem.mappingInfo.previewRows.length > 0 && (
@@ -535,10 +651,21 @@ export function AiNormalizationPanel() {
             />
           </div>
         ) : (
-        <>
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-          <div className="flex flex-col gap-1.5 sm:col-span-2">
-            <label className="text-xs font-semibold uppercase tracking-wide text-gray-600">Files</label>
+        <div className="flex flex-col gap-4 lg:flex-row">
+          <div className="flex flex-1 flex-col gap-4">
+            <div className="flex flex-col gap-1.5 sm:w-56">
+              <label className="text-xs font-semibold uppercase tracking-wide text-gray-600">Source</label>
+              <select
+                value={source}
+                onChange={(e) => setSource(e.target.value as (typeof SOURCES)[number])}
+                className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm outline-none focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/20"
+              >
+                {SOURCES.map((s) => (
+                  <option key={s}>{s}</option>
+                ))}
+              </select>
+            </div>
+
             <div
               onDragOver={(e) => {
                 e.preventDefault();
@@ -551,7 +678,7 @@ export function AiNormalizationPanel() {
                 if (e.dataTransfer.files.length > 0) acceptFiles(e.dataTransfer.files);
               }}
               onClick={() => fileRef.current?.click()}
-              className={`flex cursor-pointer items-center gap-3 rounded-xl border-2 border-dashed px-4 py-3 text-sm transition ${
+              className={`flex flex-1 cursor-pointer flex-col items-center justify-center gap-3 rounded-2xl border-2 border-dashed py-16 transition ${
                 dragging
                   ? "border-primary bg-orange-50/30"
                   : "border-gray-200 bg-gray-50 hover:border-primary hover:bg-orange-50/20"
@@ -568,88 +695,65 @@ export function AiNormalizationPanel() {
                   e.target.value = "";
                 }}
               />
-              <div className="flex flex-1 items-center gap-2 text-gray-400">
-                <UploadCloud className="h-4 w-4 shrink-0" />
-                <span>Drag &amp; drop one or more files, or click to browse — CSV, XLSX, or PDF</span>
+              <UploadCloud className="h-8 w-8 text-gray-400" />
+              <div className="text-center">
+                <p className="text-sm font-semibold text-gray-700">Drag &amp; drop your pricelist here</p>
+                <p className="text-xs text-gray-400">
+                  or click to browse — select multiple files at once, queued and processed one at a time
+                </p>
+              </div>
+              <div className="flex gap-1.5">
+                {["CSV", "XLSX", "PDF"].map((f) => (
+                  <span
+                    key={f}
+                    className="rounded-full border border-gray-200 bg-white px-2.5 py-0.5 text-[10px] font-bold text-gray-500"
+                  >
+                    {f}
+                  </span>
+                ))}
               </div>
             </div>
             {fileTypeError && <p className="text-xs text-red-500">{fileTypeError}</p>}
+
             {pendingFiles.length > 0 && (
-              <div className="flex flex-col gap-1 rounded-xl border border-gray-100 bg-gray-50 p-2">
-                {pendingFiles.map((f) => (
-                  <div key={f.name} className="flex items-center gap-2 px-1.5 py-1 text-sm">
-                    <FileIcon className="h-3.5 w-3.5 shrink-0 text-gray-400" />
-                    <span className="flex-1 truncate text-gray-700">{f.name}</span>
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        removePendingFile(f.name);
-                      }}
-                      className="shrink-0 rounded p-1 text-gray-300 transition hover:bg-red-50 hover:text-red-500"
-                    >
-                      <X className="h-3.5 w-3.5" />
-                    </button>
-                  </div>
-                ))}
+              <div className="flex flex-col gap-2 rounded-2xl border border-gray-200 bg-white p-4">
+                <p className="text-xs font-bold uppercase tracking-wider text-gray-400">
+                  Selected Files ({pendingFiles.length})
+                </p>
+                <div className="flex flex-col divide-y divide-gray-100">
+                  {pendingFiles.map((f) => (
+                    <div key={f.name} className="flex items-center gap-3 py-2">
+                      <FileIcon className="h-4 w-4 shrink-0 text-gray-400" />
+                      <span className="flex-1 truncate text-sm text-gray-700">{f.name}</span>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          removePendingFile(f.name);
+                        }}
+                        className="shrink-0 rounded p-1 text-gray-300 transition hover:bg-red-50 hover:text-red-500"
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+                <button
+                  type="button"
+                  onClick={handleUpload}
+                  className="mt-2 flex w-fit items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-bold text-primary-foreground shadow-sm transition hover:bg-(--primary-hover)"
+                >
+                  <Upload className="h-4 w-4" />
+                  {pendingFiles.length > 1
+                    ? `Upload & Normalize ${pendingFiles.length} Files`
+                    : "Upload & Normalize"}
+                </button>
               </div>
             )}
           </div>
-          <div className="flex flex-col gap-1.5">
-            <label className="text-xs font-semibold uppercase tracking-wide text-gray-600">Source</label>
-            <select
-              value={source}
-              onChange={(e) => setSource(e.target.value as (typeof SOURCES)[number])}
-              className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm outline-none focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/20"
-            >
-              {SOURCES.map((s) => (
-                <option key={s}>{s}</option>
-              ))}
-            </select>
-          </div>
-        </div>
 
-        <div className="mt-4 flex flex-col gap-1.5">
-          <label className="text-xs font-semibold uppercase tracking-wide text-gray-600">Matching Mode</label>
-          <div className="flex w-fit gap-1 rounded-xl border border-gray-200 bg-gray-50 p-1">
-            <button
-              type="button"
-              onClick={() => setUseAi(false)}
-              className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold transition ${
-                !useAi ? "bg-white text-primary shadow-sm" : "text-gray-500 hover:text-gray-700"
-              }`}
-            >
-              <Zap className="h-3.5 w-3.5" /> Quick Match
-            </button>
-            <button
-              type="button"
-              onClick={() => setUseAi(true)}
-              className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold transition ${
-                useAi ? "bg-white text-primary shadow-sm" : "text-gray-500 hover:text-gray-700"
-              }`}
-            >
-              <Sparkles className="h-3.5 w-3.5" /> AI Match
-            </button>
-          </div>
-          <p className="text-xs text-gray-400">
-            {useAi
-              ? "Uses Gemini to classify each row — smarter on typos/abbreviations, but slower and rate-limited (~15-20s per row). Applies to files queued from now on, not ones already processing."
-              : "Compares names instantly using text similarity — free and fast, best for clean/consistent data."}
-          </p>
+          <QuickUploadGuide />
         </div>
-
-        <button
-          type="button"
-          disabled={pendingFiles.length === 0}
-          onClick={handleUpload}
-          className="mt-4 flex w-fit items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-bold text-primary-foreground shadow-sm transition hover:bg-(--primary-hover) disabled:opacity-60"
-        >
-          <Upload className="h-4 w-4" />
-          {pendingFiles.length > 1
-            ? `Upload & Normalize ${pendingFiles.length} Files`
-            : "Upload & Normalize"}
-        </button>
-        </>
         )}
 
         {/* The status endpoint only ever returns {status, result} — no per-row
@@ -692,6 +796,23 @@ export function AiNormalizationPanel() {
             </p>
           </div>
           <div className="flex shrink-0 items-center gap-2">
+            <button
+              type="button"
+              onClick={toggleSelectAllReviewItems}
+              disabled={reviewItems.length === 0 || isBulkApproving}
+              className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-600 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {allReviewItemsSelected ? "Deselect All" : "Select All"}
+            </button>
+            <button
+              type="button"
+              onClick={approveSelectedReviewItems}
+              disabled={selectedReviewIds.size === 0 || isBulkApproving}
+              className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-bold text-primary-foreground shadow-sm transition hover:bg-(--primary-hover) disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {isBulkApproving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+              {isBulkApproving ? "Approving…" : `Approve Selected (${selectedReviewIds.size})`}
+            </button>
             {confirmingClear && (
               <button
                 type="button"
@@ -741,6 +862,7 @@ export function AiNormalizationPanel() {
             <table className="w-full text-left text-sm">
               <thead>
                 <tr className="border-b border-gray-100 text-xs uppercase tracking-wide text-gray-400">
+                  <th className="w-8 py-2 pr-2" />
                   <th className="py-2 pr-4">Raw Name</th>
                   <th className="py-2 pr-4">Unit</th>
                   <th className="py-2 pr-4">Price</th>
@@ -760,6 +882,9 @@ export function AiNormalizationPanel() {
                     isEditing={editingId === item.review_id}
                     draft={editingId === item.review_id && editDraft ? editDraft : reviewItemToDraft(item)}
                     isSaving={savingId === item.review_id}
+                    isSelected={selectedReviewIds.has(item.review_id)}
+                    selectionDisabled={isBulkApproving}
+                    onToggleSelect={() => toggleSelectReviewItem(item.review_id)}
                     onEdit={() => startEditing(item)}
                     onDraftChange={(patch) => setEditDraft((current) => (current ? { ...current, ...patch } : current))}
                     onSave={() => {

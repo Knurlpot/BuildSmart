@@ -4,8 +4,9 @@ import pytest
 from sqlalchemy import select
 
 import app.tasks.normalize_price_list as normalize_price_list_module
-from app.models import HistoricalPriceRecord, Items, PriceListReviewItem
+from app.models import ApprovedMatchCache, HistoricalPriceRecord, Items, PriceListReviewItem
 from app.services.candidates import get_item_candidates
+from app.services.match_cache import normalize_match_key
 from app.tasks.normalize_price_list import normalize_price_list
 
 FIXTURE = Path(__file__).parent / "fixtures" / "sample_pricelist.csv"
@@ -91,3 +92,65 @@ def test_normalize_price_list_writes_matched_rows_and_flags_new_items(db_session
     }
     assert all(r.status == "Pending" for r in new_review_items)
     assert all(r.source == "Supplier" for r in new_review_items)
+
+
+def test_normalize_price_list_uses_cached_match_and_skips_review(db_session, monkeypatch):
+    # Same scoping rationale as the test above — the task's own DB query for
+    # candidates would otherwise see the real, shared dev catalog.
+    def scoped_get_item_candidates(db):
+        return [c for c in get_item_candidates(db) if c["item_code"] in db_session.seeded_item_codes]
+
+    monkeypatch.setattr(normalize_price_list_module, "get_item_candidates", scoped_get_item_candidates)
+
+    steel_item_code = next(
+        i.item_code
+        for i in db_session.execute(select(Items)).scalars()
+        if i.item_code in db_session.seeded_item_codes and i.item_name == "Deformed Steel Bar 10mm"
+    )
+    # Simulate a human having already approved this exact raw text/unit combo
+    # (which, uncached, is the abbreviated/typo'd row that normally lands in
+    # review — see the 5/5 split asserted above) in some prior upload.
+    normalized_name, normalized_unit = normalize_match_key("Deformd Steel Bar 10 mm", "pc")
+    db_session.add(
+        ApprovedMatchCache(
+            normalized_name=normalized_name,
+            normalized_unit=normalized_unit,
+            item_code=steel_item_code,
+        )
+    )
+    db_session.flush()
+
+    existing_record_ids = {
+        r.historicalrec_id for r in db_session.execute(select(HistoricalPriceRecord)).scalars()
+    }
+    existing_review_ids = {
+        r.review_id for r in db_session.execute(select(PriceListReviewItem)).scalars()
+    }
+
+    result = normalize_price_list(
+        file_path=str(FIXTURE),
+        source="Supplier",
+        supplier_id=None,
+        db=db_session,
+    )
+
+    # One row that would otherwise need review now auto-matches via the cache.
+    assert result["matched"] == 6
+    assert result["needs_review"] == 4
+
+    new_records = [
+        r
+        for r in db_session.execute(select(HistoricalPriceRecord)).scalars()
+        if r.historicalrec_id not in existing_record_ids
+    ]
+    cached_record = next(
+        (r for r in new_records if r.item_code == steel_item_code and float(r.price) == 345.0), None
+    )
+    assert cached_record is not None
+
+    new_review_items = [
+        r
+        for r in db_session.execute(select(PriceListReviewItem)).scalars()
+        if r.review_id not in existing_review_ids
+    ]
+    assert "Deformd Steel Bar 10 mm" not in {r.raw_name for r in new_review_items}

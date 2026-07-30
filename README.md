@@ -6,16 +6,13 @@ This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-
 
 ### 1. Create .env at the repo root
 
-GEMINI_API_KEY=<a real key, or any placeholder string if you'll only use Quick Match>
+GEMINI_API_KEY=<a real key — only needed for the DPWH/PSA automated ingestion pipeline, not the pricelist upload/matching flow>
 DATABASE_URL="postgresql://postgres:<your local postgres password>@localhost:5432/BuildSmart"
 REDIS_URL="redis://localhost:6379/0"
 FRONTEND_ORIGIN="http://localhost:3000"
 NEXT_PUBLIC_NORMALIZATION_API_BASE_URL="http://localhost:8000"
-USE_MOCK_AI=true
 
 DATABASE_URL's credentials should match your own local Postgres user — "password" above is just a placeholder.
-
-**GEMINI_API_KEY is required even if you only ever use Quick Match** — backend/app/services/normalizer_gemini.py initializes its Gemini client at import time, and that import runs unconditionally whenever uvicorn or the Celery worker starts. Without it, both crash on startup with KeyError, regardless of USE_MOCK_AI.
 
 ### 2. Local services
 
@@ -26,7 +23,7 @@ DATABASE_URL's credentials should match your own local Postgres user — "passwo
 
 Run database_schema.sql (repo root) against your BuildSmart database — it's a drop-and-recreate script covering all tables (items, category, historical_price_record, pricelist_review_item, etc.).
 
-It ships with *zero seed rows*. The material normalizer needs at least one category`/items` row to have anything to match against — with an empty catalog, even Quick Match errors (candidates must not be empty). Insert a few rows manually before testing the pricelist normalization feature.
+It ships with *zero seed rows*. The material normalizer needs at least one category`/items` row to have anything to match against — with an empty catalog, matching errors (candidates must not be empty). Insert a few rows manually before testing the pricelist normalization feature.
 
 ### 4. Python backend
 
@@ -47,10 +44,6 @@ celery -A app.celery_app worker --pool=solo --loglevel=info
 
 npm install
 npm run dev
-
-### Testing AI Match for real
-
-Gemini's free-tier rate limits have been tight and have shifted more than once as the gemini-flash-latest alias moved to newer underlying models. Keep test files small (3–5 rows) to avoid burning quota.
 
 ## Getting Started
 

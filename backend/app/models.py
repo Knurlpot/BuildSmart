@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import TIMESTAMP, ForeignKey, Numeric, SmallInteger, String, func
+from sqlalchemy import TIMESTAMP, ForeignKey, Numeric, SmallInteger, String, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
@@ -82,3 +82,21 @@ class PriceListReviewItem(Base):
     supplier_id: Mapped[int | None]
     status: Mapped[str] = mapped_column(String(20), server_default="Pending")
     created_at: Mapped[datetime] = mapped_column(TIMESTAMP, server_default=func.now())
+
+
+class ApprovedMatchCache(Base):
+    __tablename__ = "approved_match_cache"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    # Normalized (lowercase, punctuation-stripped, whitespace-collapsed) raw
+    # material text and unit — see app.services.match_cache.normalize_match_key.
+    # Kept as two columns (rather than one combined key) so either can be
+    # inspected/queried independently without re-parsing a joined string.
+    normalized_name: Mapped[str] = mapped_column(String(255), index=True)
+    normalized_unit: Mapped[str] = mapped_column(String(50), index=True)
+    item_code: Mapped[int] = mapped_column(ForeignKey("items.item_code"))
+    confirmed_at: Mapped[datetime] = mapped_column(TIMESTAMP, server_default=func.now(), onupdate=func.now())
+
+    __table_args__ = (
+        UniqueConstraint("normalized_name", "normalized_unit", name="uq_approved_match_cache_key"),
+    )

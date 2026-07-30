@@ -5,6 +5,7 @@ from app.celery_app import celery_app
 from app.database import SessionLocal
 from app.models import Category, HistoricalPriceRecord, Items, PriceListReviewItem
 from app.services.candidates import get_item_candidates
+from app.services.match_cache import get_cache_lookup
 from app.services.normalize_batch import normalize_pricelist
 from app.services.pricelist_parser import MissingColumnsError, parse_pricelist_file
 from app.services.normalizer import _fallback_category
@@ -26,7 +27,6 @@ def normalize_price_list(
     file_path: str,
     source: str,
     supplier_id: int | None = None,
-    use_mock: bool | None = None,
     column_mapping: dict[str, str] | None = None,
     db: Session | None = None,
 ) -> dict:
@@ -43,7 +43,8 @@ def normalize_price_list(
         df = parse_pricelist_file(file_path, column_mapping=column_mapping)
         _ensure_review_item_description_column(session)
         candidates = get_item_candidates(session)
-        results = normalize_pricelist(df, candidates, use_mock=use_mock)
+        cache_lookup = get_cache_lookup(session)
+        results = normalize_pricelist(df, candidates, cache_lookup=cache_lookup)
 
         matched = 0
         new_items_created = 0
