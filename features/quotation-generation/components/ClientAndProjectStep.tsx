@@ -270,13 +270,29 @@ export function ClientAndProjectStep({ onContinue }: ClientAndProjectStepProps) 
       // input_method defaults to 'Manual' here since the method choice is the NEXT step —
       // corrected to 'Blueprint'/'Hybrid' later via useUpdateQuotationInputMethod once the
       // actual path (and, for Hybrid, the final segment mix) is known.
-      const quotation = await createQuotation({
+      const created = await createQuotation({
         client_id: client.client_id,
         project_name: projectName.trim(),
         project_location: projectLocation.trim(),
         project_region: projectRegion as PhRegion,
         input_method: "Manual",
       });
+      // Same fix as Create Client (NewClientForm) — lib/dev/mockFetch.ts's /api/quotations/
+      // new echoes back a FIXED fixture row regardless of what was submitted (that mock
+      // layer deliberately ignores request bodies). Left untouched, everything downstream
+      // — the wizard's own header, and now Open Projects (P2's whole point) — would show a
+      // stale fixture project name/location/region instead of what was actually typed here.
+      // Keep only what only the server can assign (quote_id, company_id, status,
+      // timestamps) and rebuild every user-entered field from this form. A real backend
+      // will echo the submitted fields back exactly, at which point `created` alone becomes
+      // sufficient again.
+      const quotation: Quotation = {
+        ...created,
+        project_name: projectName.trim(),
+        project_location: projectLocation.trim(),
+        project_region: projectRegion as PhRegion,
+        input_method: "Manual",
+      };
       onContinue(quotation, client);
     } catch {
       // surfaced via createError below — no fabricated success

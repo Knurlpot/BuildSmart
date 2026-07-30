@@ -136,9 +136,11 @@ export function QuotationGenerationWizard() {
         </div>
       </div>
     );
-  } else if (step === "results" && quotation) {
+  } else if (step === "results" && quotation && client) {
     body = (
       <QuotationResultsStep
+        client={client}
+        quotation={quotation}
         segments={segments}
         // Activity diagram's "Structural revision -> Return to segmentation" — back to
         // whichever path this quotation actually used, segments intact (nothing here

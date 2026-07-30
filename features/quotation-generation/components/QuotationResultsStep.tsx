@@ -15,12 +15,18 @@ import { RevisionTypeModal } from "./RevisionTypeModal";
 import { MinorRevisionPanel } from "./MinorRevisionPanel";
 import { computeTierResult, deriveMockItemLines, fmtPeso, retargetItemLinesBasis } from "@/lib/dev/provisional/quotationBreakdownFixtures";
 import { PROVISIONAL_TIERS, type PricelistBasis, type ProvisionalItemLine, type ProvisionalQuotationTierResult, type ProvisionalTier } from "@/lib/dev/provisional/quotationBreakdownTypes";
+import { saveFinalizedQuotation } from "@/lib/dev/provisional/savedProjectsStore";
 import { isSegmentIncluded, type DraftSegment } from "../lib/draftSegment";
+import type { Client, Quotation } from "@/types/entities";
 
 interface QuotationResultsStepProps {
+  client: Client;
+  quotation: Quotation;
   segments: DraftSegment[];
   /** Activity diagram's "Structural revision -> Return to segmentation." */
   onStructuralRevision: () => void;
+  /** Fires once the finalized project has actually been saved (P2-B) — caller only needs
+   * to move the wizard on; the save itself already happened here. */
   onFinalize: () => void;
 }
 
@@ -135,7 +141,7 @@ function QuoteCard({ tier, result, onViewBreakdown }: { tier: ProvisionalTier; r
 // depends on that don't exist in the schema yet), the READ-ONLY detailed breakdown (Part A),
 // and the revision flow (editing lives only in Minor Revision, Part D). Everything
 // downstream of `segments` is mock-derived — see quotationBreakdownFixtures.ts.
-export function QuotationResultsStep({ segments, onStructuralRevision, onFinalize }: QuotationResultsStepProps) {
+export function QuotationResultsStep({ client, quotation, segments, onStructuralRevision, onFinalize }: QuotationResultsStepProps) {
   const [pricelistBasis, setPricelistBasis] = useState<PricelistBasis>(DEFAULT_BASIS);
   const [originalTierItems] = useState(() => initTierItems(segments, DEFAULT_BASIS));
   const [tierItems, setTierItems] = useState(() => initTierItems(segments, DEFAULT_BASIS));
@@ -276,8 +282,9 @@ export function QuotationResultsStep({ segments, onStructuralRevision, onFinaliz
           <DialogHeader>
             <DialogTitle>Finalize this quotation?</DialogTitle>
             <DialogDescription>
-              Both Practical and Premium options are saved as a draft pair for this project. This is a mock save
-              (Part 2 shell) — no real pricing engine or persistence is wired yet.
+              Both Practical and Premium are saved as a linked pair for this project — neither is marked as the
+              client&apos;s choice yet (that happens later, from Open Projects). This is a mock save (Part 2 shell):
+              no real pricing engine or backend persistence is wired yet.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -292,6 +299,18 @@ export function QuotationResultsStep({ segments, onStructuralRevision, onFinaliz
               type="button"
               onClick={() => {
                 setFinalizeConfirmOpen(false);
+                // P2-B — saves BOTH tiers (siblings of one quote_group_id), neither
+                // is_selected — see savedProjectsStore.ts. Uses the CURRENT tierItems
+                // (whatever Minor Revision left them as), not a fresh re-derivation.
+                saveFinalizedQuotation({
+                  clientId: client.client_id,
+                  clientName: client.client_name,
+                  projectName: quotation.project_name,
+                  projectLocation: quotation.project_location,
+                  projectRegion: quotation.project_region,
+                  tierItems,
+                  pricelistBasis,
+                });
                 onFinalize();
               }}
               className="rounded-xl bg-primary px-4 py-2 text-sm font-bold text-primary-foreground transition hover:bg-(--primary-hover)"

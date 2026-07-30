@@ -12,7 +12,13 @@ interface QuotationBreakdownModalProps {
   tier: ProvisionalTier;
   result: ProvisionalQuotationTierResult;
   pricelistBasis: PricelistBasis;
-  onBasisChange: (basis: PricelistBasis) => void;
+  // Omitted (Open Projects' saved-project view) -> the toggle renders as a static,
+  // non-interactive badge instead of clickable buttons. A FINALIZED quote is a frozen
+  // snapshot (see savedProjectsStore.ts's snapshot-integrity note) — letting someone
+  // switch basis and watch a historical quote's numbers change would defeat the entire
+  // point of a snapshot. The live wizard (QuotationResultsStep, pre-finalize) still passes
+  // this and gets the real interactive toggle.
+  onBasisChange?: (basis: PricelistBasis) => void;
   onClose: () => void;
 }
 
@@ -312,6 +318,15 @@ export function QuotationBreakdownModal({ tier, result, pricelistBasis, onBasisC
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-2">
               <span className="text-xs font-semibold text-gray-500">Pricelist Basis:</span>
+              {!onBasisChange ? (
+                <span
+                  title="Frozen at finalize — a saved quote's basis can't be switched after the fact"
+                  className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-gray-100 px-3 py-1.5 text-xs font-semibold text-gray-500"
+                >
+                  {pricelistBasis === "Uploaded" ? <FileText className="h-3 w-3" /> : <Database className="h-3 w-3" />}
+                  {pricelistBasis === "Uploaded" ? "Uploaded Pricelist" : "DPWH CMPD"} (as finalized)
+                </span>
+              ) : (
               <div className="flex overflow-hidden rounded-lg border border-gray-200 bg-white text-xs">
                 <button
                   type="button"
@@ -328,6 +343,7 @@ export function QuotationBreakdownModal({ tier, result, pricelistBasis, onBasisC
                   <Database className="h-3 w-3" /> DPWH CMPD
                 </button>
               </div>
+              )}
             </div>
             <button type="button" onClick={onClose} className="flex h-8 w-8 items-center justify-center rounded-full hover:bg-gray-200">
               <X className="h-4 w-4 text-gray-600" />

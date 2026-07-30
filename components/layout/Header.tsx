@@ -81,10 +81,16 @@ export default function Header({ workflow }: HeaderProps) {
 
   return (
     <header
-      className={`flex h-16 shrink-0 items-center justify-between px-6 transition-colors ${
+      className={`flex h-16 shrink-0 items-center justify-between gap-4 px-6 transition-colors ${
         workflow ? "bg-primary shadow-md qg-header-shimmer" : "border-b border-gray-200 bg-white shadow-sm"
       }`}
     >
+      {/* Part A — `gap-4` here (not just justify-between, which only spaces things out when
+          there's room to spare) is what guarantees real breathing room between the
+          workflow stepper and the username widget at narrow widths: flexbox gap is enforced
+          even while the stepper's flex-1 box is being squeezed down, so its own
+          overflow-hidden clips a few px short of the avatar instead of stopping exactly
+          at it. See WorkflowStepper.tsx for the step-windowing itself. */}
       {workflow ? (
         <div className="flex min-w-0 flex-1 items-center gap-2.5">
           <div className="flex shrink-0 items-center gap-1.5 rounded-md bg-white/15 px-2 py-1">
