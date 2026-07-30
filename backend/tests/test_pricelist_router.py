@@ -358,7 +358,7 @@ def test_update_review_item_approve_saves_to_supplier_catalog(db_session):
     saved_item = db_session.execute(
         select(Items)
         .where(Items.item_name == "Portland Cement Type 1 40kg")
-        .where(Items.material == "Cement")
+        .where(Items.description == "Cement")
         .where(Items.brand == "Holcim")
         .where(Items.unit == "bag")
         .where(Items.item_source == "Supplier")
@@ -407,7 +407,7 @@ def test_update_review_item_approve_creates_supplier_item_even_if_internal_exist
     supplier_item = db_session.execute(
         select(Items)
         .where(Items.item_name == "Portland Cement Type 1")
-        .where(Items.material == "Cement")
+        .where(Items.description == "Cement")
         .where(Items.brand == "Holcim")
         .where(Items.unit == "bag")
         .where(Items.item_source == "Supplier")

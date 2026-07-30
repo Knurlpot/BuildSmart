@@ -10,7 +10,7 @@ def get_item_candidates(db: Session) -> list[dict]:
             Items.item_code,
             Items.item_name,
             Category.category_type,
-            Items.material,
+            Items.description.label("material"),
             Items.brand,
             Items.unit,
         ).join(Category, Items.category_id == Category.category_id)
@@ -21,7 +21,7 @@ def get_item_candidates(db: Session) -> list[dict]:
             "item_code": row.item_code,
             "item_name": row.item_name,
             "category_type": row.category_type,
-            "material": row.material,
+            "material": row.material or row.item_name,
             "brand": row.brand,
             "unit": row.unit,
         }

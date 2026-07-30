@@ -33,7 +33,7 @@ export async function GET(request: NextRequest) {
        v.trend_direction,
        v.is_significant_spike,
        i.item_name,
-       i.material,
+       COALESCE(NULLIF(i.description, ''), i.item_name) AS material,
        c.category_type
      FROM material_price_variance v
      LEFT JOIN items i ON i.item_code = v.item_code

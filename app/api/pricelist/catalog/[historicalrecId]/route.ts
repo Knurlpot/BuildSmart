@@ -100,7 +100,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
          i.item_code,
          i.item_name,
          i.brand,
-         COALESCE(NULLIF(i.description, ''), i.material) AS description_material,
+         COALESCE(NULLIF(i.description, ''), i.item_name) AS description_material,
          i.unit,
          COALESCE(h.price::float, 0) AS price,
          COALESCE(h.region, 'N/A') AS region,

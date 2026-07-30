@@ -203,7 +203,7 @@ def _find_existing_item(
     db: Session,
     *,
     item_name: str,
-    material: str,
+    description: str | None,
     brand: str,
     unit: str,
     item_source: str,
@@ -212,11 +212,14 @@ def _find_existing_item(
     statement = (
         select(Items)
         .where(func.lower(Items.item_name) == item_name.lower())
-        .where(func.lower(Items.material) == material.lower())
         .where(func.lower(Items.brand) == brand.lower())
         .where(func.lower(Items.unit) == unit.lower())
         .where(func.lower(Items.item_source) == item_source.lower())
     )
+    if description:
+        statement = statement.where(func.lower(func.coalesce(Items.description, "")) == description.lower())
+    else:
+        statement = statement.where(func.coalesce(Items.description, "") == "")
     if company_id is None:
         statement = statement.where(Items.company_id.is_(None))
     else:
@@ -227,9 +230,8 @@ def _find_existing_item(
 def _save_review_item_to_catalog(row: PriceListReviewItem, db: Session) -> None:
     item_name = row.raw_name.strip()
     unit = row.raw_unit.strip()
-    material = (row.suggested_material or row.raw_name).strip() or row.raw_name.strip()
     brand = (row.suggested_brand or "Generic").strip() or "Generic"
-    description = (row.description or "").strip() or None
+    description = (row.description or row.suggested_material or row.raw_name).strip() or None
     color = (row.color or "").strip() or None
     source = row.source.strip()
     supplier_id = row.supplier_id
@@ -246,7 +248,7 @@ def _save_review_item_to_catalog(row: PriceListReviewItem, db: Session) -> None:
     existing = _find_existing_item(
         db,
         item_name=item_name,
-        material=material,
+        description=description,
         brand=brand,
         unit=unit,
         item_source=source,
@@ -258,7 +260,6 @@ def _save_review_item_to_catalog(row: PriceListReviewItem, db: Session) -> None:
             category_id=_resolve_category_id(db, row.suggested_category_type),
             company_id=company_id,
             item_name=item_name,
-            material=material,
             brand=brand,
             unit=unit,
             color=color,

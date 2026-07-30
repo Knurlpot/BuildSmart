@@ -37,12 +37,8 @@ class Items(Base):
     # flush-order resolution. Revisit once Company is modeled.
     company_id: Mapped[int | None]
     item_name: Mapped[str] = mapped_column(String(100))
-    material: Mapped[str] = mapped_column(String(100))
     brand: Mapped[str] = mapped_column(String(100))
-    quality: Mapped[str | None] = mapped_column(String(50))
     unit: Mapped[str] = mapped_column(String(30))
-    size_width: Mapped[float | None] = mapped_column(Numeric(8, 2))
-    size_length: Mapped[float | None] = mapped_column(Numeric(8, 2))
     color: Mapped[str | None] = mapped_column(String(50))
     item_source: Mapped[str] = mapped_column(String(20))
     description: Mapped[str | None] = mapped_column(String(255))
@@ -108,7 +104,9 @@ class SourcePriority(Base):
     __tablename__ = "source_priority"
 
     priority_id: Mapped[int] = mapped_column(primary_key=True)
-    company_id: Mapped[int] = mapped_column(ForeignKey("company.company_id", ondelete="CASCADE"))
+    # No Company model is mapped yet, so keep this as a plain integer like
+    # Items.company_id. The database schema still owns the real FK constraint.
+    company_id: Mapped[int]
     price_source: Mapped[str] = mapped_column(String(20))
     priority_rank: Mapped[int] = mapped_column()
     created_at: Mapped[datetime] = mapped_column(TIMESTAMP, server_default=func.now())

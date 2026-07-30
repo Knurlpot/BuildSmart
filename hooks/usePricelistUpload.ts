@@ -43,9 +43,6 @@ export type ItemSystemField =
   | 'category_id'
   | 'item_source'
   | 'price'
-  | 'quality'
-  | 'size_width'
-  | 'size_length'
   | 'color'
   | 'description';
 
@@ -71,9 +68,6 @@ export const ITEM_REQUIRED_FIELDS: ItemSystemField[] = [
   'price',
 ];
 export const ITEM_OPTIONAL_FIELDS: ItemSystemField[] = [
-  'quality',
-  'size_width',
-  'size_length',
   'color',
   'description',
 ];
@@ -103,9 +97,6 @@ export const SYSTEM_FIELD_LABELS: Record<SystemField, string> = {
   category_id: "Category",
   item_source: "Item Source",
   price: "Price",
-  quality: "Quality",
-  size_width: "Size (Width)",
-  size_length: "Size (Length)",
   color: "Color",
   description: "Description",
   supplier_name: "Supplier Name",
@@ -128,9 +119,6 @@ export interface ExtractedItemRow {
   unit: string;
   category_id: number | null; // resolved server-side from a raw category label; null = unresolved
   item_source: 'DPWH' | 'PSA' | 'Supplier' | 'Internal';
-  quality?: string;
-  size_width?: number;
-  size_length?: number;
   color?: string;
   description?: string;
   price: number;

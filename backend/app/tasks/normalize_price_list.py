@@ -145,12 +145,11 @@ def normalize_price_list(
                     category_id=category.category_id,
                     company_id=company_id,
                     item_name=match.item_name,
-                    material=match.material,
                     brand=match.brand,
                     unit=match.unit,
                     color=row_color,
                     item_source=source,
-                    description=row_description,
+                    description=row_description or match.material,
                 )
                 session.add(new_item)
                 session.flush()

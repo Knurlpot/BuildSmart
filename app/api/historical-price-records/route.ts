@@ -58,7 +58,7 @@ export async function GET(request: NextRequest) {
        h.price::float AS price,
        h.recorded_at::text AS recorded_at,
        i.item_name,
-       i.material,
+       COALESCE(NULLIF(i.description, ''), i.item_name) AS material,
        c.category_type,
        i.unit,
        qu.actual_quantity,

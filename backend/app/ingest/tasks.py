@@ -34,15 +34,11 @@ def ensure_item(session: Session, normalized: NormalizedItem, source: str) -> It
         item_data = {
             "category_id": DEFAULT_CATEGORY_ID,
             "item_name": normalized.standardized_name,
-            "material": normalized.raw_material_name,
             "brand": normalized.specifications.get("brand_or_type") or "unknown",
-            "quality": normalized.specifications.get("grade"),
             "unit": normalized.unit,
-            "size_width": None,
-            "size_length": None,
             "color": None,
             "item_source": source,
-            "description": None,
+            "description": normalized.raw_material_name,
         }
         if item_code is not None:
             item_data["item_code"] = item_code

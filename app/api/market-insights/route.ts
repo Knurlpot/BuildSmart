@@ -38,7 +38,7 @@ export async function GET(request: NextRequest) {
      latest_psa AS (
        SELECT percent_change::float AS percent_change
        FROM material_price_variance v
-       JOIN items i ON LOWER(i.material) = LOWER(v.commodity_group)
+       JOIN items i ON LOWER(COALESCE(NULLIF(i.description, ''), i.item_name)) = LOWER(v.commodity_group)
        WHERE i.item_code = $2 AND v.variance_source = 'PSA'
        ORDER BY v.year DESC, v.quarter DESC
        LIMIT 1
@@ -46,7 +46,7 @@ export async function GET(request: NextRequest) {
      SELECT
        i.item_code,
        i.item_name,
-       i.material,
+       COALESCE(NULLIF(i.description, ''), i.item_name) AS material,
        la.price AS latest_actual,
        ld.price AS latest_dpwh,
        lp.percent_change AS latest_psa_change

@@ -116,10 +116,10 @@ def save_dpwh_cmpd_publish_records(session: Session, payload: dict[str, Any]) ->
                 category_id=default_category.category_id,
                 company_id=None,
                 item_name=raw_name or "Unknown DPWH Item",
-                material="",
                 brand="",
                 unit=raw_unit or "",
                 item_source="DPWH",
+                description=raw_name or None,
             )
             session.add(item_obj)
             session.flush()

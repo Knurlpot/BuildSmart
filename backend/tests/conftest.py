@@ -54,10 +54,10 @@ def db_session():
         Items(
             category_id=categories[row["category_type"]].category_id,
             item_name=row["item_name"],
-            material=row["material"],
             brand=row["brand"],
             unit=row["unit"],
             item_source="Internal",
+            description=row["material"],
         )
         for row in SEED_ITEMS
     ]

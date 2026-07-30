@@ -6,12 +6,8 @@ export interface Items {
   category_id: number;
   company_id?: number | null; // nullable FK — NULL for items not scoped to a company (e.g. DPWH/PSA catalog items)
   item_name: string;
-  material: string;
   brand: string;
-  quality?: string; // free text in v3 (no CHECK constraint) — do not re-add a Budget/Standard/Premium union
   unit: string;
-  size_width?: number;
-  size_length?: number;
   color?: string;
   item_source: 'DPWH' | 'PSA' | 'Supplier' | 'Internal';
   description?: string;
