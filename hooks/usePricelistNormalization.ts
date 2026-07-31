@@ -24,12 +24,21 @@ export interface NormalizationSummary {
   matched: number;
   new_items_created: number;
   needs_review: number;
+  upload_id?: number | null;
+  skipped_duplicate?: boolean;
+  message?: string;
+  records_imported?: number | null;
 }
 
 export type NormalizationTaskStatus = 'pending' | 'processing' | 'done' | 'failed';
 
 interface UploadResponse {
-  task_id: string;
+  task_id: string | null;
+  status?: string | null;
+  message?: string | null;
+  upload_id?: number | null;
+  allow_skip_review?: boolean;
+  records_imported?: number | null;
 }
 
 interface StatusResponse {
@@ -49,6 +58,7 @@ export interface PricelistReviewItem {
   description: string | null;
   color: string | null;
   company_id: number | null;
+  upload_id: number | null;
   source: string;
   supplier_id: number | null;
   status: string;
@@ -135,6 +145,8 @@ export interface QueueItem {
   file: File;
   source: string;
   companyId?: number | null;
+  quarter: string;
+  year: number;
   status: QueueItemStatus;
   taskId?: string;
   result?: NormalizationSummary;
@@ -160,11 +172,12 @@ export function usePricelistNormalization(companyId?: number | null) {
     // auth to send (unlike the Next.js routes apiClient calls), and sending it forces
     // the browser to require Access-Control-Allow-Credentials on a backend that has
     // no reason to set it.
-    normalizationApiClient<PricelistReviewItem[]>('/pricelist/review')
+    const query = companyId != null ? `?company_id=${encodeURIComponent(String(companyId))}` : '';
+    normalizationApiClient<PricelistReviewItem[]>(`/pricelist/review${query}`)
       .then(setReviewItems)
       .catch((err) => setReviewError(err instanceof Error ? err : new Error(String(err))))
       .finally(() => setIsLoadingReview(false));
-  }, []);
+  }, [companyId]);
 
   useEffect(() => {
     const timeoutId = window.setTimeout(refetchReview, 0);
@@ -220,9 +233,30 @@ export function usePricelistNormalization(companyId?: number | null) {
         if (item.companyId != null) {
           form.append('company_id', String(item.companyId));
         }
+        form.append('quarter', item.quarter);
+        form.append('year', String(item.year));
 
         try {
           const res = await uploadPricelistFile(form);
+          if (res.allow_skip_review || res.status === 'already_approved') {
+            updateItem(item.id, {
+              status: 'done',
+              result: {
+                processed: 0,
+                matched: res.records_imported ?? 0,
+                new_items_created: 0,
+                needs_review: 0,
+                upload_id: res.upload_id,
+                skipped_duplicate: true,
+                message: res.message ?? 'This file was already processed for this company and period.',
+                records_imported: res.records_imported,
+              },
+            });
+            return;
+          }
+          if (!res.task_id) {
+            throw new Error('Upload did not return a task id.');
+          }
           updateItem(item.id, { status: 'pending', taskId: res.task_id });
           await pollTaskStatus(item.id, res.task_id);
           refetchReview();
@@ -245,12 +279,16 @@ export function usePricelistNormalization(companyId?: number | null) {
     }
   };
 
-  const enqueueFiles = (files: File[], source: string) => {
+  const enqueueFiles = (files: File[], source: string, period?: { quarter: string; year: number }) => {
+    const fallbackQuarter = `Q${Math.floor(new Date().getMonth() / 3) + 1}`;
+    const fallbackYear = new Date().getFullYear();
     const newItems: QueueItem[] = files.map((file) => ({
       id: `${file.name}-${file.size}-${Date.now()}-${Math.random()}`,
       file,
       source,
       companyId,
+      quarter: period?.quarter ?? fallbackQuarter,
+      year: period?.year ?? fallbackYear,
       status: 'queued',
     }));
     queueRef.current = [...queueRef.current, ...newItems];
@@ -275,12 +313,35 @@ export function usePricelistNormalization(companyId?: number | null) {
     if (item.companyId != null) {
       form.append('company_id', String(item.companyId));
     }
+    form.append('quarter', item.quarter);
+    form.append('year', String(item.year));
 
     try {
       const res = await normalizationApiClient<UploadResponse>(
         `/pricelist/upload/${item.mappingInfo.uploadId}/confirm-mapping`,
         { method: 'POST', body: form }
       );
+      if (res.allow_skip_review || res.status === 'already_approved') {
+        updateItem(itemId, {
+          status: 'done',
+          mappingInfo: undefined,
+          result: {
+            processed: 0,
+            matched: res.records_imported ?? 0,
+            new_items_created: 0,
+            needs_review: 0,
+            upload_id: res.upload_id,
+            skipped_duplicate: true,
+            message: res.message ?? 'This file was already processed for this company and period.',
+            records_imported: res.records_imported,
+          },
+        });
+        processQueue().catch(() => {});
+        return;
+      }
+      if (!res.task_id) {
+        throw new Error('Upload did not return a task id.');
+      }
       updateItem(itemId, { status: 'pending', taskId: res.task_id, mappingInfo: undefined });
       await pollTaskStatus(itemId, res.task_id);
       refetchReview();
@@ -321,7 +382,8 @@ export function usePricelistNormalization(companyId?: number | null) {
     setIsClearingReview(true);
     setClearReviewError(null);
     try {
-      await normalizationApiClient<{ deleted_count: number }>('/pricelist/review', { method: 'DELETE' });
+      const query = companyId != null ? `?company_id=${encodeURIComponent(String(companyId))}` : '';
+      await normalizationApiClient<{ deleted_count: number }>(`/pricelist/review${query}`, { method: 'DELETE' });
       setReviewItems([]);
     } catch (err) {
       setClearReviewError(err instanceof Error ? err : new Error(String(err)));

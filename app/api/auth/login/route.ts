@@ -3,6 +3,7 @@ import { pool } from "@/lib/server/db";
 import { verifyPassword } from "@/lib/server/password";
 import { setSessionCookie } from "@/lib/server/session";
 import { toAuthUser, type UserRow } from "@/lib/server/entities";
+import { resolvePersistedOnboardingStep } from "@/lib/server/onboarding";
 
 type LoginBody = {
   email?: string;
@@ -31,7 +32,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Invalid credentials" }, { status: 401 });
   }
 
-  const response = NextResponse.json({ user: toAuthUser(user, 0) });
-  setSessionCookie(response, user.user_id, 0);
+  const onboardingStep = await resolvePersistedOnboardingStep(user.company_id);
+  const response = NextResponse.json({ user: toAuthUser(user, onboardingStep) });
+  setSessionCookie(response, user.user_id, onboardingStep);
   return response;
 }

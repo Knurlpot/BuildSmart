@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { pool } from "@/lib/server/db";
-import { readSession } from "@/lib/server/session";
+import { readSession, setSessionCookie } from "@/lib/server/session";
 import { toAuthUser, type UserRow } from "@/lib/server/entities";
+import { resolvePersistedOnboardingStep } from "@/lib/server/onboarding";
 
 export async function GET(request: NextRequest) {
   const session = readSession(request);
@@ -22,5 +23,10 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "User not found" }, { status: 404 });
   }
 
-  return NextResponse.json(toAuthUser(user, session.onboardingStep));
+  const onboardingStep = Math.max(session.onboardingStep, await resolvePersistedOnboardingStep(user.company_id));
+  const response = NextResponse.json(toAuthUser(user, onboardingStep));
+  if (onboardingStep !== session.onboardingStep) {
+    setSessionCookie(response, user.user_id, onboardingStep);
+  }
+  return response;
 }

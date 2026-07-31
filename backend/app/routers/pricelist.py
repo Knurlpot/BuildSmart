@@ -14,10 +14,11 @@ from sqlalchemy.orm import Session
 from app.celery_app import celery_app
 from app.database import get_db
 from app.ingest.models import MaterialPriceVariance
-from app.models import Category, HistoricalPriceRecord, Items, PriceListReviewItem, SourcePriority
+from app.models import Category, HistoricalPriceRecord, Items, PriceListReviewItem, PriceListUpload, SourcePriority
 from app.schemas.pricelist import NormalizedPriceRecord, SourceAgency
 from app.services.dpwh_published import fetch_dpwh_cmpd_release, save_dpwh_cmpd_publish_records
 from app.services.match_cache import invalidate_cached_match, upsert_cached_match
+from app.services.file_hash import calculate_file_hash, calculate_file_size
 from app.services.pricelist_json_normalizer import normalize_pricelist_dataframe
 from app.services.pricelist_parser import MissingColumnsError, parse_pricelist_file
 from app.services.published_version_check import check_published_version
@@ -39,8 +40,19 @@ TASK_STATE_MAP = {
 }
 
 
+def _default_period() -> tuple[str, int]:
+    now = datetime.now()
+    quarter = f"Q{((now.month - 1) // 3) + 1}"
+    return quarter, now.year
+
+
 class UploadResponse(BaseModel):
-    task_id: str
+    task_id: str | None = None
+    status: str | None = None
+    message: str | None = None
+    upload_id: int | None = None
+    allow_skip_review: bool = False
+    records_imported: int | None = None
 
 
 class MissingColumnsResponse(BaseModel):
@@ -79,6 +91,7 @@ class ReviewItemResponse(BaseModel):
     supplier_id: int | None
     status: str
     created_at: datetime
+    upload_id: int | None = None
 
 
 class ReviewItemUpdateRequest(BaseModel):
@@ -236,6 +249,7 @@ def _save_review_item_to_catalog(row: PriceListReviewItem, db: Session) -> None:
     source = row.source.strip()
     supplier_id = row.supplier_id
     company_id = row.company_id
+    upload = db.get(PriceListUpload, row.upload_id) if row.upload_id is not None else None
 
     if supplier_id is not None:
         supplier_exists = db.execute(
@@ -281,6 +295,8 @@ def _save_review_item_to_catalog(row: PriceListReviewItem, db: Session) -> None:
         .where(HistoricalPriceRecord.item_code == item.item_code)
         .where(HistoricalPriceRecord.supplier_id == supplier_id)
         .where(HistoricalPriceRecord.price_source == source)
+        .where(HistoricalPriceRecord.quarter == (upload.quarter if upload is not None else None))
+        .where(HistoricalPriceRecord.year == (upload.year if upload is not None else None))
         .where(HistoricalPriceRecord.price == float(row.raw_price))
         .order_by(HistoricalPriceRecord.historicalrec_id.desc())
     ).scalars().first()
@@ -291,6 +307,8 @@ def _save_review_item_to_catalog(row: PriceListReviewItem, db: Session) -> None:
                 item_code=item.item_code,
                 supplier_id=supplier_id,
                 price_source=source,
+                quarter=upload.quarter if upload is not None else None,
+                year=upload.year if upload is not None else None,
                 price=float(row.raw_price),
             )
         )
@@ -299,7 +317,37 @@ def _save_review_item_to_catalog(row: PriceListReviewItem, db: Session) -> None:
     # text skip re-scoring entirely (see app.services.match_cache). Keyed on
     # the row's raw text as originally submitted, not the resolved item_name —
     # that's what a future upload's raw row will actually look like.
-    upsert_cached_match(db, row.raw_name, row.raw_unit, item.item_code)
+    upsert_cached_match(db, row.raw_name, row.raw_unit, item.item_code, company_id=row.company_id)
+
+
+def _refresh_upload_review_status(upload_id: int | None, db: Session, imported_delta: int = 0) -> None:
+    if upload_id is None:
+        return
+
+    upload = db.get(PriceListUpload, upload_id)
+    if upload is None:
+        return
+
+    if imported_delta:
+        upload.records_imported = (upload.records_imported or 0) + imported_delta
+
+    pending_count = db.execute(
+        select(func.count())
+        .select_from(PriceListReviewItem)
+        .where(PriceListReviewItem.upload_id == upload_id)
+        .where(PriceListReviewItem.status == "Pending")
+    ).scalar_one()
+    if pending_count == 0:
+        upload.processing_status = "completed"
+
+
+def _upload_has_review_history(upload_id: int, db: Session) -> bool:
+    review_count = db.execute(
+        select(func.count())
+        .select_from(PriceListReviewItem)
+        .where(PriceListReviewItem.upload_id == upload_id)
+    ).scalar_one()
+    return review_count > 0
 
 
 @router.post("/upload", response_model=UploadResponse)
@@ -308,12 +356,90 @@ async def upload_pricelist(
     source: str = Form(...),
     supplier_id: int | None = Form(None),
     company_id: int | None = Form(None),
+    quarter: str | None = Form(None),
+    year: int | None = Form(None),
+    db: Session = Depends(get_db),
 ):
     suffix = Path(file.filename).suffix
-    upload_id = str(uuid.uuid4())
-    dest = UPLOAD_DIR / f"{upload_id}{suffix}"
+    file_upload_token = str(uuid.uuid4())
+    dest = UPLOAD_DIR / f"{file_upload_token}{suffix}"
     with dest.open("wb") as out:
         shutil.copyfileobj(file.file, out)
+
+    default_quarter, default_year = _default_period()
+    period_quarter, period_year = quarter or default_quarter, year or default_year
+    file_hash = calculate_file_hash(dest)
+    file_size = calculate_file_size(dest)
+    db_upload: PriceListUpload | None = None
+    force_review_for_cross_company_file = False
+
+    if company_id is not None:
+        cross_company_upload = db.execute(
+            select(PriceListUpload)
+            .where(
+                PriceListUpload.company_id != company_id,
+                PriceListUpload.file_hash == file_hash,
+                PriceListUpload.quarter == period_quarter,
+                PriceListUpload.year == period_year,
+                PriceListUpload.processing_status == "completed",
+            )
+            .order_by(PriceListUpload.upload_timestamp.desc(), PriceListUpload.upload_id.desc())
+        ).scalars().first()
+        force_review_for_cross_company_file = cross_company_upload is not None
+
+        existing_upload = db.execute(
+            select(PriceListUpload)
+            .where(
+                PriceListUpload.company_id == company_id,
+                PriceListUpload.file_hash == file_hash,
+                PriceListUpload.quarter == period_quarter,
+                PriceListUpload.year == period_year,
+            )
+            .order_by(PriceListUpload.upload_timestamp.desc(), PriceListUpload.upload_id.desc())
+        ).scalars().first()
+
+        existing_upload_is_reviewed = (
+            existing_upload is not None
+            and (
+                not force_review_for_cross_company_file
+                or _upload_has_review_history(existing_upload.upload_id, db)
+            )
+        )
+
+        if existing_upload is not None and existing_upload.processing_status == "completed" and existing_upload_is_reviewed:
+            dest.unlink(missing_ok=True)
+            return UploadResponse(
+                status="already_approved",
+                message=f"This file was already processed on {existing_upload.upload_timestamp}",
+                upload_id=existing_upload.upload_id,
+                allow_skip_review=True,
+                records_imported=existing_upload.records_imported,
+            )
+
+        if existing_upload is not None:
+            db_upload = existing_upload
+            db_upload.file_name = file.filename or "unknown"
+            db_upload.file_size = file_size
+            db_upload.source = source.strip() or "Supplier"
+            db_upload.supplier_id = supplier_id
+            db_upload.processing_status = "pending"
+            db_upload.records_imported = None
+            db_upload.error_message = None
+        else:
+            db_upload = PriceListUpload(
+                company_id=company_id,
+                file_name=file.filename or "unknown",
+                file_hash=file_hash,
+                file_size=file_size,
+                source=source.strip() or "Supplier",
+                supplier_id=supplier_id,
+                quarter=period_quarter,
+                year=period_year,
+                processing_status="pending",
+            )
+            db.add(db_upload)
+        db.commit()
+        db.refresh(db_upload)
 
     # Validated synchronously (not inside the Celery task) so a column-match
     # failure comes back as an immediate, structured response the frontend
@@ -332,7 +458,7 @@ async def upload_pricelist(
                 available_columns=exc.available_columns,
                 detected_mapping=exc.detected_mapping,
                 preview_rows=exc.preview_rows,
-                upload_id=upload_id,
+                upload_id=file_upload_token,
             ).model_dump(),
         )
     except ValueError as exc:
@@ -341,9 +467,24 @@ async def upload_pricelist(
         # it) — an unsupported extension, unreadable file, or a wide/generic
         # header set still raises a plain ValueError, and that must reach the
         # client as a clean 4xx too, not bubble up as an unhandled 500.
+        if db_upload is not None:
+            db_upload.processing_status = "failed"
+            db_upload.error_message = str(exc)
+            db.commit()
+        dest.unlink(missing_ok=True)
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
-    task = normalize_price_list.delay(str(dest), source, supplier_id, None, company_id)
+    task = normalize_price_list.delay(
+        str(dest),
+        source,
+        supplier_id,
+        None,
+        company_id,
+        db_upload.upload_id if db_upload is not None else None,
+        period_quarter,
+        period_year,
+        force_review_for_cross_company_file,
+    )
     return UploadResponse(task_id=task.id)
 
 
@@ -356,11 +497,87 @@ async def confirm_column_mapping(
     source: str = Form(...),
     supplier_id: int | None = Form(None),
     company_id: int | None = Form(None),
+    quarter: str | None = Form(None),
+    year: int | None = Form(None),
+    db: Session = Depends(get_db),
 ):
     matches = list(UPLOAD_DIR.glob(f"{upload_id}.*"))
     if not matches:
         raise HTTPException(status_code=404, detail="Upload not found — it may have already been processed")
     dest = matches[0]
+    default_quarter, default_year = _default_period()
+    period_quarter, period_year = quarter or default_quarter, year or default_year
+    db_upload: PriceListUpload | None = None
+    force_review_for_cross_company_file = False
+
+    if company_id is not None:
+        file_hash = calculate_file_hash(dest)
+        file_size = calculate_file_size(dest)
+        cross_company_upload = db.execute(
+            select(PriceListUpload)
+            .where(
+                PriceListUpload.company_id != company_id,
+                PriceListUpload.file_hash == file_hash,
+                PriceListUpload.quarter == period_quarter,
+                PriceListUpload.year == period_year,
+                PriceListUpload.processing_status == "completed",
+            )
+            .order_by(PriceListUpload.upload_timestamp.desc(), PriceListUpload.upload_id.desc())
+        ).scalars().first()
+        force_review_for_cross_company_file = cross_company_upload is not None
+
+        existing_upload = db.execute(
+            select(PriceListUpload)
+            .where(
+                PriceListUpload.company_id == company_id,
+                PriceListUpload.file_hash == file_hash,
+                PriceListUpload.quarter == period_quarter,
+                PriceListUpload.year == period_year,
+            )
+            .order_by(PriceListUpload.upload_timestamp.desc(), PriceListUpload.upload_id.desc())
+        ).scalars().first()
+
+        existing_upload_is_reviewed = (
+            existing_upload is not None
+            and (
+                not force_review_for_cross_company_file
+                or _upload_has_review_history(existing_upload.upload_id, db)
+            )
+        )
+
+        if existing_upload is not None and existing_upload.processing_status == "completed" and existing_upload_is_reviewed:
+            dest.unlink(missing_ok=True)
+            return UploadResponse(
+                status="already_approved",
+                message=f"This file was already processed on {existing_upload.upload_timestamp}",
+                upload_id=existing_upload.upload_id,
+                allow_skip_review=True,
+                records_imported=existing_upload.records_imported,
+            )
+
+        if existing_upload is not None:
+            db_upload = existing_upload
+            db_upload.file_size = file_size
+            db_upload.source = source.strip() or "Supplier"
+            db_upload.supplier_id = supplier_id
+            db_upload.processing_status = "pending"
+            db_upload.records_imported = None
+            db_upload.error_message = None
+        else:
+            db_upload = PriceListUpload(
+                company_id=company_id,
+                file_name=dest.name,
+                file_hash=file_hash,
+                file_size=file_size,
+                source=source.strip() or "Supplier",
+                supplier_id=supplier_id,
+                quarter=period_quarter,
+                year=period_year,
+                processing_status="pending",
+            )
+            db.add(db_upload)
+        db.commit()
+        db.refresh(db_upload)
 
     column_mapping = {
         "raw_name": raw_name_column,
@@ -383,9 +600,24 @@ async def confirm_column_mapping(
             ).model_dump(),
         )
     except ValueError as exc:
+        if db_upload is not None:
+            db_upload.processing_status = "failed"
+            db_upload.error_message = str(exc)
+            db.commit()
+        dest.unlink(missing_ok=True)
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
-    task = normalize_price_list.delay(str(dest), source, supplier_id, column_mapping, company_id)
+    task = normalize_price_list.delay(
+        str(dest),
+        source,
+        supplier_id,
+        column_mapping,
+        company_id,
+        db_upload.upload_id if db_upload is not None else None,
+        period_quarter,
+        period_year,
+        force_review_for_cross_company_file,
+    )
     return UploadResponse(task_id=task.id)
 
 
@@ -407,22 +639,26 @@ def get_task_status(task_id: str):
 
 
 @router.get("/review", response_model=list[ReviewItemResponse])
-def list_review_items(db: Session = Depends(get_db)):
-    rows = db.execute(
-        select(PriceListReviewItem).where(PriceListReviewItem.status == "Pending")
-    ).scalars().all()
+def list_review_items(company_id: int | None = None, db: Session = Depends(get_db)):
+    statement = select(PriceListReviewItem).where(PriceListReviewItem.status == "Pending")
+    if company_id is not None:
+        statement = statement.where(PriceListReviewItem.company_id == company_id)
+    rows = db.execute(statement).scalars().all()
     return rows
 
 
 @router.delete("/review", response_model=ClearReviewResponse)
-def clear_pending_review(db: Session = Depends(get_db)):
+def clear_pending_review(company_id: int | None = None, db: Session = Depends(get_db)):
     # Scoped to Pending only, matching list_review_items — an Approved/Rejected/
     # Deleted row (from the per-row PATCH workflow below) isn't shown in this
     # list and shouldn't be touched by a button whose whole premise is "clear
     # what I see". Hard DELETE (not a status flip like the per-row path) is
     # intentional here — this is a bulk "wipe pipeline-test clutter" action,
     # not a reviewed decision that needs an audit trail.
-    result = db.execute(delete(PriceListReviewItem).where(PriceListReviewItem.status == "Pending"))
+    statement = delete(PriceListReviewItem).where(PriceListReviewItem.status == "Pending")
+    if company_id is not None:
+        statement = statement.where(PriceListReviewItem.company_id == company_id)
+    result = db.execute(statement)
     db.commit()
     return ClearReviewResponse(deleted_count=result.rowcount)
 
@@ -437,20 +673,26 @@ def update_review_item(
     if row is None:
         raise HTTPException(status_code=404, detail="Review item not found")
 
+    previous_status = row.status
     updates = payload.model_dump(exclude_unset=True)
     for field, value in updates.items():
         if isinstance(value, str):
             value = value.strip()
         setattr(row, field, value)
 
+    imported_delta = 0
     if row.status == "Approved":
         _save_review_item_to_catalog(row, db)
+        imported_delta = 1 if previous_status != "Approved" else 0
     elif row.status in ("Deleted", "Rejected"):
         # A human just dismissed this raw text/unit combination — if a prior
         # approval had cached it, don't keep trusting that mapping on future
         # uploads. A miss just falls through to normal scoring, same as if it
         # had never been cached.
-        invalidate_cached_match(db, row.raw_name, row.raw_unit)
+        invalidate_cached_match(db, row.raw_name, row.raw_unit, company_id=row.company_id)
+
+    if row.status in ("Approved", "Deleted", "Rejected"):
+        _refresh_upload_review_status(row.upload_id, db, imported_delta=imported_delta)
 
     db.commit()
     db.refresh(row)

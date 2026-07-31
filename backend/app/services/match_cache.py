@@ -20,33 +20,46 @@ def normalize_match_key(raw_name: str, raw_unit: str) -> tuple[str, str]:
     return _normalize_text(raw_name), _normalize_text(raw_unit)
 
 
-def get_cache_lookup(db: Session) -> dict[tuple[str, str], int]:
+def get_cache_lookup(db: Session, company_id: int | None = None) -> dict[tuple[str, str], int]:
     """One query, reused across every row in a batch — cheaper than a
     per-row SELECT against a table that only grows over time."""
-    rows = db.execute(
-        select(
-            ApprovedMatchCache.normalized_name,
-            ApprovedMatchCache.normalized_unit,
-            ApprovedMatchCache.item_code,
-        )
-    ).all()
+    statement = select(
+        ApprovedMatchCache.normalized_name,
+        ApprovedMatchCache.normalized_unit,
+        ApprovedMatchCache.item_code,
+    )
+    if company_id is None:
+        statement = statement.where(ApprovedMatchCache.company_id.is_(None))
+    else:
+        statement = statement.where(ApprovedMatchCache.company_id == company_id)
+
+    rows = db.execute(statement).all()
     return {(row.normalized_name, row.normalized_unit): row.item_code for row in rows}
 
 
-def upsert_cached_match(db: Session, raw_name: str, raw_unit: str, item_code: int) -> None:
+def upsert_cached_match(db: Session, raw_name: str, raw_unit: str, item_code: int, company_id: int | None = None) -> None:
     normalized_name, normalized_unit = normalize_match_key(raw_name, raw_unit)
     if not normalized_name or not normalized_unit:
         return
 
-    existing = db.execute(
-        select(ApprovedMatchCache)
+    statement = (
+        select(
+            ApprovedMatchCache
+        )
         .where(ApprovedMatchCache.normalized_name == normalized_name)
         .where(ApprovedMatchCache.normalized_unit == normalized_unit)
-    ).scalars().first()
+    )
+    if company_id is None:
+        statement = statement.where(ApprovedMatchCache.company_id.is_(None))
+    else:
+        statement = statement.where(ApprovedMatchCache.company_id == company_id)
+
+    existing = db.execute(statement).scalars().first()
 
     if existing is None:
         db.add(
             ApprovedMatchCache(
+                company_id=company_id,
                 normalized_name=normalized_name,
                 normalized_unit=normalized_unit,
                 item_code=item_code,
@@ -58,16 +71,22 @@ def upsert_cached_match(db: Session, raw_name: str, raw_unit: str, item_code: in
         existing.item_code = item_code
 
 
-def invalidate_cached_match(db: Session, raw_name: str, raw_unit: str) -> None:
+def invalidate_cached_match(db: Session, raw_name: str, raw_unit: str, company_id: int | None = None) -> None:
     normalized_name, normalized_unit = normalize_match_key(raw_name, raw_unit)
     if not normalized_name or not normalized_unit:
         return
 
-    existing = db.execute(
+    statement = (
         select(ApprovedMatchCache)
         .where(ApprovedMatchCache.normalized_name == normalized_name)
         .where(ApprovedMatchCache.normalized_unit == normalized_unit)
-    ).scalars().first()
+    )
+    if company_id is None:
+        statement = statement.where(ApprovedMatchCache.company_id.is_(None))
+    else:
+        statement = statement.where(ApprovedMatchCache.company_id == company_id)
+
+    existing = db.execute(statement).scalars().first()
 
     if existing is not None:
         db.delete(existing)

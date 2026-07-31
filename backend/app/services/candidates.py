@@ -4,17 +4,22 @@ from sqlalchemy.orm import Session
 from app.models import Category, Items
 
 
-def get_item_candidates(db: Session) -> list[dict]:
-    rows = db.execute(
-        select(
-            Items.item_code,
-            Items.item_name,
-            Category.category_type,
-            Items.description.label("material"),
-            Items.brand,
-            Items.unit,
-        ).join(Category, Items.category_id == Category.category_id)
-    ).all()
+def get_item_candidates(db: Session, company_id: int | None = None) -> list[dict]:
+    statement = select(
+        Items.item_code,
+        Items.item_name,
+        Category.category_type,
+        Items.description.label("material"),
+        Items.brand,
+        Items.unit,
+    ).join(Category, Items.category_id == Category.category_id)
+
+    if company_id is None:
+        statement = statement.where(Items.company_id.is_(None))
+    else:
+        statement = statement.where((Items.company_id.is_(None)) | (Items.company_id == company_id))
+
+    rows = db.execute(statement).all()
 
     return [
         {

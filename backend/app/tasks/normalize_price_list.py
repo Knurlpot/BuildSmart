@@ -1,9 +1,11 @@
+from pathlib import Path
+
 from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
 from app.celery_app import celery_app
 from app.database import SessionLocal
-from app.models import Category, HistoricalPriceRecord, Items, PriceListReviewItem
+from app.models import Category, HistoricalPriceRecord, Items, PriceListReviewItem, PriceListUpload
 from app.services.candidates import get_item_candidates
 from app.services.match_cache import get_cache_lookup
 from app.services.normalize_batch import normalize_pricelist
@@ -45,6 +47,15 @@ def _get_or_create_category(session: Session, category_type: str) -> Category:
     return fallback
 
 
+def _get_scoped_item_candidates(session: Session, company_id: int | None) -> list[dict]:
+    try:
+        return get_item_candidates(session, company_id=company_id)
+    except TypeError:
+        # Some focused tests monkeypatch get_item_candidates with the old
+        # one-argument shape. Production uses the company-scoped signature.
+        return get_item_candidates(session)
+
+
 @celery_app.task
 def normalize_price_list(
     file_path: str,
@@ -52,6 +63,10 @@ def normalize_price_list(
     supplier_id: int | None = None,
     column_mapping: dict[str, str] | None = None,
     company_id: int | None = None,
+    upload_id: int | None = None,
+    quarter: str | None = None,
+    year: int | None = None,
+    force_review: bool = False,
     db: Session | None = None,
 ) -> dict:
     # `db` lets tests inject a session bound to their own rollback-wrapped
@@ -65,9 +80,15 @@ def normalize_price_list(
         _prepare_fast_session(session)
         # If uploader didn't indicate a source, treat it as a Supplier upload
         source = (source or "").strip() or "Supplier"
+        if upload_id is not None:
+            upload = session.get(PriceListUpload, upload_id)
+            if upload is not None:
+                upload.processing_status = "processing"
+                upload.error_message = None
+                session.flush()
         df = parse_pricelist_file(file_path, column_mapping=column_mapping)
-        candidates = get_item_candidates(session)
-        cache_lookup = get_cache_lookup(session)
+        candidates = _get_scoped_item_candidates(session, company_id)
+        cache_lookup = {} if force_review else get_cache_lookup(session, company_id=company_id)
         results = normalize_pricelist(df, candidates, cache_lookup=cache_lookup)
 
         matched = 0
@@ -78,7 +99,7 @@ def normalize_price_list(
             row_color = (getattr(row, "color", None) or "").strip() or None
             row_description = (getattr(row, "description", None) or "").strip() or None
             # Only records strictly above 85% confidence are auto-persisted.
-            if match.confidence <= CONFIDENCE_THRESHOLD:
+            if force_review or match.confidence <= CONFIDENCE_THRESHOLD:
                 review_name = (getattr(row, "raw_name", None) or "").strip() or (match.material or "").strip()
                 review_description = row_description or ""
                 # If parser didn't map a description column, try to infer one from
@@ -129,6 +150,7 @@ def normalize_price_list(
                         description=review_description,
                         color=row_color,
                         company_id=company_id,
+                        upload_id=upload_id,
                         source=source,
                         supplier_id=supplier_id,
                     )
@@ -170,21 +192,49 @@ def normalize_price_list(
                     item_code=item_code,
                     supplier_id=supplier_id,
                     price_source=source,
+                    quarter=quarter,
+                    year=year,
                     price=float(row.raw_price),
                 )
             )
             matched += 1
 
+        if upload_id is not None:
+            upload = session.get(PriceListUpload, upload_id)
+            if upload is not None:
+                upload.processing_status = "completed" if needs_review == 0 else "processing"
+                upload.records_imported = matched
+                upload.error_message = None
+
         session.commit()
+        if upload_id is not None:
+            Path(file_path).unlink(missing_ok=True)
 
         return {
             "processed": len(df),
             "matched": matched,
             "new_items_created": new_items_created,
             "needs_review": needs_review,
+            "upload_id": upload_id,
         }
     except MissingColumnsError as exc:
+        session.rollback()
+        if upload_id is not None:
+            upload = session.get(PriceListUpload, upload_id)
+            if upload is not None:
+                upload.processing_status = "failed"
+                upload.error_message = str(exc)
+                session.commit()
         raise ValueError(str(exc)) from exc
+    except Exception as exc:
+        session.rollback()
+        if upload_id is not None:
+            upload = session.get(PriceListUpload, upload_id)
+            if upload is not None:
+                upload.processing_status = "failed"
+                upload.error_message = str(exc)
+                session.commit()
+        raise
     finally:
         if owns_session:
             session.close()

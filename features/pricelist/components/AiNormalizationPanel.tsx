@@ -46,6 +46,7 @@ const CATEGORIES = [
 // CSV/XLSX via pandas and PDF via pdfplumber (requires an actual ruled table
 // in the PDF, not OCR/scanned images).
 const ACCEPTED_EXTENSIONS = [".csv", ".xlsx", ".xls", ".pdf"];
+const QUARTERS = ["Q1", "Q2", "Q3", "Q4"] as const;
 
 function fmt(n: number) {
   return "₱" + n.toLocaleString("en-PH", { minimumFractionDigits: 2 });
@@ -112,10 +113,16 @@ function QueueItemRow({ item }: { item: QueueItem }) {
           </p>
         )}
         {item.status === "done" && item.result && (
-          <p className="text-xs text-green-700">
-            Processed {item.result.processed} — {item.result.matched} matched, {item.result.new_items_created} new,{" "}
-            {item.result.needs_review} flagged for review.
-          </p>
+          item.result.skipped_duplicate ? (
+            <p className="text-xs text-green-700">
+              {item.result.message ?? "Already processed for this company and period."}
+            </p>
+          ) : (
+            <p className="text-xs text-green-700">
+              Processed {item.result.processed} — {item.result.matched} matched, {item.result.new_items_created} new,{" "}
+              {item.result.needs_review} flagged for review.
+            </p>
+          )
         )}
         {item.status === "needs_mapping" && (
           <p className="text-xs text-amber-600">
@@ -435,6 +442,10 @@ export function AiNormalizationPanel({ companyId }: AiNormalizationPanelProps) {
   const [fileTypeError, setFileTypeError] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
   const [source, setSource] = useState<(typeof SOURCES)[number]>("Supplier");
+  const [quarter, setQuarter] = useState<(typeof QUARTERS)[number]>(
+    QUARTERS[Math.floor(new Date().getMonth() / 3)]
+  );
+  const [year, setYear] = useState(new Date().getFullYear());
   // Global edit mode — every row edits at once (see startEditingAll/
   // saveAllEdits below), rather than one row at a time. editDrafts is keyed
   // by review_id so each row keeps its own in-progress values.
@@ -484,7 +495,7 @@ export function AiNormalizationPanel({ companyId }: AiNormalizationPanelProps) {
 
   const handleUpload = () => {
     if (pendingFiles.length === 0) return;
-    enqueueFiles(pendingFiles.map((entry) => entry.file), source);
+    enqueueFiles(pendingFiles.map((entry) => entry.file), source, { quarter, year });
     setPendingFiles([]);
   };
 
@@ -528,7 +539,7 @@ export function AiNormalizationPanel({ companyId }: AiNormalizationPanelProps) {
       setSavingId(item.review_id);
       try {
         await updateReviewItem(item.review_id, draftToPatch(draft));
-      } catch (err) {
+      } catch {
         failedNames.push(item.raw_name);
       }
     }
@@ -613,7 +624,7 @@ export function AiNormalizationPanel({ companyId }: AiNormalizationPanelProps) {
           next.delete(reviewId);
           return next;
         });
-      } catch (err) {
+      } catch {
         failedNames.push(item.raw_name);
       }
     }
@@ -650,7 +661,7 @@ export function AiNormalizationPanel({ companyId }: AiNormalizationPanelProps) {
           next.delete(reviewId);
           return next;
         });
-      } catch (err) {
+      } catch {
         failedNames.push(item.raw_name);
       }
     }
@@ -742,17 +753,42 @@ export function AiNormalizationPanel({ companyId }: AiNormalizationPanelProps) {
         ) : (
         <div className="flex flex-col gap-4 lg:flex-row">
           <div className="flex flex-1 flex-col gap-4">
-            <div className="flex flex-col gap-1.5 sm:w-56">
-              <label className="text-xs font-semibold uppercase tracking-wide text-gray-600">Source</label>
-              <select
-                value={source}
-                onChange={(e) => setSource(e.target.value as (typeof SOURCES)[number])}
-                className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm outline-none focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/20"
-              >
-                {SOURCES.map((s) => (
-                  <option key={s}>{s}</option>
-                ))}
-              </select>
+            <div className="flex flex-wrap gap-3">
+              <div className="flex flex-col gap-1.5 sm:w-56">
+                <label className="text-xs font-semibold uppercase tracking-wide text-gray-600">Source</label>
+                <select
+                  value={source}
+                  onChange={(e) => setSource(e.target.value as (typeof SOURCES)[number])}
+                  className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm outline-none focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/20"
+                >
+                  {SOURCES.map((s) => (
+                    <option key={s}>{s}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex flex-col gap-1.5 sm:w-32">
+                <label className="text-xs font-semibold uppercase tracking-wide text-gray-600">Quarter</label>
+                <select
+                  value={quarter}
+                  onChange={(e) => setQuarter(e.target.value as (typeof QUARTERS)[number])}
+                  className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm outline-none focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/20"
+                >
+                  {QUARTERS.map((q) => (
+                    <option key={q}>{q}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex flex-col gap-1.5 sm:w-36">
+                <label className="text-xs font-semibold uppercase tracking-wide text-gray-600">Year</label>
+                <input
+                  type="number"
+                  min={2000}
+                  max={2100}
+                  value={year}
+                  onChange={(e) => setYear(Number(e.target.value))}
+                  className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm outline-none focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/20"
+                />
+              </div>
             </div>
 
             <div

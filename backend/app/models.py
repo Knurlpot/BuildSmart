@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import TIMESTAMP, ForeignKey, Numeric, SmallInteger, String, UniqueConstraint, func
+from sqlalchemy import TIMESTAMP, ForeignKey, Numeric, SmallInteger, String, Text, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
@@ -74,12 +74,38 @@ class PriceListReviewItem(Base):
     description: Mapped[str | None] = mapped_column(String(255))
     color: Mapped[str | None] = mapped_column(String(50))
     company_id: Mapped[int | None]
+    upload_id: Mapped[int | None]
     source: Mapped[str] = mapped_column(String(20))
     # No Suppliers model mapped yet, matching the same plain-int pattern used by
     # HistoricalPriceRecord.supplier_id.
     supplier_id: Mapped[int | None]
     status: Mapped[str] = mapped_column(String(20), server_default="Pending")
     created_at: Mapped[datetime] = mapped_column(TIMESTAMP, server_default=func.now())
+
+
+class PriceListUpload(Base):
+    __tablename__ = "price_list_upload"
+
+    upload_id: Mapped[int] = mapped_column(primary_key=True)
+    # Company/Supplier tables are not mapped in SQLAlchemy yet. Keep these as
+    # ints to match Items.company_id and HistoricalPriceRecord.supplier_id; the
+    # SQL schema owns the actual FK constraints.
+    company_id: Mapped[int]
+    file_name: Mapped[str] = mapped_column(String(255))
+    file_hash: Mapped[str] = mapped_column(String(64), index=True)
+    file_size: Mapped[int | None]
+    source: Mapped[str | None] = mapped_column(String(20))
+    supplier_id: Mapped[int | None]
+    quarter: Mapped[str | None] = mapped_column(String(2))
+    year: Mapped[int | None] = mapped_column(SmallInteger)
+    upload_timestamp: Mapped[datetime] = mapped_column(TIMESTAMP, server_default=func.now())
+    processing_status: Mapped[str] = mapped_column(String(20), server_default="pending")
+    records_imported: Mapped[int | None]
+    error_message: Mapped[str | None] = mapped_column(Text)
+
+    __table_args__ = (
+        UniqueConstraint("company_id", "file_hash", "quarter", "year", name="uq_company_file_period"),
+    )
 
 
 class ApprovedMatchCache(Base):
@@ -90,13 +116,14 @@ class ApprovedMatchCache(Base):
     # material text and unit — see app.services.match_cache.normalize_match_key.
     # Kept as two columns (rather than one combined key) so either can be
     # inspected/queried independently without re-parsing a joined string.
+    company_id: Mapped[int | None]
     normalized_name: Mapped[str] = mapped_column(String(255), index=True)
     normalized_unit: Mapped[str] = mapped_column(String(50), index=True)
     item_code: Mapped[int] = mapped_column(ForeignKey("items.item_code"))
     confirmed_at: Mapped[datetime] = mapped_column(TIMESTAMP, server_default=func.now(), onupdate=func.now())
 
     __table_args__ = (
-        UniqueConstraint("normalized_name", "normalized_unit", name="uq_approved_match_cache_key"),
+        UniqueConstraint("company_id", "normalized_name", "normalized_unit", name="uq_approved_match_cache_company_key"),
     )
 
 
