@@ -8,10 +8,15 @@ export interface QuotationsItems {
   quote_item_id: number;
   quote_id: number;
   item_code: number;
+  supplier_id?: number | null;
   quantity: number;
   unit_cost: number;
   markup_percentage: number;
   final_unit_price: number;
   total_cost: number;
   source_type: 'DPWH' | 'PSA' | 'Internal' | 'Supplier';
+  source_price_id?: number | null;
+  last_refreshed_at?: string | null;
+  is_price_locked: boolean;
+  original_unit_cost?: number | null;
 }

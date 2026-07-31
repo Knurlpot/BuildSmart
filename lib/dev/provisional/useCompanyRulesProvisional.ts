@@ -47,12 +47,14 @@ function useRuleMutation<T>(kind: string, refetch: () => void) {
 
   const save = async (payload: Omit<T, "rule_id" | "is_active" | "effective_date">) => {
     const next = await mutation.mutate(`/api/company-rules/${kind}`, payload, "POST");
+    window.dispatchEvent(new CustomEvent("buildsmart:company-rules-changed", { detail: { kind } }));
     refetch();
     return latestForKind<T>(kind, next);
   };
 
   const update = async (ruleId: string, payload: Partial<T>) => {
     const next = await mutation.mutate(`/api/company-rules/${kind}/${ruleId}`, payload, "PATCH");
+    window.dispatchEvent(new CustomEvent("buildsmart:company-rules-changed", { detail: { kind } }));
     refetch();
     return latestForKind<T>(kind, next);
   };
@@ -185,8 +187,9 @@ export function useExistingRules() {
               ? "labor-rules"
               : kind === "pricing-strategy"
                 ? "pricing-strategy"
-                : "unit-rules";
+            : "unit-rules";
       await disableMutation.mutate(`/api/company-rules/${routeKind}/${ruleId}`, undefined, "DELETE");
+      window.dispatchEvent(new CustomEvent("buildsmart:company-rules-changed", { detail: { kind: routeKind } }));
       refetch();
     },
     isDisabling: disableMutation.isLoading,

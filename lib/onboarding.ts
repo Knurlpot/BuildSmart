@@ -33,5 +33,11 @@ export interface CompanyRulesCompletionState {
 }
 
 export function hasCompletedCompanyRulesStep(state: CompanyRulesCompletionState): boolean {
-  return state.pricingStrategyCount > 0;
+  return (
+    state.scopeTemplateCount > 0 &&
+    state.materialRuleCount > 0 &&
+    state.laborRuleCount > 0 &&
+    state.pricingStrategyCount > 0 &&
+    state.unitRuleCount > 0
+  );
 }

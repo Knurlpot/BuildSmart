@@ -77,9 +77,9 @@ function ChipRow({ title, subtitle, actionLabel, onAction }: { title: string; su
 // hands off to the parent (the actual new-client fields live in the RIGHT-column card, not
 // inline here — see NewClientForm.tsx).
 //
-// Part C — list rows show client_name ONLY (no email/subtitle). A firm may have 100+
-// clients; keeping rows to one line keeps the list scannable. Contact details surface in
-// the card once a client is selected, not here.
+// Search results show the client name plus email when one is on file. The email gives just
+// enough disambiguation for similarly named clients without turning the dropdown into a
+// full contact card.
 function ClientPicker({
   clients,
   isLoading,
@@ -152,9 +152,10 @@ function ClientPicker({
                   setOpen(false);
                   setQuery("");
                 }}
-                className="flex w-full items-center px-3.5 py-2.5 text-left text-sm transition hover:bg-gray-50"
+                className="flex w-full flex-col items-start px-3.5 py-2.5 text-left transition hover:bg-gray-50"
               >
-                <span className="font-medium text-gray-800">{c.client_name}</span>
+                <span className="text-sm font-medium text-gray-800">{c.client_name}</span>
+                {c.contact_email && <span className="mt-0.5 text-xs text-gray-400">{c.contact_email}</span>}
               </button>
             ))}
             {query.trim() && !exactMatch && (

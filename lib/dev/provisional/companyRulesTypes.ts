@@ -9,14 +9,24 @@ export type PriceSource = (typeof PRICE_SOURCES)[number];
 export const QUOTATION_TIERS = ["Practical", "Standard", "Premium"] as const;
 export type QuotationTier = (typeof QUOTATION_TIERS)[number];
 
-export type RuleKind = "scope-template" | "material-rule" | "labor-rule" | "pricing-strategy" | "unit-rule";
+export type RuleKind = "scope-template" | "material-rule" | "labor-rule" | "pricing-strategy" | "unit-rule" | "supplier-rule";
 
 export const RULE_KIND_TAB: Record<RuleKind, string> = {
   "scope-template": "scope-templates",
   "material-rule": "material-rules",
+  "supplier-rule": "supplier-rules",
   "labor-rule": "labor-rules",
   "pricing-strategy": "pricing-strategy",
   "unit-rule": "unit-rules",
+};
+
+export const RULE_KIND_LABEL: Record<RuleKind, string> = {
+  "scope-template": "Scope Template",
+  "material-rule": "Material Rule",
+  "supplier-rule": "Supplier Rule",
+  "labor-rule": "Labor Rule",
+  "pricing-strategy": "Pricing Strategy",
+  "unit-rule": "Unit Rule",
 };
 
 export interface RuleBase {

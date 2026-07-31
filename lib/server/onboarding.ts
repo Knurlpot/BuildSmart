@@ -7,7 +7,15 @@ type CountRow = {
 };
 
 export async function resolvePersistedOnboardingStep(companyId: number): Promise<number> {
-  const [supplierCatalogResult, dpwhCatalogResult, pricingStrategyResult] = await Promise.all([
+  const [
+    supplierCatalogResult,
+    dpwhCatalogResult,
+    scopeTemplateResult,
+    materialRuleResult,
+    laborRuleResult,
+    pricingStrategyResult,
+    unitRuleResult,
+  ] = await Promise.all([
     pool.query<CountRow>(
       `SELECT COUNT(*)::text AS count
        FROM items i
@@ -30,6 +38,28 @@ export async function resolvePersistedOnboardingStep(companyId: number): Promise
     ),
     pool.query<CountRow>(
       `SELECT COUNT(*)::text AS count
+       FROM scope_template
+       WHERE company_id = $1`,
+      [companyId]
+    ),
+    pool.query<CountRow>(
+      `SELECT COUNT(*)::text AS count
+       FROM company_rule cr
+       JOIN rule_category_detail rcd ON rcd.rule_id = cr.rule_id
+       WHERE cr.company_id = $1
+         AND cr.work_type = 'Material Rule'`,
+      [companyId]
+    ),
+    pool.query<CountRow>(
+      `SELECT COUNT(*)::text AS count
+       FROM company_rule cr
+       JOIN rule_labor rl ON rl.rule_id = cr.rule_id
+       WHERE cr.company_id = $1
+         AND cr.work_type = 'Labor Rule'`,
+      [companyId]
+    ),
+    pool.query<CountRow>(
+      `SELECT COUNT(*)::text AS count
        FROM company_rule cr
        JOIN rule_pricing rp ON rp.rule_id = cr.rule_id
        WHERE cr.company_id = $1
@@ -37,14 +67,31 @@ export async function resolvePersistedOnboardingStep(companyId: number): Promise
          AND cr.status = 'Active'`,
       [companyId]
     ),
+    pool.query<CountRow>(
+      `SELECT COUNT(*)::text AS count
+       FROM unit_rule
+       WHERE company_id = $1`,
+      [companyId]
+    ),
   ]);
 
   const supplierCatalogCount = Number(supplierCatalogResult.rows[0]?.count ?? 0);
   const dpwhCatalogCount = Number(dpwhCatalogResult.rows[0]?.count ?? 0);
+  const scopeTemplateCount = Number(scopeTemplateResult.rows[0]?.count ?? 0);
+  const materialRuleCount = Number(materialRuleResult.rows[0]?.count ?? 0);
+  const laborRuleCount = Number(laborRuleResult.rows[0]?.count ?? 0);
   const pricingStrategyCount = Number(pricingStrategyResult.rows[0]?.count ?? 0);
+  const unitRuleCount = Number(unitRuleResult.rows[0]?.count ?? 0);
 
   const hasPricelist = supplierCatalogCount > 0 || dpwhCatalogCount > 0;
   if (!hasPricelist) return 0;
 
-  return pricingStrategyCount > 0 ? 2 : 1;
+  const hasCompanyRules =
+    scopeTemplateCount > 0 &&
+    materialRuleCount > 0 &&
+    laborRuleCount > 0 &&
+    pricingStrategyCount > 0 &&
+    unitRuleCount > 0;
+
+  return hasCompanyRules ? 2 : 1;
 }

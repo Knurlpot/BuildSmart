@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import TIMESTAMP, ForeignKey, Numeric, SmallInteger, String, Text, UniqueConstraint, func
+from sqlalchemy import Boolean, TIMESTAMP, ForeignKey, Numeric, SmallInteger, String, Text, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
@@ -58,6 +58,63 @@ class HistoricalPriceRecord(Base):
     year: Mapped[int | None] = mapped_column(SmallInteger)
     price: Mapped[float] = mapped_column(Numeric(12, 2))
     recorded_at: Mapped[datetime] = mapped_column(TIMESTAMP, server_default=func.now())
+
+
+class Quotation(Base):
+    __tablename__ = "quotation"
+
+    quote_id: Mapped[int] = mapped_column(primary_key=True)
+    company_id: Mapped[int]
+    user_id: Mapped[int]
+    client_id: Mapped[int | None]
+    project_name: Mapped[str] = mapped_column(String(150))
+    project_location: Mapped[str] = mapped_column(String(255))
+    project_region: Mapped[str] = mapped_column(String(30))
+    input_method: Mapped[str] = mapped_column(String(30))
+    blueprint_file_path: Mapped[str | None] = mapped_column(String(255))
+    status: Mapped[str] = mapped_column(String(20), server_default="Draft")
+    total_material_cost: Mapped[float] = mapped_column(Numeric(15, 2), server_default="0")
+    total_service_cost: Mapped[float] = mapped_column(Numeric(15, 2), server_default="0")
+    grand_total: Mapped[float] = mapped_column(Numeric(15, 2), server_default="0")
+    created_at: Mapped[datetime] = mapped_column(TIMESTAMP, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(TIMESTAMP, server_default=func.now(), onupdate=func.now())
+
+
+class QuotationItems(Base):
+    __tablename__ = "quotation_items"
+
+    quote_item_id: Mapped[int] = mapped_column(primary_key=True)
+    quote_id: Mapped[int] = mapped_column(ForeignKey("quotation.quote_id"))
+    item_code: Mapped[int] = mapped_column(ForeignKey("items.item_code"))
+    supplier_id: Mapped[int | None]
+    quantity: Mapped[float] = mapped_column(Numeric(12, 2))
+    unit_cost: Mapped[float] = mapped_column(Numeric(12, 2))
+    markup_percentage: Mapped[float] = mapped_column(Numeric(5, 2), server_default="0")
+    final_unit_price: Mapped[float] = mapped_column(Numeric(15, 2))
+    total_cost: Mapped[float] = mapped_column(Numeric(15, 2))
+    source_type: Mapped[str] = mapped_column(String(20))
+    source_price_id: Mapped[int | None] = mapped_column(ForeignKey("historical_price_record.historicalrec_id"))
+    last_refreshed_at: Mapped[datetime | None] = mapped_column(TIMESTAMP)
+    is_price_locked: Mapped[bool] = mapped_column(Boolean, server_default="false")
+    original_unit_cost: Mapped[float | None] = mapped_column(Numeric(12, 2))
+
+    __table_args__ = (
+        UniqueConstraint("quote_id", "item_code", name="uq_quote_item"),
+    )
+
+
+class QuotationPriceHistory(Base):
+    __tablename__ = "quotation_price_history"
+
+    price_history_id: Mapped[int] = mapped_column(primary_key=True)
+    quote_item_id: Mapped[int] = mapped_column(ForeignKey("quotation_items.quote_item_id"))
+    unit_cost_before: Mapped[float] = mapped_column(Numeric(12, 2))
+    unit_cost_after: Mapped[float] = mapped_column(Numeric(12, 2))
+    total_cost_before: Mapped[float | None] = mapped_column(Numeric(15, 2))
+    total_cost_after: Mapped[float | None] = mapped_column(Numeric(15, 2))
+    changed_at: Mapped[datetime] = mapped_column(TIMESTAMP, server_default=func.now())
+    changed_reason: Mapped[str] = mapped_column(String(100))
+    changed_by_user_id: Mapped[int | None]
 
 
 class PriceListReviewItem(Base):

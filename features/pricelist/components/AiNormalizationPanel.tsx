@@ -373,9 +373,10 @@ function ReviewItemRow({
  */
 interface AiNormalizationPanelProps {
   companyId?: number | null;
+  onCatalogChanged?: () => void;
 }
 
-export function AiNormalizationPanel({ companyId }: AiNormalizationPanelProps) {
+export function AiNormalizationPanel({ companyId, onCatalogChanged }: AiNormalizationPanelProps) {
   const {
     queue,
     enqueueFiles,
@@ -559,6 +560,7 @@ export function AiNormalizationPanel({ companyId }: AiNormalizationPanelProps) {
     setReviewSaveError(null);
     try {
       await updateReviewItem(reviewId, patch);
+      if (patch.status === "Approved") onCatalogChanged?.();
     } catch (err) {
       setReviewSaveError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -619,6 +621,7 @@ export function AiNormalizationPanel({ companyId }: AiNormalizationPanelProps) {
       setSavingId(reviewId);
       try {
         await updateReviewItem(reviewId, { ...draftToPatch(reviewItemToDraft(item)), status: "Approved" });
+        onCatalogChanged?.();
         setSelectedReviewIds((prev) => {
           const next = new Set(prev);
           next.delete(reviewId);
