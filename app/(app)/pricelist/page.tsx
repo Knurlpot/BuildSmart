@@ -1,9 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Database, ListOrdered, LibraryBig, TrendingUp, Upload } from "lucide-react";
+import { Database, ListOrdered, LibraryBig, Upload } from "lucide-react";
 import { RequireAuth } from "@/components/auth/RequireAuth";
-import { PriceTrendsPanel } from "@/components/market-intelligence/PriceTrendsPanel";
 import { AiNormalizationPanel, PriceCatalogTab, PublishedSourceTab, SourcePriorityTab } from "@/features/pricelist/components";
 import { usePricelistCatalog } from "@/hooks/usePricelistCatalog";
 import { usePricelistPublishedSource } from "@/hooks/usePricelistPublishedSource";
@@ -14,7 +13,6 @@ const TABS = [
   { id: "upload", label: "Upload Pricelist", icon: Upload },
   { id: "published", label: "Published Sources", icon: Database },
   { id: "priority", label: "Source Priority", icon: ListOrdered },
-  { id: "trends", label: "Price Trends", icon: TrendingUp },
   { id: "catalog", label: "Price Catalog", icon: LibraryBig },
 ] as const;
 
@@ -85,7 +83,6 @@ export default function PricelistPage() {
         {activeTab === "upload" && <AiNormalizationPanel companyId={companyId} />}
         {activeTab === "published" && <PublishedSourceTab onViewCatalog={goToCatalog} />}
         {activeTab === "priority" && <SourcePriorityTab companyId={companyId} />}
-        {activeTab === "trends" && <PriceTrendsPanel compact />}
         {activeTab === "catalog" && <PriceCatalogTab />}
       </div>
     </RequireAuth>

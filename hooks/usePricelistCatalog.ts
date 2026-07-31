@@ -20,6 +20,7 @@ export interface SavedPriceRecord {
   item_code: number;
   item_name: string;
   brand: string;
+  category_type: string | null;
   description_material: string;
   unit: string;
   price: number;

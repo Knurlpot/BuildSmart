@@ -171,6 +171,7 @@ export function PriceCatalogTab() {
   const [subTab, setSubTab] = useState<"dpwh" | "supplier">("dpwh");
   const [search, setSearch] = useState("");
   const [region, setRegion] = useState("All");
+  const [category, setCategory] = useState("All");
 
   const { dpwhCatalog } = usePricelistPublishedSource();
   const supplierCatalog = usePricelistCatalog();
@@ -228,6 +229,7 @@ export function PriceCatalogTab() {
     setIsEditingAll(false);
     setEditDrafts({});
     setSaveError(null);
+    setCategory("All");
   }, [subTab]);
 
   const handleDeleteDpwh = async (historicalrecId: number) => {
@@ -257,13 +259,25 @@ export function PriceCatalogTab() {
   };
 
   const dpwhRows = useMemo(
-    () => dpwhCatalog.records.filter((r) => region === "All" || r.region === region),
-    [dpwhCatalog.records, region]
+    () =>
+      dpwhCatalog.records.filter(
+        (r) =>
+          (region === "All" || r.region === region) &&
+          (category === "All" || (r.category_type ?? "Uncategorized") === category)
+      ),
+    [dpwhCatalog.records, region, category]
   );
   const supplierRows = useMemo(
-    () => supplierCatalog.records.filter((r) => region === "All" || r.region === region),
-    [supplierCatalog.records, region]
+    () =>
+      supplierCatalog.records.filter(
+        (r) => category === "All" || (r.category_type ?? "Uncategorized") === category
+      ),
+    [supplierCatalog.records, category]
   );
+  const categoryOptions = useMemo(() => {
+    const rows = subTab === "dpwh" ? dpwhCatalog.records : supplierCatalog.records;
+    return Array.from(new Set(rows.map((r) => r.category_type ?? "Uncategorized"))).sort();
+  }, [subTab, dpwhCatalog.records, supplierCatalog.records]);
 
   // Rows in the currently active sub-tab's (region/region-filtered) view that
   // actually have a record to select — excludes a Supplier row with no
@@ -419,6 +433,11 @@ export function PriceCatalogTab() {
           </span>
         ),
       },
+      {
+        accessorKey: "category_type",
+        header: "Category",
+        cell: ({ row }) => <span>{row.original.category_type ?? "Uncategorized"}</span>,
+      },
       { accessorKey: "region", header: "Region", enableGlobalFilter: false },
       {
         id: "period",
@@ -501,6 +520,11 @@ export function PriceCatalogTab() {
           }
           return <span>{rec.brand}</span>;
         },
+      },
+      {
+        accessorKey: "category_type",
+        header: "Category",
+        cell: ({ row }) => <span>{row.original.category_type ?? "Uncategorized"}</span>,
       },
       {
         accessorKey: "description_material",
@@ -636,17 +660,32 @@ export function PriceCatalogTab() {
           />
         </div>
         <div className="flex items-center gap-2">
-          <label className="text-xs font-semibold text-gray-500">Region</label>
+          <label className="text-xs font-semibold text-gray-500">Category</label>
           <select
-            value={region}
-            onChange={(e) => setRegion(e.target.value)}
+            value={category}
+            onChange={(e) => setCategory(e.target.value)}
             className="rounded-lg border border-gray-200 px-3 py-1.5 text-sm focus:border-primary focus:outline-none"
           >
-            {REGIONS.map((r) => (
-              <option key={r}>{r}</option>
+            <option>All</option>
+            {categoryOptions.map((option) => (
+              <option key={option}>{option}</option>
             ))}
           </select>
         </div>
+        {subTab === "dpwh" && (
+          <div className="flex items-center gap-2">
+            <label className="text-xs font-semibold text-gray-500">Region</label>
+            <select
+              value={region}
+              onChange={(e) => setRegion(e.target.value)}
+              className="rounded-lg border border-gray-200 px-3 py-1.5 text-sm focus:border-primary focus:outline-none"
+            >
+              {REGIONS.map((r) => (
+                <option key={r}>{r}</option>
+              ))}
+            </select>
+          </div>
+        )}
         <span className="ml-auto text-xs text-gray-400">
           {active.count} record{active.count !== 1 ? "s" : ""}
         </span>

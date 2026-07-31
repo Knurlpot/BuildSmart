@@ -7,6 +7,7 @@ type SupplierCatalogRecord = {
   item_code: number;
   item_name: string;
   brand: string;
+  category_type: string | null;
   description_material: string;
   unit: string;
   price: number;
@@ -26,6 +27,7 @@ export async function GET(request: NextRequest) {
        i.item_code,
        i.item_name,
        i.brand,
+       c.category_type,
        COALESCE(NULLIF(i.description, ''), i.item_name) AS description_material,
        i.unit,
        COALESCE(h.price::float, 0) AS price,
@@ -33,6 +35,7 @@ export async function GET(request: NextRequest) {
        'Supplier Upload' AS source,
        COALESCE(h.recorded_at::text, NOW()::text) AS recorded_at
      FROM items i
+     LEFT JOIN category c ON c.category_id = i.category_id
      JOIN LATERAL (
        SELECT
          hp.historicalrec_id,

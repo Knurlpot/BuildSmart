@@ -149,6 +149,7 @@ class DpwhCatalogRow(BaseModel):
     historicalrec_id: int
     item_code: int
     item_name: str | None
+    category_type: str | None
     region: str | None
     quarter: str | None
     year: int | None
@@ -764,6 +765,7 @@ def get_dpwh_catalog(db: Session = Depends(get_db)):
             HistoricalPriceRecord.historicalrec_id,
             HistoricalPriceRecord.item_code,
             Items.item_name,
+            Category.category_type,
             HistoricalPriceRecord.region,
             HistoricalPriceRecord.quarter,
             HistoricalPriceRecord.year,
@@ -771,6 +773,7 @@ def get_dpwh_catalog(db: Session = Depends(get_db)):
         )
         .select_from(HistoricalPriceRecord)
         .outerjoin(Items, HistoricalPriceRecord.item_code == Items.item_code)
+        .outerjoin(Category, Items.category_id == Category.category_id)
         .where(HistoricalPriceRecord.price_source == "DPWH")
         .order_by(HistoricalPriceRecord.recorded_at.desc())
     ).all()
@@ -780,6 +783,7 @@ def get_dpwh_catalog(db: Session = Depends(get_db)):
             historicalrec_id=row.historicalrec_id,
             item_code=row.item_code,
             item_name=row.item_name,
+            category_type=row.category_type,
             region=row.region,
             quarter=row.quarter,
             year=row.year,
