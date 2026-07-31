@@ -125,9 +125,9 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 
 function ReadOnlyRow({ label, value }: { label: string; value?: string | null }) {
   return (
-    <div className="flex flex-col gap-0.5">
-      <dt className="text-xs font-semibold uppercase tracking-wide text-gray-400">{label}</dt>
-      <dd className="text-sm text-gray-800">{value && value.trim() ? value : "—"}</dd>
+    <div className="flex flex-col gap-2">
+      <dt className="text-[11px] font-semibold uppercase tracking-widest text-gray-400">{label}</dt>
+      <dd className="text-sm font-medium text-gray-800">{value && value.trim() ? value : "—"}</dd>
     </div>
   );
 }
@@ -299,49 +299,59 @@ function UserProfileSection() {
   const initials = (companyForm.company_name || "?").slice(0, 2).toUpperCase();
   const specializations = formatSpecializations(columnsToSpecializations(companyForm));
 
-  return (
-    <section className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
-      <div className="mb-4 flex items-center justify-between">
-        <p className="font-bold text-gray-900">Profile</p>
-        {!editing && <EditButton onClick={() => setEditing(true)} />}
-      </div>
-      <LoadErrorBanner isLoading={isLoading} error={error} onRetry={refetch} />
+  if (!editing) {
+    return (
+      <section className="flex flex-col gap-8">
+        <LoadErrorBanner isLoading={isLoading} error={error} onRetry={refetch} />
 
-      {!editing ? (
-        <div className="flex flex-col gap-6">
-          {/* User Info */}
-          <div className="flex items-center gap-4">
+        {/* Header panel — soft gradient backdrop behind the avatar + name, the one
+            "considered" surface on the page; everything else sits on the plain
+            page background per the airier reference design. */}
+        <div className="flex flex-col gap-6 rounded-3xl bg-gradient-to-br from-primary/5 via-white to-gray-50 p-8 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-5">
             {getLogoCandidates(companyForm.company_logo).length > 0 ? (
               <LogoImage
                 value={companyForm.company_logo}
                 alt="Company logo"
-                className="h-14 w-14 shrink-0 rounded-xl border border-gray-200 object-cover"
+                className="h-20 w-20 shrink-0 rounded-2xl object-cover shadow-md ring-4 ring-white"
               />
             ) : (
-              <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl bg-gray-100 text-sm font-bold text-gray-400">
+              <div className="flex h-20 w-20 shrink-0 items-center justify-center rounded-2xl bg-white text-xl font-bold text-gray-400 shadow-md ring-4 ring-white">
                 {initials}
               </div>
             )}
             <div>
-              <p className="text-lg font-bold text-gray-900">{fullName || "—"}</p>
-              <p className="text-sm text-gray-500">{userForm.email || "—"}</p>
+              <p className="text-xl font-bold text-gray-900">{fullName || "—"}</p>
+              <p className="mt-0.5 text-sm text-gray-500">{userForm.email || "—"}</p>
             </div>
           </div>
-
-          {/* Combined Info Grid */}
-          <dl className="grid grid-cols-2 gap-4 sm:grid-cols-3">
-            <ReadOnlyRow label="User Name" value={fullName || undefined} />
-            <ReadOnlyRow label="User Email" value={userForm.email} />
-            <ReadOnlyRow label="User Role" value={userForm.user_role} />
-            <ReadOnlyRow label="Company Name" value={companyForm.company_name} />
-            <ReadOnlyRow label="Company Address" value={companyForm.company_address} />
-            <ReadOnlyRow label="Company Contact Email" value={companyForm.contact_email} />
-            <ReadOnlyRow label="Company Contact Number" value={companyForm.contact_number} />
-            <ReadOnlyRow label="Specializations" value={specializations} />
-          </dl>
+          <EditButton onClick={() => setEditing(true)} />
         </div>
-      ) : (
-        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+
+        {/* Details grid — no bordered card, generous row spacing, label directly
+            above value. */}
+        <dl className="grid grid-cols-1 gap-x-8 gap-y-8 px-2 sm:grid-cols-3">
+          <ReadOnlyRow label="User Name" value={fullName || undefined} />
+          <ReadOnlyRow label="User Email" value={userForm.email} />
+          <ReadOnlyRow label="User Role" value={userForm.user_role} />
+          <ReadOnlyRow label="Company Name" value={companyForm.company_name} />
+          <ReadOnlyRow label="Company Address" value={companyForm.company_address} />
+          <ReadOnlyRow label="Company Contact Email" value={companyForm.contact_email} />
+          <ReadOnlyRow label="Company Contact Number" value={companyForm.contact_number} />
+          <ReadOnlyRow label="Specializations" value={specializations} />
+        </dl>
+      </section>
+    );
+  }
+
+  return (
+    <section className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
+      <div className="mb-4 flex items-center justify-between">
+        <p className="font-bold text-gray-900">Profile</p>
+      </div>
+      <LoadErrorBanner isLoading={isLoading} error={error} onRetry={refetch} />
+
+      <form onSubmit={handleSubmit} className="flex flex-col gap-4">
           {/* User Fields */}
           <div className="mb-4 border-b border-gray-200 pb-4">
             <p className="mb-3 text-sm font-semibold text-gray-700">User Information</p>
@@ -511,7 +521,6 @@ function UserProfileSection() {
             )}
           </div>
         </form>
-      )}
     </section>
   );
 }
@@ -776,7 +785,7 @@ function DeactivateAccountSection() {
 export default function AccountPage() {
   return (
     <RequireAuth>
-      <div className="flex flex-col gap-5">
+      <div className="flex flex-col gap-8">
         <UserProfileSection />
         <PasswordSection />
         <DeactivateAccountSection />

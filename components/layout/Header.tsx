@@ -155,20 +155,20 @@ export default function Header({ workflow }: HeaderProps) {
 
         {menuOpen && (
           <div className="absolute right-0 top-full z-10 mt-2 w-44 overflow-hidden rounded-xl border border-gray-200 bg-white shadow-lg">
-            <button
-              type="button"
-              onClick={handleLogout}
-              className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm text-gray-600 transition hover:bg-red-50 hover:text-red-600"
-            >
-              <LogOut className="h-4 w-4" /> Log out
-            </button>
             <Link
               href="/account"
               onClick={() => setMenuOpen(false)}
-              className="flex w-full items-center gap-2 border-t border-gray-100 px-4 py-2.5 text-left text-sm text-gray-600 transition hover:bg-gray-50 hover:text-primary"
+              className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm text-gray-600 transition hover:bg-gray-50 hover:text-primary"
             >
               <User className="h-4 w-4" /> Profile
             </Link>
+            <button
+              type="button"
+              onClick={handleLogout}
+              className="flex w-full items-center gap-2 border-t border-gray-100 px-4 py-2.5 text-left text-sm text-gray-600 transition hover:bg-red-50 hover:text-red-600"
+            >
+              <LogOut className="h-4 w-4" /> Log out
+            </button>
           </div>
         )}
       </div>
