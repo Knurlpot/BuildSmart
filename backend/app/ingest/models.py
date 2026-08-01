@@ -1,9 +1,10 @@
-from datetime import datetime
+from datetime import date, datetime
 
 from sqlalchemy import (
     TIMESTAMP,
     CheckConstraint,
     DECIMAL,
+    Date,
     ForeignKey,
     Integer,
     String,
@@ -42,8 +43,9 @@ class MaterialPriceVariance(Base):
     item_code: Mapped[int | None] = mapped_column(ForeignKey("items.item_code"), nullable=True)
     variance_source: Mapped[str] = mapped_column(String(20), nullable=False)
     commodity_group: Mapped[str | None] = mapped_column(String(60))
-    quarter: Mapped[str] = mapped_column(String(2), nullable=False)
-    year: Mapped[int] = mapped_column(Integer, nullable=False)
+    effective_date: Mapped[date] = mapped_column(Date, nullable=False, default=date.today)
+    quarter: Mapped[str | None] = mapped_column(String(2), nullable=True)
+    year: Mapped[int | None] = mapped_column(Integer, nullable=True)
     percent_change: Mapped[float] = mapped_column(DECIMAL(5, 2), nullable=False)
     trend_direction: Mapped[str] = mapped_column(String(10), nullable=False)
     is_significant_spike: Mapped[bool] = mapped_column(nullable=False, default=False)

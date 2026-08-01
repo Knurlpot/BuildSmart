@@ -77,8 +77,7 @@ export async function getLatestPrice(
        AND ${supplierFilter}
      ORDER BY
        CASE WHEN h.region = $2 THEN 0 ELSE 1 END,
-       h.year DESC NULLS LAST,
-       h.quarter DESC NULLS LAST,
+       h.effective_date DESC,
        h.recorded_at DESC,
        h.historicalrec_id DESC
      LIMIT 1`,

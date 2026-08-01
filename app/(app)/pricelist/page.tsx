@@ -1,9 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Database, ListOrdered, LibraryBig, Upload } from "lucide-react";
+import { Database, LibraryBig, Upload } from "lucide-react";
 import { RequireAuth } from "@/components/auth/RequireAuth";
-import { AiNormalizationPanel, PriceCatalogTab, PublishedSourceTab, SourcePriorityTab } from "@/features/pricelist/components";
+import { AiNormalizationPanel, PriceCatalogTab, PublishedSourceTab } from "@/features/pricelist/components";
 import { usePricelistCatalog } from "@/hooks/usePricelistCatalog";
 import { usePricelistPublishedSource } from "@/hooks/usePricelistPublishedSource";
 import { useAuth } from "@/providers/AuthProvider";
@@ -12,7 +12,6 @@ import { advanceOnboardingStep, hasCompletedPricelistStep } from "@/lib/onboardi
 const TABS = [
   { id: "upload", label: "Upload Pricelist", icon: Upload },
   { id: "published", label: "Published Sources", icon: Database },
-  { id: "priority", label: "Source Priority", icon: ListOrdered },
   { id: "catalog", label: "Price Catalog", icon: LibraryBig },
 ] as const;
 
@@ -92,7 +91,6 @@ export default function PricelistPage() {
 
         {activeTab === "upload" && <AiNormalizationPanel companyId={companyId} onCatalogChanged={markPricelistConfigured} />}
         {activeTab === "published" && <PublishedSourceTab onViewCatalog={goToCatalog} onCatalogChanged={markPricelistConfigured} />}
-        {activeTab === "priority" && <SourcePriorityTab companyId={companyId} />}
         {activeTab === "catalog" && <PriceCatalogTab />}
       </div>
     </RequireAuth>

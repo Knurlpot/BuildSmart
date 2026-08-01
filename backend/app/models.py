@@ -1,6 +1,6 @@
-from datetime import datetime
+from datetime import date, datetime
 
-from sqlalchemy import Boolean, TIMESTAMP, ForeignKey, Numeric, SmallInteger, String, Text, UniqueConstraint, func
+from sqlalchemy import Boolean, Date, TIMESTAMP, ForeignKey, Numeric, SmallInteger, String, Text, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
@@ -54,10 +54,15 @@ class HistoricalPriceRecord(Base):
     supplier_id: Mapped[int | None]
     price_source: Mapped[str] = mapped_column(String(20))
     region: Mapped[str | None] = mapped_column(String(30))
+    effective_date: Mapped[date] = mapped_column(Date, default=date.today)
     quarter: Mapped[str | None] = mapped_column(String(2))
     year: Mapped[int | None] = mapped_column(SmallInteger)
     price: Mapped[float] = mapped_column(Numeric(12, 2))
     recorded_at: Mapped[datetime] = mapped_column(TIMESTAMP, server_default=func.now())
+
+    __table_args__ = (
+        UniqueConstraint("item_code", "supplier_id", "price_source", "effective_date", name="uq_historical_price"),
+    )
 
 
 class Quotation(Base):
@@ -153,6 +158,7 @@ class PriceListUpload(Base):
     file_size: Mapped[int | None]
     source: Mapped[str | None] = mapped_column(String(20))
     supplier_id: Mapped[int | None]
+    effective_date: Mapped[date] = mapped_column(Date, default=date.today)
     quarter: Mapped[str | None] = mapped_column(String(2))
     year: Mapped[int | None] = mapped_column(SmallInteger)
     upload_timestamp: Mapped[datetime] = mapped_column(TIMESTAMP, server_default=func.now())
@@ -161,7 +167,7 @@ class PriceListUpload(Base):
     error_message: Mapped[str | None] = mapped_column(Text)
 
     __table_args__ = (
-        UniqueConstraint("company_id", "file_hash", "quarter", "year", name="uq_company_file_period"),
+        UniqueConstraint("company_id", "file_hash", "effective_date", name="uq_company_file_effective_date"),
     )
 
 

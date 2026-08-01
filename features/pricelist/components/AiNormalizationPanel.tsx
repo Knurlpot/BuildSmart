@@ -119,8 +119,7 @@ function QueueItemRow({ item }: { item: QueueItem }) {
             </p>
           ) : (
             <p className="text-xs text-green-700">
-              Processed {item.result.processed} — {item.result.matched} matched, {item.result.new_items_created} new,{" "}
-              {item.result.needs_review} flagged for review.
+              Processed {item.result.processed} — {item.result.needs_review} ready for review.
             </p>
           )
         )}
@@ -198,24 +197,18 @@ function ReviewItemRow({
   item,
   isEditing,
   draft,
-  isSaving,
   isSelected,
   selectionDisabled,
   onToggleSelect,
   onDraftChange,
-  onApprove,
-  onDelete,
 }: {
   item: PricelistReviewItem;
   isEditing: boolean;
   draft: ReviewEditDraft;
-  isSaving: boolean;
   isSelected: boolean;
   selectionDisabled: boolean;
   onToggleSelect: () => void;
   onDraftChange: (patch: Partial<ReviewEditDraft>) => void;
-  onApprove: () => void;
-  onDelete: () => void;
 }) {
   const inputClass =
     "h-8 w-full min-w-[7rem] rounded-lg border border-gray-200 bg-white px-2 text-sm text-gray-700 outline-none focus:border-primary focus:ring-2 focus:ring-primary/15";
@@ -246,29 +239,6 @@ function ReviewItemRow({
         <td className="py-2 pr-4 text-gray-500">{item.color || "—"}</td>
         <td className="py-2 pr-4 text-gray-500">{item.suggested_brand || "Generic"}</td>
         <td className="py-2 pr-4 text-gray-500">{item.source || "Supplier"}</td>
-        <td className="py-2 text-right">
-          <div className="flex justify-end gap-1">
-            <button
-              type="button"
-              disabled={isSaving}
-              onClick={onApprove}
-              className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-white transition hover:bg-(--primary-hover) disabled:opacity-60"
-              aria-label={`Approve ${item.raw_name}`}
-              title="Approve — saves to the Supplier price catalog"
-            >
-              {isSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
-            </button>
-            <button
-              type="button"
-              disabled={isSaving}
-              onClick={onDelete}
-              className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 text-gray-500 transition hover:bg-red-50 hover:text-red-600 disabled:opacity-60"
-              aria-label={`Delete ${item.raw_name}`}
-            >
-              <Trash2 className="h-3.5 w-3.5" />
-            </button>
-          </div>
-        </td>
       </tr>
     );
   }
@@ -347,19 +317,6 @@ function ReviewItemRow({
         />
       </td>
       <td className="py-2 pr-4 text-gray-500">{item.source}</td>
-      <td className="py-2">
-        <div className="flex justify-end gap-1">
-          <button
-            type="button"
-            disabled={isSaving}
-            onClick={onDelete}
-            className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 text-gray-500 transition hover:bg-red-50 hover:text-red-600 disabled:opacity-60"
-            aria-label={`Delete ${item.raw_name}`}
-          >
-            <Trash2 className="h-3.5 w-3.5" />
-          </button>
-        </div>
-      </td>
     </tr>
   );
 }
@@ -555,37 +512,6 @@ export function AiNormalizationPanel({ companyId, onCatalogChanged }: AiNormaliz
     }
   };
 
-  const saveReviewItem = async (reviewId: number, patch: PricelistReviewItemUpdate) => {
-    setSavingId(reviewId);
-    setReviewSaveError(null);
-    try {
-      await updateReviewItem(reviewId, patch);
-      if (patch.status === "Approved") onCatalogChanged?.();
-    } catch (err) {
-      setReviewSaveError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setSavingId(null);
-    }
-  };
-
-  const removeReviewItem = async (reviewId: number) => {
-    setSavingId(reviewId);
-    setReviewSaveError(null);
-    try {
-      await deleteReviewItem(reviewId);
-      setEditDrafts((prev) => {
-        if (!(reviewId in prev)) return prev;
-        const next = { ...prev };
-        delete next[reviewId];
-        return next;
-      });
-    } catch (err) {
-      setReviewSaveError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setSavingId(null);
-    }
-  };
-
   const toggleSelectReviewItem = (reviewId: number) => {
     setSelectedReviewIds((prev) => {
       const next = new Set(prev);
@@ -612,9 +538,8 @@ export function AiNormalizationPanel({ companyId, onCatalogChanged }: AiNormaliz
     setReviewSaveError(null);
     const failedNames: string[] = [];
 
-    // Sequential rather than Promise.all — each approval writes to the shared
-    // catalog/approval-cache, and this reuses the same savingId spinner the
-    // single-row Save button already shows, one row at a time.
+    // Sequential rather than Promise.all because each approval writes to the
+    // shared catalog and approval cache.
     for (const reviewId of ids) {
       const item = reviewItems.find((r) => r.review_id === reviewId);
       if (!item) continue;
@@ -1043,7 +968,6 @@ export function AiNormalizationPanel({ companyId, onCatalogChanged }: AiNormaliz
                   <th className="py-2 pr-4">Color</th>
                   <th className="py-2 pr-4">Brand</th>
                   <th className="py-2 pr-4">Source</th>
-                  <th className="py-2 text-right">Action</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
@@ -1053,18 +977,10 @@ export function AiNormalizationPanel({ companyId, onCatalogChanged }: AiNormaliz
                     item={item}
                     isEditing={isEditingAll}
                     draft={editDrafts[item.review_id] ?? reviewItemToDraft(item)}
-                    isSaving={savingId === item.review_id}
                     isSelected={selectedReviewIds.has(item.review_id)}
-                    selectionDisabled={isBulkApproving || isBulkDeleting || isEditingAll}
+                    selectionDisabled={isBulkApproving || isBulkDeleting || isEditingAll || savingId === item.review_id}
                     onToggleSelect={() => toggleSelectReviewItem(item.review_id)}
                     onDraftChange={(patch) => updateRowDraft(item, patch)}
-                    onApprove={() =>
-                      void saveReviewItem(item.review_id, {
-                        ...draftToPatch(reviewItemToDraft(item)),
-                        status: "Approved",
-                      })
-                    }
-                    onDelete={() => removeReviewItem(item.review_id)}
                   />
                 ))}
               </tbody>

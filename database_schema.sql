@@ -140,14 +140,18 @@ CREATE TABLE historical_price_record (
     supplier_id INT,
     price_source VARCHAR(20) NOT NULL CHECK (price_source IN ('DPWH', 'PSA', 'Supplier', 'Internal')),
     region VARCHAR(30) CHECK (region IN ('Region I', 'Region II', 'Region III', 'Region IV-A', 'Region IV-B', 'Region V', 'Region VI', 'Region VII', 'Region VIII', 'Region IX', 'Region X', 'Region XI', 'Region XII', 'Region XIII', 'CAR', 'NCR', 'NIR', 'BARMM')),
+    effective_date DATE NOT NULL DEFAULT CURRENT_DATE,
+    -- Deprecated compatibility fields. Use effective_date for new price records.
     quarter VARCHAR(2) CHECK (quarter IN ('Q1', 'Q2', 'Q3', 'Q4')),
     year SMALLINT CHECK (year >= 2000),
     price DECIMAL(12,2) NOT NULL CHECK (price >= 0),
     recorded_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT fk_historical_price_item FOREIGN KEY (item_code) REFERENCES items(item_code) ON DELETE CASCADE,
     CONSTRAINT fk_historical_price_supplier FOREIGN KEY (supplier_id) REFERENCES suppliers(supplier_id) ON DELETE CASCADE,
-    CONSTRAINT uq_historical_price UNIQUE (item_code, supplier_id, price_source, quarter, year)
+    CONSTRAINT uq_historical_price UNIQUE (item_code, supplier_id, price_source, effective_date)
 );
+
+CREATE INDEX ix_historical_price_effective_date ON historical_price_record (effective_date DESC);
 
 -- =====================================================
 -- 10. Pricelist Review Item
@@ -199,14 +203,18 @@ CREATE TABLE material_price_variance (
     item_code INT,
     variance_source VARCHAR(20) NOT NULL DEFAULT 'Internal' CHECK (variance_source IN ('Internal', 'PSA')),
     commodity_group VARCHAR(60),
-    quarter VARCHAR(2) NOT NULL CHECK (quarter IN ('Q1','Q2','Q3','Q4')),
-    year SMALLINT NOT NULL CHECK (year >= 2000),
+    effective_date DATE NOT NULL DEFAULT CURRENT_DATE,
+    -- Deprecated compatibility fields. Use effective_date for new variance records.
+    quarter VARCHAR(2) CHECK (quarter IN ('Q1','Q2','Q3','Q4')),
+    year SMALLINT CHECK (year >= 2000),
     percent_change DECIMAL(5,2) NOT NULL,
     trend_direction VARCHAR(10) NOT NULL CHECK (trend_direction IN ('Up', 'Down', 'Stable')),
     is_significant_spike BOOLEAN NOT NULL DEFAULT FALSE,
     CONSTRAINT fk_mpv_item FOREIGN KEY (item_code) REFERENCES items(item_code) ON DELETE CASCADE,
-    CONSTRAINT uq_material_price_variance UNIQUE (item_code, quarter, year)
+    CONSTRAINT uq_material_price_variance UNIQUE (item_code, effective_date)
 );
+
+CREATE INDEX ix_material_price_variance_effective_date ON material_price_variance (effective_date DESC);
 
 -- =====================================================
 -- 13. Quotation (UPDATED with client_id FK)
@@ -516,6 +524,8 @@ CREATE TABLE price_list_upload (
     file_size BIGINT,
     source VARCHAR(20),  -- DPWH, PSA, Supplier, Internal
     supplier_id INT,
+    effective_date DATE NOT NULL DEFAULT CURRENT_DATE,
+    -- Deprecated compatibility fields. Use effective_date for new uploads.
     quarter VARCHAR(2) CHECK (quarter IN ('Q1', 'Q2', 'Q3', 'Q4')),
     year SMALLINT CHECK (year >= 2000),
     upload_timestamp TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -525,10 +535,11 @@ CREATE TABLE price_list_upload (
     error_message TEXT,  -- if processing_status = 'failed'
     CONSTRAINT fk_upload_company FOREIGN KEY (company_id) REFERENCES company(company_id) ON DELETE CASCADE,
     CONSTRAINT fk_upload_supplier FOREIGN KEY (supplier_id) REFERENCES suppliers(supplier_id) ON DELETE SET NULL,
-    CONSTRAINT uq_company_file_period UNIQUE (company_id, file_hash, quarter, year)
+    CONSTRAINT uq_company_file_effective_date UNIQUE (company_id, file_hash, effective_date)
 );
 
 CREATE INDEX idx_upload_company_status ON price_list_upload(company_id, processing_status);
 CREATE INDEX idx_upload_file_hash ON price_list_upload(file_hash);
+CREATE INDEX ix_price_list_upload_effective_date ON price_list_upload (effective_date DESC);
 ALTER TABLE pricelist_review_item ADD CONSTRAINT fk_pricelist_review_upload
     FOREIGN KEY (upload_id) REFERENCES price_list_upload(upload_id) ON DELETE CASCADE;

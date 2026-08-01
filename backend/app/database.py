@@ -39,6 +39,84 @@ def init_db() -> None:
             connection.execute(text("ALTER TABLE items ADD COLUMN IF NOT EXISTS description VARCHAR(255)"))
             connection.execute(text("ALTER TABLE items ADD COLUMN IF NOT EXISTS company_id INT"))
             connection.execute(text("ALTER TABLE approved_match_cache ADD COLUMN IF NOT EXISTS company_id INT"))
+            connection.execute(text("ALTER TABLE historical_price_record ADD COLUMN IF NOT EXISTS effective_date DATE"))
+            connection.execute(
+                text(
+                    """
+                    UPDATE historical_price_record
+                    SET effective_date =
+                        CASE
+                            WHEN quarter = 'Q1' AND year IS NOT NULL THEN make_date(year, 1, 1)
+                            WHEN quarter = 'Q2' AND year IS NOT NULL THEN make_date(year, 4, 1)
+                            WHEN quarter = 'Q3' AND year IS NOT NULL THEN make_date(year, 7, 1)
+                            WHEN quarter = 'Q4' AND year IS NOT NULL THEN make_date(year, 10, 1)
+                            ELSE recorded_at::date
+                        END
+                    WHERE effective_date IS NULL
+                    """
+                )
+            )
+            connection.execute(text("ALTER TABLE historical_price_record ALTER COLUMN effective_date SET DEFAULT CURRENT_DATE"))
+            connection.execute(text("ALTER TABLE historical_price_record ALTER COLUMN effective_date SET NOT NULL"))
+            connection.execute(text("ALTER TABLE historical_price_record DROP CONSTRAINT IF EXISTS uq_historical_price"))
+            connection.execute(
+                text(
+                    """
+                    DO $$
+                    BEGIN
+                        IF NOT EXISTS (
+                            SELECT 1
+                            FROM pg_constraint
+                            WHERE conname = 'uq_historical_price'
+                        ) THEN
+                            ALTER TABLE historical_price_record
+                            ADD CONSTRAINT uq_historical_price
+                            UNIQUE (item_code, supplier_id, price_source, effective_date);
+                        END IF;
+                    END $$;
+                    """
+                )
+            )
+            connection.execute(text("CREATE INDEX IF NOT EXISTS ix_historical_price_effective_date ON historical_price_record (effective_date DESC)"))
+            connection.execute(text("ALTER TABLE material_price_variance ADD COLUMN IF NOT EXISTS effective_date DATE"))
+            connection.execute(
+                text(
+                    """
+                    UPDATE material_price_variance
+                    SET effective_date =
+                        CASE
+                            WHEN quarter = 'Q1' AND year IS NOT NULL THEN make_date(year, 1, 1)
+                            WHEN quarter = 'Q2' AND year IS NOT NULL THEN make_date(year, 4, 1)
+                            WHEN quarter = 'Q3' AND year IS NOT NULL THEN make_date(year, 7, 1)
+                            WHEN quarter = 'Q4' AND year IS NOT NULL THEN make_date(year, 10, 1)
+                            ELSE CURRENT_DATE
+                        END
+                    WHERE effective_date IS NULL
+                    """
+                )
+            )
+            connection.execute(text("ALTER TABLE material_price_variance ALTER COLUMN effective_date SET DEFAULT CURRENT_DATE"))
+            connection.execute(text("ALTER TABLE material_price_variance ALTER COLUMN effective_date SET NOT NULL"))
+            connection.execute(text("ALTER TABLE material_price_variance DROP CONSTRAINT IF EXISTS uq_material_price_variance"))
+            connection.execute(
+                text(
+                    """
+                    DO $$
+                    BEGIN
+                        IF NOT EXISTS (
+                            SELECT 1
+                            FROM pg_constraint
+                            WHERE conname = 'uq_material_price_variance'
+                        ) THEN
+                            ALTER TABLE material_price_variance
+                            ADD CONSTRAINT uq_material_price_variance
+                            UNIQUE (item_code, effective_date);
+                        END IF;
+                    END $$;
+                    """
+                )
+            )
+            connection.execute(text("CREATE INDEX IF NOT EXISTS ix_material_price_variance_effective_date ON material_price_variance (effective_date DESC)"))
             connection.execute(text("ALTER TABLE approved_match_cache DROP CONSTRAINT IF EXISTS uq_approved_match_cache_key"))
             connection.execute(
                 text(
@@ -69,6 +147,7 @@ def init_db() -> None:
                         file_size BIGINT,
                         source VARCHAR(20),
                         supplier_id INT,
+                        effective_date DATE NOT NULL DEFAULT CURRENT_DATE,
                         quarter VARCHAR(2) CHECK (quarter IN ('Q1', 'Q2', 'Q3', 'Q4')),
                         year SMALLINT CHECK (year >= 2000),
                         upload_timestamp TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -76,8 +155,38 @@ def init_db() -> None:
                             CHECK (processing_status IN ('pending', 'processing', 'completed', 'failed')),
                         records_imported INT,
                         error_message TEXT,
-                        CONSTRAINT uq_company_file_period UNIQUE (company_id, file_hash, quarter, year)
+                        CONSTRAINT uq_company_file_effective_date UNIQUE (company_id, file_hash, effective_date)
                     )
+                    """
+                )
+            )
+            connection.execute(text("ALTER TABLE price_list_upload ADD COLUMN IF NOT EXISTS effective_date DATE"))
+            connection.execute(
+                text(
+                    """
+                    UPDATE price_list_upload
+                    SET effective_date =
+                        CASE
+                            WHEN quarter = 'Q1' AND year IS NOT NULL THEN make_date(year, 1, 1)
+                            WHEN quarter = 'Q2' AND year IS NOT NULL THEN make_date(year, 4, 1)
+                            WHEN quarter = 'Q3' AND year IS NOT NULL THEN make_date(year, 7, 1)
+                            WHEN quarter = 'Q4' AND year IS NOT NULL THEN make_date(year, 10, 1)
+                            ELSE upload_timestamp::date
+                        END
+                    WHERE effective_date IS NULL
+                    """
+                )
+            )
+            connection.execute(text("ALTER TABLE price_list_upload ALTER COLUMN effective_date SET DEFAULT CURRENT_DATE"))
+            connection.execute(text("ALTER TABLE price_list_upload ALTER COLUMN effective_date SET NOT NULL"))
+            connection.execute(text("ALTER TABLE price_list_upload DROP CONSTRAINT IF EXISTS uq_company_file_period"))
+            connection.execute(text("ALTER TABLE price_list_upload DROP CONSTRAINT IF EXISTS uq_company_file_effective_date"))
+            connection.execute(
+                text(
+                    """
+                    ALTER TABLE price_list_upload
+                    ADD CONSTRAINT uq_company_file_effective_date
+                    UNIQUE (company_id, file_hash, effective_date)
                     """
                 )
             )
@@ -85,6 +194,7 @@ def init_db() -> None:
                 text("CREATE INDEX IF NOT EXISTS idx_upload_company_status ON price_list_upload(company_id, processing_status)")
             )
             connection.execute(text("CREATE INDEX IF NOT EXISTS idx_upload_file_hash ON price_list_upload(file_hash)"))
+            connection.execute(text("CREATE INDEX IF NOT EXISTS ix_price_list_upload_effective_date ON price_list_upload (effective_date DESC)"))
     except OperationalError:
         # Startup should remain available; upload tasks have short lock timeouts
         # and will surface a clear failure if the DB is still locked.

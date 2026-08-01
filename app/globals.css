@@ -312,7 +312,7 @@ input[type="password"]::-ms-clear {
   animation-timing-function: ease-in-out;
   animation-iteration-count: infinite;
 }
-.qg-generate-card-practical {
+.qg-generate-card-economic {
   animation-name: qg-generate-shuffle-a;
 }
 .qg-generate-card-premium {

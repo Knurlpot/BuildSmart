@@ -55,7 +55,8 @@ UNIT_ALIASES = {
     "m3", "cum", "cu.m", "cu.m.", "cu m", "cubic meter", "cubic meters",
     "kg", "kgs", "kilo", "kilogram", "kilograms",
     "lng", "length", "ln.m", "l.m", "lm", "m", "meter", "meters",
-    "sheet", "sht", "roll", "box", "bundle", "bd.ft", "bd ft", "board foot",
+    "sheet", "sheets", "sht", "roll", "rolls", "box", "boxes", "pail", "pails",
+    "bundle", "bundles", "bd.ft", "bd ft", "board foot",
     "gal", "gallon", "liter", "litre",
 }
 
@@ -77,6 +78,24 @@ COLOR_WORDS = {
     "grey", "ivory", "natural", "off-white", "orange", "red", "silver",
     "white", "wood", "yellow", "zinc",
 }
+
+KNOWN_BRAND_SUFFIXES = [
+    "APO Building Products", "Republic Cement", "Pag-asa Steel", "Local Aggregate",
+    "Phelps Dodge", "Santa Clara", "Standard Metal", "ABC System", "Puyat Steel",
+    "HardieFlex", "SteelAsia", "Jackbilt", "Neltex", "Cemex", "Boysen", "Davies",
+    "Mariwasa", "Eurotiles", "Knauf", "DN Steel", "InsuFoam",
+]
+
+KNOWN_MATERIAL_PREFIXES = [
+    "Elastomeric Waterproofing Paint", "Rib-Type Pre-painted Roofing",
+    "Glazed Ceramic Floor Tile", "Non-Slip Unglazed Tile", "Heavy Duty Tile Adhesive",
+    "Fibre Cement Board", "Fiber Cement Board", "Metal Furring Channel",
+    "Thermal Insulation Foam", "Concrete Hollow Blocks", "Concrete Hollow Block",
+    "Deformed Steel Bar", "Ready-Mix Concrete", "Structural C-Purlins",
+    "Corrugated G.I. Sheet", "PVC Sanitary Pipe", "THHN Copper Wire",
+    "Portland Cement", "Washed Sand", "Crushed Gravel", "Marine Plywood",
+    "Gypsum Board Standard", "Gypsum Board", "Latex Paint",
+]
 
 
 class MissingColumnsError(ValueError):
@@ -123,8 +142,9 @@ def _parse_price_value(value: Any) -> float | None:
     text = _sanitize_text(value)
     if not text:
         return None
-    has_currency_marker = bool(re.search(r"[₱$]|\b(?:php|peso|pesos)\b", text, re.I))
+    has_currency_marker = bool(re.search(r"[₱$]|\b(?:php|peso|pesos)\b|(?<![A-Za-z])p\s*\d", text, re.I))
     text = re.sub(r"\b(?:php|peso|pesos)\b", "", text, flags=re.I)
+    text = re.sub(r"(?<![A-Za-z])p\s*(?=\d)", "", text, flags=re.I)
     text = text.replace("₱", "").replace("$", "").replace(",", "")
     text = text.replace("(", "-").replace(")", "")
     has_unit_suffix = bool(re.match(r"^\s*-?\d+(?:\.\d+)?\s*(?:/|per)\s*[a-z]", text, re.I))
@@ -166,6 +186,62 @@ def _extract_unit_from_text(value: Any) -> str:
             return alias
     package_match = re.search(r"\b\d+\s?(kg|mm|m|in|inch|inches)\b", lowered)
     return package_match.group(1) if package_match else ""
+
+
+def _unit_pattern() -> str:
+    aliases = sorted(UNIT_ALIASES, key=len, reverse=True)
+    return "|".join(re.escape(alias).replace(r"\ ", r"\s+") for alias in aliases)
+
+
+def _singular_unit_key(value: str) -> str:
+    key = _header_key(value)
+    return key[:-1] if key.endswith("s") else key
+
+
+def _select_pdf_uom_match(matches: list[re.Match[str]], before_price: str) -> re.Match[str]:
+    if len(matches) >= 2:
+        last = matches[-1]
+        previous = matches[-2]
+        between = before_price[previous.end() : last.start()]
+        if re.fullmatch(r"\s*\d[\d,]*(?:\.\d+)?\s*", between):
+            previous_key = _singular_unit_key(previous.group(0))
+            last_key = _singular_unit_key(last.group(0))
+            if previous_key == last_key or last_key in {"pc", "piece", "bag", "sheet", "box", "roll", "length", "cu.m", "cum"}:
+                return previous
+    return matches[-1]
+
+
+def _split_flat_pdf_content(content: str) -> dict[str, str]:
+    text = _sanitize_text(content)
+    brand = "Generic"
+    for candidate in sorted(KNOWN_BRAND_SUFFIXES, key=len, reverse=True):
+        if re.search(rf"\b{re.escape(candidate)}$", text, re.I):
+            brand = candidate
+            text = re.sub(rf"\b{re.escape(candidate)}$", "", text, flags=re.I).strip()
+            break
+
+    for candidate in sorted(KNOWN_MATERIAL_PREFIXES, key=len, reverse=True):
+        if re.match(rf"^{re.escape(candidate)}\b", text, re.I):
+            return {
+                "raw_name": text[: len(candidate)].strip(),
+                "description": text[len(candidate) :].strip(),
+                "raw_brand": brand,
+            }
+
+    marker = re.search(
+        r"\b(?:Type|Grade|Non-Load|Load-Bearing|Screened|Gauge|Series|PN20|Self-priming|"
+        r"Commercial|Premium|Standard|\d+(?:\.\d+)?\s*(?:kg|mm|cm|m|ft|\"|PSI|%))\b",
+        text,
+        re.I,
+    )
+    if marker and marker.start() > 3:
+        return {
+            "raw_name": text[: marker.start()].strip(),
+            "description": text[marker.start() :].strip(),
+            "raw_brand": brand,
+        }
+
+    return {"raw_name": text, "description": "", "raw_brand": brand}
 
 
 def _is_non_material_row(raw_name: Any, raw_price: Any) -> bool:
@@ -606,7 +682,7 @@ def _parse_collapsed_pdf_item(text: str) -> dict[str, str] | None:
     item_match = re.search(r"\b\d+\.\d+\s+", clean)
     if not item_match:
         return None
-    price_matches = list(re.finditer(r"(?<![A-Za-z'\"])\d[\d,]*(?:\.\d{1,2})(?![A-Za-z'\"])", clean))
+    price_matches = list(re.finditer(r"(?<![A-Za-z'\"])(?:[₱$]|p\s*)?\d[\d,]*(?:\.\d{1,2})?(?![A-Za-z'\"])", clean, re.I))
     if not price_matches:
         return None
     price_match = price_matches[-1]
@@ -694,7 +770,7 @@ def _parse_pdf_text(path: Path) -> pd.DataFrame:
                 line = re.sub(r"\s+", " ", raw_line).strip()
                 if not line:
                     continue
-                price_match = re.search(r"(?:₱|PHP|Php)?\s*\d[\d,]*(?:\.\d{1,2})\s*$", line)
+                price_match = re.search(r"(?:₱|PHP|Php|P)?\s*\d[\d,]*(?:\.\d{1,2})?\s*$", line)
                 if not price_match:
                     continue
                 price_text = price_match.group(0)
@@ -704,15 +780,81 @@ def _parse_pdf_text(path: Path) -> pd.DataFrame:
                     raw_name = " ".join(parts[:-1])
                     raw_unit = parts[-1]
                 else:
-                    unit_match = re.search(r"\b(bg|bags?|pcs?|pza|piece|m3|cum|cu\.?m|kg|kilo|lng|length|sheet|sht|roll|box|bundle|gal|gallon)\b", before_price, re.I)
-                    if not unit_match:
+                    unit_matches = list(re.finditer(rf"\b({_unit_pattern()})\b", before_price, re.I))
+                    if not unit_matches:
                         continue
-                    raw_name = before_price[: unit_match.start()].strip()
+                    unit_match = _select_pdf_uom_match(unit_matches, before_price)
+                    parsed_content = _split_flat_pdf_content(before_price[: unit_match.start()].strip())
+                    raw_name = parsed_content["raw_name"]
                     raw_unit = unit_match.group(0)
+                    rows.append(
+                        {
+                            "raw_name": raw_name,
+                            "description": parsed_content["description"],
+                            "raw_brand": parsed_content["raw_brand"],
+                            "raw_unit": raw_unit,
+                            "raw_price": price_text,
+                        }
+                    )
+                    continue
                 rows.append({"raw_name": raw_name, "raw_unit": raw_unit, "raw_price": price_text})
     if not rows:
         raise ValueError("No table found in PDF price list")
     return pd.DataFrame(rows)
+
+
+def _parse_pdf_text_or_none(path: Path) -> pd.DataFrame | None:
+    try:
+        return _parse_pdf_text(path)
+    except ValueError:
+        return None
+
+
+def _finalize_pdf_fallback_frame(df: pd.DataFrame) -> pd.DataFrame:
+    df = df.copy()
+    df = _dedupe_and_label_columns(df)
+    df, _ = _normalize_columns(df)
+    if "raw_unit" not in df.columns and "raw_name" in df.columns:
+        df["raw_unit"] = df["raw_name"].map(_extract_unit_from_text)
+    if not REQUIRED_COLUMNS.issubset(df.columns):
+        return pd.DataFrame()
+    if "raw_brand" not in df.columns:
+        df["raw_brand"] = "Generic"
+    df["raw_brand"] = df["raw_brand"].fillna("Generic")
+    df["raw_name"] = df["raw_name"].map(_sanitize_text)
+    if "description" in df.columns:
+        df["description"] = df["description"].map(_sanitize_text)
+    if "color" in df.columns:
+        df["color"] = df["color"].map(_sanitize_text)
+    df["raw_unit"] = df["raw_unit"].map(_sanitize_text)
+    df["raw_price"] = df["raw_price"].map(_parse_price_value)
+    df = df[~df.apply(lambda row: _is_non_material_row(row["raw_name"], row["raw_price"]), axis=1)]
+    return df.reset_index(drop=True)
+
+
+def _pdf_text_preview_dataframe(path: Path) -> pd.DataFrame | None:
+    rows: list[dict[str, str]] = []
+    with pdfplumber.open(path) as pdf:
+        for page in pdf.pages:
+            for raw_line in (page.extract_text() or "").splitlines():
+                line = re.sub(r"\s+", " ", raw_line).strip()
+                if not line or _is_pdf_noise_line(line):
+                    continue
+                price_match = re.search(r"(?:₱|PHP|Php|P)?\s*\d[\d,]*(?:\.\d{1,2})?\s*$", line)
+                if not price_match:
+                    continue
+                before_price = line[: price_match.start()].strip()
+                rows.append(
+                    {
+                        "Line Text": before_price,
+                        "Detected Price": price_match.group(0),
+                    }
+                )
+                if len(rows) >= 10:
+                    break
+            if len(rows) >= 10:
+                break
+    return pd.DataFrame(rows) if rows else None
 
 
 def parse_pricelist_file(file_path: str, column_mapping: Mapping[str, str] | None = None) -> pd.DataFrame:
@@ -739,7 +881,22 @@ def parse_pricelist_file(file_path: str, column_mapping: Mapping[str, str] | Non
     else:
         raise ValueError(f"Unsupported price list file type: {suffix!r}")
 
-    df = _dedupe_and_label_columns(df)
+    try:
+        df = _dedupe_and_label_columns(df)
+    except ValueError as exc:
+        if suffix == ".pdf" and column_mapping is None:
+            preview = _pdf_text_preview_dataframe(path)
+            if preview is not None:
+                raise MissingColumnsError(
+                    missing_columns=sorted(REQUIRED_COLUMNS),
+                    available_columns=list(preview.columns),
+                    detected_mapping={},
+                    preview_rows=[
+                        {str(column): _sanitize_text(value) for column, value in row.items()}
+                        for row in preview.head(3).to_dict(orient="records")
+                    ],
+                ) from exc
+        raise
     available_columns = list(df.columns)
 
     if column_mapping:
@@ -784,17 +941,20 @@ def parse_pricelist_file(file_path: str, column_mapping: Mapping[str, str] | Non
     df = df[~df.apply(lambda row: _is_non_material_row(row["raw_name"], row["raw_price"]), axis=1)]
 
     if df.empty and suffix == ".pdf" and column_mapping is None:
+        text_fallback = _parse_pdf_text_or_none(path)
+        if text_fallback is not None:
+            df = _finalize_pdf_fallback_frame(text_fallback)
+
+    if df.empty and suffix == ".pdf" and column_mapping is None:
         collapsed = _parse_collapsed_pdf_text(path)
         if collapsed is not None:
-            df = collapsed
-            df["raw_name"] = df["raw_name"].map(_sanitize_text)
-            df["description"] = df["description"].map(_sanitize_text)
-            df["color"] = df["color"].map(_sanitize_text)
-            df["raw_brand"] = df["raw_brand"].fillna("Generic")
-            df["raw_unit"] = df["raw_unit"].map(_sanitize_text)
-            df["raw_price"] = df["raw_price"].map(_parse_price_value)
-            df = df[~df.apply(lambda row: _is_non_material_row(row["raw_name"], row["raw_price"]), axis=1)]
+            df = _finalize_pdf_fallback_frame(collapsed)
 
     df = df.reset_index(drop=True)
+
+    if df.empty:
+        raise ValueError(
+            "No material rows were found in this price list. For PDFs, make sure the file contains selectable text or a table, not only a scanned image."
+        )
 
     return df

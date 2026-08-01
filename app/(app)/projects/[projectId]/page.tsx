@@ -2,12 +2,12 @@
 
 import { useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { ArrowLeft, Award, CheckCircle2, Clock, Shield, Star, TrendingDown } from "lucide-react";
+import { ArrowLeft, Award, CheckCircle2, Clock, History, RefreshCw, Shield, Star, TrendingDown } from "lucide-react";
 import { RequireOnboardingStep } from "@/components/auth/RequireOnboardingStep";
 import { QuotationBreakdownModal } from "@/features/quotation-generation/components/QuotationBreakdownModal";
 import { fmtPeso } from "@/lib/dev/provisional/quotationBreakdownFixtures";
-import { setAcceptedTier, useSavedProjects } from "@/lib/dev/provisional/savedProjectsStore";
-import type { SavedProjectRecord } from "@/lib/dev/provisional/savedProjectsTypes";
+import { refreshQuotePrices, setAcceptedTier, useSavedProjects } from "@/lib/dev/provisional/savedProjectsStore";
+import type { SavedProjectRecord, SavedQuoteVersion } from "@/lib/dev/provisional/savedProjectsTypes";
 import type { ProvisionalTier } from "@/lib/dev/provisional/quotationBreakdownTypes";
 
 // PART D — PDF EXPORT ROADMAP (NOT BUILT — post-defense scope, depends on the real
@@ -21,7 +21,7 @@ import type { ProvisionalTier } from "@/lib/dev/provisional/quotationBreakdownTy
 // mock fixture data; a PDF implies "this is the real number," which these aren't yet.
 
 const TIER_META: Record<ProvisionalTier, { accent: string; headerBg: string; accentBg: string; badge: string }> = {
-  Practical: { accent: "text-primary", headerBg: "bg-primary", accentBg: "bg-orange-50", badge: "Recommended" },
+  Economic: { accent: "text-primary", headerBg: "bg-primary", accentBg: "bg-orange-50", badge: "Recommended" },
   Premium: { accent: "text-indigo-600", headerBg: "bg-indigo-600", accentBg: "bg-indigo-50", badge: "Best Quality" },
 };
 
@@ -29,6 +29,10 @@ function formatDateTime(iso: string) {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "—";
   return d.toLocaleDateString("en-PH", { year: "numeric", month: "short", day: "numeric" });
+}
+
+function versionLabel(v: SavedQuoteVersion): string {
+  return v.version_number === 1 ? "Original (as finalized)" : `Refreshed v${v.version_number}`;
 }
 
 function QuoteSummaryCard({
@@ -39,23 +43,37 @@ function QuoteSummaryCard({
 }: {
   project: SavedProjectRecord;
   tier: ProvisionalTier;
-  onViewBreakdown: () => void;
+  onViewBreakdown: (versionId: string) => void;
   onToggleAccepted: () => void;
 }) {
   const meta = TIER_META[tier];
-  // Snapshot integrity — this reads project.quotes[tier].result AS STORED. Nothing here
-  // calls computeTierResult/deriveMockItemLines again; a saved quote shows exactly what it
-  // showed when it was finalized, not what today's fixtures would produce.
+  // Snapshot integrity — snapshot.result (== versions[0].result) is the ORIGINAL and is
+  // NEVER recomputed. "Refresh Prices" (Task 6, Part C) only ever appends a new entry to
+  // `versions`; nothing here calls computeTierResult/deriveMockItemLines directly.
   const snapshot = project.quotes[tier];
-  const { result } = snapshot;
   const accepted = snapshot.is_selected === true;
+  const versions = snapshot.versions;
+  const latest = versions[versions.length - 1];
+  // Which version this card is currently DISPLAYING — defaults to the latest, but the
+  // contractor can browse older ones (including the original) via the picker below without
+  // that changing what's stored.
+  const [viewingVersionId, setViewingVersionId] = useState<string | null>(null);
+  const displayed = versions.find((v) => v.version_id === viewingVersionId) ?? latest;
+  const { result } = displayed;
+  const isOriginal = displayed.version_number === 1;
+  const isViewingLatest = displayed.version_id === latest.version_id;
+
+  const handleRefresh = () => {
+    refreshQuotePrices(project.project_id, tier);
+    setViewingVersionId(null); // jump to the new latest once it exists
+  };
 
   return (
     <div className={`flex flex-1 flex-col overflow-hidden rounded-2xl border-2 bg-white shadow-sm ${accepted ? "border-green-300" : "border-gray-100"}`}>
       <div className={`${meta.headerBg} px-5 py-4 text-white`}>
         <div className="flex items-center justify-between">
           <div>
-            <span className="text-[10px] font-semibold uppercase tracking-widest opacity-80">{tier === "Practical" ? "Option A" : "Option B"}</span>
+            <span className="text-[10px] font-semibold uppercase tracking-widest opacity-80">{tier === "Economic" ? "Option A" : "Option B"}</span>
             <h2 className="text-xl font-bold leading-tight">{tier}</h2>
           </div>
           <div className="flex flex-col items-end gap-1">
@@ -64,7 +82,7 @@ function QuoteSummaryCard({
           </div>
         </div>
         <div className="mt-3 border-t border-white/20 pt-3">
-          <p className="text-[10px] uppercase tracking-widest opacity-70">Total (incl. VAT) — as finalized</p>
+          <p className="text-[10px] uppercase tracking-widest opacity-70">Total (incl. VAT) — {isOriginal ? "as finalized" : `${versionLabel(displayed)}`}</p>
           <p className="text-2xl font-extrabold">{fmtPeso(result.grand_total)}</p>
         </div>
       </div>
@@ -88,16 +106,60 @@ function QuoteSummaryCard({
         <p className="text-[11px] text-gray-400">
           Finalized {formatDateTime(snapshot.finalized_at)} · priced from {snapshot.pricelist_basis_at_finalize === "Uploaded" ? "Uploaded Pricelist" : "DPWH CMPD"}
         </p>
+
+        {/* Task 6, Part C — price-reference date + version history. The ORIGINAL is always
+            reachable here; refreshing never removes it, only adds beside it. */}
+        <div className="flex flex-col gap-2 rounded-xl border border-gray-100 bg-gray-50/60 p-3">
+          <div className="flex items-center justify-between gap-2">
+            <span className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-gray-500">
+              <History className="h-3 w-3" /> Price Reference
+            </span>
+            {versions.length > 1 && (
+              <span className="rounded-full bg-gray-200 px-2 py-0.5 text-[10px] font-bold text-gray-600">{versions.length} versions</span>
+            )}
+          </div>
+          <p className="text-xs text-gray-600">
+            Viewing <strong>{versionLabel(displayed)}</strong> · prices as of {formatDateTime(displayed.price_reference_date)}
+          </p>
+          {versions.length > 1 && (
+            <select
+              value={displayed.version_id}
+              onChange={(e) => setViewingVersionId(e.target.value)}
+              className="w-full rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-xs outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+            >
+              {versions.map((v) => (
+                <option key={v.version_id} value={v.version_id}>
+                  {versionLabel(v)} — {formatDateTime(v.price_reference_date)} — {fmtPeso(v.result.grand_total)}
+                </option>
+              ))}
+            </select>
+          )}
+          {!isOriginal && (
+            <p className="text-[10px] text-gray-400">
+              Original as finalized on {formatDateTime(snapshot.finalized_at)} is preserved and always viewable above — refreshing never overwrites it.
+            </p>
+          )}
+        </div>
       </div>
 
       <div className="flex flex-col gap-2 border-t border-gray-100 bg-gray-50 px-5 py-3.5">
-        <button
-          type="button"
-          onClick={onViewBreakdown}
-          className={`flex w-full items-center justify-center gap-2 rounded-xl py-2.5 text-sm font-bold text-white transition hover:opacity-90 ${meta.headerBg}`}
-        >
-          View Breakdown
-        </button>
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={() => onViewBreakdown(displayed.version_id)}
+            className={`flex flex-1 items-center justify-center gap-2 rounded-xl py-2.5 text-sm font-bold text-white transition hover:opacity-90 ${meta.headerBg}`}
+          >
+            View Breakdown
+          </button>
+          <button
+            type="button"
+            onClick={handleRefresh}
+            title={isViewingLatest ? "Create a new re-priced version — the original stays untouched" : "Refresh from the latest version"}
+            className="flex shrink-0 items-center justify-center gap-1.5 rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-xs font-bold text-gray-600 transition hover:border-primary hover:text-primary"
+          >
+            <RefreshCw className="h-3.5 w-3.5" /> Refresh Prices
+          </button>
+        </div>
         {/* Part C — a flag the CONTRACTOR sets once the client has actually chosen; not a
             workflow, no notifications, nothing client-facing. */}
         <button
@@ -118,7 +180,7 @@ function ProjectDetailContent({ projectId }: { projectId: string }) {
   const router = useRouter();
   const projects = useSavedProjects();
   const project = projects.find((p) => p.project_id === projectId);
-  const [breakdownTier, setBreakdownTier] = useState<ProvisionalTier | null>(null);
+  const [breakdown, setBreakdown] = useState<{ tier: ProvisionalTier; versionId: string } | null>(null);
 
   if (!project) {
     return (
@@ -171,22 +233,46 @@ function ProjectDetailContent({ projectId }: { projectId: string }) {
       </div>
 
       <div className="flex flex-col gap-5 lg:flex-row">
-        <QuoteSummaryCard project={project} tier="Practical" onViewBreakdown={() => setBreakdownTier("Practical")} onToggleAccepted={() => handleToggleAccepted("Practical")} />
-        <QuoteSummaryCard project={project} tier="Premium" onViewBreakdown={() => setBreakdownTier("Premium")} onToggleAccepted={() => handleToggleAccepted("Premium")} />
+        <QuoteSummaryCard
+          project={project}
+          tier="Economic"
+          onViewBreakdown={(versionId) => setBreakdown({ tier: "Economic", versionId })}
+          onToggleAccepted={() => handleToggleAccepted("Economic")}
+        />
+        <QuoteSummaryCard
+          project={project}
+          tier="Premium"
+          onViewBreakdown={(versionId) => setBreakdown({ tier: "Premium", versionId })}
+          onToggleAccepted={() => handleToggleAccepted("Premium")}
+        />
       </div>
 
-      {breakdownTier && (
-        // Part C — REUSES QuotationBreakdownModal exactly as built for the live wizard, not
-        // a duplicate. `onBasisChange` is intentionally omitted: this is a frozen, saved
-        // snapshot, so the Pricelist Basis control renders as a static "as finalized" badge
-        // instead of a working toggle (see that component's prop doc).
-        <QuotationBreakdownModal
-          tier={breakdownTier}
-          result={project.quotes[breakdownTier].result}
-          pricelistBasis={project.quotes[breakdownTier].pricelist_basis_at_finalize}
-          onClose={() => setBreakdownTier(null)}
-        />
-      )}
+      {breakdown &&
+        (() => {
+          // Task 6, Part C — shows whichever VERSION the card had selected when "View
+          // Breakdown" was clicked (original or a refresh), not always versions[0]. Falls
+          // back to the latest if that version somehow no longer exists (defensive only —
+          // versions are append-only, so this shouldn't happen in practice).
+          const snapshot = project.quotes[breakdown.tier];
+          const version = snapshot.versions.find((v) => v.version_id === breakdown.versionId) ?? snapshot.versions[snapshot.versions.length - 1];
+          return (
+            // REUSES QuotationBreakdownModal exactly as built for the live wizard, not a
+            // duplicate. `onBasisChange` is intentionally omitted: this is a frozen, saved
+            // snapshot, so the Pricelist Basis control renders as a static "as finalized"
+            // badge instead of a working toggle (see that component's prop doc).
+            <QuotationBreakdownModal
+              tier={breakdown.tier}
+              result={version.result}
+              pricelistBasis={snapshot.pricelist_basis_at_finalize}
+              onClose={() => setBreakdown(null)}
+              // Task 7, Part B — same split-view Segment Breakdown preview the live wizard
+              // shows, sourced from what was frozen at Finalize. null blueprintFloors
+              // degrades gracefully to the segment list (see SegmentBreakdownTab).
+              blueprintFloors={project.blueprintFloors}
+              segments={project.segmentsSnapshot}
+            />
+          );
+        })()}
     </div>
   );
 }

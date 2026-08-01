@@ -30,7 +30,7 @@ const STAGES = [
   "Applying supplier discounts…",
   "Applying your pricing strategy & markup…",
   "Factoring in wastage, unit conversion & labor…",
-  "Finalizing your Practical & Premium quotations…",
+  "Finalizing your Economic & Premium quotations…",
 ];
 
 const STAGE_DURATION_MS = 1100;
@@ -55,8 +55,8 @@ export function GeneratingQuotationAnimation({ onComplete }: GeneratingQuotation
       {/* Shuffling-cards flourish (Replit-style) — two blank placeholder cards drifting
           past each other. Framed as PROCESSING, never as searching/matching anything. */}
       <div className="relative flex h-28 w-full items-center justify-center">
-        <div className="qg-generate-card qg-generate-card-practical absolute flex h-20 w-36 flex-col justify-between rounded-2xl border-2 border-primary/30 bg-orange-50/60 p-3 shadow-md">
-          <span className="text-[10px] font-bold uppercase tracking-widest text-primary">Practical</span>
+        <div className="qg-generate-card qg-generate-card-economic absolute flex h-20 w-36 flex-col justify-between rounded-2xl border-2 border-primary/30 bg-orange-50/60 p-3 shadow-md">
+          <span className="text-[10px] font-bold uppercase tracking-widest text-primary">Economic</span>
           <div className="h-2 w-2/3 rounded-full bg-primary/20" />
         </div>
         <div className="qg-generate-card qg-generate-card-premium absolute flex h-20 w-36 flex-col justify-between rounded-2xl border-2 border-indigo-200 bg-indigo-50/60 p-3 shadow-md">

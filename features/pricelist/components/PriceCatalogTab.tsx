@@ -456,6 +456,12 @@ export function PriceCatalogTab() {
         cell: ({ getValue }) => <span className="font-semibold text-gray-900">{fmt(getValue<number>())}</span>,
       },
       {
+        accessorKey: "effective_date",
+        header: "Effective",
+        enableGlobalFilter: false,
+        cell: ({ getValue }) => <span className="text-gray-500">{formatDate(getValue<string>())}</span>,
+      },
+      {
         id: "__delete",
         header: "",
         enableGlobalFilter: false,
@@ -584,6 +590,12 @@ export function PriceCatalogTab() {
           }
           return <span className="font-semibold text-gray-900">{fmt(rec.price)}</span>;
         },
+      },
+      {
+        accessorKey: "effective_date",
+        header: "Effective",
+        enableGlobalFilter: false,
+        cell: ({ getValue }) => <span className="text-gray-500">{formatDate(getValue<string>())}</span>,
       },
       {
         id: "__delete",

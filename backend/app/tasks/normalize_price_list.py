@@ -1,4 +1,5 @@
 from pathlib import Path
+from datetime import date
 
 from sqlalchemy import select, text
 from sqlalchemy.orm import Session
@@ -56,6 +57,73 @@ def _get_scoped_item_candidates(session: Session, company_id: int | None) -> lis
         return get_item_candidates(session)
 
 
+def _review_description_from_row(row, df, match) -> str:
+    row_description = (getattr(row, "description", None) or "").strip()
+    if row_description:
+        return row_description
+
+    candidate = ""
+    for col in df.columns:
+        if col in ("raw_name", "raw_unit", "raw_price", "description", "raw_brand"):
+            continue
+        header = str(col).lower()
+        if any(tok in header for tok in ("category", "category_type", "category_desc")):
+            continue
+        if any(tok in header for tok in ("spec", "desc", "description", "particular")):
+            val = getattr(row, col, None)
+            if val and str(val).strip():
+                candidate = str(val).strip()
+                break
+
+    if not candidate:
+        longest = ""
+        for col in df.columns:
+            if col in ("raw_name", "raw_unit", "raw_price", "description", "raw_brand"):
+                continue
+            header = str(col).lower()
+            if any(tok in header for tok in ("category", "category_type", "category_desc")):
+                continue
+            val = getattr(row, col, None)
+            text = str(val).strip() if val is not None else ""
+            if text and len(text) > len(longest) and not re.search(r"^\s*\d+[\d,\.\s]*$", text):
+                longest = text
+        candidate = longest
+
+    return (candidate or (match.brand or "")).strip() or "Generic"
+
+
+def _add_review_item_for_row(
+    session: Session,
+    *,
+    row,
+    df,
+    match,
+    company_id: int | None,
+    upload_id: int | None,
+    source: str,
+    supplier_id: int | None,
+    row_color: str | None,
+) -> None:
+    review_name = (getattr(row, "raw_name", None) or "").strip() or (match.material or "").strip()
+    session.add(
+        PriceListReviewItem(
+            raw_name=review_name,
+            raw_unit=row.raw_unit,
+            raw_price=float(row.raw_price),
+            confidence=match.confidence,
+            suggested_category_type=match.category_type or determine_category(review_name or ""),
+            suggested_material=match.material,
+            suggested_brand=match.brand,
+            description=_review_description_from_row(row, df, match),
+            color=row_color,
+            company_id=company_id,
+            upload_id=upload_id,
+            source=source,
+            supplier_id=supplier_id,
+        )
+    )
+
+
 @celery_app.task
 def normalize_price_list(
     file_path: str,
@@ -66,6 +134,7 @@ def normalize_price_list(
     upload_id: int | None = None,
     quarter: str | None = None,
     year: int | None = None,
+    effective_date: str | None = None,
     force_review: bool = False,
     db: Session | None = None,
 ) -> dict:
@@ -80,9 +149,11 @@ def normalize_price_list(
         _prepare_fast_session(session)
         # If uploader didn't indicate a source, treat it as a Supplier upload
         source = (source or "").strip() or "Supplier"
+        price_effective_date = date.fromisoformat(effective_date) if effective_date else date.today()
         if upload_id is not None:
             upload = session.get(PriceListUpload, upload_id)
             if upload is not None:
+                price_effective_date = upload.effective_date or price_effective_date
                 upload.processing_status = "processing"
                 upload.error_message = None
                 session.flush()
@@ -98,62 +169,34 @@ def normalize_price_list(
         for row, match in zip(df.itertuples(), results):
             row_color = (getattr(row, "color", None) or "").strip() or None
             row_description = (getattr(row, "description", None) or "").strip() or None
-            # Only records strictly above 85% confidence are auto-persisted.
+            if upload_id is not None:
+                _add_review_item_for_row(
+                    session,
+                    row=row,
+                    df=df,
+                    match=match,
+                    company_id=company_id,
+                    upload_id=upload_id,
+                    source=source,
+                    supplier_id=supplier_id,
+                    row_color=row_color,
+                )
+                needs_review += 1
+                continue
+
+            # Direct, non-upload task calls retain the old behavior: low-confidence
+            # rows go to review, high-confidence rows are persisted immediately.
             if force_review or match.confidence <= CONFIDENCE_THRESHOLD:
-                review_name = (getattr(row, "raw_name", None) or "").strip() or (match.material or "").strip()
-                review_description = row_description or ""
-                # If parser didn't map a description column, try to infer one from
-                # other columns: prefer columns whose header contains 'spec' or
-                # 'desc', otherwise pick the longest non-empty textual column.
-                if not review_description:
-                    candidate = ""
-                    # Prefer header-named columns
-                    for col in df.columns:
-                        if col in ("raw_name", "raw_unit", "raw_price", "description", "raw_brand"):
-                            continue
-                        header = str(col).lower()
-                        # Skip category-like columns
-                        if any(tok in header for tok in ("category", "category_type", "category_desc")):
-                            continue
-                        if any(tok in header for tok in ("spec", "desc", "description", "particular")):
-                            val = getattr(row, col, None)
-                            if val and str(val).strip():
-                                candidate = str(val).strip()
-                                break
-
-                    # If none found, pick the longest non-empty text-like cell
-                    if not candidate:
-                        longest = ""
-                        for col in df.columns:
-                            if col in ("raw_name", "raw_unit", "raw_price", "description", "raw_brand"):
-                                continue
-                            header = str(col).lower()
-                            # Skip category-like columns
-                            if any(tok in header for tok in ("category", "category_type", "category_desc")):
-                                continue
-                            val = getattr(row, col, None)
-                            text = str(val).strip() if val is not None else ""
-                            if text and len(text) > len(longest) and not re.search(r"^\s*\d+[\d,\.\s]*$", text):
-                                longest = text
-                        candidate = longest
-
-                    review_description = (candidate or (match.brand or "")).strip() or "Generic"
-                session.add(
-                    PriceListReviewItem(
-                        raw_name=review_name,
-                        raw_unit=row.raw_unit,
-                        raw_price=float(row.raw_price),
-                        confidence=match.confidence,
-                        suggested_category_type=match.category_type or determine_category(review_name or ""),
-                        suggested_material=match.material,
-                        suggested_brand=match.brand,
-                        description=review_description,
-                        color=row_color,
-                        company_id=company_id,
-                        upload_id=upload_id,
-                        source=source,
-                        supplier_id=supplier_id,
-                    )
+                _add_review_item_for_row(
+                    session,
+                    row=row,
+                    df=df,
+                    match=match,
+                    company_id=company_id,
+                    upload_id=upload_id,
+                    source=source,
+                    supplier_id=supplier_id,
+                    row_color=row_color,
                 )
                 needs_review += 1
                 continue
@@ -182,7 +225,7 @@ def normalize_price_list(
                 if existing_item is not None:
                     if row_color and not existing_item.color:
                         existing_item.color = row_color
-                    if row_description and not existing_item.description:
+                    if row_description:
                         existing_item.description = row_description
                     if company_id is not None and existing_item.company_id is None and source == "Supplier":
                         existing_item.company_id = company_id
@@ -192,6 +235,7 @@ def normalize_price_list(
                     item_code=item_code,
                     supplier_id=supplier_id,
                     price_source=source,
+                    effective_date=price_effective_date,
                     quarter=quarter,
                     year=year,
                     price=float(row.raw_price),

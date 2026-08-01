@@ -7,9 +7,8 @@
 // the earlier "no supplier column" flag from the Upload Pricelist rework — that
 // flag is now stale, do not re-raise it.
 //
-// quarter/year are nullable: they apply to DPWH/PSA's quarterly publications.
-// Supplier-uploaded rows have no quarter and rely on recorded_at (always
-// present) instead. This is a decided schema semantics, not an open question.
+// effective_date is the canonical price period. quarter/year are retained only
+// for deprecated compatibility with older quarterly publications.
 import type { PhRegion } from './common';
 
 export interface HistoricalPriceRecord {
@@ -18,8 +17,9 @@ export interface HistoricalPriceRecord {
   supplier_id: number | null; // null for DPWH/PSA/Internal rows
   price_source: 'DPWH' | 'PSA' | 'Supplier' | 'Internal';
   region?: PhRegion; // should match Suppliers.region vocabulary exactly
-  quarter?: 'Q1' | 'Q2' | 'Q3' | 'Q4' | null; // DPWH/PSA only — null for Supplier/Internal rows
-  year?: number | null; // DPWH/PSA only — null for Supplier/Internal rows
+  effective_date: string;
+  quarter?: 'Q1' | 'Q2' | 'Q3' | 'Q4' | null;
+  year?: number | null;
   price: number;
   recorded_at: string;
 }

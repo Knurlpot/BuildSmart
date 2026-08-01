@@ -1,12 +1,20 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { File as FileIcon, Upload as UploadIcon, X } from "lucide-react";
+import { Calendar, File as FileIcon, Upload as UploadIcon, X } from "lucide-react";
 import { QuickUploadGuide } from "./QuickUploadGuide";
 import { ColumnMappingStep } from "./ColumnMappingStep";
 import { RowReviewStep } from "./RowReviewStep";
 import { SavedCatalogView } from "./SavedCatalogView";
-import { usePricelistUpload } from "@/hooks/usePricelistUpload";
+import {
+  ITEM_OPTIONAL_FIELDS,
+  ITEM_REQUIRED_FIELDS,
+  SUPPLIER_OPTIONAL_FIELDS,
+  SUPPLIER_REQUIRED_FIELDS,
+  SYSTEM_FIELD_LABELS,
+  usePricelistUpload,
+} from "@/hooks/usePricelistUpload";
+import type { SystemField } from "@/hooks/usePricelistUpload";
 import { useWorkflowHeader } from "@/providers/WorkflowHeaderProvider";
 
 const ACCEPTED_EXTENSIONS = [".csv", ".xlsx", ".pdf"];
@@ -14,14 +22,28 @@ const ACCEPTED_EXTENSIONS = [".csv", ".xlsx", ".pdf"];
 // Part A — the same reusable orange workflow header/arrow-step chrome Quotation Generation
 // registers (see providers/WorkflowHeaderProvider.tsx's header comment: "Pricelist setup
 // later" — this is that later). Registered ONLY while this specific tab is mounted; the
-// other four Pricelist tabs (Published Sources, Source Priority, Price Trends, Price
-// Catalog) never call this hook, so switching to any of them unmounts this component,
+// other Pricelist tabs (Published Sources and Price Catalog) never call this hook,
+// so switching to any of them unmounts this component,
 // clears the registration, and the header reverts to its normal white state on its own —
 // nothing else needs to know this tab existed.
 const WORKFLOW_STEPS = [
   { number: 1, label: "Upload File" },
   { number: 2, label: "Review & Detect" },
   { number: 3, label: "Map & Confirm" },
+];
+
+const MAPPING_SECTIONS = [
+  {
+    title: "Item Columns",
+    requiredFields: ITEM_REQUIRED_FIELDS,
+    optionalFields: ITEM_OPTIONAL_FIELDS,
+  },
+  {
+    title: "Supplier Columns",
+    requiredFields: SUPPLIER_REQUIRED_FIELDS,
+    optionalFields: SUPPLIER_OPTIONAL_FIELDS,
+    emptyHint: "Supplier details can be supplied separately if this file only contains material prices.",
+  },
 ];
 
 function formatSize(bytes: number) {
@@ -50,6 +72,7 @@ export function UploadPricelistTab({ onViewCatalog }: { onViewCatalog?: () => vo
   } = usePricelistUpload();
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [files, setFiles] = useState<File[]>([]);
+  const [effectiveDate, setEffectiveDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [dragging, setDragging] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -66,8 +89,8 @@ export function UploadPricelistTab({ onViewCatalog }: { onViewCatalog?: () => vo
   const removeFile = (name: string) => setFiles((prev) => prev.filter((f) => f.name !== name));
 
   const handleConfirm = () => {
-    if (files.length === 0) return;
-    uploadFiles(files)
+    if (files.length === 0 || !effectiveDate) return;
+    uploadFiles(files, effectiveDate)
       .then(() => setStep(2))
       .catch(() => {});
   };
@@ -75,6 +98,7 @@ export function UploadPricelistTab({ onViewCatalog }: { onViewCatalog?: () => vo
   const handleUploadAnother = () => {
     reset();
     setFiles([]);
+    setEffectiveDate(new Date().toISOString().slice(0, 10));
     setStep(1);
   };
 
@@ -149,6 +173,20 @@ export function UploadPricelistTab({ onViewCatalog }: { onViewCatalog?: () => vo
               </div>
             </div>
 
+            <div className="rounded-2xl border border-gray-200 bg-white p-4">
+              <label htmlFor="pricelist-effective-date" className="mb-2 flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-gray-500">
+                <Calendar className="h-4 w-4 text-primary" />
+                Effective Date
+              </label>
+              <input
+                id="pricelist-effective-date"
+                type="date"
+                value={effectiveDate}
+                onChange={(e) => setEffectiveDate(e.target.value)}
+                className="h-10 w-full max-w-xs rounded-xl border border-gray-200 bg-white px-3 text-sm font-semibold text-gray-700 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/15"
+              />
+            </div>
+
             {files.length > 0 && (
               <div className="flex flex-col gap-2 rounded-2xl border border-gray-200 bg-white p-4">
                 <p className="text-xs font-bold uppercase tracking-wider text-gray-400">
@@ -176,7 +214,7 @@ export function UploadPricelistTab({ onViewCatalog }: { onViewCatalog?: () => vo
                 </div>
                 <button
                   type="button"
-                  disabled={isUploading}
+                  disabled={isUploading || !effectiveDate}
                   onClick={handleConfirm}
                   className="mt-2 w-fit rounded-xl bg-primary px-5 py-2.5 text-sm font-bold text-primary-foreground shadow-sm transition hover:bg-(--primary-hover) disabled:opacity-60"
                 >
@@ -204,10 +242,12 @@ export function UploadPricelistTab({ onViewCatalog }: { onViewCatalog?: () => vo
       )}
 
       {step === 2 && (
-        <ColumnMappingStep
+        <ColumnMappingStep<SystemField>
+          title="Review Detected Columns"
+          description={`${itemRows.length} item rows and ${supplierRows.length} supplier rows detected.`}
           columns={columns}
-          itemRowCount={itemRows.length}
-          supplierRowCount={supplierRows.length}
+          sections={MAPPING_SECTIONS}
+          fieldLabels={SYSTEM_FIELD_LABELS}
           onUpdateMapping={updateColumnMapping}
           onBack={() => setStep(1)}
           onContinue={() => setStep(3)}

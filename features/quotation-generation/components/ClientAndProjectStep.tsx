@@ -77,9 +77,9 @@ function ChipRow({ title, subtitle, actionLabel, onAction }: { title: string; su
 // hands off to the parent (the actual new-client fields live in the RIGHT-column card, not
 // inline here — see NewClientForm.tsx).
 //
-// Search results show the client name plus email when one is on file. The email gives just
-// enough disambiguation for similarly named clients without turning the dropdown into a
-// full contact card.
+// Part C — list rows show client_name ONLY (no email/subtitle). A firm may have 100+
+// clients; keeping rows to one line keeps the list scannable. Contact details surface in
+// the card once a client is selected, not here.
 function ClientPicker({
   clients,
   isLoading,
@@ -111,7 +111,7 @@ function ClientPicker({
   if (creatingName !== null) {
     return (
       <ChipRow
-        title={`Creating "${creatingName}"`}
+        title={creatingName ? `Creating "${creatingName}"` : "Creating a new client"}
         subtitle="Fill in the form below, then Create Client."
         actionLabel="Cancel"
         onAction={onCancelCreate}
@@ -125,19 +125,38 @@ function ClientPicker({
 
   return (
     <div ref={containerRef} className="relative">
-      <div className="relative">
-        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-        <input
-          value={query}
-          onChange={(e) => {
-            setQuery(e.target.value);
-            setOpen(true);
+      <div className="flex items-center gap-2">
+        <div className="relative flex-1">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+          <input
+            value={query}
+            onChange={(e) => {
+              setQuery(e.target.value);
+              setOpen(true);
+            }}
+            onFocus={() => setOpen(true)}
+            placeholder="Search clients, or type a new name…"
+            className={`${inputCls} pl-9`}
+            autoFocus={!!selected}
+          />
+        </div>
+        {/* Part A (Task 7) — explicit "add a new client" affordance beside the search bar,
+            independent of typing a non-matching name into it. Opens the SAME new-client
+            card (NewClientForm) as the inline "Create '…' as a new client" row below,
+            just starting from a blank name instead of whatever was typed. */}
+        <button
+          type="button"
+          onClick={() => {
+            onStartCreate("");
+            setOpen(false);
+            setQuery("");
           }}
-          onFocus={() => setOpen(true)}
-          placeholder="Search clients, or type a new name…"
-          className={`${inputCls} pl-9`}
-          autoFocus={!!selected}
-        />
+          title="Add a new client"
+          aria-label="Add a new client"
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-gray-200 bg-white text-gray-500 transition hover:border-primary hover:bg-orange-50/50 hover:text-primary"
+        >
+          <Plus className="h-4 w-4" />
+        </button>
       </div>
 
       {open && (
@@ -152,10 +171,9 @@ function ClientPicker({
                   setOpen(false);
                   setQuery("");
                 }}
-                className="flex w-full flex-col items-start px-3.5 py-2.5 text-left transition hover:bg-gray-50"
+                className="flex w-full items-center px-3.5 py-2.5 text-left text-sm transition hover:bg-gray-50"
               >
-                <span className="text-sm font-medium text-gray-800">{c.client_name}</span>
-                {c.contact_email && <span className="mt-0.5 text-xs text-gray-400">{c.contact_email}</span>}
+                <span className="font-medium text-gray-800">{c.client_name}</span>
               </button>
             ))}
             {query.trim() && !exactMatch && (
