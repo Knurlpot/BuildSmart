@@ -18,6 +18,7 @@ import {
   extractedItemRowsFixture,
   extractedSupplierRowsFixture,
 } from "./fixtures/extractedPriceRows";
+import { detectedClientColumnsFixture, extractedClientRowsFixture } from "./fixtures/extractedClientRows";
 import { flaggedPriceDeviationsFixture } from "./fixtures/flaggedPriceDeviations";
 import { psaIndexFixture } from "./fixtures/psaIndex";
 import { dpwhCatalogFixture } from "./fixtures/dpwhCatalog";
@@ -110,6 +111,13 @@ export function resolveMockFetch(endpoint: string): unknown {
     // to 'Hybrid' if a manual segment gets added on top of a blueprint extraction).
     if (rest !== "new" && !rest.includes("/")) return { ...quotationsFixture[1], quote_id: 9001 };
   }
+
+  // Part B (Task 6) — My Clients spreadsheet import. Same assumed-endpoint convention and
+  // mock-echo limitation as /api/pricelist/upload just below.
+  if (pathname === "/api/clients/import/upload") {
+    return { columns: detectedClientColumnsFixture, rows: extractedClientRowsFixture };
+  }
+  if (pathname === "/api/clients/import/commit") return { saved_count: extractedClientRowsFixture.length };
 
   if (pathname === "/api/pricelist/upload") {
     return {

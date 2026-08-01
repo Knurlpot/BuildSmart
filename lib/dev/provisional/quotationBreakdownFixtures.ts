@@ -23,21 +23,20 @@ import type {
 interface SupplierFixture {
   supplier_id: number;
   supplier_name: string;
-  practical_price: number;
+  economic_price: number;
   premium_price: number;
-  quantity_available: number | null; // null = internal crew / not stock-tracked (labor)
 }
 
 interface ItemFixtureDef {
   item_code: string;
   category: ItemCategory;
-  item_name_practical: string;
+  item_name_economic: string;
   item_name_premium: string;
   unit: string;
   coverage_factor: number; // material: sqm-per-sqm coverage; labor: hours per sqm
   wastage_percentage: number;
-  uploaded: { practical: number; premium: number };
-  dpwh: { practical: number; premium: number };
+  uploaded: { economic: number; premium: number };
+  dpwh: { economic: number; premium: number };
   suppliers: SupplierFixture[];
 }
 
@@ -50,32 +49,32 @@ const TREATMENT_ITEM_FIXTURES: Record<string, ItemFixtureDef[]> = {
     {
       item_code: 'CEM-MEM',
       category: 'Material',
-      item_name_practical: 'Cementitious Waterproofing Membrane, 2-coat (Standard Grade)',
+      item_name_economic: 'Cementitious Waterproofing Membrane, 2-coat (Standard Grade)',
       item_name_premium: 'Cementitious Waterproofing Membrane, 2-coat (Premium Imported Grade)',
       unit: 'sqm',
       coverage_factor: 1.0,
       wastage_percentage: 10,
-      uploaded: { practical: 1450, premium: 2180 },
-      dpwh: { practical: 1685, premium: 2530 },
+      uploaded: { economic: 1450, premium: 2180 },
+      dpwh: { economic: 1685, premium: 2530 },
       suppliers: [
-        { supplier_id: 5101, supplier_name: 'Sika Philippines Inc.', practical_price: 1450, premium_price: 2180, quantity_available: 450 },
-        { supplier_id: 5102, supplier_name: 'Mapei Philippines Corp.', practical_price: 1320, premium_price: 1980, quantity_available: 180 },
-        { supplier_id: 5103, supplier_name: 'Fosroc Philippines', practical_price: 1595, premium_price: 2395, quantity_available: 600 },
+        { supplier_id: 5101, supplier_name: 'Sika Philippines Inc.', economic_price: 1450, premium_price: 2180 },
+        { supplier_id: 5102, supplier_name: 'Mapei Philippines Corp.', economic_price: 1320, premium_price: 1980 },
+        { supplier_id: 5103, supplier_name: 'Fosroc Philippines', economic_price: 1595, premium_price: 2395 },
       ],
     },
     {
       item_code: 'CEM-LAB',
       category: 'Labor',
-      item_name_practical: 'Labor — Waterproofing Crew (Cementitious application)',
+      item_name_economic: 'Labor — Waterproofing Crew (Cementitious application)',
       item_name_premium: 'Labor — Certified Waterproofing Specialist (Cementitious application)',
       unit: 'hr',
       coverage_factor: 0.6,
       wastage_percentage: 0,
-      uploaded: { practical: 380, premium: 480 },
-      dpwh: { practical: 420, premium: 530 },
+      uploaded: { economic: 380, premium: 480 },
+      dpwh: { economic: 420, premium: 530 },
       suppliers: [
-        { supplier_id: 5201, supplier_name: 'JC In-house Crew', practical_price: 380, premium_price: 480, quantity_available: null },
-        { supplier_id: 5202, supplier_name: 'Sub-contractor A', practical_price: 420, premium_price: 510, quantity_available: null },
+        { supplier_id: 5201, supplier_name: 'JC In-house Crew', economic_price: 380, premium_price: 480 },
+        { supplier_id: 5202, supplier_name: 'Sub-contractor A', economic_price: 420, premium_price: 510 },
       ],
     },
   ],
@@ -83,31 +82,31 @@ const TREATMENT_ITEM_FIXTURES: Record<string, ItemFixtureDef[]> = {
     {
       item_code: 'ELA-MEM',
       category: 'Material',
-      item_name_practical: 'Elastomeric Waterproofing Coating, 2-coat (Standard Grade)',
+      item_name_economic: 'Elastomeric Waterproofing Coating, 2-coat (Standard Grade)',
       item_name_premium: 'Elastomeric Waterproofing Coating, 2-coat (Premium Imported Grade)',
       unit: 'sqm',
       coverage_factor: 1.0,
       wastage_percentage: 12,
-      uploaded: { practical: 1280, premium: 1920 },
-      dpwh: { practical: 1490, premium: 2225 },
+      uploaded: { economic: 1280, premium: 1920 },
+      dpwh: { economic: 1490, premium: 2225 },
       suppliers: [
-        { supplier_id: 5104, supplier_name: 'Davies Paints Philippines', practical_price: 1280, premium_price: 1920, quantity_available: 320 },
-        { supplier_id: 5105, supplier_name: 'Boysen Coatings', practical_price: 1195, premium_price: 1795, quantity_available: 150 },
+        { supplier_id: 5104, supplier_name: 'Davies Paints Philippines', economic_price: 1280, premium_price: 1920 },
+        { supplier_id: 5105, supplier_name: 'Boysen Coatings', economic_price: 1195, premium_price: 1795 },
       ],
     },
     {
       item_code: 'ELA-LAB',
       category: 'Labor',
-      item_name_practical: 'Labor — Waterproofing Crew (Elastomeric application)',
+      item_name_economic: 'Labor — Waterproofing Crew (Elastomeric application)',
       item_name_premium: 'Labor — Certified Waterproofing Specialist (Elastomeric application)',
       unit: 'hr',
       coverage_factor: 0.5,
       wastage_percentage: 0,
-      uploaded: { practical: 360, premium: 460 },
-      dpwh: { practical: 395, premium: 500 },
+      uploaded: { economic: 360, premium: 460 },
+      dpwh: { economic: 395, premium: 500 },
       suppliers: [
-        { supplier_id: 5201, supplier_name: 'JC In-house Crew', practical_price: 360, premium_price: 460, quantity_available: null },
-        { supplier_id: 5203, supplier_name: 'Sub-contractor B', practical_price: 340, premium_price: 440, quantity_available: null },
+        { supplier_id: 5201, supplier_name: 'JC In-house Crew', economic_price: 360, premium_price: 460 },
+        { supplier_id: 5203, supplier_name: 'Sub-contractor B', economic_price: 340, premium_price: 440 },
       ],
     },
   ],
@@ -115,58 +114,58 @@ const TREATMENT_ITEM_FIXTURES: Record<string, ItemFixtureDef[]> = {
     {
       item_code: 'PU-MEM',
       category: 'Material',
-      item_name_practical: 'Polyurethane Waterproofing Membrane, liquid-applied (Standard Grade)',
+      item_name_economic: 'Polyurethane Waterproofing Membrane, liquid-applied (Standard Grade)',
       item_name_premium: 'Polyurethane Waterproofing Membrane, liquid-applied (Premium Imported Grade)',
       unit: 'sqm',
       coverage_factor: 1.0,
       wastage_percentage: 8,
-      uploaded: { practical: 1650, premium: 2475 },
-      dpwh: { practical: 1915, premium: 2870 },
+      uploaded: { economic: 1650, premium: 2475 },
+      dpwh: { economic: 1915, premium: 2870 },
       suppliers: [
-        { supplier_id: 5106, supplier_name: 'Sika Philippines Inc.', practical_price: 1650, premium_price: 2475, quantity_available: 400 },
-        { supplier_id: 5107, supplier_name: 'Tremco Philippines', practical_price: 1780, premium_price: 2670, quantity_available: 90 },
+        { supplier_id: 5106, supplier_name: 'Sika Philippines Inc.', economic_price: 1650, premium_price: 2475 },
+        { supplier_id: 5107, supplier_name: 'Tremco Philippines', economic_price: 1780, premium_price: 2670 },
       ],
     },
     {
       item_code: 'PU-LAB',
       category: 'Labor',
-      item_name_practical: 'Labor — Waterproofing Crew (PU application)',
+      item_name_economic: 'Labor — Waterproofing Crew (PU application)',
       item_name_premium: 'Labor — Certified Waterproofing Specialist (PU application)',
       unit: 'hr',
       coverage_factor: 0.7,
       wastage_percentage: 0,
-      uploaded: { practical: 400, premium: 500 },
-      dpwh: { practical: 440, premium: 550 },
-      suppliers: [{ supplier_id: 5201, supplier_name: 'JC In-house Crew', practical_price: 400, premium_price: 500, quantity_available: null }],
+      uploaded: { economic: 400, premium: 500 },
+      dpwh: { economic: 440, premium: 550 },
+      suppliers: [{ supplier_id: 5201, supplier_name: 'JC In-house Crew', economic_price: 400, premium_price: 500 }],
     },
   ],
   'Torch-Applied Membrane': [
     {
       item_code: 'TAM-MEM',
       category: 'Material',
-      item_name_practical: 'Torch-Applied Bituminous Membrane, 4mm (Standard Grade)',
+      item_name_economic: 'Torch-Applied Bituminous Membrane, 4mm (Standard Grade)',
       item_name_premium: 'Torch-Applied Bituminous Membrane, 4mm (Premium Imported Grade)',
       unit: 'sqm',
       coverage_factor: 1.05,
       wastage_percentage: 15,
-      uploaded: { practical: 1596, premium: 2394 },
-      dpwh: { practical: 1855, premium: 2780 },
+      uploaded: { economic: 1596, premium: 2394 },
+      dpwh: { economic: 1855, premium: 2780 },
       suppliers: [
-        { supplier_id: 5108, supplier_name: 'Fosroc Philippines', practical_price: 1596, premium_price: 2394, quantity_available: 600 },
-        { supplier_id: 5109, supplier_name: 'Ardex Philippines', practical_price: 1470, premium_price: 2205, quantity_available: 120 },
+        { supplier_id: 5108, supplier_name: 'Fosroc Philippines', economic_price: 1596, premium_price: 2394 },
+        { supplier_id: 5109, supplier_name: 'Ardex Philippines', economic_price: 1470, premium_price: 2205 },
       ],
     },
     {
       item_code: 'TAM-LAB',
       category: 'Labor',
-      item_name_practical: 'Labor — Torch-Applied Membrane Crew (heat-welding)',
+      item_name_economic: 'Labor — Torch-Applied Membrane Crew (heat-welding)',
       item_name_premium: 'Labor — Certified Torch-Applied Membrane Specialist',
       unit: 'hr',
       coverage_factor: 0.65,
       wastage_percentage: 0,
-      uploaded: { practical: 410, premium: 510 },
-      dpwh: { practical: 450, premium: 560 },
-      suppliers: [{ supplier_id: 5202, supplier_name: 'Sub-contractor A', practical_price: 410, premium_price: 510, quantity_available: null }],
+      uploaded: { economic: 410, premium: 510 },
+      dpwh: { economic: 450, premium: 560 },
+      suppliers: [{ supplier_id: 5202, supplier_name: 'Sub-contractor A', economic_price: 410, premium_price: 510 }],
     },
   ],
 };
@@ -185,7 +184,7 @@ interface TierPricingFixture {
 }
 
 const TIER_PRICING_FIXTURE: Record<ProvisionalTier, TierPricingFixture> = {
-  Practical: {
+  Economic: {
     ocm_percentage: 8,
     profit_margin_percentage: 10,
     timeline_label: '8–10 weeks',
@@ -218,8 +217,7 @@ function supplierOptionsFor(def: ItemFixtureDef, tier: ProvisionalTier, basis: P
   return def.suppliers.map((s) => ({
     supplier_id: s.supplier_id,
     supplier_name: s.supplier_name,
-    unit_price: tier === 'Practical' ? s.practical_price : s.premium_price,
-    quantity_available: s.quantity_available,
+    unit_price: tier === 'Economic' ? s.economic_price : s.premium_price,
     source_type: basis,
   }));
 }
@@ -227,7 +225,7 @@ function supplierOptionsFor(def: ItemFixtureDef, tier: ProvisionalTier, basis: P
 function buildLine(seg: DraftSegment, def: ItemFixtureDef, tier: ProvisionalTier, basis: PricelistBasis): ProvisionalItemLine {
   const qty = round2(seg.area_sqm * def.coverage_factor * (1 + def.wastage_percentage / 100));
   const basisPrices = basis === 'DPWH' ? def.dpwh : def.uploaded;
-  const unitPrice = tier === 'Practical' ? basisPrices.practical : basisPrices.premium;
+  const unitPrice = tier === 'Economic' ? basisPrices.economic : basisPrices.premium;
   const suppliers = supplierOptionsFor(def, tier, basis);
   return {
     line_id: stagingId('item'),
@@ -237,7 +235,7 @@ function buildLine(seg: DraftSegment, def: ItemFixtureDef, tier: ProvisionalTier
     treatment_type: seg.treatment_type,
     category: def.category,
     item_code: def.item_code,
-    item_name: tier === 'Practical' ? def.item_name_practical : def.item_name_premium,
+    item_name: tier === 'Economic' ? def.item_name_economic : def.item_name_premium,
     unit: def.unit,
     derived_area_sqm: seg.area_sqm,
     derived_coverage_per_sqm: def.coverage_factor,
@@ -322,9 +320,9 @@ export function retargetItemLinesBasis(
  * item lines, so the summary and the BOQ never disagree. */
 function deriveMockServiceCost(items: ProvisionalItemLine[], materialsSubtotal: number, tier: ProvisionalTier): ProvisionalServiceCost {
   const laborCost = round2(items.filter((l) => l.category === 'Labor').reduce((sum, l) => sum + (l.total_cost ?? 0), 0));
-  const equipmentPct = tier === 'Practical' ? 0.06 : 0.08;
-  const contingencyPct = tier === 'Practical' ? 0.04 : 0.05;
-  const otherPct = tier === 'Practical' ? 0.03 : 0.035; // PPE, mobilization
+  const equipmentPct = tier === 'Economic' ? 0.06 : 0.08;
+  const contingencyPct = tier === 'Economic' ? 0.04 : 0.05;
+  const otherPct = tier === 'Economic' ? 0.03 : 0.035; // PPE, mobilization
   const equipmentCost = round2(materialsSubtotal * equipmentPct);
   const contingencyCost = round2(materialsSubtotal * contingencyPct);
   const otherCost = round2(materialsSubtotal * otherPct);
@@ -406,4 +404,19 @@ export function computeTierResult(
 
 export function fmtPeso(n: number): string {
   return '₱' + n.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+/** Part C (Task 6) — looks up an item's CURRENT fixture rate by item_code, across every
+ * treatment (item codes are unique across the fixture table). Returns null if the code no
+ * longer exists in the fixture table (e.g. a discontinued item) — "Refresh Prices" must never
+ * fabricate a rate for a code it can't find; the line is left as it was instead. */
+export function currentRateForItemCode(itemCode: string, tier: ProvisionalTier, basis: PricelistBasis): number | null {
+  for (const defs of Object.values(TREATMENT_ITEM_FIXTURES)) {
+    const def = defs.find((d) => d.item_code === itemCode);
+    if (def) {
+      const basisPrices = basis === 'DPWH' ? def.dpwh : def.uploaded;
+      return tier === 'Economic' ? basisPrices.economic : basisPrices.premium;
+    }
+  }
+  return null;
 }

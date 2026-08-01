@@ -111,7 +111,7 @@ function ClientPicker({
   if (creatingName !== null) {
     return (
       <ChipRow
-        title={`Creating "${creatingName}"`}
+        title={creatingName ? `Creating "${creatingName}"` : "Creating a new client"}
         subtitle="Fill in the form below, then Create Client."
         actionLabel="Cancel"
         onAction={onCancelCreate}
@@ -125,19 +125,38 @@ function ClientPicker({
 
   return (
     <div ref={containerRef} className="relative">
-      <div className="relative">
-        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-        <input
-          value={query}
-          onChange={(e) => {
-            setQuery(e.target.value);
-            setOpen(true);
+      <div className="flex items-center gap-2">
+        <div className="relative flex-1">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+          <input
+            value={query}
+            onChange={(e) => {
+              setQuery(e.target.value);
+              setOpen(true);
+            }}
+            onFocus={() => setOpen(true)}
+            placeholder="Search clients, or type a new name…"
+            className={`${inputCls} pl-9`}
+            autoFocus={!!selected}
+          />
+        </div>
+        {/* Part A (Task 7) — explicit "add a new client" affordance beside the search bar,
+            independent of typing a non-matching name into it. Opens the SAME new-client
+            card (NewClientForm) as the inline "Create '…' as a new client" row below,
+            just starting from a blank name instead of whatever was typed. */}
+        <button
+          type="button"
+          onClick={() => {
+            onStartCreate("");
+            setOpen(false);
+            setQuery("");
           }}
-          onFocus={() => setOpen(true)}
-          placeholder="Search clients, or type a new name…"
-          className={`${inputCls} pl-9`}
-          autoFocus={!!selected}
-        />
+          title="Add a new client"
+          aria-label="Add a new client"
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-gray-200 bg-white text-gray-500 transition hover:border-primary hover:bg-orange-50/50 hover:text-primary"
+        >
+          <Plus className="h-4 w-4" />
+        </button>
       </div>
 
       {open && (

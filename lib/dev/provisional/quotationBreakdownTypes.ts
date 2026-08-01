@@ -1,8 +1,18 @@
-// PROVISIONAL — Part 2 (Generate → Practical/Premium → breakdown → revise → finalize) shell
+// PROVISIONAL — Part 2 (Generate → Economic/Premium → breakdown → revise → finalize) shell
 // types. Field NAMES below follow `part2_schema_addendum.sql` (the backend-facing ALTER
 // script this frontend is built against) wherever a field maps to a proposed column, so
 // the shapes line up the day backend applies it. This is a PRESENTATIONAL SHELL only — see
 // quotationBreakdownFixtures.ts for the mock math these types carry.
+//
+// ‼️ RENAME FLAG (Task 6, Part A) — the tier formerly labeled "Practical" is now "Economic"
+// everywhere, including the STORED value 'Economic' below (not just a display label): the
+// addendum's proposed `quotation.tier CHECK (tier IN ('Practical','Standard','Premium'))`
+// (its §2) has NOT been applied yet, so nothing here breaks a live constraint by using
+// 'Economic' instead — but backend should update that proposed CHECK list to
+// ('Economic','Standard','Premium') before applying it, so the value this frontend actually
+// sends matches what the column will accept. Separately, CPRM's rule_pricing.quotation_tier
+// (lib/dev/provisional/companyRulesTypes.ts) has NO CHECK constraint at all in the live
+// schema, so that rename needed no flag — only this addendum-proposed one does.
 //
 // ‼️ HONESTY LINE: nothing under lib/dev/ is ever presented as a real, persisted, or
 // backend-computed number. Every peso figure downstream of these types traces back to a
@@ -25,18 +35,19 @@
 // - rule_labor.treatment_type, rush_multiplier_percentage (+ region/labor_trade made
 //   nullable) — addendum #5. Lets a specialty subcontractor price labor by TREATMENT
 //   instead of only region+trade.
-// - supplier_item_stock (quantity_available per supplier per item) — NOT in the addendum at
-//   all. This is an EXTRA gap this task surfaces on top of it: Supplier Benchmarking's
-//   "can this supplier actually fulfil the quantity" flag has no real column anywhere to
-//   read stock from. Flagged distinctly below wherever it's used.
+// - supplier_item_stock — RESOLVED, not a gap: Task 7, Part C removed the stock/
+//   availability UI this used to back (Supplier Benchmarking's "can this supplier fulfil
+//   the quantity" flag). Backend decision: the system does not track supplier stock at all
+//   (out of scope — a quoting tool, not inventory), so this table will never exist and
+//   ProvisionalSupplierOption is price-only now.
 // - A "confidence" field for price provenance — NOT in the addendum, not in any real table.
 //   There is no computed basis for this anywhere yet; see ProvisionalPricingReference.
 
 import type { HistoricalPriceRecord } from '@/types/entities/historical-price-record';
 import type { PhRegion } from '@/types/entities/common';
 
-export type ProvisionalTier = 'Practical' | 'Premium';
-export const PROVISIONAL_TIERS: ProvisionalTier[] = ['Practical', 'Premium'];
+export type ProvisionalTier = 'Economic' | 'Premium';
+export const PROVISIONAL_TIERS: ProvisionalTier[] = ['Economic', 'Premium'];
 
 // Part B — "price the quote off Uploaded Pricelist vs DPWH-CMPD." Maps to the REAL
 // items.item_source / historical_price_record.price_source enum ('DPWH' | 'PSA' | 'Supplier'
@@ -59,14 +70,14 @@ export interface ProvisionalPricingReference {
   confidence: null;
 }
 
-// Part B/D — a supplier option for ONE item line, with PRICE (real concept) and STOCK
-// (entirely provisional — see file header, not even in the addendum). `fulfils_quantity`
-// is derived (quantity_available >= the line's required quantity), not stored.
+// Part B/D — a supplier option for ONE item line, PRICE-ONLY. Task 7, Part C removed
+// quantity_available/stock entirely: backend decided the system does not track supplier
+// stock/availability at all (out of scope — a quoting tool, not inventory), so no
+// supplier_item_stock table exists or will exist. Do not re-add a stock field here.
 export interface ProvisionalSupplierOption {
   supplier_id: number; // fixture, mirrors a real suppliers.supplier_id
   supplier_name: string;
   unit_price: number;
-  quantity_available: number | null; // PROVISIONAL, no supplier_item_stock table exists
   source_type: PricelistBasis;
 }
 
@@ -145,7 +156,9 @@ export interface ProvisionalQuotationTierResult {
 }
 
 // Two tiers, siblings of ONE derivation run — the activity diagram's "Generate Practical
-// and Premium quotes" step. quote_group_id/tier/is_selected are all addendum #2.
+// and Premium quotes" step (that box's literal text predates the Task 6 rename; displayed
+// and stored here as "Economic" and "Premium"). quote_group_id/tier/is_selected are all
+// addendum #2.
 export interface ProvisionalQuoteGroup {
   quote_group_id: string; // -> quotation.quote_group_id (addendum #2)
   tiers: Record<ProvisionalTier, ProvisionalQuotationTierResult>;

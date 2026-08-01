@@ -32,8 +32,16 @@ interface BlueprintOverlayProps {
    * to the original extraction) lives in the parent (BlueprintUploadPanel), which is the
    * one holding the original extraction result. This component only owns the confirm
    * dialog + the visual scan-replay; once the user confirms, it calls this AND replays its
-   * own local scan animation. */
-  onRescanConfirmed: () => void;
+   * own local scan animation. Omitted when `readOnly` — see that prop's doc. */
+  onRescanConfirmed?: () => void;
+  /** Task 7, Part B — Segment Breakdown reuses this exact component (not a rebuild) to
+   * preview an already-generated/saved quote's blueprint. Rescan is a destructive EDIT
+   * action that only makes sense during Review Segments (step 3) — hidden here, along with
+   * the first-mount scan animation (polygons render fully revealed immediately; there's
+   * nothing being "discovered" in a view that's just replaying already-reviewed data).
+   * Zoom and hover stay — pure viewing affordances, not edits. Defaults false so every
+   * existing caller (BlueprintUploadPanel) is unaffected. */
+  readOnly?: boolean;
 }
 
 // ‼️ COORDINATE-SYSTEM CONTRACT — the one hard requirement of this component.
@@ -55,19 +63,22 @@ interface BlueprintOverlayProps {
 // step doesn't feel like a hard data dump, not a claim that anything is being detected
 // client-side. Every polygon it reveals was already in `segments` the instant this
 // component mounted; the scan only staggers when each one fades in.
-export function BlueprintOverlay({ imageUrl, imageWidth, imageHeight, segments, hoveredId, onHoverChange, onRescanConfirmed }: BlueprintOverlayProps) {
+export function BlueprintOverlay({ imageUrl, imageWidth, imageHeight, segments, hoveredId, onHoverChange, onRescanConfirmed, readOnly = false }: BlueprintOverlayProps) {
   const containerRef = useRef<HTMLDivElement>(null);
 
   // ── Scan animation — RAF-driven, not setInterval, per the task's explicit ask. ──
+  // readOnly starts fully "scanned" (scanning=false) so a Segment Breakdown viewer sees
+  // every polygon immediately, not a ~4s replay of a scan that already happened in step 3.
   const [rescanToken, setRescanToken] = useState(0);
   const [syncedRescanToken, setSyncedRescanToken] = useState(0);
-  const [scanProgress, setScanProgress] = useState(0);
-  const [scanning, setScanning] = useState(true);
+  const [scanProgress, setScanProgress] = useState(readOnly ? 100 : 0);
+  const [scanning, setScanning] = useState(!readOnly);
   const [rescanConfirmOpen, setRescanConfirmOpen] = useState(false);
 
   // Adjusted during render (React's documented pattern for this — see e.g.
   // app/(app)/account/page.tsx's deactivate-dialog countdown) rather than a setState call
   // inside the effect body below: resets the animation whenever "Rescan" is confirmed.
+  // Unreachable when readOnly (rescanToken never changes — there's no Rescan button).
   if (rescanToken !== syncedRescanToken) {
     setSyncedRescanToken(rescanToken);
     setScanProgress(0);
@@ -75,6 +86,7 @@ export function BlueprintOverlay({ imageUrl, imageWidth, imageHeight, segments, 
   }
 
   useEffect(() => {
+    if (readOnly) return;
     let start: number | null = null;
     let raf: number;
     const step = (ts: number) => {
@@ -89,11 +101,11 @@ export function BlueprintOverlay({ imageUrl, imageWidth, imageHeight, segments, 
     };
     raf = requestAnimationFrame(step);
     return () => cancelAnimationFrame(raf);
-  }, [rescanToken]);
+  }, [rescanToken, readOnly]);
 
   const handleRescanConfirm = () => {
     setRescanConfirmOpen(false);
-    onRescanConfirmed();
+    onRescanConfirmed?.();
     setRescanToken((t) => t + 1);
   };
 
@@ -137,15 +149,19 @@ export function BlueprintOverlay({ imageUrl, imageWidth, imageHeight, segments, 
           </span>
         </div>
         <div className="flex flex-wrap shrink-0 items-center gap-1">
-          {/* Part E — no longer a silent reset: this only OPENS the confirm dialog below. */}
-          <button
-            type="button"
-            onClick={() => setRescanConfirmOpen(true)}
-            title="Rescan"
-            className="flex items-center gap-1 rounded-lg border border-gray-200 bg-white px-2 py-1 text-xs font-semibold text-gray-500 transition hover:border-primary hover:text-primary"
-          >
-            <ScanLine className="h-3.5 w-3.5" /> Rescan
-          </button>
+          {/* Part E — no longer a silent reset: this only OPENS the confirm dialog below.
+              Hidden entirely when readOnly — Rescan is an edit action with no meaning
+              outside Review Segments (Task 7, Part B). */}
+          {!readOnly && (
+            <button
+              type="button"
+              onClick={() => setRescanConfirmOpen(true)}
+              title="Rescan"
+              className="flex items-center gap-1 rounded-lg border border-gray-200 bg-white px-2 py-1 text-xs font-semibold text-gray-500 transition hover:border-primary hover:text-primary"
+            >
+              <ScanLine className="h-3.5 w-3.5" /> Rescan
+            </button>
+          )}
           <div className="flex items-center overflow-hidden rounded-lg border border-gray-200 bg-white">
             <button type="button" onClick={zoomOut} disabled={zoom <= ZOOM_MIN} title="Zoom out" className="p-1.5 text-gray-500 transition hover:bg-gray-50 disabled:opacity-30">
               <ZoomOut className="h-3.5 w-3.5" />
@@ -247,7 +263,9 @@ export function BlueprintOverlay({ imageUrl, imageWidth, imageHeight, segments, 
       </div>
 
       {/* Part E — rescanning RESTARTS: warn before discarding edits, don't silently wipe
-          the user's work. */}
+          the user's work. Unreachable when readOnly (no button opens it), so skip
+          rendering it at all rather than mount a dialog that can never show. */}
+      {!readOnly && (
       <Dialog open={rescanConfirmOpen} onOpenChange={setRescanConfirmOpen}>
         <DialogContent>
           <DialogHeader>
@@ -278,6 +296,7 @@ export function BlueprintOverlay({ imageUrl, imageWidth, imageHeight, segments, 
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      )}
     </div>
   );
 }

@@ -14,12 +14,19 @@
 // showing those exact numbers even after the live fixtures change — the audit-trail
 // principle this whole module exists to demonstrate. If you're tempted to "refresh" a
 // saved project's numbers on read, don't; that's re-deriving, not reading a snapshot.
+//
+// Task 6, Part C extends this without weakening it: SavedQuoteSnapshot.versions[0] IS
+// `result` (same object, set once, same rule as above) and is never overwritten.
+// refreshQuotePrices() below is the ONE sanctioned exception to "never recompute a saved
+// quote" — and even it doesn't recompute in place, it only ever APPENDS a new
+// SavedQuoteVersion to the array. Do not add a second way to mutate `versions`.
 import { useSyncExternalStore } from 'react';
 import { computeTierResult, deriveMockItemLines } from './quotationBreakdownFixtures';
+import { repriceItemLines } from './priceRefreshFixtures';
 import { createManualSegment, type DraftSegment } from '@/features/quotation-generation/lib/draftSegment';
-import { stagingId } from './quotationGenerationTypes';
+import { stagingId, type BlueprintFloor } from './quotationGenerationTypes';
 import type { PricelistBasis, ProvisionalTier } from './quotationBreakdownTypes';
-import type { SavedProjectRecord, SavedQuoteSnapshot } from './savedProjectsTypes';
+import type { SavedProjectRecord, SavedQuoteSnapshot, SavedQuoteVersion } from './savedProjectsTypes';
 
 function seedSegments(spec: { name: string; floor: string; area: number; treatment: string }[]): DraftSegment[] {
   return spec.map((s) => ({ ...createManualSegment(s.name), floor_level: s.floor, area_sqm: s.area, treatment_type: s.treatment }));
@@ -27,6 +34,14 @@ function seedSegments(spec: { name: string; floor: string; area: number; treatme
 
 function buildSnapshot(segments: DraftSegment[], tier: ProvisionalTier, quoteGroupId: string, quoteId: number, basis: PricelistBasis, finalizedAt: string): SavedQuoteSnapshot {
   const items = deriveMockItemLines(segments, tier, basis);
+  const result = computeTierResult(tier, items);
+  const originalVersion: SavedQuoteVersion = {
+    version_id: stagingId('qver'),
+    version_number: 1,
+    price_reference_date: finalizedAt,
+    created_at: finalizedAt,
+    result,
+  };
   return {
     quote_id: quoteId,
     tier,
@@ -34,7 +49,8 @@ function buildSnapshot(segments: DraftSegment[], tier: ProvisionalTier, quoteGro
     is_selected: null,
     pricelist_basis_at_finalize: basis,
     finalized_at: finalizedAt,
-    result: computeTierResult(tier, items),
+    result,
+    versions: [originalVersion],
   };
 }
 
@@ -48,16 +64,16 @@ function buildSeedProject(input: {
   projectRegion: string;
   createdAt: string;
   segments: { name: string; floor: string; area: number; treatment: string }[];
-  quoteIdPractical: number;
+  quoteIdEconomic: number;
   quoteIdPremium: number;
   acceptedTier?: ProvisionalTier;
 }): SavedProjectRecord {
   const segments = seedSegments(input.segments);
-  const practical = buildSnapshot(segments, 'Practical', input.quoteGroupId, input.quoteIdPractical, 'Uploaded', input.createdAt);
+  const economic = buildSnapshot(segments, 'Economic', input.quoteGroupId, input.quoteIdEconomic, 'Uploaded', input.createdAt);
   const premium = buildSnapshot(segments, 'Premium', input.quoteGroupId, input.quoteIdPremium, 'Uploaded', input.createdAt);
-  if (input.acceptedTier === 'Practical') practical.is_selected = true;
+  if (input.acceptedTier === 'Economic') economic.is_selected = true;
   if (input.acceptedTier === 'Premium') premium.is_selected = true;
-  if (input.acceptedTier) (input.acceptedTier === 'Practical' ? premium : practical).is_selected = false;
+  if (input.acceptedTier) (input.acceptedTier === 'Economic' ? premium : economic).is_selected = false;
   return {
     project_id: input.projectId,
     quote_group_id: input.quoteGroupId,
@@ -69,7 +85,11 @@ function buildSeedProject(input: {
     status: 'Final',
     created_at: input.createdAt,
     updated_at: input.createdAt,
-    quotes: { Practical: practical, Premium: premium },
+    quotes: { Economic: economic, Premium: premium },
+    // Seed projects were never actually blueprint-scanned — null here is honest, not a
+    // gap; see savedProjectsTypes.ts's blueprintFloors doc.
+    blueprintFloors: null,
+    segmentsSnapshot: segments,
   };
 }
 
@@ -87,7 +107,7 @@ let projects: SavedProjectRecord[] = [
     projectLocation: 'San Juan, Metro Manila',
     projectRegion: 'NCR',
     createdAt: '2026-05-14T10:00:00.000Z',
-    quoteIdPractical: 9101,
+    quoteIdEconomic: 9101,
     quoteIdPremium: 9102,
     acceptedTier: 'Premium',
     segments: [
@@ -104,7 +124,7 @@ let projects: SavedProjectRecord[] = [
     projectLocation: 'Cabuyao, Laguna',
     projectRegion: 'Region IV-A',
     createdAt: '2026-06-02T14:30:00.000Z',
-    quoteIdPractical: 9103,
+    quoteIdEconomic: 9103,
     quoteIdPremium: 9104,
     segments: [
       { name: 'Main Warehouse Roof', floor: 'Roof', area: 310.5, treatment: 'Elastomeric Waterproofing' },
@@ -157,17 +177,25 @@ export function saveFinalizedQuotation(input: {
   projectRegion: string;
   tierItems: Record<ProvisionalTier, Parameters<typeof computeTierResult>[1]>;
   pricelistBasis: PricelistBasis;
+  // Task 7, Part B — carried into the saved record so Open Projects' detail view can show
+  // the same Segment Breakdown split-view preview the live wizard did. null/empty when this
+  // quote wasn't blueprint-sourced.
+  segments: DraftSegment[];
+  blueprintFloors: BlueprintFloor[] | null;
 }): SavedProjectRecord {
   const now = new Date().toISOString();
   const quoteGroupId = stagingId('qg');
-  const practical: SavedQuoteSnapshot = {
+  const economicResult = computeTierResult('Economic', input.tierItems.Economic);
+  const premiumResult = computeTierResult('Premium', input.tierItems.Premium);
+  const economic: SavedQuoteSnapshot = {
     quote_id: nextQuoteId++,
-    tier: 'Practical',
+    tier: 'Economic',
     quote_group_id: quoteGroupId,
     is_selected: null,
     pricelist_basis_at_finalize: input.pricelistBasis,
     finalized_at: now,
-    result: computeTierResult('Practical', input.tierItems.Practical),
+    result: economicResult,
+    versions: [{ version_id: stagingId('qver'), version_number: 1, price_reference_date: now, created_at: now, result: economicResult }],
   };
   const premium: SavedQuoteSnapshot = {
     quote_id: nextQuoteId++,
@@ -176,7 +204,8 @@ export function saveFinalizedQuotation(input: {
     is_selected: null,
     pricelist_basis_at_finalize: input.pricelistBasis,
     finalized_at: now,
-    result: computeTierResult('Premium', input.tierItems.Premium),
+    result: premiumResult,
+    versions: [{ version_id: stagingId('qver'), version_number: 1, price_reference_date: now, created_at: now, result: premiumResult }],
   };
   const record: SavedProjectRecord = {
     project_id: stagingId('proj'),
@@ -189,7 +218,9 @@ export function saveFinalizedQuotation(input: {
     status: 'Final',
     created_at: now,
     updated_at: now,
-    quotes: { Practical: practical, Premium: premium },
+    quotes: { Economic: economic, Premium: premium },
+    blueprintFloors: input.blueprintFloors,
+    segmentsSnapshot: input.segments,
   };
   projects = [record, ...projects];
   notify();
@@ -206,9 +237,42 @@ export function setAcceptedTier(projectId: string, tier: ProvisionalTier | null)
       ...p,
       updated_at: new Date().toISOString(),
       quotes: {
-        Practical: { ...p.quotes.Practical, is_selected: tier === null ? null : tier === 'Practical' },
+        Economic: { ...p.quotes.Economic, is_selected: tier === null ? null : tier === 'Economic' },
         Premium: { ...p.quotes.Premium, is_selected: tier === null ? null : tier === 'Premium' },
       },
+    };
+  });
+  notify();
+}
+
+// Task 6, Part C — "Refresh Prices": re-prices the LATEST version's item lines against
+// today's mock rates (priceRefreshFixtures.ts) and APPENDS the result as a new version. Never
+// touches versions[0] (the original) or any earlier version — audit-safe by construction,
+// since nothing here reassigns an existing array entry, only pushes a new one. Sourced from
+// the latest version (not always the original) so repeated refreshes compound forward, the
+// same way a real "prices increased again since last refresh" scenario would.
+export function refreshQuotePrices(projectId: string, tier: ProvisionalTier): void {
+  const now = new Date().toISOString();
+  projects = projects.map((p) => {
+    if (p.project_id !== projectId) return p;
+    const snapshot = p.quotes[tier];
+    const latest = snapshot.versions[snapshot.versions.length - 1];
+    const repricedItems = repriceItemLines(latest.result.items, tier, snapshot.pricelist_basis_at_finalize, now);
+    const newResult = computeTierResult(tier, repricedItems, {
+      vatInclusive: latest.result.vat_inclusive,
+      downpaymentPercentage: latest.result.downpayment_percentage,
+    });
+    const newVersion: SavedQuoteVersion = {
+      version_id: stagingId('qver'),
+      version_number: latest.version_number + 1,
+      price_reference_date: now,
+      created_at: now,
+      result: newResult,
+    };
+    return {
+      ...p,
+      updated_at: now,
+      quotes: { ...p.quotes, [tier]: { ...snapshot, versions: [...snapshot.versions, newVersion] } },
     };
   });
   notify();

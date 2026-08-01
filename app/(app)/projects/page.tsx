@@ -1,6 +1,6 @@
 "use client";
 
-// Part C — "each row = a project," grouping the two saved tier snapshots (Practical/
+// Part C — "each row = a project," grouping the two saved tier snapshots (Economic/
 // Premium) that came out of one Finalize (see lib/dev/provisional/savedProjectsStore.ts).
 // The real /api/quotations endpoint returns flat, per-tier quotation rows with no
 // quote_group_id/tier concept to group them by (that's exactly what's provisional —
@@ -12,9 +12,11 @@ import type { ColumnDef } from "@tanstack/react-table";
 import { Plus, Search } from "lucide-react";
 import { RequireOnboardingStep } from "@/components/auth/RequireOnboardingStep";
 import { DataTable } from "@/components/data-table/DataTable";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useRouter } from "next/navigation";
 import { useSavedProjects } from "@/lib/dev/provisional/savedProjectsStore";
 import type { SavedProjectRecord } from "@/lib/dev/provisional/savedProjectsTypes";
+import { MyClientsTab } from "@/features/clients/components/MyClientsTab";
 
 function formatDate(iso: string) {
   const d = new Date(iso);
@@ -34,8 +36,8 @@ function StatusBadge({ status }: { status: SavedProjectRecord["status"] }) {
 // the project detail page) — reads is_selected off whichever snapshot has it true. Neither
 // tier is selected immediately after Finalize (Part B); this shows that honestly too.
 function AcceptedBadge({ project }: { project: SavedProjectRecord }) {
-  if (project.quotes.Practical.is_selected) {
-    return <span className="rounded-full bg-orange-50 px-2.5 py-0.5 text-[11px] font-bold text-primary">Practical accepted</span>;
+  if (project.quotes.Economic.is_selected) {
+    return <span className="rounded-full bg-orange-50 px-2.5 py-0.5 text-[11px] font-bold text-primary">Economic accepted</span>;
   }
   if (project.quotes.Premium.is_selected) {
     return <span className="rounded-full bg-indigo-50 px-2.5 py-0.5 text-[11px] font-bold text-indigo-600">Premium accepted</span>;
@@ -142,10 +144,30 @@ function OpenProjectsContent() {
   );
 }
 
+// PART B (Task 6) — Open Projects restructured into two tabs: the existing quote/project
+// list (unchanged, now tab 1) and the new My Clients tab (tab 2). Project detail navigation
+// and the read-only breakdown reuse are untouched by this split.
+function OpenProjectsTabs() {
+  return (
+    <Tabs defaultValue="projects" className="flex flex-col gap-5">
+      <TabsList className="w-fit">
+        <TabsTrigger value="projects">Quotations / Projects</TabsTrigger>
+        <TabsTrigger value="clients">My Clients</TabsTrigger>
+      </TabsList>
+      <TabsContent value="projects">
+        <OpenProjectsContent />
+      </TabsContent>
+      <TabsContent value="clients">
+        <MyClientsTab />
+      </TabsContent>
+    </Tabs>
+  );
+}
+
 export default function ProjectsPage() {
   return (
     <RequireOnboardingStep minStep={2}>
-      <OpenProjectsContent />
+      <OpenProjectsTabs />
     </RequireOnboardingStep>
   );
 }
