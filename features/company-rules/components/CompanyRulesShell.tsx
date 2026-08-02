@@ -40,8 +40,17 @@ const TABS = [
 
 type TabId = (typeof TABS)[number]["id"];
 
+const RULE_KIND_TO_TAB: Record<string, TabId> = {
+  "scope-templates": "scope-templates",
+  "material-rules": "material-rules",
+  "labor-rules": "labor-rules",
+  "pricing-strategy": "pricing-strategy",
+  "unit-rules": "unit-rules",
+};
+
 export default function CompanyRulesShell() {
   const [activeTab, setActiveTab] = useState<TabId>("scope-templates");
+  const [completedTabs, setCompletedTabs] = useState<Set<TabId>>(new Set());
   // "Manage Existing Rules" rows jump to the rule's owning tab with that rule
   // pre-selected, instead of dumping the user on the tab with no idea what to look for.
   const [focusRuleId, setFocusRuleId] = useState<string | null>(null);
@@ -56,35 +65,72 @@ export default function CompanyRulesShell() {
   // a deferred placeholder — there's no save flow yet, so a dot there could never clear)
   // and so is Manage Existing Rules (a management/utility tab, not a "configure this" one).
   const { currentUser, updateOnboardingStep } = useAuth();
-  const { templates } = useScopeTemplates();
-  const { rules: materialRules } = useMaterialRules();
-  const { rules: laborRules } = useLaborRules();
-  const { strategies } = usePricingStrategies();
-  const { rules: unitRules } = useUnitRules();
+  const scopeTemplates = useScopeTemplates();
+  const material = useMaterialRules();
+  const labor = useLaborRules();
+  const pricing = usePricingStrategies();
+  const units = useUnitRules();
+  const templates = scopeTemplates.templates;
+  const materialRules = material.rules;
+  const laborRules = labor.rules;
+  const strategies = pricing.strategies;
+  const unitRules = units.rules;
+  const refetchScopeTemplates = scopeTemplates.refetch;
+  const refetchMaterialRules = material.refetch;
+  const refetchLaborRules = labor.refetch;
+  const refetchPricingStrategies = pricing.refetch;
+  const refetchUnitRules = units.refetch;
 
   const needsAttention: Partial<Record<TabId, boolean>> = {
-    "scope-templates": templates.length === 0,
-    "material-rules": materialRules.length === 0,
-    "labor-rules": laborRules.length === 0,
-    "pricing-strategy": strategies.length === 0,
-    "unit-rules": unitRules.length === 0,
+    "scope-templates": templates.length === 0 && !completedTabs.has("scope-templates"),
+    "material-rules": materialRules.length === 0 && !completedTabs.has("material-rules"),
+    "labor-rules": laborRules.length === 0 && !completedTabs.has("labor-rules"),
+    "pricing-strategy": strategies.length === 0 && !completedTabs.has("pricing-strategy"),
+    "unit-rules": unitRules.length === 0 && !completedTabs.has("unit-rules"),
   };
 
-  // Step 1 -> 2 onboarding gate (see lib/onboarding.ts's hasCompletedCompanyRulesStep for
-  // the flagged decision this reads). Correction 2: deliberately does NOT factor in
-  // scopeTemplateCount — a specialty contractor may never create one, and Scope Templates
-  // must not gate anything.
+  // Step 1 -> 2 onboarding gate. This intentionally matches the tabs that show orange
+  // setup dots: once all dotted tabs have at least one saved rule/configuration, the
+  // sidebar unlocks Quotation Generation, Open Projects, Price Trends, and Benchmark Suppliers.
   const rulesConfigured = hasCompletedCompanyRulesStep({
     scopeTemplateCount: templates.length,
     materialRuleCount: materialRules.length,
     laborRuleCount: laborRules.length,
     pricingStrategyCount: strategies.length,
     unitRuleCount: unitRules.length,
-  });
+  }) || (
+    completedTabs.has("scope-templates") &&
+    completedTabs.has("material-rules") &&
+    completedTabs.has("labor-rules") &&
+    completedTabs.has("pricing-strategy") &&
+    completedTabs.has("unit-rules")
+  );
 
   useEffect(() => {
-    if (currentUser && rulesConfigured) {
+    const handleRulesChanged = (event: Event) => {
+      const kind = event instanceof CustomEvent ? event.detail?.kind : null;
+      const tab = typeof kind === "string" ? RULE_KIND_TO_TAB[kind] : null;
+      if (tab) {
+        setCompletedTabs((current) => new Set(current).add(tab));
+      }
+      refetchScopeTemplates();
+      refetchMaterialRules();
+      refetchLaborRules();
+      refetchPricingStrategies();
+      refetchUnitRules();
+    };
+
+    window.addEventListener("buildsmart:company-rules-changed", handleRulesChanged);
+    return () => window.removeEventListener("buildsmart:company-rules-changed", handleRulesChanged);
+  }, [refetchScopeTemplates, refetchMaterialRules, refetchLaborRules, refetchPricingStrategies, refetchUnitRules]);
+
+  useEffect(() => {
+    if (!currentUser) return;
+
+    if (rulesConfigured) {
       advanceOnboardingStep(currentUser.onboardingStep, 2, updateOnboardingStep);
+    } else if (currentUser.onboardingStep > 1) {
+      updateOnboardingStep(1);
     }
     // updateOnboardingStep is recreated every AuthProvider render; advanceOnboardingStep
     // no-ops once past the target step, so omitting it here can't miss or double-fire.

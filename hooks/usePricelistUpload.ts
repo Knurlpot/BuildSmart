@@ -185,9 +185,10 @@ export function usePricelistUpload() {
   const upload = useMutation<UploadResponse>();
   const commit = useMutation<CommitResponse>();
 
-  const uploadFiles = async (files: File[]) => {
+  const uploadFiles = async (files: File[], effectiveDate?: string) => {
     const form = new FormData();
     files.forEach((f) => form.append('files', f));
+    if (effectiveDate) form.append('effective_date', effectiveDate);
     const res = await upload.mutate('/api/pricelist/upload', form, 'POST');
     setColumns(res.columns ?? []);
     setItemRows(res.item_rows ?? []);

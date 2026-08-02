@@ -1,6 +1,6 @@
 import shutil
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 from typing import Literal
 
@@ -46,12 +46,25 @@ def _default_period() -> tuple[str, int]:
     return quarter, now.year
 
 
+def _default_effective_date() -> date:
+    return date.today()
+
+
+def _parse_effective_date(value: str | None) -> date:
+    if not value:
+        return _default_effective_date()
+    try:
+        return date.fromisoformat(value)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=f"Invalid effective_date: {value}. Use YYYY-MM-DD") from exc
+
+
 class UploadResponse(BaseModel):
     task_id: str | None = None
     status: str | None = None
     message: str | None = None
     upload_id: int | None = None
-    allow_skip_review: bool = False
+    allow_skip_review: bool | None = None
     records_imported: int | None = None
 
 
@@ -151,6 +164,7 @@ class DpwhCatalogRow(BaseModel):
     item_name: str | None
     category_type: str | None
     region: str | None
+    effective_date: date
     quarter: str | None
     year: int | None
     price: float
@@ -241,6 +255,43 @@ def _find_existing_item(
     return db.execute(statement.order_by(Items.item_code.desc())).scalars().first()
 
 
+def _find_existing_item_for_price_update(
+    db: Session,
+    *,
+    item_name: str,
+    unit: str,
+    item_source: str,
+    company_id: int | None,
+    brand: str,
+    description: str | None,
+) -> Items | None:
+    strict = _find_existing_item(
+        db,
+        item_name=item_name,
+        description=description,
+        brand=brand,
+        unit=unit,
+        item_source=item_source,
+        company_id=company_id,
+    )
+    if strict is not None:
+        return strict
+
+    statement = (
+        select(Items)
+        .where(func.lower(Items.item_name) == item_name.lower())
+        .where(func.lower(Items.unit) == unit.lower())
+        .where(func.lower(Items.item_source) == item_source.lower())
+    )
+    if brand and brand.lower() != "generic":
+        statement = statement.where(func.lower(Items.brand) == brand.lower())
+    if company_id is None:
+        statement = statement.where(Items.company_id.is_(None))
+    else:
+        statement = statement.where((Items.company_id.is_(None)) | (Items.company_id == company_id))
+    return db.execute(statement.order_by(Items.company_id.desc().nulls_last(), Items.item_code.desc())).scalars().first()
+
+
 def _save_review_item_to_catalog(row: PriceListReviewItem, db: Session) -> None:
     item_name = row.raw_name.strip()
     unit = row.raw_unit.strip()
@@ -251,6 +302,7 @@ def _save_review_item_to_catalog(row: PriceListReviewItem, db: Session) -> None:
     supplier_id = row.supplier_id
     company_id = row.company_id
     upload = db.get(PriceListUpload, row.upload_id) if row.upload_id is not None else None
+    effective_date = upload.effective_date if upload is not None and upload.effective_date is not None else _default_effective_date()
 
     if supplier_id is not None:
         supplier_exists = db.execute(
@@ -260,7 +312,7 @@ def _save_review_item_to_catalog(row: PriceListReviewItem, db: Session) -> None:
         if supplier_exists is None:
             supplier_id = None
 
-    existing = _find_existing_item(
+    existing = _find_existing_item_for_price_update(
         db,
         item_name=item_name,
         description=description,
@@ -290,29 +342,30 @@ def _save_review_item_to_catalog(row: PriceListReviewItem, db: Session) -> None:
         if description and not item.description:
             item.description = description
 
-    # Avoid duplicate historical rows from repeated approve clicks.
-    duplicate = db.execute(
+    existing_price = db.execute(
         select(HistoricalPriceRecord)
         .where(HistoricalPriceRecord.item_code == item.item_code)
         .where(HistoricalPriceRecord.supplier_id == supplier_id)
         .where(HistoricalPriceRecord.price_source == source)
-        .where(HistoricalPriceRecord.quarter == (upload.quarter if upload is not None else None))
-        .where(HistoricalPriceRecord.year == (upload.year if upload is not None else None))
-        .where(HistoricalPriceRecord.price == float(row.raw_price))
+        .where(HistoricalPriceRecord.effective_date == effective_date)
         .order_by(HistoricalPriceRecord.historicalrec_id.desc())
     ).scalars().first()
 
-    if duplicate is None:
+    if existing_price is None:
         db.add(
             HistoricalPriceRecord(
                 item_code=item.item_code,
                 supplier_id=supplier_id,
                 price_source=source,
+                effective_date=effective_date,
                 quarter=upload.quarter if upload is not None else None,
                 year=upload.year if upload is not None else None,
                 price=float(row.raw_price),
             )
         )
+    else:
+        existing_price.price = float(row.raw_price)
+        existing_price.recorded_at = datetime.now()
 
     # Remember this human-confirmed mapping so future uploads of the same raw
     # text skip re-scoring entirely (see app.services.match_cache). Keyed on
@@ -351,7 +404,23 @@ def _upload_has_review_history(upload_id: int, db: Session) -> bool:
     return review_count > 0
 
 
-@router.post("/upload", response_model=UploadResponse)
+def _upload_has_catalog_rows(upload: PriceListUpload, db: Session) -> bool:
+    statement = (
+        select(func.count())
+        .select_from(HistoricalPriceRecord)
+        .join(Items, HistoricalPriceRecord.item_code == Items.item_code)
+        .where(HistoricalPriceRecord.price_source == (upload.source or "Supplier"))
+        .where(HistoricalPriceRecord.effective_date == upload.effective_date)
+    )
+    if upload.supplier_id is None:
+        statement = statement.where(HistoricalPriceRecord.supplier_id.is_(None))
+    else:
+        statement = statement.where(HistoricalPriceRecord.supplier_id == upload.supplier_id)
+    statement = statement.where((Items.company_id.is_(None)) | (Items.company_id == upload.company_id))
+    return db.execute(statement).scalar_one() > 0
+
+
+@router.post("/upload", response_model=UploadResponse, response_model_exclude_none=True)
 async def upload_pricelist(
     file: UploadFile = File(...),
     source: str = Form(...),
@@ -359,6 +428,7 @@ async def upload_pricelist(
     company_id: int | None = Form(None),
     quarter: str | None = Form(None),
     year: int | None = Form(None),
+    effective_date: str | None = Form(None),
     db: Session = Depends(get_db),
 ):
     suffix = Path(file.filename).suffix
@@ -369,6 +439,7 @@ async def upload_pricelist(
 
     default_quarter, default_year = _default_period()
     period_quarter, period_year = quarter or default_quarter, year or default_year
+    upload_effective_date = _parse_effective_date(effective_date)
     file_hash = calculate_file_hash(dest)
     file_size = calculate_file_size(dest)
     db_upload: PriceListUpload | None = None
@@ -380,8 +451,7 @@ async def upload_pricelist(
             .where(
                 PriceListUpload.company_id != company_id,
                 PriceListUpload.file_hash == file_hash,
-                PriceListUpload.quarter == period_quarter,
-                PriceListUpload.year == period_year,
+                PriceListUpload.effective_date == upload_effective_date,
                 PriceListUpload.processing_status == "completed",
             )
             .order_by(PriceListUpload.upload_timestamp.desc(), PriceListUpload.upload_id.desc())
@@ -393,8 +463,7 @@ async def upload_pricelist(
             .where(
                 PriceListUpload.company_id == company_id,
                 PriceListUpload.file_hash == file_hash,
-                PriceListUpload.quarter == period_quarter,
-                PriceListUpload.year == period_year,
+                PriceListUpload.effective_date == upload_effective_date,
             )
             .order_by(PriceListUpload.upload_timestamp.desc(), PriceListUpload.upload_id.desc())
         ).scalars().first()
@@ -407,7 +476,12 @@ async def upload_pricelist(
             )
         )
 
-        if existing_upload is not None and existing_upload.processing_status == "completed" and existing_upload_is_reviewed:
+        if (
+            existing_upload is not None
+            and existing_upload.processing_status == "completed"
+            and existing_upload_is_reviewed
+            and _upload_has_catalog_rows(existing_upload, db)
+        ):
             dest.unlink(missing_ok=True)
             return UploadResponse(
                 status="already_approved",
@@ -423,6 +497,9 @@ async def upload_pricelist(
             db_upload.file_size = file_size
             db_upload.source = source.strip() or "Supplier"
             db_upload.supplier_id = supplier_id
+            db_upload.effective_date = upload_effective_date
+            db_upload.quarter = period_quarter
+            db_upload.year = period_year
             db_upload.processing_status = "pending"
             db_upload.records_imported = None
             db_upload.error_message = None
@@ -434,6 +511,7 @@ async def upload_pricelist(
                 file_size=file_size,
                 source=source.strip() or "Supplier",
                 supplier_id=supplier_id,
+                effective_date=upload_effective_date,
                 quarter=period_quarter,
                 year=period_year,
                 processing_status="pending",
@@ -481,15 +559,16 @@ async def upload_pricelist(
         supplier_id,
         None,
         company_id,
-        db_upload.upload_id if db_upload is not None else None,
-        period_quarter,
-        period_year,
-        force_review_for_cross_company_file,
+        upload_id=db_upload.upload_id if db_upload is not None else None,
+        quarter=period_quarter,
+        year=period_year,
+        effective_date=upload_effective_date.isoformat(),
+        force_review=force_review_for_cross_company_file,
     )
     return UploadResponse(task_id=task.id)
 
 
-@router.post("/upload/{upload_id}/confirm-mapping", response_model=UploadResponse)
+@router.post("/upload/{upload_id}/confirm-mapping", response_model=UploadResponse, response_model_exclude_none=True)
 async def confirm_column_mapping(
     upload_id: str,
     raw_name_column: str = Form(...),
@@ -500,6 +579,7 @@ async def confirm_column_mapping(
     company_id: int | None = Form(None),
     quarter: str | None = Form(None),
     year: int | None = Form(None),
+    effective_date: str | None = Form(None),
     db: Session = Depends(get_db),
 ):
     matches = list(UPLOAD_DIR.glob(f"{upload_id}.*"))
@@ -508,6 +588,7 @@ async def confirm_column_mapping(
     dest = matches[0]
     default_quarter, default_year = _default_period()
     period_quarter, period_year = quarter or default_quarter, year or default_year
+    upload_effective_date = _parse_effective_date(effective_date)
     db_upload: PriceListUpload | None = None
     force_review_for_cross_company_file = False
 
@@ -519,8 +600,7 @@ async def confirm_column_mapping(
             .where(
                 PriceListUpload.company_id != company_id,
                 PriceListUpload.file_hash == file_hash,
-                PriceListUpload.quarter == period_quarter,
-                PriceListUpload.year == period_year,
+                PriceListUpload.effective_date == upload_effective_date,
                 PriceListUpload.processing_status == "completed",
             )
             .order_by(PriceListUpload.upload_timestamp.desc(), PriceListUpload.upload_id.desc())
@@ -532,8 +612,7 @@ async def confirm_column_mapping(
             .where(
                 PriceListUpload.company_id == company_id,
                 PriceListUpload.file_hash == file_hash,
-                PriceListUpload.quarter == period_quarter,
-                PriceListUpload.year == period_year,
+                PriceListUpload.effective_date == upload_effective_date,
             )
             .order_by(PriceListUpload.upload_timestamp.desc(), PriceListUpload.upload_id.desc())
         ).scalars().first()
@@ -546,7 +625,12 @@ async def confirm_column_mapping(
             )
         )
 
-        if existing_upload is not None and existing_upload.processing_status == "completed" and existing_upload_is_reviewed:
+        if (
+            existing_upload is not None
+            and existing_upload.processing_status == "completed"
+            and existing_upload_is_reviewed
+            and _upload_has_catalog_rows(existing_upload, db)
+        ):
             dest.unlink(missing_ok=True)
             return UploadResponse(
                 status="already_approved",
@@ -561,6 +645,9 @@ async def confirm_column_mapping(
             db_upload.file_size = file_size
             db_upload.source = source.strip() or "Supplier"
             db_upload.supplier_id = supplier_id
+            db_upload.effective_date = upload_effective_date
+            db_upload.quarter = period_quarter
+            db_upload.year = period_year
             db_upload.processing_status = "pending"
             db_upload.records_imported = None
             db_upload.error_message = None
@@ -572,6 +659,7 @@ async def confirm_column_mapping(
                 file_size=file_size,
                 source=source.strip() or "Supplier",
                 supplier_id=supplier_id,
+                effective_date=upload_effective_date,
                 quarter=period_quarter,
                 year=period_year,
                 processing_status="pending",
@@ -614,10 +702,11 @@ async def confirm_column_mapping(
         supplier_id,
         column_mapping,
         company_id,
-        db_upload.upload_id if db_upload is not None else None,
-        period_quarter,
-        period_year,
-        force_review_for_cross_company_file,
+        upload_id=db_upload.upload_id if db_upload is not None else None,
+        quarter=period_quarter,
+        year=period_year,
+        effective_date=upload_effective_date.isoformat(),
+        force_review=force_review_for_cross_company_file,
     )
     return UploadResponse(task_id=task.id)
 
@@ -767,6 +856,7 @@ def get_dpwh_catalog(db: Session = Depends(get_db)):
             Items.item_name,
             Category.category_type,
             HistoricalPriceRecord.region,
+            HistoricalPriceRecord.effective_date,
             HistoricalPriceRecord.quarter,
             HistoricalPriceRecord.year,
             HistoricalPriceRecord.price,
@@ -775,7 +865,7 @@ def get_dpwh_catalog(db: Session = Depends(get_db)):
         .outerjoin(Items, HistoricalPriceRecord.item_code == Items.item_code)
         .outerjoin(Category, Items.category_id == Category.category_id)
         .where(HistoricalPriceRecord.price_source == "DPWH")
-        .order_by(HistoricalPriceRecord.recorded_at.desc())
+        .order_by(HistoricalPriceRecord.effective_date.desc(), HistoricalPriceRecord.recorded_at.desc())
     ).all()
 
     return [
@@ -785,6 +875,7 @@ def get_dpwh_catalog(db: Session = Depends(get_db)):
             item_name=row.item_name,
             category_type=row.category_type,
             region=row.region,
+            effective_date=row.effective_date,
             quarter=row.quarter,
             year=row.year,
             price=float(row.price),

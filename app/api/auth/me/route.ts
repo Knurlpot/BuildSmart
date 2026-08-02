@@ -23,7 +23,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "User not found" }, { status: 404 });
   }
 
-  const onboardingStep = Math.max(session.onboardingStep, await resolvePersistedOnboardingStep(user.company_id));
+  const onboardingStep = await resolvePersistedOnboardingStep(user.company_id);
   const response = NextResponse.json(toAuthUser(user, onboardingStep));
   if (onboardingStep !== session.onboardingStep) {
     setSessionCookie(response, user.user_id, onboardingStep);

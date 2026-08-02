@@ -87,12 +87,13 @@ function EditableAmount({ value, onCommit }: { value: number; onCommit: (n: numb
   );
 }
 
-// Part D — supplier picker: price AND stock side by side so the user can weigh
-// cheaper-but-short against costlier-but-sufficient themselves, never auto-resolved.
+// Part C (Task 7) — supplier picker is PRICE-ONLY. Backend decision: the system does not
+// track supplier stock/availability at all (out of scope — a quoting tool, not inventory) —
+// there is no quantity_available field on ProvisionalSupplierOption anymore, so there is
+// nothing here to compare it against.
 function SupplierPicker({ line, onSelect }: { line: ProvisionalItemLine; onSelect: (supplierId: number) => void }) {
   const [open, setOpen] = useState(false);
   const selected = line.supplier_options.find((s) => s.supplier_id === line.selected_supplier_id);
-  const hasConflict = selected && selected.quantity_available !== null && selected.quantity_available < line.quantity;
 
   if (line.supplier_options.length === 0) return <span className="text-gray-400">—</span>;
 
@@ -101,19 +102,17 @@ function SupplierPicker({ line, onSelect }: { line: ProvisionalItemLine; onSelec
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className={`flex w-full items-center justify-between gap-1 rounded-lg border px-2 py-1.5 text-xs transition-colors ${hasConflict ? "border-red-300 bg-red-50" : "border-gray-200 bg-white hover:border-gray-300"}`}
+        className="flex w-full items-center justify-between gap-1 rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-xs transition-colors hover:border-gray-300"
       >
         <span className="truncate font-medium text-gray-700">{selected?.supplier_name ?? "Select…"}</span>
-        {hasConflict && <AlertTriangle className="h-3 w-3 shrink-0 text-red-500" />}
         <ChevronDown className="h-3 w-3 shrink-0 text-gray-400" />
       </button>
       {open && (
         <div className="absolute left-0 top-full z-50 mt-1 w-72 rounded-xl border border-gray-200 bg-white shadow-xl">
           <div className="border-b border-gray-100 px-3 py-2">
-            <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Need {line.quantity.toFixed(1)} {line.unit}</p>
+            <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Compare by price — {line.quantity.toFixed(1)} {line.unit} needed</p>
           </div>
           {line.supplier_options.map((sup) => {
-            const conflict = sup.quantity_available !== null && sup.quantity_available < line.quantity;
             const isSel = sup.supplier_id === line.selected_supplier_id;
             return (
               <button
@@ -123,22 +122,9 @@ function SupplierPicker({ line, onSelect }: { line: ProvisionalItemLine; onSelec
                   onSelect(sup.supplier_id);
                   setOpen(false);
                 }}
-                className={`flex w-full items-start justify-between px-3 py-2.5 text-left text-xs transition-colors hover:bg-gray-50 ${isSel ? "bg-orange-50/60" : ""}`}
+                className={`flex w-full items-center justify-between px-3 py-2.5 text-left text-xs transition-colors hover:bg-gray-50 ${isSel ? "bg-orange-50/60" : ""}`}
               >
-                <div className="flex flex-col items-start gap-0.5">
-                  <span className={`font-semibold ${isSel ? "text-primary" : "text-gray-800"}`}>{sup.supplier_name}</span>
-                  <span className="text-gray-500">
-                    Stock:{" "}
-                    <span className={conflict ? "font-bold text-red-600" : "font-semibold text-gray-700"}>
-                      {sup.quantity_available === null ? "Unlimited" : `${sup.quantity_available.toFixed(0)} ${line.unit}`}
-                    </span>
-                  </span>
-                  {conflict && (
-                    <span className="flex items-center gap-0.5 text-red-500">
-                      <AlertTriangle className="h-2.5 w-2.5" /> Insufficient for this quote
-                    </span>
-                  )}
-                </div>
+                <span className={`font-semibold ${isSel ? "text-primary" : "text-gray-800"}`}>{sup.supplier_name}</span>
                 <span className="font-bold text-gray-900">{fmtPeso(sup.unit_price)}</span>
               </button>
             );
@@ -206,10 +192,6 @@ export function MinorRevisionPanel({ tier, originalItems, items, onItemsChange, 
   const originalTotal = computeTierResult(tier, originalItems).grand_total;
   const revisedTotal = computeTierResult(tier, items).grand_total;
   const diff = revisedTotal - originalTotal;
-  const conflicts = items.filter((l) => {
-    const sup = l.supplier_options.find((s) => s.supplier_id === l.selected_supplier_id);
-    return sup && sup.quantity_available !== null && sup.quantity_available < l.quantity;
-  });
 
   const patchLine = (lineId: string, patch: Parameters<typeof recomputeItemLine>[1]) => {
     onItemsChange(items.map((l) => (l.line_id === lineId ? recomputeItemLine(l, patch) : l)));
@@ -251,16 +233,6 @@ export function MinorRevisionPanel({ tier, originalItems, items, onItemsChange, 
             </button>
           </div>
         </div>
-
-        {conflicts.length > 0 && (
-          <div className="flex shrink-0 items-start gap-3 border-b border-red-200 bg-red-50 px-6 py-3">
-            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-red-500" />
-            <p className="text-xs text-red-700">
-              {conflicts.length} supplier quantity conflict{conflicts.length > 1 ? "s" : ""} — switch to a supplier with
-              sufficient stock, or adjust the quantity.
-            </p>
-          </div>
-        )}
 
         <div className="flex-1 overflow-y-auto">
           <table className="w-full text-xs">

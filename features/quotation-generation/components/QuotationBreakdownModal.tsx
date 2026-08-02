@@ -1,10 +1,13 @@
 "use client";
 
 import { useState } from "react";
-import { AlertTriangle, BarChart2, BookOpen, Database, FileText, Layers, ShoppingBag, X } from "lucide-react";
+import { AlertTriangle, BarChart2, BookOpen, ChevronDown, ChevronUp, Database, FileText, Layers, ShoppingBag, X } from "lucide-react";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { fmtPeso } from "@/lib/dev/provisional/quotationBreakdownFixtures";
 import type { ItemCategory, PricelistBasis, ProvisionalItemLine, ProvisionalQuotationTierResult, ProvisionalTier } from "@/lib/dev/provisional/quotationBreakdownTypes";
+import type { BlueprintFloor } from "@/lib/dev/provisional/quotationGenerationTypes";
+import type { DraftSegment } from "../lib/draftSegment";
+import { SegmentBlueprintPreview } from "./SegmentBlueprintPreview";
 
 type TabId = "segments" | "boq" | "cost-summary" | "benchmarking";
 
@@ -20,9 +23,16 @@ interface QuotationBreakdownModalProps {
   // this and gets the real interactive toggle.
   onBasisChange?: (basis: PricelistBasis) => void;
   onClose: () => void;
+  // Task 7, Part B — Segment Breakdown's split-view blueprint preview (left half). null/
+  // undefined = this quote wasn't blueprint-sourced (Quick Measurement/Manual), OR (some
+  // saved projects) no blueprint snapshot was captured — either way the tab degrades to a
+  // segment list instead. `segments` carries the full DraftSegment[] (polygon_coords,
+  // confidence_score, etc.) BlueprintOverlay needs; `result.items` alone isn't enough.
+  blueprintFloors?: BlueprintFloor[] | null;
+  segments?: DraftSegment[];
 }
 
-const TIER_ACCENT: Record<ProvisionalTier, string> = { Practical: "text-primary", Premium: "text-indigo-600" };
+const TIER_ACCENT: Record<ProvisionalTier, string> = { Economic: "text-primary", Premium: "text-indigo-600" };
 const SOURCE_BADGE: Record<string, string> = {
   DPWH: "bg-blue-100 text-blue-700",
   PSA: "bg-purple-100 text-purple-700",
@@ -64,56 +74,130 @@ function CategoryChip({ category }: { category: ItemCategory }) {
   );
 }
 
+// Task 7, Part B — one COLLAPSIBLE deck per segment: the header (name, location, subtotal)
+// is always visible; expanding it reveals the same item-level breakdown + Pricing Reference
+// this tab always showed. Collapsed by default (`defaultOpen`) so a quote with many
+// segments doesn't dump every line at once — the right half of the split view.
+function SegmentCostDeck({ segLines, defaultOpen, hovered, onHoverChange }: { segLines: ProvisionalItemLine[]; defaultOpen: boolean; hovered: boolean; onHoverChange: (id: string | null) => void }) {
+  const [open, setOpen] = useState(defaultOpen);
+  const first = segLines[0];
+  const subtotal = segLines.reduce((sum, l) => sum + (l.total_cost ?? 0), 0);
+
+  return (
+    <div
+      className={`rounded-xl border bg-white shadow-sm transition-colors ${hovered ? "border-primary" : "border-gray-100"}`}
+      onMouseEnter={() => onHoverChange(first.segment_draft_id)}
+      onMouseLeave={() => onHoverChange(null)}
+    >
+      <button type="button" onClick={() => setOpen((o) => !o)} className="flex w-full items-center justify-between gap-3 p-4 text-left">
+        <div className="min-w-0">
+          <p className="truncate text-sm font-bold text-gray-900">{first.segment_name}</p>
+          <p className="truncate text-xs text-gray-400">
+            {first.floor_level || "—"} · {first.derived_area_sqm?.toFixed(1) ?? "—"} sqm · {first.treatment_type ?? "Treatment not specified"}
+          </p>
+        </div>
+        <div className="flex shrink-0 items-center gap-2">
+          <span className="text-sm font-bold text-gray-800">{fmtPeso(subtotal)}</span>
+          {open ? <ChevronUp className="h-4 w-4 text-gray-400" /> : <ChevronDown className="h-4 w-4 text-gray-400" />}
+        </div>
+      </button>
+      {open && (
+        <div className="grid grid-cols-1 gap-3 border-t border-gray-100 p-4 lg:grid-cols-2">
+          {segLines.map((line) => (
+            <div key={line.line_id} className="flex flex-col gap-2 rounded-lg border border-gray-100 p-3">
+              <div className="flex items-center gap-2">
+                <CategoryChip category={line.category} />
+                <p className="truncate text-xs font-semibold text-gray-800">{line.item_name}</p>
+              </div>
+              <p className="text-xs text-gray-500">
+                {line.unit_price === null ? (
+                  <span className="font-semibold text-amber-600">No rate on file — resolve in Minor Revision</span>
+                ) : line.category === "Material" ? (
+                  <>
+                    {line.derived_area_sqm?.toFixed(1)} sqm × {line.derived_coverage_per_sqm?.toFixed(2)} coverage ×{" "}
+                    {(1 + (line.derived_wastage_percentage ?? 0) / 100).toFixed(2)} wastage = <span className="font-semibold text-gray-800">{line.quantity.toFixed(1)} {line.unit}</span>
+                  </>
+                ) : (
+                  <>
+                    {line.derived_area_sqm?.toFixed(1)} sqm × {line.derived_coverage_per_sqm?.toFixed(2)} hrs/sqm ={" "}
+                    <span className="font-semibold text-gray-800">{line.quantity.toFixed(1)} {line.unit}</span>
+                  </>
+                )}
+              </p>
+              <PricingReferenceBox line={line} />
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Left-half fallback when there's no blueprint for this quote (Quick Measurement/Manual,
+ * or a saved project with no captured blueprint snapshot) — degrades to a plain segment
+ * list instead of leaving the split view's left half empty. Same segment grouping as the
+ * cost decks on the right, just area/floor/treatment instead of a polygon. */
+function SegmentListFallback({ items, hoveredId, onHoverChange }: { items: ProvisionalItemLine[]; hoveredId: string | null; onHoverChange: (id: string | null) => void }) {
+  const segmentIds = Array.from(new Set(items.map((l) => l.segment_draft_id)));
+  return (
+    <div className="rounded-xl border border-gray-100 bg-gray-50/60 p-4">
+      <p className="mb-2 text-[10px] font-bold uppercase tracking-wider text-gray-400">Segments · no blueprint for this quote</p>
+      <div className="flex flex-col divide-y divide-gray-100">
+        {segmentIds.map((segId) => {
+          const first = items.find((l) => l.segment_draft_id === segId)!;
+          return (
+            <div
+              key={segId}
+              onMouseEnter={() => onHoverChange(segId)}
+              onMouseLeave={() => onHoverChange(null)}
+              className={`flex items-center justify-between gap-3 rounded-lg px-2 py-2.5 transition-colors ${hoveredId === segId ? "bg-orange-50/60" : ""}`}
+            >
+              <div className="min-w-0">
+                <p className="truncate text-sm font-semibold text-gray-800">{first.segment_name}</p>
+                <p className="truncate text-xs text-gray-400">{first.floor_level || "—"} · {first.treatment_type ?? "Treatment not specified"}</p>
+              </div>
+              <span className="shrink-0 text-sm font-bold text-gray-700">{first.derived_area_sqm?.toFixed(1) ?? "—"} sqm</span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 // Part A — READ-ONLY. Every value below is plain text; there is no input, button-to-edit,
 // or click-to-change affordance anywhere in this component. Editing lives ONLY in Minor
 // Revision (MinorRevisionPanel.tsx) — a VIEW that silently let you change numbers would be
 // actively dangerous, not just a UX nitpick.
-function SegmentBreakdownTab({ items }: { items: ProvisionalItemLine[] }) {
+//
+// Task 7, Part B — split view: left half previews the blueprint (reusing BlueprintOverlay
+// exactly, via SegmentBlueprintPreview) when one exists for this quote, otherwise degrades
+// to SegmentListFallback; right half is one collapsible cost deck per segment.
+function SegmentBreakdownTab({ items, segments, blueprintFloors }: { items: ProvisionalItemLine[]; segments?: DraftSegment[]; blueprintFloors?: BlueprintFloor[] | null }) {
+  const [hoveredId, setHoveredId] = useState<string | null>(null);
   const segmentIds = Array.from(new Set(items.map((l) => l.segment_draft_id)));
+  const hasBlueprint = !!blueprintFloors && blueprintFloors.length > 0 && !!segments && segments.length > 0;
+
   return (
-    <div className="flex flex-col gap-4">
-      {segmentIds.map((segId) => {
-        const segLines = items.filter((l) => l.segment_draft_id === segId);
-        const first = segLines[0];
-        return (
-          <div key={segId} className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
-            <div className="mb-3 flex items-baseline justify-between">
-              <div>
-                <p className="text-sm font-bold text-gray-900">{first.segment_name}</p>
-                <p className="text-xs text-gray-400">
-                  {first.floor_level || "—"} · {first.derived_area_sqm?.toFixed(1) ?? "—"} sqm · {first.treatment_type ?? "Treatment not specified"}
-                </p>
-              </div>
-            </div>
-            <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-              {segLines.map((line) => (
-                <div key={line.line_id} className="flex flex-col gap-2 rounded-lg border border-gray-100 p-3">
-                  <div className="flex items-center gap-2">
-                    <CategoryChip category={line.category} />
-                    <p className="truncate text-xs font-semibold text-gray-800">{line.item_name}</p>
-                  </div>
-                  <p className="text-xs text-gray-500">
-                    {line.unit_price === null ? (
-                      <span className="font-semibold text-amber-600">No rate on file — resolve in Minor Revision</span>
-                    ) : line.category === "Material" ? (
-                      <>
-                        {line.derived_area_sqm?.toFixed(1)} sqm × {line.derived_coverage_per_sqm?.toFixed(2)} coverage ×{" "}
-                        {(1 + (line.derived_wastage_percentage ?? 0) / 100).toFixed(2)} wastage = <span className="font-semibold text-gray-800">{line.quantity.toFixed(1)} {line.unit}</span>
-                      </>
-                    ) : (
-                      <>
-                        {line.derived_area_sqm?.toFixed(1)} sqm × {line.derived_coverage_per_sqm?.toFixed(2)} hrs/sqm ={" "}
-                        <span className="font-semibold text-gray-800">{line.quantity.toFixed(1)} {line.unit}</span>
-                      </>
-                    )}
-                  </p>
-                  <PricingReferenceBox line={line} />
-                </div>
-              ))}
-            </div>
-          </div>
-        );
-      })}
+    <div className="grid grid-cols-1 gap-5 lg:grid-cols-2 lg:items-start">
+      <div className="lg:sticky lg:top-0">
+        {hasBlueprint ? (
+          <SegmentBlueprintPreview floors={blueprintFloors!} segments={segments!} hoveredId={hoveredId} onHoverChange={setHoveredId} />
+        ) : (
+          <SegmentListFallback items={items} hoveredId={hoveredId} onHoverChange={setHoveredId} />
+        )}
+      </div>
+      <div className="flex flex-col gap-3">
+        {segmentIds.map((segId) => (
+          <SegmentCostDeck
+            key={segId}
+            segLines={items.filter((l) => l.segment_draft_id === segId)}
+            defaultOpen={false}
+            hovered={hoveredId === segId}
+            onHoverChange={setHoveredId}
+          />
+        ))}
+      </div>
     </div>
   );
 }
@@ -224,15 +308,17 @@ function CostSummaryTab({ result }: { result: ProvisionalQuotationTierResult }) 
   );
 }
 
+// Part C (Task 7) — PRICE-ONLY. Backend decision: the system does not track supplier
+// stock/availability at all (out of scope — a quoting tool, not inventory), so there is no
+// "Available"/"Can Fulfil?" column here anymore. Comparing suppliers by price, plus the
+// Uploaded-Pricelist-vs-DPWH toggle in the header above, is the whole of this tab.
 function BenchmarkingTab({ items }: { items: ProvisionalItemLine[] }) {
   const withSuppliers = items.filter((l) => l.supplier_options.length > 0);
   return (
     <div className="flex flex-col gap-4">
       <div className="flex items-center gap-2 rounded-xl border border-blue-100 bg-blue-50 px-4 py-3 text-xs text-blue-700">
         <ShoppingBag className="h-4 w-4 shrink-0" />
-        Comparing suppliers by price AND stock availability against what this quote actually needs. Stock figures
-        are provisional (no <code className="rounded bg-white px-1">supplier_item_stock</code> table exists yet) —
-        never treat them as live inventory.
+        Comparing suppliers by price against what this quote actually needs.
       </div>
       {withSuppliers.map((line) => (
         <div key={line.line_id} className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
@@ -250,33 +336,22 @@ function BenchmarkingTab({ items }: { items: ProvisionalItemLine[] }) {
                 <tr className="border-b border-gray-200 bg-gray-50">
                   <th className="px-3 py-2 text-left font-semibold text-gray-500">Supplier</th>
                   <th className="px-3 py-2 text-right font-semibold text-gray-500">Unit Price</th>
-                  <th className="px-3 py-2 text-right font-semibold text-gray-500">Available</th>
-                  <th className="px-3 py-2 text-center font-semibold text-gray-500">Can Fulfil?</th>
                 </tr>
               </thead>
               <tbody>
-                {line.supplier_options.map((sup) => {
-                  const canFulfil = sup.quantity_available === null || sup.quantity_available >= line.quantity;
-                  const isSelected = sup.supplier_id === line.selected_supplier_id;
-                  return (
-                    <tr key={sup.supplier_id} className={`border-b border-gray-100 last:border-0 ${isSelected ? "bg-orange-50/40" : ""} ${!canFulfil ? "bg-red-50/40" : ""}`}>
-                      <td className="px-3 py-2 font-medium text-gray-800">
-                        {sup.supplier_name} {isSelected && <span className="ml-1 rounded-full bg-primary/10 px-1.5 py-0.5 text-[9px] font-bold text-primary">Selected</span>}
-                      </td>
-                      <td className="px-3 py-2 text-right text-gray-700">{fmtPeso(sup.unit_price)}</td>
-                      <td className="px-3 py-2 text-right text-gray-700">{sup.quantity_available === null ? "Unlimited" : `${sup.quantity_available.toFixed(0)} ${line.unit}`}</td>
-                      <td className="px-3 py-2 text-center">
-                        {canFulfil ? (
-                          <span className="font-semibold text-green-600">Yes</span>
-                        ) : (
-                          <span className="flex items-center justify-center gap-1 font-semibold text-red-600">
-                            <AlertTriangle className="h-3 w-3" /> Only {sup.quantity_available?.toFixed(0)} of {line.quantity.toFixed(0)}
-                          </span>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
+                {[...line.supplier_options]
+                  .sort((a, b) => a.unit_price - b.unit_price)
+                  .map((sup) => {
+                    const isSelected = sup.supplier_id === line.selected_supplier_id;
+                    return (
+                      <tr key={sup.supplier_id} className={`border-b border-gray-100 last:border-0 ${isSelected ? "bg-orange-50/40" : ""}`}>
+                        <td className="px-3 py-2 font-medium text-gray-800">
+                          {sup.supplier_name} {isSelected && <span className="ml-1 rounded-full bg-primary/10 px-1.5 py-0.5 text-[9px] font-bold text-primary">Selected</span>}
+                        </td>
+                        <td className="px-3 py-2 text-right text-gray-700">{fmtPeso(sup.unit_price)}</td>
+                      </tr>
+                    );
+                  })}
               </tbody>
             </table>
           </div>
@@ -287,7 +362,7 @@ function BenchmarkingTab({ items }: { items: ProvisionalItemLine[] }) {
   );
 }
 
-export function QuotationBreakdownModal({ tier, result, pricelistBasis, onBasisChange, onClose }: QuotationBreakdownModalProps) {
+export function QuotationBreakdownModal({ tier, result, pricelistBasis, onBasisChange, onClose, blueprintFloors, segments }: QuotationBreakdownModalProps) {
   const [activeTab, setActiveTab] = useState<TabId>("segments");
   const TABS: { id: TabId; label: string; icon: typeof BookOpen }[] = [
     { id: "segments", label: "Segment Breakdown", icon: Layers },
@@ -371,7 +446,7 @@ export function QuotationBreakdownModal({ tier, result, pricelistBasis, onBasisC
         </div>
 
         <div className="flex-1 overflow-y-auto p-6">
-          {activeTab === "segments" && <SegmentBreakdownTab items={result.items} />}
+          {activeTab === "segments" && <SegmentBreakdownTab items={result.items} segments={segments} blueprintFloors={blueprintFloors} />}
           {activeTab === "boq" && <BoqTab items={result.items} />}
           {activeTab === "cost-summary" && <CostSummaryTab result={result} />}
           {activeTab === "benchmarking" && <BenchmarkingTab items={result.items} />}

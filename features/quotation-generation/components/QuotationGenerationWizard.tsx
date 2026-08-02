@@ -19,7 +19,7 @@ import type { DraftSegment } from "../lib/draftSegment";
 import type { BlueprintFloor } from "@/lib/dev/provisional/quotationGenerationTypes";
 
 // Part 1: client/project through validated + configured segments. Part 2 (FIX 5 / P2-A–E):
-// Generate's loading animation, Practical/Premium results, revision, and finalize — a
+// Generate's loading animation, Economic/Premium results, revision, and finalize — a
 // mock/presentational shell (lib/dev/provisional/quotationBreakdownFixtures.ts), since the
 // schema has none of the columns a real derivation would need yet. See that file and
 // quotationBreakdownTypes.ts for the full list of what's provisional.
@@ -122,7 +122,7 @@ export function QuotationGenerationWizard() {
           setSavedCount(count);
           // FIX 5 — Configure -> Generate, not straight to a terminal screen. The loading
           // overlay plays for its own fixed duration (see GeneratingQuotationAnimation),
-          // then reveals the Practical/Premium results (P2-A).
+          // then reveals the Economic/Premium results (P2-A).
           setStep("generating");
         }}
         onBack={() => setStep(method ?? "method")}
@@ -142,6 +142,10 @@ export function QuotationGenerationWizard() {
         client={client}
         quotation={quotation}
         segments={segments}
+        // Task 7, Part B — Segment Breakdown's split-view blueprint preview needs the SAME
+        // floors this quote was scanned from (null for Quick Measurement/Manual, where the
+        // breakdown gracefully falls back to a segment list instead).
+        blueprintFloors={blueprintFloors}
         // Activity diagram's "Structural revision -> Return to segmentation" — back to
         // whichever path this quotation actually used, segments intact (nothing here
         // clears them; the user re-reviews/re-confirms from where they left off).
@@ -156,7 +160,7 @@ export function QuotationGenerationWizard() {
         <div>
           <h2 className="text-lg font-bold text-gray-900">Quotation finalized</h2>
           <p className="mt-1 text-sm text-gray-600">
-            {savedCount} segment{savedCount === 1 ? "" : "s"} saved for {quotation.project_name}. Practical and
+            {savedCount} segment{savedCount === 1 ? "" : "s"} saved for {quotation.project_name}. Economic and
             Premium are saved as a linked pair for this project (mock — see the summary for exactly which
             tier-linkage fields this depends on).
             {client?.client_type === "New" && " This client stays 'New' until a later quotation actually references them again."}

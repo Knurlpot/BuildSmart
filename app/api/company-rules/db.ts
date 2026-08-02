@@ -328,14 +328,13 @@ export async function createRule(companyId: number, kind: RuleKindParam, body: R
     } else if (kind === "pricing-strategy") {
       const rule = await client.query<{ rule_id: number }>(
         `INSERT INTO company_rule (company_id, rule_name, specialization, scope_of_work, work_type, checklist_items,
-          primary_source, fallback_rule, strategy_type, markup_percentage)
-         VALUES ($1, $2, 'General', 'Pricing', 'Pricing Strategy', $3, 'Uploaded', 'Manual', $4, $5) RETURNING rule_id`,
+          primary_source, fallback_rule, strategy_type)
+         VALUES ($1, $2, 'General', 'Pricing', 'Pricing Strategy', $3, 'Uploaded', 'Manual', $4) RETURNING rule_id`,
         [
           companyId,
           `${body.quotation_tier} Pricing Strategy`,
           JSON.stringify({ vat_percentage: body.vat_percentage }),
           body.quotation_tier,
-          body.markup_percentage,
         ]
       );
       await client.query(

@@ -6,6 +6,7 @@ export * from './category';
 export * from './items';
 export * from './quotation';
 export * from './quotations-items';
+export * from './quotation-price-history';
 export * from './quotation-service-cost';
 export * from './historical-price-record';
 export * from './material-price-variance';

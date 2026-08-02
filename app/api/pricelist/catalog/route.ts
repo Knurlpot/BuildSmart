@@ -13,6 +13,7 @@ type SupplierCatalogRecord = {
   price: number;
   region: string;
   source: "Supplier Upload";
+  effective_date: string;
   recorded_at: string;
 };
 
@@ -33,6 +34,7 @@ export async function GET(request: NextRequest) {
        COALESCE(h.price::float, 0) AS price,
        COALESCE(h.region, 'N/A') AS region,
        'Supplier Upload' AS source,
+       h.effective_date::text AS effective_date,
        COALESCE(h.recorded_at::text, NOW()::text) AS recorded_at
      FROM items i
      LEFT JOIN category c ON c.category_id = i.category_id
@@ -41,16 +43,17 @@ export async function GET(request: NextRequest) {
          hp.historicalrec_id,
          hp.price,
          hp.region,
+         hp.effective_date,
          hp.recorded_at
        FROM historical_price_record hp
        WHERE hp.item_code = i.item_code
          AND hp.price_source = 'Supplier'
-       ORDER BY hp.recorded_at DESC, hp.historicalrec_id DESC
+       ORDER BY hp.effective_date DESC, hp.recorded_at DESC, hp.historicalrec_id DESC
        LIMIT 1
      ) h ON TRUE
      WHERE i.item_source = 'Supplier'
        AND (i.company_id IS NULL OR i.company_id = (SELECT company_id FROM users WHERE user_id = $1))
-     ORDER BY h.recorded_at DESC, i.item_code DESC`,
+     ORDER BY h.effective_date DESC, h.recorded_at DESC, i.item_code DESC`,
     values
   );
 

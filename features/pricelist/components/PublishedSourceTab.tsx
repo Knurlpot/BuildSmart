@@ -76,7 +76,13 @@ function VersionBanner({ status, releaseLabel, upToDateNote, newAvailableNote }:
   );
 }
 
-export function PublishedSourceTab({ onViewCatalog }: { onViewCatalog?: () => void }) {
+export function PublishedSourceTab({
+  onViewCatalog,
+  onCatalogChanged,
+}: {
+  onViewCatalog?: () => void;
+  onCatalogChanged?: () => void;
+}) {
   const {
     trigger,
     isFetching,
@@ -144,6 +150,7 @@ export function PublishedSourceTab({ onViewCatalog }: { onViewCatalog?: () => vo
     try {
       await resolveMany(selectedItems, action);
       setSelectedIds(new Set());
+      if (action === "approve") onCatalogChanged?.();
       revealCatalog();
     } catch {
       // surfaced via resolveBulkError below — no fabricated success
@@ -154,12 +161,13 @@ export function PublishedSourceTab({ onViewCatalog }: { onViewCatalog?: () => vo
     async (item: FlaggedPriceDeviation, action: "approve" | "reject") => {
       try {
         await resolve(item, action);
+        if (action === "approve") onCatalogChanged?.();
         revealCatalog();
       } catch {
         // surfaced via resolveError below — no fabricated success
       }
     },
-    [resolve, revealCatalog]
+    [resolve, revealCatalog, onCatalogChanged]
   );
 
   const handleCheckDpwh = async () => {
@@ -168,6 +176,7 @@ export function PublishedSourceTab({ onViewCatalog }: { onViewCatalog?: () => vo
       const status = await checkDpwhVersion(region);
       if (status.status === "new_available") {
         await trigger(region).catch(() => {});
+        onCatalogChanged?.();
         revealCatalog();
       } else {
         revealCatalog();

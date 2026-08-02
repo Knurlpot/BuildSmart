@@ -1,5 +1,6 @@
 import os
 import tempfile
+from datetime import date
 from pathlib import Path
 from typing import Any
 
@@ -15,6 +16,13 @@ DPWH_PUBLISHED_BASE_URL = os.environ.get(
     "DPWH_PUBLISHED_BASE_URL",
     "https://www.dpwh.gov.ph/dpwh/bureaus-and-services/bureau-construction",
 )
+
+
+def _effective_date_from_quarter(quarter: str | None, year: int | None) -> date:
+    month_by_quarter = {"Q1": 1, "Q2": 4, "Q3": 7, "Q4": 10}
+    if quarter in month_by_quarter and year is not None:
+        return date(int(year), month_by_quarter[quarter], 1)
+    return date.today()
 
 
 def fetch_dpwh_cmpd_release(region: str) -> list[dict[str, Any]]:
@@ -100,6 +108,7 @@ def save_dpwh_cmpd_publish_records(session: Session, payload: dict[str, Any]) ->
         region = row.get("region")
         quarter = row.get("quarter")
         year = row.get("year")
+        effective_date = _effective_date_from_quarter(quarter, int(year) if year is not None else None)
 
         item = None
         if raw_name and raw_unit:
@@ -132,6 +141,7 @@ def save_dpwh_cmpd_publish_records(session: Session, payload: dict[str, Any]) ->
             supplier_id=None,
             price_source="DPWH",
             region=region,
+            effective_date=effective_date,
             quarter=quarter,
             year=year,
             price=float(raw_price) if raw_price is not None else 0.0,

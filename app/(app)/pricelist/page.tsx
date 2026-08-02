@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { Database, ListOrdered, LibraryBig, Upload } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import { Database, LibraryBig, Upload } from "lucide-react";
 import { RequireAuth } from "@/components/auth/RequireAuth";
-import { AiNormalizationPanel, PriceCatalogTab, PublishedSourceTab, SourcePriorityTab } from "@/features/pricelist/components";
+import { AiNormalizationPanel, PriceCatalogTab, PublishedSourceTab } from "@/features/pricelist/components";
 import { usePricelistCatalog } from "@/hooks/usePricelistCatalog";
 import { usePricelistPublishedSource } from "@/hooks/usePricelistPublishedSource";
 import { useAuth } from "@/providers/AuthProvider";
@@ -12,7 +12,6 @@ import { advanceOnboardingStep, hasCompletedPricelistStep } from "@/lib/onboardi
 const TABS = [
   { id: "upload", label: "Upload Pricelist", icon: Upload },
   { id: "published", label: "Published Sources", icon: Database },
-  { id: "priority", label: "Source Priority", icon: ListOrdered },
   { id: "catalog", label: "Price Catalog", icon: LibraryBig },
 ] as const;
 
@@ -30,14 +29,25 @@ export default function PricelistPage() {
         : null;
   const supplierCatalog = usePricelistCatalog();
   const { dpwhCatalog } = usePricelistPublishedSource();
+  const [pricelistConfigured, setPricelistConfigured] = useState(false);
+  const loadSupplierCatalog = supplierCatalog.load;
+  const loadDpwhCatalog = dpwhCatalog.load;
 
+  const refreshPricelistCompletion = useCallback(() => {
+    loadSupplierCatalog();
+    loadDpwhCatalog();
+  }, [loadSupplierCatalog, loadDpwhCatalog]);
+
+  const markPricelistConfigured = useCallback(() => {
+    setPricelistConfigured(true);
+    refreshPricelistCompletion();
+  }, [refreshPricelistCompletion]);
 
   useEffect(() => {
-    supplierCatalog.load();
-    dpwhCatalog.load();
-  }, []);
+    refreshPricelistCompletion();
+  }, [refreshPricelistCompletion]);
 
-   const pricelistDone = hasCompletedPricelistStep({
+   const pricelistDone = pricelistConfigured || hasCompletedPricelistStep({
     uploadCatalogCount: supplierCatalog.records.length,
     dpwhCatalogCount: dpwhCatalog.records.length,
   });
@@ -46,11 +56,10 @@ export default function PricelistPage() {
     if (currentUser && pricelistDone) {
       advanceOnboardingStep(currentUser.onboardingStep, 1, updateOnboardingStep);
     }
-  }, [currentUser, pricelistDone]);
+  }, [currentUser, pricelistDone, updateOnboardingStep]);
 
    const needsAttention: Partial<Record<TabId, boolean>> = {
     upload: !pricelistDone,
-    published: !pricelistDone,
   };
 
   return (
@@ -80,9 +89,8 @@ export default function PricelistPage() {
           })}
         </div>
 
-        {activeTab === "upload" && <AiNormalizationPanel companyId={companyId} />}
-        {activeTab === "published" && <PublishedSourceTab onViewCatalog={goToCatalog} />}
-        {activeTab === "priority" && <SourcePriorityTab companyId={companyId} />}
+        {activeTab === "upload" && <AiNormalizationPanel companyId={companyId} onCatalogChanged={markPricelistConfigured} />}
+        {activeTab === "published" && <PublishedSourceTab onViewCatalog={goToCatalog} onCatalogChanged={markPricelistConfigured} />}
         {activeTab === "catalog" && <PriceCatalogTab />}
       </div>
     </RequireAuth>

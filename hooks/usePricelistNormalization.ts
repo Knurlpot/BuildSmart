@@ -112,9 +112,9 @@ export type PricelistReviewItemUpdate = Partial<
 
 async function uploadPricelistFile(form: FormData): Promise<UploadResponse> {
   const res = await fetch(`${NORMALIZATION_API_BASE}/pricelist/upload`, { method: 'POST', body: form });
+  const body = await res.json().catch(() => null);
 
   if (res.status === 422) {
-    const body = await res.json().catch(() => null);
     if (body && typeof body.upload_id === 'string' && Array.isArray(body.missing_columns)) {
       throw new MissingColumnsApiError({
         uploadId: body.upload_id,
@@ -127,10 +127,9 @@ async function uploadPricelistFile(form: FormData): Promise<UploadResponse> {
   }
 
   if (!res.ok) {
-    const body = await res.json().catch(() => null);
-    throw new Error(body?.detail || body?.error || `API error: ${res.status}`);
+    throw new Error(body?.detail || body?.error || body?.message || `API error: ${res.status}`);
   }
-  return res.json();
+  return body;
 }
 
 // The backend processes one file per task (POST /pricelist/upload takes a

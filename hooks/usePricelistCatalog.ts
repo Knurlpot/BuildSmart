@@ -26,6 +26,7 @@ export interface SavedPriceRecord {
   price: number;
   region: string;
   source: 'Supplier Upload';
+  effective_date: string;
   recorded_at: string;
 }
 

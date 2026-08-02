@@ -7,6 +7,7 @@ type MaterialPriceVarianceResponse = {
   item_code: number | null;
   variance_source: "Internal" | "PSA";
   commodity_group: string | null;
+  effective_date: string;
   quarter: "Q1" | "Q2" | "Q3" | "Q4";
   year: number;
   percent_change: number;
@@ -27,6 +28,7 @@ export async function GET(request: NextRequest) {
        v.item_code,
        v.variance_source,
        v.commodity_group,
+       v.effective_date::text AS effective_date,
        v.quarter,
        v.year,
        v.percent_change::float AS percent_change,
@@ -41,7 +43,7 @@ export async function GET(request: NextRequest) {
      WHERE v.variance_source = 'PSA'
         OR i.company_id IS NULL
         OR i.company_id = (SELECT company_id FROM users WHERE user_id = $1)
-     ORDER BY v.year DESC, v.quarter DESC, COALESCE(v.commodity_group, i.item_name)`,
+     ORDER BY v.effective_date DESC, COALESCE(v.commodity_group, i.item_name)`,
     [session.userId]
   );
 

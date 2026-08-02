@@ -1,6 +1,6 @@
-from datetime import datetime
+from datetime import date, datetime
 
-from sqlalchemy import TIMESTAMP, ForeignKey, Numeric, SmallInteger, String, Text, UniqueConstraint, func
+from sqlalchemy import Boolean, Date, TIMESTAMP, ForeignKey, Numeric, SmallInteger, String, Text, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
@@ -54,10 +54,72 @@ class HistoricalPriceRecord(Base):
     supplier_id: Mapped[int | None]
     price_source: Mapped[str] = mapped_column(String(20))
     region: Mapped[str | None] = mapped_column(String(30))
+    effective_date: Mapped[date] = mapped_column(Date, default=date.today)
     quarter: Mapped[str | None] = mapped_column(String(2))
     year: Mapped[int | None] = mapped_column(SmallInteger)
     price: Mapped[float] = mapped_column(Numeric(12, 2))
     recorded_at: Mapped[datetime] = mapped_column(TIMESTAMP, server_default=func.now())
+
+    __table_args__ = (
+        UniqueConstraint("item_code", "supplier_id", "price_source", "effective_date", name="uq_historical_price"),
+    )
+
+
+class Quotation(Base):
+    __tablename__ = "quotation"
+
+    quote_id: Mapped[int] = mapped_column(primary_key=True)
+    company_id: Mapped[int]
+    user_id: Mapped[int]
+    client_id: Mapped[int | None]
+    project_name: Mapped[str] = mapped_column(String(150))
+    project_location: Mapped[str] = mapped_column(String(255))
+    project_region: Mapped[str] = mapped_column(String(30))
+    input_method: Mapped[str] = mapped_column(String(30))
+    blueprint_file_path: Mapped[str | None] = mapped_column(String(255))
+    status: Mapped[str] = mapped_column(String(20), server_default="Draft")
+    total_material_cost: Mapped[float] = mapped_column(Numeric(15, 2), server_default="0")
+    total_service_cost: Mapped[float] = mapped_column(Numeric(15, 2), server_default="0")
+    grand_total: Mapped[float] = mapped_column(Numeric(15, 2), server_default="0")
+    created_at: Mapped[datetime] = mapped_column(TIMESTAMP, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(TIMESTAMP, server_default=func.now(), onupdate=func.now())
+
+
+class QuotationItems(Base):
+    __tablename__ = "quotation_items"
+
+    quote_item_id: Mapped[int] = mapped_column(primary_key=True)
+    quote_id: Mapped[int] = mapped_column(ForeignKey("quotation.quote_id"))
+    item_code: Mapped[int] = mapped_column(ForeignKey("items.item_code"))
+    supplier_id: Mapped[int | None]
+    quantity: Mapped[float] = mapped_column(Numeric(12, 2))
+    unit_cost: Mapped[float] = mapped_column(Numeric(12, 2))
+    markup_percentage: Mapped[float] = mapped_column(Numeric(5, 2), server_default="0")
+    final_unit_price: Mapped[float] = mapped_column(Numeric(15, 2))
+    total_cost: Mapped[float] = mapped_column(Numeric(15, 2))
+    source_type: Mapped[str] = mapped_column(String(20))
+    source_price_id: Mapped[int | None] = mapped_column(ForeignKey("historical_price_record.historicalrec_id"))
+    last_refreshed_at: Mapped[datetime | None] = mapped_column(TIMESTAMP)
+    is_price_locked: Mapped[bool] = mapped_column(Boolean, server_default="false")
+    original_unit_cost: Mapped[float | None] = mapped_column(Numeric(12, 2))
+
+    __table_args__ = (
+        UniqueConstraint("quote_id", "item_code", name="uq_quote_item"),
+    )
+
+
+class QuotationPriceHistory(Base):
+    __tablename__ = "quotation_price_history"
+
+    price_history_id: Mapped[int] = mapped_column(primary_key=True)
+    quote_item_id: Mapped[int] = mapped_column(ForeignKey("quotation_items.quote_item_id"))
+    unit_cost_before: Mapped[float] = mapped_column(Numeric(12, 2))
+    unit_cost_after: Mapped[float] = mapped_column(Numeric(12, 2))
+    total_cost_before: Mapped[float | None] = mapped_column(Numeric(15, 2))
+    total_cost_after: Mapped[float | None] = mapped_column(Numeric(15, 2))
+    changed_at: Mapped[datetime] = mapped_column(TIMESTAMP, server_default=func.now())
+    changed_reason: Mapped[str] = mapped_column(String(100))
+    changed_by_user_id: Mapped[int | None]
 
 
 class PriceListReviewItem(Base):
@@ -96,6 +158,7 @@ class PriceListUpload(Base):
     file_size: Mapped[int | None]
     source: Mapped[str | None] = mapped_column(String(20))
     supplier_id: Mapped[int | None]
+    effective_date: Mapped[date] = mapped_column(Date, default=date.today)
     quarter: Mapped[str | None] = mapped_column(String(2))
     year: Mapped[int | None] = mapped_column(SmallInteger)
     upload_timestamp: Mapped[datetime] = mapped_column(TIMESTAMP, server_default=func.now())
@@ -104,7 +167,7 @@ class PriceListUpload(Base):
     error_message: Mapped[str | None] = mapped_column(Text)
 
     __table_args__ = (
-        UniqueConstraint("company_id", "file_hash", "quarter", "year", name="uq_company_file_period"),
+        UniqueConstraint("company_id", "file_hash", "effective_date", name="uq_company_file_effective_date"),
     )
 
 

@@ -6,7 +6,7 @@ import { AlertTriangle, Ban, CheckCircle2 } from "lucide-react";
 import { QueryState } from "@/components/feedback/QueryState";
 import { DataTable } from "@/components/data-table/DataTable";
 import { useExistingRules } from "@/lib/dev/provisional/useCompanyRulesProvisional";
-import type { ExistingRuleSummary } from "@/lib/dev/provisional/companyRulesTypes";
+import { RULE_KIND_LABEL, type ExistingRuleSummary } from "@/lib/dev/provisional/companyRulesTypes";
 
 function StatusBadge({ status }: { status: ExistingRuleSummary["status"] }) {
   return (
@@ -61,7 +61,12 @@ export function ManageExistingRulesTab({ onOpenRule }: ManageExistingRulesTabPro
 
   const columns = useMemo<ColumnDef<ExistingRuleSummary>[]>(
     () => [
-      { accessorKey: "rule_kind", header: "Rule Type", enableGlobalFilter: false },
+      {
+        accessorKey: "rule_kind",
+        header: "Rule Type",
+        enableGlobalFilter: false,
+        cell: ({ row }) => RULE_KIND_LABEL[row.original.rule_kind],
+      },
       { accessorKey: "label", header: "Rule" },
       { accessorKey: "detail", header: "Detail", enableGlobalFilter: false },
       { accessorKey: "effective_date", header: "Effective", enableGlobalFilter: false },

@@ -18,11 +18,16 @@ import { PROVISIONAL_TIERS, type PricelistBasis, type ProvisionalItemLine, type 
 import { saveFinalizedQuotation } from "@/lib/dev/provisional/savedProjectsStore";
 import { isSegmentIncluded, type DraftSegment } from "../lib/draftSegment";
 import type { Client, Quotation } from "@/types/entities";
+import type { BlueprintFloor } from "@/lib/dev/provisional/quotationGenerationTypes";
 
 interface QuotationResultsStepProps {
   client: Client;
   quotation: Quotation;
   segments: DraftSegment[];
+  /** Task 7, Part B — threaded through to QuotationBreakdownModal's Segment Breakdown tab
+   * (split view's blueprint preview) and persisted at Finalize so Open Projects' saved view
+   * can show the same preview. null = this quote wasn't blueprint-sourced. */
+  blueprintFloors: BlueprintFloor[] | null;
   /** Activity diagram's "Structural revision -> Return to segmentation." */
   onStructuralRevision: () => void;
   /** Fires once the finalized project has actually been saved (P2-B) — caller only needs
@@ -31,7 +36,7 @@ interface QuotationResultsStepProps {
 }
 
 const TIER_META: Record<ProvisionalTier, { tagline: string; badge: string; accent: string; headerBg: string; accentBg: string }> = {
-  Practical: {
+  Economic: {
     tagline: "Cost-effective solution with quality materials",
     badge: "Recommended",
     accent: "text-primary",
@@ -51,7 +56,7 @@ const DEFAULT_BASIS: PricelistBasis = "Uploaded";
 
 function initTierItems(segments: DraftSegment[], basis: PricelistBasis): Record<ProvisionalTier, ProvisionalItemLine[]> {
   return {
-    Practical: deriveMockItemLines(segments, "Practical", basis),
+    Economic: deriveMockItemLines(segments, "Economic", basis),
     Premium: deriveMockItemLines(segments, "Premium", basis),
   };
 }
@@ -66,7 +71,7 @@ function QuoteCard({ tier, result, onViewBreakdown }: { tier: ProvisionalTier; r
         <div className="flex items-center justify-between">
           <div>
             <span className="text-[10px] font-semibold uppercase tracking-widest opacity-80">
-              {tier === "Practical" ? "Option A" : "Option B"}
+              {tier === "Economic" ? "Option A" : "Option B"}
             </span>
             <h2 className="text-xl font-bold leading-tight">{tier}</h2>
             <p className="mt-0.5 text-xs opacity-80">{meta.tagline}</p>
@@ -141,7 +146,7 @@ function QuoteCard({ tier, result, onViewBreakdown }: { tier: ProvisionalTier; r
 // depends on that don't exist in the schema yet), the READ-ONLY detailed breakdown (Part A),
 // and the revision flow (editing lives only in Minor Revision, Part D). Everything
 // downstream of `segments` is mock-derived — see quotationBreakdownFixtures.ts.
-export function QuotationResultsStep({ client, quotation, segments, onStructuralRevision, onFinalize }: QuotationResultsStepProps) {
+export function QuotationResultsStep({ client, quotation, segments, blueprintFloors, onStructuralRevision, onFinalize }: QuotationResultsStepProps) {
   const [pricelistBasis, setPricelistBasis] = useState<PricelistBasis>(DEFAULT_BASIS);
   const [originalTierItems] = useState(() => initTierItems(segments, DEFAULT_BASIS));
   const [tierItems, setTierItems] = useState(() => initTierItems(segments, DEFAULT_BASIS));
@@ -161,13 +166,13 @@ export function QuotationResultsStep({ client, quotation, segments, onStructural
   const handleBasisChange = (basis: PricelistBasis) => {
     setPricelistBasis(basis);
     setTierItems((prev) => ({
-      Practical: retargetItemLinesBasis(segments, prev.Practical, "Practical", basis),
+      Economic: retargetItemLinesBasis(segments, prev.Economic, "Economic", basis),
       Premium: retargetItemLinesBasis(segments, prev.Premium, "Premium", basis),
     }));
   };
 
   const tierResults: Record<ProvisionalTier, ProvisionalQuotationTierResult> = {
-    Practical: computeTierResult("Practical", tierItems.Practical),
+    Economic: computeTierResult("Economic", tierItems.Economic),
     Premium: computeTierResult("Premium", tierItems.Premium),
   };
 
@@ -215,6 +220,8 @@ export function QuotationResultsStep({ client, quotation, segments, onStructural
           pricelistBasis={pricelistBasis}
           onBasisChange={handleBasisChange}
           onClose={() => setBreakdownTier(null)}
+          segments={segments}
+          blueprintFloors={blueprintFloors}
         />
       )}
 
@@ -227,7 +234,7 @@ export function QuotationResultsStep({ client, quotation, segments, onStructural
           }}
           onMinor={() => {
             setRevisionTypeOpen(false);
-            setMinorRevisionTier("Practical");
+            setMinorRevisionTier("Economic");
           }}
         />
       )}
@@ -282,7 +289,7 @@ export function QuotationResultsStep({ client, quotation, segments, onStructural
           <DialogHeader>
             <DialogTitle>Finalize this quotation?</DialogTitle>
             <DialogDescription>
-              Both Practical and Premium are saved as a linked pair for this project — neither is marked as the
+              Both Economic and Premium are saved as a linked pair for this project — neither is marked as the
               client&apos;s choice yet (that happens later, from Open Projects). This is a mock save (Part 2 shell):
               no real pricing engine or backend persistence is wired yet.
             </DialogDescription>
@@ -310,6 +317,8 @@ export function QuotationResultsStep({ client, quotation, segments, onStructural
                   projectRegion: quotation.project_region,
                   tierItems,
                   pricelistBasis,
+                  segments,
+                  blueprintFloors,
                 });
                 onFinalize();
               }}

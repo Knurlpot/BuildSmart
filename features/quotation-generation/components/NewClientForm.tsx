@@ -50,17 +50,23 @@ function initials(name: string): string {
 export function NewClientForm({ draft, onChange, onCreate, onCancel, isCreating, createError, region = "" }: NewClientFormProps) {
   const set = (patch: Partial<NewClientDraft>) => onChange({ ...draft, ...patch });
   const hue = region.trim() ? regionToHue(region) : NEUTRAL_HUE;
-  const accent = `hsl(${hue} 70% 42%)`;
-  const accentBg = `hsl(${hue} 60% 50% / 0.1)`;
-  const accentText = `hsl(${hue} 65% 32%)`;
-  const accentBorder = `hsl(${hue} 55% 55% / 0.25)`;
+  const accent = `hsl(${hue} 72% 58%)`;
+  const accentBg = `hsl(${hue} 72% 58% / 0.16)`;
+  const accentText = `hsl(${hue} 80% 88%)`;
+  const accentBorder = `hsl(${hue} 70% 72% / 0.32)`;
+  const panelBg = `hsla(${hue}, 45%, 14%, 0.9)`;
+  const fieldBg = `hsla(${hue}, 38%, 18%, 0.58)`;
+  const fieldBorder = `hsla(${hue}, 42%, 72%, 0.18)`;
 
   const fieldCls =
-    "w-full rounded-lg border border-gray-200 bg-white py-2.5 pl-9 pr-3 text-sm text-gray-800 placeholder:text-gray-300 outline-none transition focus:ring-2";
-  const labelCls = "mb-1 block text-[10px] font-semibold uppercase tracking-wider text-gray-400";
+    "w-full rounded-lg border py-2.5 pl-9 pr-3 text-sm text-white placeholder:text-white/35 outline-none transition focus:ring-2";
+  const labelCls = "mb-1 block text-[10px] font-semibold uppercase tracking-wider text-white/55";
 
   return (
-    <div className="flex h-full flex-col gap-4 rounded-3xl border border-gray-100 bg-white p-5 shadow-sm" style={{ minHeight: 320 }}>
+    <div
+      className="flex h-full flex-col gap-4 rounded-3xl border p-5 shadow-xl"
+      style={{ minHeight: 320, background: panelBg, borderColor: accentBorder }}
+    >
       <div
         className="inline-flex w-fit items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider"
         style={{ background: accentBg, color: accentText }}
@@ -83,10 +89,10 @@ export function NewClientForm({ draft, onChange, onCreate, onCancel, isCreating,
             value={draft.client_name}
             onChange={(e) => set({ client_name: e.target.value })}
             placeholder="Client name"
-            className="w-full truncate bg-transparent text-sm font-bold text-gray-900 outline-none placeholder:font-normal placeholder:text-gray-400"
+            className="w-full truncate bg-transparent text-sm font-bold text-white outline-none placeholder:font-normal placeholder:text-white/45"
             autoFocus
           />
-          <p className="mt-0.5 text-[10px] text-gray-400">First-time client — no history on file yet.</p>
+          <p className="mt-0.5 text-[10px] text-white/50">First-time client — no history on file yet.</p>
         </div>
       </div>
 
@@ -94,13 +100,13 @@ export function NewClientForm({ draft, onChange, onCreate, onCancel, isCreating,
         <div>
           <label className={labelCls}>Contact Person</label>
           <div className="relative flex items-center">
-            <User className="pointer-events-none absolute left-3 h-3.5 w-3.5 text-gray-300" />
+            <User className="pointer-events-none absolute left-3 h-3.5 w-3.5 text-white/40" />
             <input
               value={draft.contact_person}
               onChange={(e) => set({ contact_person: e.target.value })}
               placeholder="e.g. Juan dela Cruz"
               className={fieldCls}
-              style={{ "--tw-ring-color": accent } as React.CSSProperties}
+              style={{ background: fieldBg, borderColor: fieldBorder, "--tw-ring-color": accent } as React.CSSProperties}
             />
           </div>
         </div>
@@ -109,21 +115,21 @@ export function NewClientForm({ draft, onChange, onCreate, onCancel, isCreating,
           <div>
             <label className={labelCls}>Contact Email</label>
             <div className="relative flex items-center">
-              <Mail className="pointer-events-none absolute left-3 h-3.5 w-3.5 text-gray-300" />
+              <Mail className="pointer-events-none absolute left-3 h-3.5 w-3.5 text-white/40" />
               <input
                 type="email"
                 value={draft.contact_email}
                 onChange={(e) => set({ contact_email: e.target.value })}
                 placeholder="e.g. juan@company.com"
                 className={fieldCls}
-                style={{ "--tw-ring-color": accent } as React.CSSProperties}
+                style={{ background: fieldBg, borderColor: fieldBorder, "--tw-ring-color": accent } as React.CSSProperties}
               />
             </div>
           </div>
           <div>
             <label className={labelCls}>Contact Number</label>
             <div className="relative flex items-center">
-              <Phone className="pointer-events-none absolute left-3 h-3.5 w-3.5 text-gray-300" />
+              <Phone className="pointer-events-none absolute left-3 h-3.5 w-3.5 text-white/40" />
               {/* Part B — "+63 " is only a starting default (see emptyNewClientDraft); this
                   is plain free text with a generous soft cap, never a hard mask. Landlines
                   and other valid PH formats don't fit a fixed mobile-length pattern, so
@@ -134,7 +140,7 @@ export function NewClientForm({ draft, onChange, onCreate, onCancel, isCreating,
                 placeholder="+63 917 123 4567"
                 maxLength={20}
                 className={fieldCls}
-                style={{ "--tw-ring-color": accent } as React.CSSProperties}
+                style={{ background: fieldBg, borderColor: fieldBorder, "--tw-ring-color": accent } as React.CSSProperties}
               />
             </div>
           </div>
@@ -143,7 +149,7 @@ export function NewClientForm({ draft, onChange, onCreate, onCancel, isCreating,
         <div>
           <label className={labelCls}>Client Address</label>
           <div className="relative flex items-center">
-            <MapPin className="pointer-events-none absolute left-3 h-3.5 w-3.5 text-gray-300" />
+            <MapPin className="pointer-events-none absolute left-3 h-3.5 w-3.5 text-white/40" />
             {/* Plain text — no city dropdown/datalist. A client's billing/site address isn't
                 confined to the region select's city list above it. */}
             <input
@@ -151,7 +157,7 @@ export function NewClientForm({ draft, onChange, onCreate, onCancel, isCreating,
               onChange={(e) => set({ client_address: e.target.value })}
               placeholder="e.g. Unit 4B, Eastwood, Quezon City"
               className={fieldCls}
-              style={{ "--tw-ring-color": accent } as React.CSSProperties}
+              style={{ background: fieldBg, borderColor: fieldBorder, "--tw-ring-color": accent } as React.CSSProperties}
             />
           </div>
         </div>
@@ -160,9 +166,9 @@ export function NewClientForm({ draft, onChange, onCreate, onCancel, isCreating,
             'New' by definition. "Returning" only becomes true once a later quotation
             actually references this client (see ClientInsightCard.tsx's isReturning) — shown
             locked, not as an editable dropdown. */}
-        <div className="flex items-center justify-between rounded-lg border border-gray-100 bg-gray-50 px-3 py-2">
-          <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">Client Type</span>
-          <span className="text-xs font-bold text-gray-500">New</span>
+        <div className="flex items-center justify-between rounded-lg border px-3 py-2" style={{ background: fieldBg, borderColor: fieldBorder }}>
+          <span className="text-[10px] font-semibold uppercase tracking-wider text-white/50">Client Type</span>
+          <span className="text-xs font-bold text-white/80">New</span>
         </div>
       </div>
 
@@ -172,16 +178,17 @@ export function NewClientForm({ draft, onChange, onCreate, onCancel, isCreating,
         </p>
       )}
 
-      <div className="mt-auto flex items-center gap-2 border-t border-gray-100 pt-4">
+      <div className="mt-auto flex items-center gap-2 border-t pt-4" style={{ borderColor: fieldBorder }}>
         <button
           type="button"
           disabled={!draft.client_name.trim() || isCreating}
           onClick={onCreate}
-          className="rounded-lg bg-primary px-4 py-2 text-xs font-bold text-primary-foreground transition hover:bg-(--primary-hover) disabled:opacity-50"
+          className="rounded-lg px-4 py-2 text-xs font-bold text-white transition disabled:opacity-50"
+          style={{ background: `hsl(${hue} 74% 52%)` }}
         >
           {isCreating ? "Creating…" : "Create Client"}
         </button>
-        <button type="button" onClick={onCancel} className="text-xs font-semibold text-gray-400 transition hover:text-gray-600">
+        <button type="button" onClick={onCancel} className="text-xs font-semibold text-white/50 transition hover:text-white">
           Back
         </button>
       </div>

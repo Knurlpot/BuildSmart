@@ -8,6 +8,7 @@ type HistoricalPriceRecordResponse = {
   supplier_id: number | null;
   price_source: "DPWH" | "PSA" | "Supplier" | "Internal";
   region: string | null;
+  effective_date: string;
   quarter: "Q1" | "Q2" | "Q3" | "Q4" | null;
   year: number | null;
   price: number;
@@ -53,6 +54,7 @@ export async function GET(request: NextRequest) {
        h.supplier_id,
        h.price_source,
        h.region,
+       h.effective_date::text AS effective_date,
        h.quarter,
        h.year,
        h.price::float AS price,
@@ -68,7 +70,7 @@ export async function GET(request: NextRequest) {
      LEFT JOIN category c ON c.category_id = i.category_id
      LEFT JOIN quote_usage qu ON qu.item_code = h.item_code
      WHERE ${filters.join(" AND ")}
-     ORDER BY h.year NULLS LAST, h.quarter NULLS LAST, h.recorded_at, h.historicalrec_id`,
+     ORDER BY h.effective_date DESC, h.recorded_at DESC, h.historicalrec_id DESC`,
     values
   );
 

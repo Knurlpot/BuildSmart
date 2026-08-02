@@ -17,6 +17,7 @@ export interface MaterialPriceVariance {
   item_code: number | null; // null for 'PSA' rows
   variance_source: 'Internal' | 'PSA';
   commodity_group: string | null; // set only for 'PSA' rows
+  effective_date: string;
   quarter: 'Q1' | 'Q2' | 'Q3' | 'Q4';
   year: number;
   percent_change: number; // Internal: item peso %; PSA: index YoY %

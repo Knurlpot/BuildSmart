@@ -5,6 +5,8 @@ import pytest
 
 from app.services.pricelist_parser import (
     MissingColumnsError,
+    _parse_collapsed_pdf_item,
+    _parse_pdf_text,
     _dedupe_and_label_columns,
     _pdf_table_to_dataframe,
     parse_pricelist_file,
@@ -31,6 +33,15 @@ def test_parses_pdf_with_a_real_gridded_table():
     assert df.iloc[0]["raw_name"] == "Portland Cement Type 1"
     assert df.iloc[0]["raw_unit"] == "bag"
     assert df.iloc[0]["raw_price"] == 255.0
+
+
+def test_parses_collapsed_pdf_item_with_integer_price():
+    row = _parse_collapsed_pdf_item("1.1 Portland Cement Type 1 40kg bag Republic bag 255")
+
+    assert row is not None
+    assert row["raw_name"] == "Portland Cement Type 1"
+    assert row["raw_unit"] == "bag"
+    assert row["raw_price"] == "255"
 
 
 def test_pdf_table_with_title_row_and_wider_body_does_not_crash():
@@ -74,6 +85,57 @@ def test_recognizes_header_with_currency_annotation(tmp_path):
     assert {"raw_name", "raw_unit", "raw_price"}.issubset(df.columns)
     assert df.iloc[0]["raw_price"] == 255.0
     assert df.iloc[1]["raw_price"] == 260.0
+
+
+def test_parses_plain_peso_p_prefix_prices(tmp_path):
+    peso_file = tmp_path / "plain-peso-prefix.csv"
+    peso_file.write_text(
+        "Material Name,Description / Specification,Brand,UOM,Min. Order,Price (PHP)\n"
+        "Portland Cement,Type 1 Premium Quality 40kg bag,Republic Cement,Bag,50 Bags,P215.00\n"
+    )
+
+    df = parse_pricelist_file(str(peso_file))
+
+    assert len(df) == 1
+    assert df.iloc[0]["raw_name"] == "Portland Cement"
+    assert df.iloc[0]["raw_unit"] == "Bag"
+    assert df.iloc[0]["raw_price"] == 215.0
+
+
+def test_pdf_text_fallback_splits_flat_supplier_table_rows(tmp_path, monkeypatch):
+    pdf_file = tmp_path / "flat-table.pdf"
+    pdf_file.write_bytes(b"%PDF-1.4\n%test\n")
+
+    class FakePage:
+        def extract_text(self):
+            return "\n".join(
+                [
+                    "MATERIAL NAME DESCRIPTION / SPECIFICATION BRAND UOM MIN. ORDER PRICE (PHP)",
+                    "Portland Cement Type 1 Premium Quality, 40kg bag Republic Cement Bag 50 Bags P215.00",
+                    "Deformed Steel Bar Grade 33, 12mm x 6.0m Standard Length Pag-asa Steel Piece 200 Pcs P255.00",
+                ]
+            )
+
+    class FakePdf:
+        pages = [FakePage()]
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+    monkeypatch.setattr("app.services.pricelist_parser.pdfplumber.open", lambda path: FakePdf())
+
+    df = _parse_pdf_text(pdf_file)
+
+    assert df.iloc[0]["raw_name"] == "Portland Cement"
+    assert df.iloc[0]["description"] == "Type 1 Premium Quality, 40kg bag"
+    assert df.iloc[0]["raw_brand"] == "Republic Cement"
+    assert df.iloc[0]["raw_unit"] == "Bag"
+    assert df.iloc[0]["raw_price"] == "P215.00"
+    assert df.iloc[1]["raw_name"] == "Deformed Steel Bar"
+    assert df.iloc[1]["raw_unit"] == "Piece"
 
 
 def test_infers_columns_when_headers_are_generic(tmp_path):
