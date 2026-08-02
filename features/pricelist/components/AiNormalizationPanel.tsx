@@ -946,10 +946,11 @@ export function AiNormalizationPanel({ companyId }: AiNormalizationPanelProps) {
               type="button"
               onClick={isEditingAll ? cancelEditingAll : startEditingAll}
               disabled={reviewItems.length === 0 || isBulkApproving || isBulkDeleting || isSavingAll}
-              className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-600 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+              aria-label={isEditingAll ? "Cancel editing" : "Edit"}
+              title={isEditingAll ? "Cancel editing" : "Edit"}
+              className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-600 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
             >
               <Pencil className="h-3.5 w-3.5" />
-              {isEditingAll ? "Cancel Editing" : "Edit"}
             </button>
             {isEditingAll && (
               <button
@@ -982,7 +983,25 @@ export function AiNormalizationPanel({ companyId }: AiNormalizationPanelProps) {
                     isBulkDeleting ||
                     isBulkApproving
                   }
-                  className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-50 ${
+                  aria-label={
+                    isClearingReview || isBulkDeleting
+                      ? "Deleting…"
+                      : confirmingDelete
+                        ? `Confirm — delete ${selectedReviewIds.size > 0 ? selectedReviewIds.size : "all"}?`
+                        : selectedReviewIds.size > 0
+                          ? `Delete selected (${selectedReviewIds.size})`
+                          : "Delete"
+                  }
+                  title={
+                    isClearingReview || isBulkDeleting
+                      ? "Deleting…"
+                      : confirmingDelete
+                        ? `Confirm — delete ${selectedReviewIds.size > 0 ? selectedReviewIds.size : "all"}?`
+                        : selectedReviewIds.size > 0
+                          ? `Delete selected (${selectedReviewIds.size})`
+                          : "Delete"
+                  }
+                  className={`inline-flex h-8 w-8 items-center justify-center rounded-lg border transition disabled:cursor-not-allowed disabled:opacity-50 ${
                     confirmingDelete
                       ? "border-red-200 bg-red-50 text-red-600 hover:bg-red-100"
                       : "border-gray-200 bg-white text-gray-600 hover:bg-gray-50"
@@ -993,22 +1012,17 @@ export function AiNormalizationPanel({ companyId }: AiNormalizationPanelProps) {
                   ) : (
                     <Trash2 className="h-3.5 w-3.5" />
                   )}
-                  {isClearingReview || isBulkDeleting
-                    ? "Deleting…"
-                    : confirmingDelete
-                      ? `Confirm — delete ${selectedReviewIds.size > 0 ? selectedReviewIds.size : "all"}?`
-                      : selectedReviewIds.size > 0
-                        ? `Delete Selected (${selectedReviewIds.size})`
-                        : "Delete"}
                 </button>
               </>
             )}
             <button
               type="button"
               onClick={refetchReview}
-              className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-600 transition hover:bg-gray-50"
+              aria-label="Refresh"
+              title="Refresh"
+              className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-600 transition hover:bg-gray-50"
             >
-              <RefreshCw className="h-3.5 w-3.5" /> Refresh
+              <RefreshCw className="h-3.5 w-3.5" />
             </button>
           </div>
         </div>
