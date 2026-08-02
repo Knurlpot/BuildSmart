@@ -1,20 +1,26 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Database, ListOrdered, LibraryBig, TrendingUp, Upload } from "lucide-react";
+import { Database, LibraryBig, Upload } from "lucide-react";
 import { RequireAuth } from "@/components/auth/RequireAuth";
-import { PriceTrendsPanel } from "@/components/market-intelligence/PriceTrendsPanel";
-import { PriceCatalogTab, PublishedSourceTab, SourcePriorityTab, UploadPricelistTab } from "@/features/pricelist/components";
+import { PriceCatalogTab, PublishedSourceTab, UploadPricelistTab } from "@/features/pricelist/components";
 import { usePricelistCatalog } from "@/hooks/usePricelistCatalog";
 import { usePricelistPublishedSource } from "@/hooks/usePricelistPublishedSource";
 import { useAuth } from "@/providers/AuthProvider";
 import { advanceOnboardingStep, hasCompletedPricelistStep } from "@/lib/onboarding";
 
+// Price Trends and Source Priority tabs REMOVED (Supplier Rules + PLM cleanup task):
+// - Price Trends duplicated the dedicated Analyze Market Intelligence page, which renders
+//   the exact same shared PriceTrendsPanel component (this tab used to pass `compact` to
+//   hide two sections that only make sense there — see that component's own history).
+// - Source Priority was a global ranking over an UNCONFIRMED schema (no source-priority
+//   table in the 13-table schema — see the deleted usePricelistSourcePriority.ts's own
+//   flag). The source decision (Uploaded Pricelist vs DPWH CMPD) is relocated to quote
+//   time, where it already lives as the Pricelist Basis toggle in the Quotation Breakdown
+//   modal and Minor Revision — no reduced global default was kept, see this task's summary.
 const TABS = [
   { id: "upload", label: "Upload Pricelist", icon: Upload },
   { id: "published", label: "Published Sources", icon: Database },
-  { id: "priority", label: "Source Priority", icon: ListOrdered },
-  { id: "trends", label: "Price Trends", icon: TrendingUp },
   { id: "catalog", label: "Price Catalog", icon: LibraryBig },
 ] as const;
 
@@ -92,8 +98,6 @@ export default function PricelistPage() {
 
         {activeTab === "upload" && <UploadPricelistTab onViewCatalog={goToCatalog} />}
         {activeTab === "published" && <PublishedSourceTab onViewCatalog={goToCatalog} />}
-        {activeTab === "priority" && <SourcePriorityTab />}
-        {activeTab === "trends" && <PriceTrendsPanel compact />}
         {activeTab === "catalog" && <PriceCatalogTab />}
       </div>
     </RequireAuth>

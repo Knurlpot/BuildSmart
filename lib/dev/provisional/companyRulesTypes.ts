@@ -158,10 +158,49 @@ export function unitRuleTargetKind(r: Pick<UnitRule, 'item_code'>): UnitRuleTarg
   return r.item_code !== null ? 'item' : 'category';
 }
 
+// ── 6. Supplier Rules (supplier_discount_rule) ───────────────────────────────
+// UNLIKE the five categories above, this is a REAL, CONFIRMED table (schema v3) — see
+// types/entities/supplier-discount-rule.ts and SupplierRulesPlaceholder.tsx's original
+// note. Not a provisional shape guessing at an unconfirmed schema; this is that same real
+// row shape with a staging string id (rule_id, matching every other CPRM list's
+// convention) standing in for the real int PK (supplierdisc_id), since there's still no
+// backend endpoint wired for it — same "assumed endpoint" reasoning
+// useCompanyRulesProvisional.ts already documents for everything else here. Also
+// denormalizes supplier_name for display, the same way MaterialRuleEntry denormalizes
+// preferred_item_name.
+//
+// supplier_discount_rule has NO superseded_by_rule_id column (unlike RuleEnvelope above) —
+// so this does NOT extend RuleEnvelope and does NOT go through useEditableRuleList (built
+// around that field). "Supersede, don't mutate" here means exactly what the real columns
+// support: deactivate + expire the old row (is_active: false, expiration_date), create a
+// new one — see SupplierRulesForm.tsx.
+export const SUPPLIER_RULE_TYPES = ['Bulk Discount', 'Negotiated Price', 'Minimum Order', 'Preferred Supplier'] as const;
+export type SupplierRuleType = (typeof SUPPLIER_RULE_TYPES)[number];
+
+export interface SupplierRuleEntry {
+  rule_id: string; // staging key -> supplierdisc_id
+  supplier_id: number;
+  supplier_name: string; // denormalized, avoids a second suppliers lookup per row
+  rule_type: SupplierRuleType;
+  minimum_order_amount: number | null;
+  discount_percentage_rate: number | null;
+  fixed_discount_amount: number | null;
+  effective_date: string;
+  expiration_date: string | null;
+  is_active: boolean;
+}
+
 // ── Cross-type summary for Manage Existing Rules ────────────────────────────
 // v6: Material Rule now included (previously excluded because rows were grouped under a
 // Scope Template and shown there instead — that grouping is gone as of Correction 3, so
 // Material Rules are now a standalone list like every other rule type and belong here too.
+//
+// Supplier Rule is DELIBERATELY excluded — SupplierRuleEntry isn't a RuleEnvelope (no
+// superseded_by_rule_id) and doesn't share the check-usage/disable pair this cross-type
+// table's "Disable" action calls (that endpoint is keyed to the OTHER five types' staging
+// ids in the mock). Supplier Rules stays a fully self-contained list+detail+deactivate UI
+// on its own tab instead (SupplierRulesForm.tsx) rather than forcing it into a shape it
+// doesn't structurally match.
 export const RULE_KINDS = [
   'Scope Template',
   'Material Rule',

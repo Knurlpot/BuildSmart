@@ -10,6 +10,7 @@ import {
   type MaterialRuleEntry,
   type PricingStrategyRule,
   type ScopeTemplate,
+  type SupplierRuleEntry,
   type UnitRule,
 } from './companyRulesTypes';
 
@@ -287,3 +288,71 @@ export const existingRulesFixture: ExistingRuleSummary[] = [
 // edit-in-place branch and the Manage Existing Rules dependency warning are both
 // reviewable, not just the happy path. Now a Treatment-scoped rule (lr-1).
 export const RULE_ID_IN_USE = 'lr-1';
+
+// supplier_id values match lib/dev/fixtures/suppliers.ts's roster (501-505). One row per
+// rule_type from the task spec's own examples, plus one EXPIRED row (sr-5) to demonstrate
+// the deactivate-then-replace history a real negotiated term would accumulate over time —
+// see SupplierRulesForm.tsx for how editing an active rule produces exactly this shape
+// (old row deactivated + expired, new row created) rather than mutating sr-1 in place.
+export const supplierRulesFixture: SupplierRuleEntry[] = [
+  {
+    rule_id: 'sr-1',
+    supplier_id: 501,
+    supplier_name: 'Coastal Building Supply',
+    rule_type: 'Minimum Order',
+    minimum_order_amount: 500000,
+    discount_percentage_rate: null,
+    fixed_discount_amount: null,
+    effective_date: '2025-06-01',
+    expiration_date: null,
+    is_active: true,
+  },
+  {
+    rule_id: 'sr-2',
+    supplier_id: 502,
+    supplier_name: 'Northline Hardware Co.',
+    rule_type: 'Bulk Discount',
+    minimum_order_amount: 2000000,
+    discount_percentage_rate: 5,
+    fixed_discount_amount: null,
+    effective_date: '2025-04-15',
+    expiration_date: null,
+    is_active: true,
+  },
+  {
+    rule_id: 'sr-3',
+    supplier_id: 503,
+    supplier_name: 'Terra Bright Materials',
+    rule_type: 'Preferred Supplier',
+    minimum_order_amount: null,
+    discount_percentage_rate: null,
+    fixed_discount_amount: null,
+    effective_date: '2025-01-10',
+    expiration_date: null,
+    is_active: true,
+  },
+  {
+    rule_id: 'sr-4',
+    supplier_id: 504,
+    supplier_name: 'Pinnacle Construction Supply',
+    rule_type: 'Negotiated Price',
+    minimum_order_amount: null,
+    discount_percentage_rate: null,
+    fixed_discount_amount: 15000,
+    effective_date: '2025-07-01',
+    expiration_date: null,
+    is_active: true,
+  },
+  {
+    rule_id: 'sr-5',
+    supplier_id: 501,
+    supplier_name: 'Coastal Building Supply',
+    rule_type: 'Bulk Discount',
+    minimum_order_amount: 1000000,
+    discount_percentage_rate: 3,
+    fixed_discount_amount: null,
+    effective_date: '2025-01-01',
+    expiration_date: '2025-05-31',
+    is_active: false,
+  },
+];

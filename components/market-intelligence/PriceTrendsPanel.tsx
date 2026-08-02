@@ -1,9 +1,10 @@
 "use client";
 
-// Shared trends UI — used by both the Market Intelligence page and the Pricelist
-// "Price Trends" tab, per the instruction not to build a second, divergent trends UI.
-// Owns its own region/material filter state and data fetching (useMarketIntelligence),
-// so it can be dropped into either page with no external wiring beyond rendering it.
+// Market Intelligence's trends UI. Previously also reused (with a `compact` prop hiding
+// two sections) by Pricelist Management's "Price Trends" tab — that tab was removed as a
+// duplicate of this page (Supplier Rules + PLM cleanup task), so `compact` had no more
+// callers and is gone too; every section below always renders now. Owns its own
+// region/material filter state and data fetching (useMarketIntelligence).
 import { useMemo, useState } from "react";
 import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { Filter, Globe2, Info, Landmark, Minus, Sparkles, Truck, TrendingDown, TrendingUp } from "lucide-react";
@@ -35,12 +36,7 @@ function TrendIcon({ direction }: { direction: MaterialPriceVariance["trend_dire
   return <Minus className="h-4 w-4 text-gray-400" />;
 }
 
-interface PriceTrendsPanelProps {
-  /** Hide sections that only make sense in the full Market Intelligence context. */
-  compact?: boolean;
-}
-
-export function PriceTrendsPanel({ compact = false }: PriceTrendsPanelProps) {
+export function PriceTrendsPanel() {
   const [region, setRegion] = useState("All");
   const [itemCode, setItemCode] = useState<number | "All">("All");
 
@@ -290,25 +286,21 @@ export function PriceTrendsPanel({ compact = false }: PriceTrendsPanelProps) {
         </QueryState>
       </div>
 
-      {!compact && (
-        <>
-          <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
-            <div className="mb-1 flex items-center gap-2">
-              <Globe2 className="h-4 w-4 text-gray-400" />
-              <p className="font-bold text-gray-900">Regional Insights</p>
-            </div>
-            <p className="text-sm text-gray-400">Not yet wired to a backend endpoint.</p>
-          </div>
+      <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
+        <div className="mb-1 flex items-center gap-2">
+          <Globe2 className="h-4 w-4 text-gray-400" />
+          <p className="font-bold text-gray-900">Regional Insights</p>
+        </div>
+        <p className="text-sm text-gray-400">Not yet wired to a backend endpoint.</p>
+      </div>
 
-          <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
-            <div className="mb-1 flex items-center gap-2">
-              <Truck className="h-4 w-4 text-gray-400" />
-              <p className="font-bold text-gray-900">Supplier Comparisons</p>
-            </div>
-            <p className="text-sm text-gray-400">Not yet wired to a backend endpoint.</p>
-          </div>
-        </>
-      )}
+      <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
+        <div className="mb-1 flex items-center gap-2">
+          <Truck className="h-4 w-4 text-gray-400" />
+          <p className="font-bold text-gray-900">Supplier Comparisons</p>
+        </div>
+        <p className="text-sm text-gray-400">Not yet wired to a backend endpoint.</p>
+      </div>
 
       <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
         <div className="mb-1 flex items-center gap-2">

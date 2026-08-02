@@ -39,6 +39,7 @@ import type {
   MaterialRuleEntry,
   PricingStrategyRule,
   ScopeTemplate,
+  SupplierRuleEntry,
   UnitRule,
 } from './companyRulesTypes';
 
@@ -194,6 +195,35 @@ export function useUnitRules() {
     isSuperseding: m.isSuperseding,
     supersedeError: m.supersedeError,
     resetSupersede: m.resetSupersede,
+  };
+}
+
+// Supplier Rules — deliberately NOT built on useRuleMutations/RuleEnvelope (see
+// companyRulesTypes.ts's SupplierRuleEntry doc: the real supplier_discount_rule table has
+// no superseded_by_rule_id column, so there's no versioning/supersede concept to build —
+// only create, edit-in-place, and the explicit "never hard-delete" deactivate action).
+export function useSupplierRules() {
+  const { data, isLoading, error, refetch } = useFetch<SupplierRuleEntry[]>('/api/company-rules/supplier-rules');
+  const create = useMutation<SupplierRuleEntry>();
+  const update = useMutation<SupplierRuleEntry>();
+  const deactivateMutation = useMutation<{ deactivated: boolean }>();
+  return {
+    rules: data ?? [],
+    isLoading,
+    error,
+    refetch,
+    save: (payload: Omit<SupplierRuleEntry, 'rule_id'>) => create.mutate('/api/company-rules/supplier-rules/new', payload, 'POST'),
+    isSaving: create.isLoading,
+    saveError: create.error,
+    resetSave: create.reset,
+    update: (ruleId: string, payload: Omit<SupplierRuleEntry, 'rule_id'>) =>
+      update.mutate(`/api/company-rules/supplier-rules/${ruleId}`, payload, 'PATCH'),
+    isUpdating: update.isLoading,
+    updateError: update.error,
+    resetUpdate: update.reset,
+    deactivate: (ruleId: string) => deactivateMutation.mutate(`/api/company-rules/supplier-rules/${ruleId}/deactivate`, {}, 'POST'),
+    isDeactivating: deactivateMutation.isLoading,
+    deactivateError: deactivateMutation.error,
   };
 }
 

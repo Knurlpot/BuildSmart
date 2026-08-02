@@ -12,7 +12,7 @@ import {
 } from "lucide-react";
 import { ScopeTemplatesForm } from "./ScopeTemplatesForm";
 import { MaterialRulesForm } from "./MaterialRulesForm";
-import { SupplierRulesPlaceholder } from "./SupplierRulesPlaceholder";
+import { SupplierRulesForm } from "./SupplierRulesForm";
 import { LaborRulesForm } from "./LaborRulesForm";
 import { PricingStrategyForm } from "./PricingStrategyForm";
 import { UnitRulesForm } from "./UnitRulesForm";
@@ -23,6 +23,7 @@ import {
   useMaterialRules,
   useLaborRules,
   usePricingStrategies,
+  useSupplierRules,
   useUnitRules,
 } from "@/lib/dev/provisional/useCompanyRulesProvisional";
 import { useAuth } from "@/providers/AuthProvider";
@@ -30,9 +31,9 @@ import { advanceOnboardingStep, hasCompletedCompanyRulesStep } from "@/lib/onboa
 
 // Mirrors the CPRM activity diagram's "Rule Action?" fork: six Configure-X branches plus
 // the separate Manage Existing Rules branch. Supplier Rules is schema-backed
-// (supplier_discount_rule) but deliberately deferred this pass — see
-// SupplierRulesPlaceholder.tsx. The other five have no confirmed schema yet; their forms
-// are presentation-only against PROVISIONAL local shapes (lib/dev/provisional/).
+// (supplier_discount_rule, a REAL confirmed table) and now fully wired — see
+// SupplierRulesForm.tsx. The other five have no confirmed schema yet; their forms are
+// presentation-only against PROVISIONAL local shapes (lib/dev/provisional/).
 //
 // v6 Correction 2: there is no guided wizard here anymore. Scope Templates is an
 // optional, advisory feature (client: "no packages as no two areas are the same") — saving
@@ -63,19 +64,21 @@ export default function CompanyRulesShell() {
   };
 
   // "needs configuration" dots, driven by the same real fetched lists each form already
-  // uses (not a hardcoded list of "which tabs matter"). Supplier Rules is excluded (still
-  // a deferred placeholder — there's no save flow yet, so a dot there could never clear)
-  // and so is Manage Existing Rules (a management/utility tab, not a "configure this" one).
+  // uses (not a hardcoded list of "which tabs matter"). Manage Existing Rules is excluded
+  // (a management/utility tab, not a "configure this" one) — every Configure-X tab,
+  // including Supplier Rules now that it's wired, gets a dot.
   const { currentUser, updateOnboardingStep } = useAuth();
   const { templates } = useScopeTemplates();
   const { rules: materialRules } = useMaterialRules();
   const { rules: laborRules } = useLaborRules();
   const { strategies } = usePricingStrategies();
   const { rules: unitRules } = useUnitRules();
+  const { rules: supplierRules } = useSupplierRules();
 
   const needsAttention: Partial<Record<TabId, boolean>> = {
     "scope-templates": templates.length === 0,
     "material-rules": materialRules.length === 0,
+    "supplier-rules": supplierRules.length === 0,
     "labor-rules": laborRules.length === 0,
     "pricing-strategy": strategies.length === 0,
     "unit-rules": unitRules.length === 0,
@@ -134,7 +137,9 @@ export default function CompanyRulesShell() {
       {activeTab === "material-rules" && (
         <MaterialRulesForm focusRuleId={focusRuleId} onFocusHandled={() => setFocusRuleId(null)} />
       )}
-      {activeTab === "supplier-rules" && <SupplierRulesPlaceholder />}
+      {activeTab === "supplier-rules" && (
+        <SupplierRulesForm focusRuleId={focusRuleId} onFocusHandled={() => setFocusRuleId(null)} />
+      )}
       {activeTab === "labor-rules" && (
         <LaborRulesForm focusRuleId={focusRuleId} onFocusHandled={() => setFocusRuleId(null)} />
       )}

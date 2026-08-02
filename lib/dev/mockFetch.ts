@@ -4,8 +4,7 @@
 // string) against the fixture that backs it, by pathname — query params and request
 // bodies are ignored except where a fixture needs to echo one back (market-insights'
 // item_code). This is a visual-review tool, not a filter/persistence simulator: the same
-// fixture renders regardless of which filters were picked or what was submitted, and a
-// PUT to source-priority doesn't actually persist the reordering.
+// fixture renders regardless of which filters were picked or what was submitted.
 import { supplierBenchmarksFixture } from "./fixtures/supplierBenchmarks";
 import { historicalPriceRecordsFixture } from "./fixtures/historicalPriceRecords";
 import { materialPriceVariancesFixture } from "./fixtures/materialPriceVariances";
@@ -23,7 +22,6 @@ import { flaggedPriceDeviationsFixture } from "./fixtures/flaggedPriceDeviations
 import { psaIndexFixture } from "./fixtures/psaIndex";
 import { dpwhCatalogFixture } from "./fixtures/dpwhCatalog";
 import { dpwhVersionStatusFixture, psaVersionStatusFixture } from "./fixtures/versionStatus";
-import { sourcePriorityFixture } from "./fixtures/sourcePriority";
 import { savedCatalogFixture } from "./fixtures/savedCatalog";
 import { categoriesFixture } from "./fixtures/categories";
 import { itemsCatalogFixture } from "./fixtures/itemsCatalog";
@@ -35,9 +33,11 @@ import {
   pricingStrategyFixture,
   RULE_ID_IN_USE,
   scopeTemplatesFixture,
+  supplierRulesFixture,
   unitRulesFixture,
 } from "./provisional/companyRulesFixtures";
 import { clientsFixture, blueprintExtractionFixture } from "./provisional/quotationGenerationFixtures";
+import { suppliersFixture } from "./fixtures/suppliers";
 
 function pathnameOf(endpoint: string): string {
   const i = endpoint.indexOf("?");
@@ -138,11 +138,11 @@ export function resolveMockFetch(endpoint: string): unknown {
     const params = new URLSearchParams(endpoint.slice(endpoint.indexOf("?") + 1));
     return params.get("source") === "PSA" ? psaVersionStatusFixture : dpwhVersionStatusFixture;
   }
-  if (pathname === "/api/pricelist/source-priority") return sourcePriorityFixture;
   if (pathname === "/api/pricelist/catalog") return savedCatalogFixture;
 
   if (pathname === "/api/categories") return categoriesFixture;
   if (pathname === "/api/items") return itemsCatalogFixture;
+  if (pathname === "/api/suppliers") return suppliersFixture;
 
   // --- Company Preferences & Rules (CPRM) — PROVISIONAL, see lib/dev/provisional/. ---
   // Create/update/supersede responses below all return a fixture-shaped stub purely to
@@ -168,6 +168,18 @@ export function resolveMockFetch(endpoint: string): unknown {
       if (rest.endsWith("/supersede")) return single; // POST .../:id/supersede
       if (rest !== "new" && !rest.includes("/")) return single; // PATCH .../:id (edit in place)
     }
+  }
+
+  // Supplier Rules (supplier_discount_rule) — a REAL table, not part of the RULE_RESOURCES
+  // loop above: no supersede/update pair, just create + deactivate (see companyRulesTypes.ts's
+  // SupplierRuleEntry doc for why it doesn't share the other five types' shape).
+  if (pathname === "/api/company-rules/supplier-rules") return supplierRulesFixture;
+  if (pathname === "/api/company-rules/supplier-rules/new") return supplierRulesFixture[0];
+  if (pathname.startsWith("/api/company-rules/supplier-rules/") && pathname.endsWith("/deactivate")) {
+    return { deactivated: true };
+  }
+  if (pathname.startsWith("/api/company-rules/supplier-rules/") && !pathname.endsWith("/deactivate") && pathname !== "/api/company-rules/supplier-rules/new") {
+    return supplierRulesFixture[0]; // PATCH .../:id (edit in place)
   }
 
   if (pathname === "/api/company-rules/existing") return existingRulesFixture;
