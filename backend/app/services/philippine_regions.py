@@ -149,6 +149,12 @@ CITY_TO_REGION: dict[str, str] = {
     "marawi": "BARMM",
 }
 
+PROVINCE_TO_REGION: dict[str, str] = {
+    "negros occidental": "Region VI",
+    "negros oriental": "NIR",
+    "siquijor": "NIR",
+}
+
 
 def _location_key(value: str) -> str:
     normalized = unicodedata.normalize("NFKD", value)
@@ -170,4 +176,8 @@ def infer_region_from_location(location: str | None) -> str | None:
     for city in candidates:
         if re.search(rf"\b{re.escape(city)}\b", key):
             return CITY_TO_REGION[city]
+    provinces = sorted(PROVINCE_TO_REGION, key=len, reverse=True)
+    for province in provinces:
+        if re.search(rf"\b{re.escape(province)}\b", key):
+            return PROVINCE_TO_REGION[province]
     return None

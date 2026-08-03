@@ -51,6 +51,22 @@ const ACCEPTED_EXTENSIONS = [".csv", ".xlsx", ".xls", ".pdf"];
 const QUARTERS = ["Q1", "Q2", "Q3", "Q4"] as const;
 const REVIEW_PAGE_SIZE = 30;
 
+function inferRegionFromLocation(location?: string | null) {
+  if (!location) return null;
+  const normalized = location
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/\b(city|deo|district engineering office)\b/g, " ")
+    .replace(/[^a-z0-9-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  if (/\bbacolod\b/.test(normalized) || /\bnegros occidental\b/.test(normalized)) return "Region VI";
+  if (/\bdumaguete\b/.test(normalized) || /\bnegros oriental\b/.test(normalized) || /\bsiquijor\b/.test(normalized)) return "NIR";
+  return null;
+}
+
 function fmt(n: number) {
   return "₱" + n.toLocaleString("en-PH", { minimumFractionDigits: 2 });
 }
@@ -217,7 +233,7 @@ function ReviewItemRow({
 }) {
   const inputClass =
     "h-8 w-full min-w-[7rem] rounded-lg border border-gray-200 bg-white px-2 text-sm text-gray-700 outline-none focus:border-primary focus:ring-2 focus:ring-primary/15";
-  const displayRegion = item.region || "—";
+  const displayRegion = item.region || inferRegionFromLocation(item.location) || "—";
   const displayLocation = item.location || "—";
 
   const checkboxCell = (
