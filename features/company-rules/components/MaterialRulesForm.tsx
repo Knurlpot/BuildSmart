@@ -21,6 +21,8 @@ import type { Items } from "@/types/entities/items";
 const inputCls =
   "w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm outline-none transition focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/20";
 
+const MATERIAL_PRIORITY_SOURCES: PriceSource[] = ["Supplier", "DPWH"];
+
 interface ItemConfig {
   priority: SourcePriorityEntry | null;
   fallback: MaterialFallbackRule | "";
@@ -94,6 +96,15 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
   const priorityForSource = (source: PriceSource): SourcePriorityEntry | null =>
     sourcePriority.find((entry) => entry.price_source === source) ?? null;
 
+  const materialPriorityOptions: SourcePriorityEntry[] = MATERIAL_PRIORITY_SOURCES.map((source, i) =>
+    priorityForSource(source) ?? { price_source: source, priority_rank: i + 1 }
+  );
+
+  const defaultMaterialPriority = (source: PriceSource): SourcePriorityEntry | null =>
+    MATERIAL_PRIORITY_SOURCES.includes(source)
+      ? priorityForSource(source) ?? materialPriorityOptions.find((entry) => entry.price_source === source) ?? null
+      : priorityForSource("Supplier") ?? materialPriorityOptions[0] ?? null;
+
   const priorityLabel = (priority: SourcePriorityEntry | null) =>
     priority ? `${priority.priority_rank} - ${priority.price_source}` : "Source priority not set";
 
@@ -101,13 +112,22 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
     priority ? priority.price_source : "";
 
   const priorityFromValue = (value: string): SourcePriorityEntry | null =>
-    value === "" ? null : priorityForSource(value as PriceSource);
+    value === "" || !MATERIAL_PRIORITY_SOURCES.includes(value as PriceSource)
+      ? null
+      : priorityForSource(value as PriceSource) ??
+        materialPriorityOptions.find((entry) => entry.price_source === value) ??
+        null;
 
   const rulePriority = (rule: MaterialRuleEntry): SourcePriorityEntry =>
-    priorityForSource(rule.priority_source) ?? {
-      price_source: rule.priority_source,
-      priority_rank: rule.material_priority,
-    };
+    MATERIAL_PRIORITY_SOURCES.includes(rule.priority_source)
+      ? priorityForSource(rule.priority_source) ?? {
+          price_source: rule.priority_source,
+          priority_rank: rule.material_priority,
+        }
+      : defaultMaterialPriority("Supplier") ?? {
+          price_source: "Supplier",
+          priority_rank: rule.material_priority,
+        };
 
   const checkedItems = items.filter((i) => checkedItemCodes.has(String(i.item_code)));
 
@@ -136,7 +156,7 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
       const next = { ...prev };
       for (const item of checkedItems) {
         const code = String(item.item_code);
-        if (!next[code]) next[code] = { priority: priorityForSource(item.item_source), fallback: "" };
+        if (!next[code]) next[code] = { priority: defaultMaterialPriority(item.item_source), fallback: "" };
       }
       return next;
     });
@@ -334,7 +354,7 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
               <div className="flex flex-col gap-3">
                 {checkedItems.map((item) => {
                   const code = String(item.item_code);
-                  const cfg = perItemConfig[code] ?? { priority: priorityForSource(item.item_source), fallback: "" };
+                  const cfg = perItemConfig[code] ?? { priority: defaultMaterialPriority(item.item_source), fallback: "" };
                   const invalid = touched && !configValid(code);
                   return (
                     <div key={code} className="rounded-xl border border-gray-100 bg-gray-50/60 p-3">
@@ -356,7 +376,7 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
                             className={inputCls}
                           >
                             <option value="">Select…</option>
-                            {sourcePriority.map((priority) => (
+                            {materialPriorityOptions.map((priority) => (
                               <option key={priority.price_source} value={priority.price_source}>
                                 {priorityLabel(priority)}
                               </option>
@@ -453,7 +473,7 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
                     className={inputCls}
                   >
                     <option value="">Select…</option>
-                    {sourcePriority.map((priority) => (
+                    {materialPriorityOptions.map((priority) => (
                       <option key={priority.price_source} value={priority.price_source}>
                         {priorityLabel(priority)}
                       </option>
