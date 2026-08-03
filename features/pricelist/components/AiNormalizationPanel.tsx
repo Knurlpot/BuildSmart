@@ -1,10 +1,12 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertTriangle,
   Check,
   CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
   Clock,
   File as FileIcon,
   Loader2,
@@ -30,7 +32,7 @@ import {
 
 const NORMALIZATION_FIELDS: NormalizationField[] = ["raw_name", "raw_unit", "raw_price"];
 
-const SOURCES = ["DPWH", "PSA", "Supplier", "Internal"] as const;
+const SOURCES = ["DPWH", "Supplier"] as const;
 const CATEGORIES = [
   "Uncategorized",
   "Concrete & Masonry",
@@ -47,6 +49,7 @@ const CATEGORIES = [
 // in the PDF, not OCR/scanned images).
 const ACCEPTED_EXTENSIONS = [".csv", ".xlsx", ".xls", ".pdf"];
 const QUARTERS = ["Q1", "Q2", "Q3", "Q4"] as const;
+const REVIEW_PAGE_SIZE = 30;
 
 function fmt(n: number) {
   return "₱" + n.toLocaleString("en-PH", { minimumFractionDigits: 2 });
@@ -199,6 +202,7 @@ function ReviewItemRow({
   draft,
   isSelected,
   selectionDisabled,
+  useDpwhColumns,
   onToggleSelect,
   onDraftChange,
 }: {
@@ -207,11 +211,14 @@ function ReviewItemRow({
   draft: ReviewEditDraft;
   isSelected: boolean;
   selectionDisabled: boolean;
+  useDpwhColumns: boolean;
   onToggleSelect: () => void;
   onDraftChange: (patch: Partial<ReviewEditDraft>) => void;
 }) {
   const inputClass =
     "h-8 w-full min-w-[7rem] rounded-lg border border-gray-200 bg-white px-2 text-sm text-gray-700 outline-none focus:border-primary focus:ring-2 focus:ring-primary/15";
+  const displayRegion = item.region || "—";
+  const displayLocation = item.location || "—";
 
   const checkboxCell = (
     <td className="w-8 py-2 pr-2">
@@ -233,11 +240,19 @@ function ReviewItemRow({
         <td className="py-2 pr-4 font-medium text-gray-800">{item.raw_name}</td>
         <td className="py-2 pr-4 text-gray-500">{item.raw_unit}</td>
         <td className="py-2 pr-4 text-gray-500">{fmt(item.raw_price)}</td>
-        <td className="py-2 pr-4 text-gray-500">{item.confidence <= 0 ? "New" : `${(item.confidence * 100).toFixed(0)}%`}</td>
         <td className="py-2 pr-4 text-gray-500">{item.suggested_category_type ?? "—"}</td>
-        <td className="py-2 pr-4 text-gray-500">{item.description || item.suggested_brand || "—"}</td>
-        <td className="py-2 pr-4 text-gray-500">{item.color || "—"}</td>
-        <td className="py-2 pr-4 text-gray-500">{item.suggested_brand || "Generic"}</td>
+        {useDpwhColumns ? (
+          <>
+            <td className="py-2 pr-4 text-gray-500">{displayRegion}</td>
+            <td className="py-2 pr-4 text-gray-500">{displayLocation}</td>
+          </>
+        ) : (
+          <>
+            <td className="py-2 pr-4 text-gray-500">{item.description || item.suggested_brand || "—"}</td>
+            <td className="py-2 pr-4 text-gray-500">{item.color || "—"}</td>
+            <td className="py-2 pr-4 text-gray-500">{item.suggested_brand || "Generic"}</td>
+          </>
+        )}
         <td className="py-2 pr-4 text-gray-500">{item.source || "Supplier"}</td>
       </tr>
     );
@@ -271,17 +286,6 @@ function ReviewItemRow({
         />
       </td>
       <td className="py-2 pr-4">
-        <input
-          type="number"
-          min="0"
-          max="100"
-          step="1"
-          value={draft.confidence}
-          onChange={(e) => onDraftChange({ confidence: e.target.value })}
-          className="h-8 w-20 rounded-lg border border-gray-200 bg-white px-2 text-sm text-gray-700 outline-none focus:border-primary focus:ring-2 focus:ring-primary/15"
-        />
-      </td>
-      <td className="py-2 pr-4">
         <select
           value={draft.suggested_category_type}
           onChange={(e) => onDraftChange({ suggested_category_type: e.target.value })}
@@ -292,30 +296,40 @@ function ReviewItemRow({
           ))}
         </select>
       </td>
-      <td className="py-2 pr-4">
-        <input
-          value={draft.description}
-          onChange={(e) => onDraftChange({ description: e.target.value })}
-          className={inputClass}
-          placeholder="Specification / Description"
-        />
-      </td>
-      <td className="py-2 pr-4">
-        <input
-          value={draft.color}
-          onChange={(e) => onDraftChange({ color: e.target.value })}
-          className={inputClass}
-          placeholder="Color"
-        />
-      </td>
-      <td className="py-2 pr-4">
-        <input
-          value={draft.suggested_brand}
-          onChange={(e) => onDraftChange({ suggested_brand: e.target.value })}
-          className={inputClass}
-          placeholder="Generic"
-        />
-      </td>
+      {useDpwhColumns && (
+        <>
+          <td className="py-2 pr-4 text-gray-500">{displayRegion}</td>
+          <td className="py-2 pr-4 text-gray-500">{displayLocation}</td>
+        </>
+      )}
+      {!useDpwhColumns && (
+        <>
+          <td className="py-2 pr-4">
+            <input
+              value={draft.description}
+              onChange={(e) => onDraftChange({ description: e.target.value })}
+              className={inputClass}
+              placeholder="Specification / Description"
+            />
+          </td>
+          <td className="py-2 pr-4">
+            <input
+              value={draft.color}
+              onChange={(e) => onDraftChange({ color: e.target.value })}
+              className={inputClass}
+              placeholder="Color"
+            />
+          </td>
+          <td className="py-2 pr-4">
+            <input
+              value={draft.suggested_brand}
+              onChange={(e) => onDraftChange({ suggested_brand: e.target.value })}
+              className={inputClass}
+              placeholder="Generic"
+            />
+          </td>
+        </>
+      )}
       <td className="py-2 pr-4 text-gray-500">{item.source}</td>
     </tr>
   );
@@ -346,8 +360,6 @@ export function AiNormalizationPanel({ companyId, onCatalogChanged }: AiNormaliz
     isLoadingReview,
     reviewError,
     refetchReview,
-    clearPendingReview,
-    isClearingReview,
     clearReviewError,
   } = usePricelistNormalization(companyId);
 
@@ -415,10 +427,7 @@ export function AiNormalizationPanel({ companyId, onCatalogChanged }: AiNormaliz
   const [selectedReviewIds, setSelectedReviewIds] = useState<Set<number>>(new Set());
   const [isBulkApproving, setIsBulkApproving] = useState(false);
   const [isBulkDeleting, setIsBulkDeleting] = useState(false);
-  // Two-click inline confirm rather than a native confirm() dialog — one
-  // button that deletes just the checked rows if any are selected, otherwise
-  // every Pending row. Either way there's no undo.
-  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [reviewPagesBySource, setReviewPagesBySource] = useState<Record<string, number>>({});
   const fileRef = useRef<HTMLInputElement>(null);
 
   const acceptFiles = (candidates: FileList | File[]) => {
@@ -524,14 +533,24 @@ export function AiNormalizationPanel({ companyId, onCatalogChanged }: AiNormaliz
     });
   };
 
-  const allReviewItemsSelected = reviewItems.length > 0 && selectedReviewIds.size === reviewItems.length;
-
-  const toggleSelectAllReviewItems = () => {
-    setSelectedReviewIds(allReviewItemsSelected ? new Set() : new Set(reviewItems.map((item) => item.review_id)));
+  const toggleSelectAllReviewItems = (items: PricelistReviewItem[]) => {
+    const ids = items.map((item) => item.review_id);
+    const allSelected = ids.length > 0 && ids.every((id) => selectedReviewIds.has(id));
+    setSelectedReviewIds((prev) => {
+      const next = new Set(prev);
+      if (allSelected) {
+        ids.forEach((id) => next.delete(id));
+      } else {
+        ids.forEach((id) => next.add(id));
+      }
+      return next;
+    });
   };
 
-  const approveSelectedReviewItems = async () => {
-    const ids = Array.from(selectedReviewIds);
+  const approveSelectedReviewItems = async (candidateItems: PricelistReviewItem[]) => {
+    const ids = candidateItems
+      .map((item) => item.review_id)
+      .filter((reviewId) => selectedReviewIds.has(reviewId));
     if (ids.length === 0) return;
 
     setIsBulkApproving(true);
@@ -564,8 +583,10 @@ export function AiNormalizationPanel({ companyId, onCatalogChanged }: AiNormaliz
     }
   };
 
-  const deleteSelectedReviewItems = async () => {
-    const ids = Array.from(selectedReviewIds);
+  const deleteSelectedReviewItems = async (candidateItems: PricelistReviewItem[]) => {
+    const ids = candidateItems
+      .map((item) => item.review_id)
+      .filter((reviewId) => selectedReviewIds.has(reviewId));
     if (ids.length === 0) return;
 
     setIsBulkDeleting(true);
@@ -601,19 +622,8 @@ export function AiNormalizationPanel({ companyId, onCatalogChanged }: AiNormaliz
     }
   };
 
-  // One button, two targets: whatever's checked if anything is, otherwise
-  // every Pending row (the old "Clear").
-  const handleDeleteReview = () => {
-    if (!confirmingDelete) {
-      setConfirmingDelete(true);
-      return;
-    }
-    setConfirmingDelete(false);
-    if (selectedReviewIds.size > 0) {
-      deleteSelectedReviewItems().catch(() => {});
-    } else {
-      clearPendingReview().catch(() => {});
-    }
+  const handleDeleteReview = (items: PricelistReviewItem[]) => {
+    deleteSelectedReviewItems(items).catch(() => {});
   };
 
   const isQueueBusy = queue.some((item) =>
@@ -625,6 +635,27 @@ export function AiNormalizationPanel({ companyId, onCatalogChanged }: AiNormaliz
   // columns) -> step 2. Nothing in flight but rows are waiting on a decision
   // -> step 3. Otherwise idle, ready for the next upload -> step 1.
   const currentStep: 1 | 2 | 3 = mappingItem || isQueueBusy ? 2 : reviewItems.length > 0 ? 3 : 1;
+  const reviewGroups = useMemo(() => {
+    const grouped = new Map<string, PricelistReviewItem[]>();
+    reviewItems.forEach((item) => {
+      const key = item.source || "Supplier";
+      grouped.set(key, [...(grouped.get(key) ?? []), item]);
+    });
+    return Array.from(grouped.entries()).sort(([a], [b]) => {
+      if (a === "DPWH") return -1;
+      if (b === "DPWH") return 1;
+      if (a === "Supplier") return -1;
+      if (b === "Supplier") return 1;
+      return a.localeCompare(b);
+    });
+  }, [reviewItems]);
+
+  const setReviewPageForSource = (sourceKey: string, updater: (page: number) => number) => {
+    setReviewPagesBySource((prev) => ({
+      ...prev,
+      [sourceKey]: updater(prev[sourceKey] ?? 1),
+    }));
+  };
 
   return (
     <div className="flex flex-col gap-5">
@@ -849,27 +880,6 @@ export function AiNormalizationPanel({ companyId, onCatalogChanged }: AiNormaliz
             </p>
           </div>
           <div className="flex shrink-0 flex-wrap items-center gap-2">
-            {!isEditingAll && (
-              <button
-                type="button"
-                onClick={approveSelectedReviewItems}
-                disabled={selectedReviewIds.size === 0 || isBulkApproving || isBulkDeleting}
-                className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-bold text-primary-foreground shadow-sm transition hover:bg-(--primary-hover) disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {isBulkApproving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
-                {isBulkApproving ? "Approving…" : `Approve Selected (${selectedReviewIds.size})`}
-              </button>
-            )}
-            {!isEditingAll && (
-              <button
-                type="button"
-                onClick={toggleSelectAllReviewItems}
-                disabled={reviewItems.length === 0 || isBulkApproving || isBulkDeleting}
-                className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-600 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {allReviewItemsSelected ? "Deselect All" : "Select All"}
-              </button>
-            )}
             <button
               type="button"
               onClick={isEditingAll ? cancelEditingAll : startEditingAll}
@@ -890,58 +900,6 @@ export function AiNormalizationPanel({ companyId, onCatalogChanged }: AiNormaliz
                 {isSavingAll ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
                 {isSavingAll ? "Saving…" : "Save All Changes"}
               </button>
-            )}
-            {!isEditingAll && (
-              <>
-                {confirmingDelete && (
-                  <button
-                    type="button"
-                    onClick={() => setConfirmingDelete(false)}
-                    className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-600 transition hover:bg-gray-50"
-                  >
-                    Cancel
-                  </button>
-                )}
-                <button
-                  type="button"
-                  onClick={handleDeleteReview}
-                  disabled={
-                    (selectedReviewIds.size === 0 && reviewItems.length === 0) ||
-                    isClearingReview ||
-                    isBulkDeleting ||
-                    isBulkApproving
-                  }
-                  aria-label={
-                    isClearingReview || isBulkDeleting
-                      ? "Deleting…"
-                      : confirmingDelete
-                        ? `Confirm — delete ${selectedReviewIds.size > 0 ? selectedReviewIds.size : "all"}?`
-                        : selectedReviewIds.size > 0
-                          ? `Delete selected (${selectedReviewIds.size})`
-                          : "Delete"
-                  }
-                  title={
-                    isClearingReview || isBulkDeleting
-                      ? "Deleting…"
-                      : confirmingDelete
-                        ? `Confirm — delete ${selectedReviewIds.size > 0 ? selectedReviewIds.size : "all"}?`
-                        : selectedReviewIds.size > 0
-                          ? `Delete selected (${selectedReviewIds.size})`
-                          : "Delete"
-                  }
-                  className={`inline-flex h-8 w-8 items-center justify-center rounded-lg border transition disabled:cursor-not-allowed disabled:opacity-50 ${
-                    confirmingDelete
-                      ? "border-red-200 bg-red-50 text-red-600 hover:bg-red-100"
-                      : "border-gray-200 bg-white text-gray-600 hover:bg-gray-50"
-                  }`}
-                >
-                  {isClearingReview || isBulkDeleting ? (
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  ) : (
-                    <Trash2 className="h-3.5 w-3.5" />
-                  )}
-                </button>
-              </>
             )}
             <button
               type="button"
@@ -968,37 +926,140 @@ export function AiNormalizationPanel({ companyId, onCatalogChanged }: AiNormaliz
           emptyTitle="No items awaiting review"
           emptyHint="Rows the matcher isn't confident about will show up here after an upload."
         >
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm">
-              <thead>
-                <tr className="border-b border-gray-100 text-xs uppercase tracking-wide text-gray-400">
-                  <th className="w-8 py-2 pr-2" />
-                  <th className="py-2 pr-4">Raw Name</th>
-                  <th className="py-2 pr-4">Unit</th>
-                  <th className="py-2 pr-4">Price</th>
-                  <th className="py-2 pr-4">Confidence</th>
-                  <th className="py-2 pr-4">Category</th>
-                  <th className="py-2 pr-4">Specification</th>
-                  <th className="py-2 pr-4">Color</th>
-                  <th className="py-2 pr-4">Brand</th>
-                  <th className="py-2 pr-4">Source</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-50">
-                {reviewItems.map((item) => (
-                  <ReviewItemRow
-                    key={item.review_id}
-                    item={item}
-                    isEditing={isEditingAll}
-                    draft={editDrafts[item.review_id] ?? reviewItemToDraft(item)}
-                    isSelected={selectedReviewIds.has(item.review_id)}
-                    selectionDisabled={isBulkApproving || isBulkDeleting || isEditingAll || savingId === item.review_id}
-                    onToggleSelect={() => toggleSelectReviewItem(item.review_id)}
-                    onDraftChange={(patch) => updateRowDraft(item, patch)}
-                  />
-                ))}
-              </tbody>
-            </table>
+          <div className="flex flex-col gap-5">
+            {reviewGroups.map(([sourceKey, sourceItems]) => {
+              const useDpwhColumns = sourceKey === "DPWH";
+              const selectedCount = sourceItems.filter((item) => selectedReviewIds.has(item.review_id)).length;
+              const allSourceItemsSelected = sourceItems.length > 0 && selectedCount === sourceItems.length;
+              const pageCount = Math.max(1, Math.ceil(sourceItems.length / REVIEW_PAGE_SIZE));
+              const currentPage = Math.min(Math.max(1, reviewPagesBySource[sourceKey] ?? 1), pageCount);
+              const showPagination = sourceItems.length > REVIEW_PAGE_SIZE;
+              const pageStart = (currentPage - 1) * REVIEW_PAGE_SIZE;
+              const pagedItems = showPagination
+                ? sourceItems.slice(pageStart, pageStart + REVIEW_PAGE_SIZE)
+                : sourceItems;
+              const showingStart = sourceItems.length === 0 ? 0 : pageStart + 1;
+              const showingEnd = Math.min(pageStart + pagedItems.length, sourceItems.length);
+
+              return (
+                <section key={sourceKey} className="rounded-xl border border-gray-100 p-4">
+                  <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <p className="text-xs font-bold uppercase tracking-wider text-gray-400">{sourceKey}</p>
+                      <p className="text-xs text-gray-500">{sourceItems.length} record{sourceItems.length === 1 ? "" : "s"} awaiting review</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {!isEditingAll && (
+                        <button
+                          type="button"
+                          onClick={() => approveSelectedReviewItems(sourceItems)}
+                          disabled={selectedCount === 0 || isBulkApproving || isBulkDeleting}
+                          className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-bold text-primary-foreground shadow-sm transition hover:bg-(--primary-hover) disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          {isBulkApproving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+                          {isBulkApproving ? "Approving…" : `Approve Selected (${selectedCount})`}
+                        </button>
+                      )}
+                      {!isEditingAll && (
+                        <button
+                          type="button"
+                          onClick={() => toggleSelectAllReviewItems(sourceItems)}
+                          disabled={sourceItems.length === 0 || isBulkApproving || isBulkDeleting}
+                          className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-600 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          {allSourceItemsSelected ? "Deselect All" : "Select All"}
+                        </button>
+                      )}
+                      {!isEditingAll && (
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteReview(sourceItems)}
+                          disabled={selectedCount === 0 || isBulkDeleting || isBulkApproving}
+                          aria-label={isBulkDeleting ? "Deleting…" : selectedCount > 0 ? `Delete selected (${selectedCount})` : "Delete"}
+                          title={isBulkDeleting ? "Deleting…" : selectedCount > 0 ? `Delete selected (${selectedCount})` : "Delete"}
+                          className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-600 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          {isBulkDeleting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-sm">
+                      <thead>
+                        <tr className="border-b border-gray-100 text-xs uppercase tracking-wide text-gray-400">
+                          <th className="w-8 py-2 pr-2" />
+                          <th className="py-2 pr-4">Raw Name</th>
+                          <th className="py-2 pr-4">UOM</th>
+                          <th className="py-2 pr-4">Price</th>
+                          <th className="py-2 pr-4">Category</th>
+                          {useDpwhColumns ? (
+                            <>
+                              <th className="py-2 pr-4">Region</th>
+                              <th className="py-2 pr-4">Location</th>
+                            </>
+                          ) : (
+                            <>
+                              <th className="py-2 pr-4">Specification</th>
+                              <th className="py-2 pr-4">Color</th>
+                              <th className="py-2 pr-4">Brand</th>
+                            </>
+                          )}
+                          <th className="py-2 pr-4">Source</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-50">
+                        {pagedItems.map((item) => (
+                          <ReviewItemRow
+                            key={item.review_id}
+                            item={item}
+                            isEditing={isEditingAll}
+                            draft={editDrafts[item.review_id] ?? reviewItemToDraft(item)}
+                            isSelected={selectedReviewIds.has(item.review_id)}
+                            selectionDisabled={isBulkApproving || isBulkDeleting || isEditingAll || savingId === item.review_id}
+                            useDpwhColumns={useDpwhColumns}
+                            onToggleSelect={() => toggleSelectReviewItem(item.review_id)}
+                            onDraftChange={(patch) => updateRowDraft(item, patch)}
+                          />
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  {showPagination && (
+                    <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-gray-100 pt-4">
+                      <p className="text-xs font-medium text-gray-500">
+                        Showing {showingStart}-{showingEnd} of {sourceItems.length}
+                      </p>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setReviewPageForSource(sourceKey, (page) => Math.max(1, page - 1))}
+                          disabled={currentPage === 1}
+                          aria-label={`Previous ${sourceKey} page`}
+                          title="Previous page"
+                          className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-600 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          <ChevronLeft className="h-3.5 w-3.5" />
+                        </button>
+                        <span className="min-w-20 text-center text-xs font-semibold text-gray-600">
+                          Page {currentPage} of {pageCount}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setReviewPageForSource(sourceKey, (page) => Math.min(pageCount, page + 1))}
+                          disabled={currentPage === pageCount}
+                          aria-label={`Next ${sourceKey} page`}
+                          title="Next page"
+                          className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-600 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          <ChevronRight className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </section>
+              );
+            })}
           </div>
         </QueryState>
       </div>

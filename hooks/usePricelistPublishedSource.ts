@@ -191,6 +191,7 @@ export interface DpwhCatalogRow {
   item_name?: string; // assumed enrichment — unconfirmed, see historical-price-record.ts
   category_type?: string | null;
   region: string;
+  location?: string | null;
   effective_date: string;
   quarter: NonNullable<HistoricalPriceRecord['quarter']>;
   year: number;

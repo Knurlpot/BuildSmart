@@ -17,6 +17,7 @@ export interface HistoricalPriceRecord {
   supplier_id: number | null; // null for DPWH/PSA/Internal rows
   price_source: 'DPWH' | 'PSA' | 'Supplier' | 'Internal';
   region?: PhRegion; // should match Suppliers.region vocabulary exactly
+  location?: string | null; // DPWH source location/city/province when prices differ within a region
   effective_date: string;
   quarter?: 'Q1' | 'Q2' | 'Q3' | 'Q4' | null;
   year?: number | null;

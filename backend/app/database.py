@@ -35,11 +35,18 @@ def init_db() -> None:
             connection.execute(text("ALTER TABLE pricelist_review_item ADD COLUMN IF NOT EXISTS color VARCHAR(50)"))
             connection.execute(text("ALTER TABLE pricelist_review_item ADD COLUMN IF NOT EXISTS company_id INT"))
             connection.execute(text("ALTER TABLE pricelist_review_item ADD COLUMN IF NOT EXISTS upload_id INT"))
+            connection.execute(text("ALTER TABLE pricelist_review_item ADD COLUMN IF NOT EXISTS region VARCHAR(255)"))
+            connection.execute(text("ALTER TABLE pricelist_review_item ADD COLUMN IF NOT EXISTS location VARCHAR(255)"))
+            connection.execute(text("ALTER TABLE pricelist_review_item ALTER COLUMN raw_name TYPE VARCHAR(255)"))
+            connection.execute(text("ALTER TABLE pricelist_review_item ALTER COLUMN suggested_material TYPE VARCHAR(255)"))
             connection.execute(text("ALTER TABLE items ADD COLUMN IF NOT EXISTS color VARCHAR(50)"))
             connection.execute(text("ALTER TABLE items ADD COLUMN IF NOT EXISTS description VARCHAR(255)"))
             connection.execute(text("ALTER TABLE items ADD COLUMN IF NOT EXISTS company_id INT"))
+            connection.execute(text("ALTER TABLE items ADD COLUMN IF NOT EXISTS source_location VARCHAR(255)"))
+            connection.execute(text("ALTER TABLE items ALTER COLUMN item_name TYPE VARCHAR(255)"))
             connection.execute(text("ALTER TABLE approved_match_cache ADD COLUMN IF NOT EXISTS company_id INT"))
             connection.execute(text("ALTER TABLE historical_price_record ADD COLUMN IF NOT EXISTS effective_date DATE"))
+            connection.execute(text("ALTER TABLE historical_price_record ADD COLUMN IF NOT EXISTS location VARCHAR(255)"))
             connection.execute(
                 text(
                     """
@@ -71,13 +78,14 @@ def init_db() -> None:
                         ) THEN
                             ALTER TABLE historical_price_record
                             ADD CONSTRAINT uq_historical_price
-                            UNIQUE (item_code, supplier_id, price_source, effective_date);
+                            UNIQUE (item_code, supplier_id, price_source, region, location, effective_date);
                         END IF;
                     END $$;
                     """
                 )
             )
             connection.execute(text("CREATE INDEX IF NOT EXISTS ix_historical_price_effective_date ON historical_price_record (effective_date DESC)"))
+            connection.execute(text("CREATE INDEX IF NOT EXISTS ix_historical_price_region_location ON historical_price_record (region, location)"))
             connection.execute(text("ALTER TABLE material_price_variance ADD COLUMN IF NOT EXISTS effective_date DATE"))
             connection.execute(
                 text(

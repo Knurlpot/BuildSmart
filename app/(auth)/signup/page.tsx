@@ -561,11 +561,6 @@ export default function SignUpPage() {
                   {errors.confirmPassword && (
                     <p className="text-xs text-red-500">{errors.confirmPassword}</p>
                   )}
-                  {form.confirmPassword.length > 0 && form.password === form.confirmPassword && (
-                    <p className="flex items-center gap-1 text-xs text-green-600">
-                      <Check className="h-3 w-3" /> Passwords match
-                    </p>
-                  )}
                 </div>
 
                 <button

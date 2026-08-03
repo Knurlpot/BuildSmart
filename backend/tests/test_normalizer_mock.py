@@ -50,3 +50,24 @@ def test_flags_new_item_when_no_close_candidate():
     assert result.matched_item_code is None
     assert result.item_name == "Vinyl Floor Tile 300x300"
     assert result.confidence < 0.6
+
+
+def test_zero_similarity_marks_new_item_instead_of_crashing():
+    result = normalize_material_mock(
+        "zzzzzzzz",
+        "qqq",
+        [
+            {
+                "item_code": 1,
+                "category_type": "Structural",
+                "item_name": "aaaaaaaa",
+                "material": "aaaaaaaa",
+                "brand": "Generic",
+                "unit": "bbb",
+            }
+        ],
+    )
+
+    assert result.is_new_item is True
+    assert result.matched_item_code is None
+    assert result.confidence == 0.0

@@ -19,6 +19,7 @@ from app.schemas.pricelist import NormalizedPriceRecord, SourceAgency
 from app.services.dpwh_published import fetch_dpwh_cmpd_release, save_dpwh_cmpd_publish_records
 from app.services.match_cache import invalidate_cached_match, upsert_cached_match
 from app.services.file_hash import calculate_file_hash, calculate_file_size
+from app.services.philippine_regions import infer_region_from_location
 from app.services.pricelist_json_normalizer import normalize_pricelist_dataframe
 from app.services.pricelist_parser import MissingColumnsError, parse_pricelist_file
 from app.services.published_version_check import check_published_version
@@ -99,6 +100,8 @@ class ReviewItemResponse(BaseModel):
     suggested_brand: str | None
     description: str | None
     color: str | None
+    region: str | None = None
+    location: str | None = None
     company_id: int | None
     source: str
     supplier_id: int | None
@@ -108,15 +111,17 @@ class ReviewItemResponse(BaseModel):
 
 
 class ReviewItemUpdateRequest(BaseModel):
-    raw_name: str | None = Field(default=None, min_length=1, max_length=100)
+    raw_name: str | None = Field(default=None, min_length=1, max_length=255)
     raw_unit: str | None = Field(default=None, min_length=1, max_length=30)
     raw_price: float | None = Field(default=None, gt=0)
     confidence: float | None = Field(default=None, ge=0.0, le=1.0)
     suggested_category_type: str | None = Field(default=None, max_length=40)
-    suggested_material: str | None = Field(default=None, max_length=100)
+    suggested_material: str | None = Field(default=None, max_length=255)
     suggested_brand: str | None = Field(default=None, max_length=100)
     description: str | None = Field(default=None, max_length=255)
     color: str | None = Field(default=None, max_length=50)
+    region: str | None = Field(default=None, max_length=255)
+    location: str | None = Field(default=None, max_length=255)
     status: str | None = Field(default=None, min_length=1, max_length=20)
 
 
@@ -164,6 +169,7 @@ class DpwhCatalogRow(BaseModel):
     item_name: str | None
     category_type: str | None
     region: str | None
+    location: str | None = None
     effective_date: date
     quarter: str | None
     year: int | None
@@ -301,6 +307,22 @@ def _save_review_item_to_catalog(row: PriceListReviewItem, db: Session) -> None:
     source = row.source.strip()
     supplier_id = row.supplier_id
     company_id = row.company_id
+    price_region = row.region
+    price_location = row.location
+    if price_region is None:
+        price_region = infer_region_from_location(price_location)
+    if source == "DPWH":
+        price_region = price_region or "NIR"
+        # Backfill compatibility for review rows created before `location`
+        # existed, where the DEO was temporarily stored in `region`.
+        if price_location is None and price_region not in {
+            "Region I", "Region II", "Region III", "Region IV-A", "Region IV-B",
+            "Region V", "Region VI", "Region VII", "Region VIII", "Region IX",
+            "Region X", "Region XI", "Region XII", "Region XIII", "CAR", "NCR",
+            "NIR", "BARMM",
+        }:
+            price_location = price_region
+            price_region = "NIR"
     upload = db.get(PriceListUpload, row.upload_id) if row.upload_id is not None else None
     effective_date = upload.effective_date if upload is not None and upload.effective_date is not None else _default_effective_date()
 
@@ -331,6 +353,7 @@ def _save_review_item_to_catalog(row: PriceListReviewItem, db: Session) -> None:
             unit=unit,
             color=color,
             item_source=source,
+            source_location=None,
             description=description,
         )
         db.add(item)
@@ -347,6 +370,8 @@ def _save_review_item_to_catalog(row: PriceListReviewItem, db: Session) -> None:
         .where(HistoricalPriceRecord.item_code == item.item_code)
         .where(HistoricalPriceRecord.supplier_id == supplier_id)
         .where(HistoricalPriceRecord.price_source == source)
+        .where(HistoricalPriceRecord.region == price_region if price_region is not None else HistoricalPriceRecord.region.is_(None))
+        .where(HistoricalPriceRecord.location == price_location if price_location is not None else HistoricalPriceRecord.location.is_(None))
         .where(HistoricalPriceRecord.effective_date == effective_date)
         .order_by(HistoricalPriceRecord.historicalrec_id.desc())
     ).scalars().first()
@@ -357,6 +382,8 @@ def _save_review_item_to_catalog(row: PriceListReviewItem, db: Session) -> None:
                 item_code=item.item_code,
                 supplier_id=supplier_id,
                 price_source=source,
+                region=price_region,
+                location=price_location,
                 effective_date=effective_date,
                 quarter=upload.quarter if upload is not None else None,
                 year=upload.year if upload is not None else None,
@@ -856,6 +883,7 @@ def get_dpwh_catalog(db: Session = Depends(get_db)):
             Items.item_name,
             Category.category_type,
             HistoricalPriceRecord.region,
+            HistoricalPriceRecord.location,
             HistoricalPriceRecord.effective_date,
             HistoricalPriceRecord.quarter,
             HistoricalPriceRecord.year,
@@ -875,6 +903,7 @@ def get_dpwh_catalog(db: Session = Depends(get_db)):
             item_name=row.item_name,
             category_type=row.category_type,
             region=row.region,
+            location=row.location,
             effective_date=row.effective_date,
             quarter=row.quarter,
             year=row.year,

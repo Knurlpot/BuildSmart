@@ -10,11 +10,21 @@ from app.models import Category, HistoricalPriceRecord, Items, PriceListReviewIt
 from app.services.candidates import get_item_candidates
 from app.services.match_cache import get_cache_lookup
 from app.services.normalize_batch import normalize_pricelist
-from app.services.pricelist_parser import MissingColumnsError, parse_pricelist_file
+from app.services.philippine_regions import infer_region_from_location
+from app.services.pricelist_parser import MissingColumnsError, expand_dpwh_deo_price_columns, parse_pricelist_file
 from app.services.normalizer import determine_category
 import re
 
 CONFIDENCE_THRESHOLD = 0.85
+
+
+def _fit(value: str | None, max_length: int) -> str | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    return text[:max_length]
 
 
 def _prepare_fast_session(session: Session) -> None:
@@ -89,7 +99,7 @@ def _review_description_from_row(row, df, match) -> str:
                 longest = text
         candidate = longest
 
-    return (candidate or (match.brand or "")).strip() or "Generic"
+    return _fit((candidate or (match.brand or "")).strip() or "Generic", 255) or "Generic"
 
 
 def _add_review_item_for_row(
@@ -103,19 +113,23 @@ def _add_review_item_for_row(
     source: str,
     supplier_id: int | None,
     row_color: str | None,
+    row_region: str | None = None,
+    row_location: str | None = None,
 ) -> None:
-    review_name = (getattr(row, "raw_name", None) or "").strip() or (match.material or "").strip()
+    review_name = _fit((getattr(row, "raw_name", None) or "").strip() or (match.material or "").strip(), 255) or "Unknown material"
     session.add(
         PriceListReviewItem(
             raw_name=review_name,
-            raw_unit=row.raw_unit,
+            raw_unit=_fit(row.raw_unit, 30) or "unit",
             raw_price=float(row.raw_price),
             confidence=match.confidence,
             suggested_category_type=match.category_type or determine_category(review_name or ""),
-            suggested_material=match.material,
-            suggested_brand=match.brand,
+            suggested_material=_fit(match.material, 255),
+            suggested_brand=_fit(match.brand, 100),
             description=_review_description_from_row(row, df, match),
-            color=row_color,
+            color=_fit(row_color, 50),
+            region=_fit(row_region, 255),
+            location=_fit(row_location, 255),
             company_id=company_id,
             upload_id=upload_id,
             source=source,
@@ -158,6 +172,8 @@ def normalize_price_list(
                 upload.error_message = None
                 session.flush()
         df = parse_pricelist_file(file_path, column_mapping=column_mapping)
+        if source == "DPWH":
+            df = expand_dpwh_deo_price_columns(df, default_region="NIR")
         candidates = _get_scoped_item_candidates(session, company_id)
         cache_lookup = {} if force_review else get_cache_lookup(session, company_id=company_id)
         results = normalize_pricelist(df, candidates, cache_lookup=cache_lookup)
@@ -169,6 +185,10 @@ def normalize_price_list(
         for row, match in zip(df.itertuples(), results):
             row_color = (getattr(row, "color", None) or "").strip() or None
             row_description = (getattr(row, "description", None) or "").strip() or None
+            row_location = (getattr(row, "location", None) or "").strip() or None
+            row_region = (getattr(row, "region", None) or "").strip() or None
+            if row_region is None:
+                row_region = infer_region_from_location(row_location)
             if upload_id is not None:
                 _add_review_item_for_row(
                     session,
@@ -180,6 +200,8 @@ def normalize_price_list(
                     source=source,
                     supplier_id=supplier_id,
                     row_color=row_color,
+                    row_region=row_region,
+                    row_location=row_location if source == "DPWH" else None,
                 )
                 needs_review += 1
                 continue
@@ -197,6 +219,8 @@ def normalize_price_list(
                     source=source,
                     supplier_id=supplier_id,
                     row_color=row_color,
+                    row_region=row_region,
+                    row_location=row_location if source == "DPWH" else None,
                 )
                 needs_review += 1
                 continue
@@ -209,11 +233,12 @@ def normalize_price_list(
                 new_item = Items(
                     category_id=category.category_id,
                     company_id=company_id,
-                    item_name=match.item_name,
-                    brand=match.brand,
-                    unit=match.unit,
+                    item_name=_fit(match.item_name, 255) or "Unknown material",
+                    brand=_fit(match.brand, 100) or "Generic",
+                    unit=_fit(match.unit, 30) or "unit",
                     color=row_color,
                     item_source=source,
+                    source_location=None,
                     description=row_description or match.material,
                 )
                 session.add(new_item)
@@ -235,6 +260,13 @@ def normalize_price_list(
                     item_code=item_code,
                     supplier_id=supplier_id,
                     price_source=source,
+                    region=row_region or (row_location if source == "DPWH" and row_location in {
+                        "Region I", "Region II", "Region III", "Region IV-A", "Region IV-B",
+                        "Region V", "Region VI", "Region VII", "Region VIII", "Region IX",
+                        "Region X", "Region XI", "Region XII", "Region XIII", "CAR", "NCR",
+                        "NIR", "BARMM",
+                    } else None),
+                    location=row_location if source == "DPWH" else None,
                     effective_date=price_effective_date,
                     quarter=quarter,
                     year=year,

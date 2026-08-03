@@ -1,12 +1,16 @@
 from pathlib import Path
+import sys
+import types
 
 import pandas as pd
 import pytest
 
 from app.services.pricelist_parser import (
     MissingColumnsError,
+    expand_dpwh_deo_price_columns,
     _parse_collapsed_pdf_item,
     _parse_pdf_text,
+    _parse_pdf_ocr_table,
     _dedupe_and_label_columns,
     _pdf_table_to_dataframe,
     parse_pricelist_file,
@@ -138,6 +142,32 @@ def test_pdf_text_fallback_splits_flat_supplier_table_rows(tmp_path, monkeypatch
     assert df.iloc[1]["raw_unit"] == "Piece"
 
 
+def test_pdf_ocr_fallback_groups_scanned_words_into_rows(tmp_path, monkeypatch):
+    pdf_file = tmp_path / "scanned.pdf"
+    pdf_file.write_bytes(b"%PDF-1.7\n%scanned\n")
+
+    fake_pdf2image = types.SimpleNamespace(convert_from_path=lambda path, dpi=300: ["page-image"])
+    fake_tesseract = types.SimpleNamespace(
+        Output=types.SimpleNamespace(DICT="dict"),
+        image_to_data=lambda image, output_type=None, config=None: {
+            "text": ["Material", "Description", "Unit", "Bacolod", "DEO", "Portland", "Cement", "bag", "260.00"],
+            "conf": ["95"] * 9,
+            "left": [10, 75, 310, 410, 485, 10, 90, 310, 410],
+            "top": [10, 10, 10, 10, 10, 45, 45, 45, 45],
+            "width": [58, 90, 35, 68, 35, 72, 62, 28, 60],
+            "height": [14] * 9,
+        },
+    )
+    monkeypatch.setitem(sys.modules, "pdf2image", fake_pdf2image)
+    monkeypatch.setitem(sys.modules, "pytesseract", fake_tesseract)
+
+    df = _parse_pdf_ocr_table(pdf_file)
+
+    assert df is not None
+    assert "Portland Cement" in " ".join(df.iloc[1].tolist())
+    assert "260.00" in df.iloc[1].tolist()
+
+
 def test_infers_columns_when_headers_are_generic(tmp_path):
     generic_file = tmp_path / "generic.csv"
     generic_file.write_text(
@@ -185,6 +215,54 @@ def test_detects_color_column(tmp_path):
 
     assert "color" in df.columns
     assert df.iloc[0]["color"] == "Glossy White"
+
+
+def test_detects_dpwh_location_column(tmp_path):
+    csv_file = tmp_path / "dpwh-location.csv"
+    csv_file.write_text(
+        "Material Description,Unit Cost,Unit,Location\n"
+        "Portland Cement Type 1,260.00,bag,Bacolod City\n"
+    )
+
+    df = parse_pricelist_file(str(csv_file))
+
+    assert "location" in df.columns
+    assert df.iloc[0]["location"] == "Bacolod City"
+
+
+def test_expands_dpwh_deo_price_columns_to_location_rows():
+    df = pd.DataFrame(
+        [
+            {
+                "raw_name": "Portland Cement Type 1",
+                "raw_unit": "bag",
+                "Bacolod City DEO": "260.00",
+                "Negros Occidental 1st DEO": "270.50",
+            }
+        ]
+    )
+
+    expanded = expand_dpwh_deo_price_columns(df, default_region="NIR")
+
+    assert len(expanded) == 2
+    assert set(expanded["location"]) == {"Bacolod City DEO", "Negros Occidental 1st DEO"}
+    assert set(expanded["raw_price"]) == {260.0, 270.5}
+    assert set(expanded["region"]) == {"NIR"}
+
+
+def test_parse_then_expand_preserves_all_dpwh_deo_price_headers(tmp_path):
+    csv_file = tmp_path / "dpwh-wide.csv"
+    csv_file.write_text(
+        "Material Description,Unit,Bacolod City DEO,Negros Occidental 1st DEO\n"
+        "Portland Cement Type 1,bag,260.00,270.50\n"
+    )
+
+    df = parse_pricelist_file(str(csv_file))
+    expanded = expand_dpwh_deo_price_columns(df, default_region="NIR")
+
+    assert len(expanded) == 2
+    assert set(expanded["location"]) == {"Bacolod City DEO", "Negros Occidental 1st DEO"}
+    assert set(expanded["raw_price"]) == {260.0, 270.5}
 
 
 def test_promotes_embedded_header_after_report_title_rows(tmp_path):

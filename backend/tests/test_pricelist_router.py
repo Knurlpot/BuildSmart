@@ -637,6 +637,56 @@ def test_fetch_published_saves_dpwh_records(db_session):
     assert float(saved_row.price) == 260.0
 
 
+def test_fetch_published_saves_dpwh_location_specific_prices(db_session):
+    sample_payload = {
+        "rows": [
+            {
+                "item_name": "Portland Cement Type 1",
+                "unit": "bag",
+                "price": 260.0,
+                "region": "NIR",
+                "location": "Bacolod City",
+                "quarter": "Q1",
+                "year": 2026,
+            },
+            {
+                "item_name": "Portland Cement Type 1",
+                "unit": "bag",
+                "price": 275.0,
+                "region": "NIR",
+                "location": "Dumaguete City",
+                "quarter": "Q1",
+                "year": 2026,
+            },
+        ]
+    }
+
+    def override_get_db():
+        yield db_session
+
+    app.dependency_overrides[get_db] = override_get_db
+    try:
+        with patch.object(pricelist_router, "fetch_dpwh_cmpd_release", return_value=sample_payload):
+            response = client.post(
+                "/pricelist/fetch-published",
+                json={"source": "DPWH", "region": "NIR"},
+            )
+    finally:
+        del app.dependency_overrides[get_db]
+
+    assert response.status_code == 200
+    assert response.json()["auto_saved_count"] == 2
+
+    saved_rows = db_session.execute(
+        select(HistoricalPriceRecord)
+        .where(HistoricalPriceRecord.price_source == "DPWH")
+        .where(HistoricalPriceRecord.region == "NIR")
+        .order_by(HistoricalPriceRecord.location)
+    ).scalars().all()
+    assert [row.location for row in saved_rows] == ["Bacolod City", "Dumaguete City"]
+    assert [float(row.price) for row in saved_rows] == [260.0, 275.0]
+
+
 def test_fetch_published_index_returns_psa_variance_rows(db_session):
     db_session.add(
         MaterialPriceVariance(

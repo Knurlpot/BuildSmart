@@ -36,11 +36,12 @@ class Items(Base):
     # No Company model mapped yet, so this can't be a ForeignKey() without breaking
     # flush-order resolution. Revisit once Company is modeled.
     company_id: Mapped[int | None]
-    item_name: Mapped[str] = mapped_column(String(100))
+    item_name: Mapped[str] = mapped_column(String(255))
     brand: Mapped[str] = mapped_column(String(100))
     unit: Mapped[str] = mapped_column(String(30))
     color: Mapped[str | None] = mapped_column(String(50))
     item_source: Mapped[str] = mapped_column(String(20))
+    source_location: Mapped[str | None] = mapped_column(String(255))
     description: Mapped[str | None] = mapped_column(String(255))
 
 
@@ -54,6 +55,7 @@ class HistoricalPriceRecord(Base):
     supplier_id: Mapped[int | None]
     price_source: Mapped[str] = mapped_column(String(20))
     region: Mapped[str | None] = mapped_column(String(30))
+    location: Mapped[str | None] = mapped_column(String(255))
     effective_date: Mapped[date] = mapped_column(Date, default=date.today)
     quarter: Mapped[str | None] = mapped_column(String(2))
     year: Mapped[int | None] = mapped_column(SmallInteger)
@@ -61,7 +63,7 @@ class HistoricalPriceRecord(Base):
     recorded_at: Mapped[datetime] = mapped_column(TIMESTAMP, server_default=func.now())
 
     __table_args__ = (
-        UniqueConstraint("item_code", "supplier_id", "price_source", "effective_date", name="uq_historical_price"),
+        UniqueConstraint("item_code", "supplier_id", "price_source", "region", "location", "effective_date", name="uq_historical_price"),
     )
 
 
@@ -126,15 +128,17 @@ class PriceListReviewItem(Base):
     __tablename__ = "pricelist_review_item"
 
     review_id: Mapped[int] = mapped_column(primary_key=True)
-    raw_name: Mapped[str] = mapped_column(String(100))
+    raw_name: Mapped[str] = mapped_column(String(255))
     raw_unit: Mapped[str] = mapped_column(String(30))
     raw_price: Mapped[float] = mapped_column(Numeric(12, 2))
     confidence: Mapped[float] = mapped_column(Numeric(5, 4))
     suggested_category_type: Mapped[str | None] = mapped_column(String(40))
-    suggested_material: Mapped[str | None] = mapped_column(String(100))
+    suggested_material: Mapped[str | None] = mapped_column(String(255))
     suggested_brand: Mapped[str | None] = mapped_column(String(100))
     description: Mapped[str | None] = mapped_column(String(255))
     color: Mapped[str | None] = mapped_column(String(50))
+    region: Mapped[str | None] = mapped_column(String(255))
+    location: Mapped[str | None] = mapped_column(String(255))
     company_id: Mapped[int | None]
     upload_id: Mapped[int | None]
     source: Mapped[str] = mapped_column(String(20))

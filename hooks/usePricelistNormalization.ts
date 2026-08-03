@@ -57,6 +57,8 @@ export interface PricelistReviewItem {
   suggested_brand: string | null;
   description: string | null;
   color: string | null;
+  region: string | null;
+  location: string | null;
   company_id: number | null;
   upload_id: number | null;
   source: string;
@@ -106,6 +108,8 @@ export type PricelistReviewItemUpdate = Partial<
     | 'suggested_brand'
     | 'description'
     | 'color'
+    | 'region'
+    | 'location'
     | 'status'
   >
 >;

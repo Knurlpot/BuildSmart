@@ -8,6 +8,7 @@ type HistoricalPriceRecordResponse = {
   supplier_id: number | null;
   price_source: "DPWH" | "PSA" | "Supplier" | "Internal";
   region: string | null;
+  location: string | null;
   effective_date: string;
   quarter: "Q1" | "Q2" | "Q3" | "Q4" | null;
   year: number | null;
@@ -54,6 +55,7 @@ export async function GET(request: NextRequest) {
        h.supplier_id,
        h.price_source,
        h.region,
+       h.location,
        h.effective_date::text AS effective_date,
        h.quarter,
        h.year,

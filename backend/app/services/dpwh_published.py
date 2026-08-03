@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from app.ingest.scraper import download_file, fetch_dpwh_cmpd_links
 from app.models import Category, HistoricalPriceRecord, Items
 from app.services.candidates import get_item_candidates
-from app.services.pricelist_parser import parse_pricelist_file
+from app.services.pricelist_parser import expand_dpwh_deo_price_columns, parse_pricelist_file
 
 
 DPWH_PUBLISHED_BASE_URL = os.environ.get(
@@ -38,6 +38,7 @@ def fetch_dpwh_cmpd_release(region: str) -> list[dict[str, Any]]:
         dest = Path(workdir) / Path(latest_url).name
         download_file(latest_url, dest)
         df = parse_pricelist_file(str(dest))
+        df = expand_dpwh_deo_price_columns(df, default_region=region)
 
     rows: list[dict[str, Any]] = []
     for _, row in df.iterrows():
@@ -55,6 +56,8 @@ def fetch_dpwh_cmpd_release(region: str) -> list[dict[str, Any]]:
             or ""
         ).strip()
         raw_price = row.get("raw_price") if "raw_price" in row else row.get("price")
+        location = row.get("location") or row.get("city") or row.get("province") or row.get("district")
+        row_region = row.get("region") or region
         quarter = row.get("quarter") or row.get("period")
         year = row.get("year")
 
@@ -66,7 +69,8 @@ def fetch_dpwh_cmpd_release(region: str) -> list[dict[str, Any]]:
                 "item_name": item_name,
                 "unit": raw_unit,
                 "price": raw_price,
-                "region": region,
+                "region": str(row_region).strip() if row_region is not None else region,
+                "location": str(location).strip() if location is not None else None,
                 "quarter": quarter,
                 "year": int(year) if year is not None else None,
             }
@@ -106,6 +110,9 @@ def save_dpwh_cmpd_publish_records(session: Session, payload: dict[str, Any]) ->
         raw_unit = (row.get("unit") or row.get("raw_unit") or "").strip()
         raw_price = row.get("price")
         region = row.get("region")
+        location = (row.get("location") or row.get("city") or row.get("province") or row.get("district") or None)
+        if isinstance(location, str):
+            location = location.strip() or None
         quarter = row.get("quarter")
         year = row.get("year")
         effective_date = _effective_date_from_quarter(quarter, int(year) if year is not None else None)
@@ -128,6 +135,7 @@ def save_dpwh_cmpd_publish_records(session: Session, payload: dict[str, Any]) ->
                 brand="",
                 unit=raw_unit or "",
                 item_source="DPWH",
+                source_location=location,
                 description=raw_name or None,
             )
             session.add(item_obj)
@@ -141,6 +149,7 @@ def save_dpwh_cmpd_publish_records(session: Session, payload: dict[str, Any]) ->
             supplier_id=None,
             price_source="DPWH",
             region=region,
+            location=location,
             effective_date=effective_date,
             quarter=quarter,
             year=year,

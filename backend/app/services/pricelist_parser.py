@@ -31,6 +31,11 @@ COLUMN_SYNONYMS: dict[str, set[str]] = {
         "item color", "item colour", "product color", "product colour",
         "finish color", "finish colour",
     },
+    "location": {
+        "location", "locality", "area", "market location", "price location",
+        "source location", "city", "municipality", "province", "district",
+        "dpwh location", "cmpd location",
+    },
     "raw_unit": {
         "unit", "uom", "unit of measure", "unit measure", "unit of measurement",
         "measure", "measurement", "packaging", "u/m", "u m", "um",
@@ -57,7 +62,7 @@ UNIT_ALIASES = {
     "lng", "length", "ln.m", "l.m", "lm", "m", "meter", "meters",
     "sheet", "sheets", "sht", "roll", "rolls", "box", "boxes", "pail", "pails",
     "bundle", "bundles", "bd.ft", "bd ft", "board foot",
-    "gal", "gallon", "liter", "litre",
+    "gal", "gallon", "liter", "litre", "ltr", "bdft",
 }
 
 NON_MATERIAL_PATTERNS = [
@@ -280,7 +285,7 @@ def _is_generic_column_name(value: Any) -> bool:
     key = _header_key(value)
     if not key:
         return True
-    if key in REQUIRED_COLUMNS or key in {"description", "raw_brand", "color"}:
+    if key in REQUIRED_COLUMNS or key in {"description", "raw_brand", "color", "location"}:
         return False
     return bool(re.fullmatch(r"(?:column|col|field|header)\s*\d+", key)) or bool(re.fullmatch(r"[a-z]", key))
 
@@ -293,6 +298,29 @@ def _has_header_signal(columns: list[Any]) -> bool:
         if not _is_generic_column_name(column) or _header_matches(column) is not None:
             return True
     return False
+
+
+def _is_metadata_column_name_for_price_preservation(column: Any) -> bool:
+    key = _header_key(column)
+    if key in {_header_key(value) for value in REQUIRED_COLUMNS | {"description", "raw_brand", "color", "location"}}:
+        return True
+    return any(
+        token in key
+        for token in (
+            "item no", "item number", "item code", "material id", "code",
+            "unit", "uom", "measure", "description", "material", "brand",
+            "color", "quarter", "period", "year", "region", "location",
+        )
+    )
+
+
+def _column_has_parseable_prices(series: pd.Series) -> bool:
+    parsed_values = [_parse_price_value(value) for value in series]
+    prices = [value for value in parsed_values if value is not None]
+    if not prices or _is_probably_sequence(prices):
+        return False
+    non_blank_values = [value for value in series if not _is_blank(value)]
+    return len(prices) >= max(1, len(non_blank_values) // 2)
 
 
 def _normalize_columns(df: pd.DataFrame) -> tuple[pd.DataFrame, dict[str, str]]:
@@ -320,6 +348,14 @@ def _normalize_columns(df: pd.DataFrame) -> tuple[pd.DataFrame, dict[str, str]]:
         if "color" not in df.columns and "color" not in rename_map.values():
             if any(token in header_key for token in ["color", "colour"]):
                 rename_map[col] = "color"
+                assigned_columns.add(col)
+                break
+
+    for col in df.columns:
+        header_key = _header_key(col)
+        if "location" not in df.columns and "location" not in rename_map.values():
+            if any(token in header_key for token in ["location", "locality", "area", "city", "municipality", "province", "district"]):
+                rename_map[col] = "location"
                 assigned_columns.add(col)
                 break
 
@@ -390,7 +426,19 @@ def _normalize_columns(df: pd.DataFrame) -> tuple[pd.DataFrame, dict[str, str]]:
         rename_map[best_col] = canonical
         assigned_columns.add(best_col)
 
+    raw_price_source_col = next((original for original, canonical in rename_map.items() if canonical == "raw_price"), None)
+    price_like_columns = [
+        col
+        for col in df.columns
+        if col != raw_price_source_col
+        and not _is_metadata_column_name_for_price_preservation(col)
+        and _column_has_parseable_prices(df[col])
+    ]
     renamed = df.rename(columns=rename_map)
+    if raw_price_source_col is not None and price_like_columns:
+        original_label = _sanitize_text(raw_price_source_col)
+        if original_label and original_label not in renamed.columns:
+            renamed[original_label] = df[raw_price_source_col].values
     renamed = _infer_missing_columns(renamed)
     detected_mapping = {canonical: str(original) for original, canonical in rename_map.items() if canonical in REQUIRED_COLUMNS}
     return renamed, detected_mapping
@@ -401,11 +449,13 @@ def _header_matches(value: Any) -> str | None:
     normalized_requirements = {_header_key(canonical) for canonical in REQUIRED_COLUMNS}
     if key in normalized_requirements:
         return next(canonical for canonical in REQUIRED_COLUMNS if _header_key(canonical) == key)
-    if key in {_header_key("description"), _header_key("raw_brand"), _header_key("color")}:
+    if key in {_header_key("description"), _header_key("raw_brand"), _header_key("color"), _header_key("location")}:
         if key == _header_key("description"):
             return "description"
         if key == _header_key("raw_brand"):
             return "raw_brand"
+        if key == _header_key("location"):
+            return "location"
         return "color"
     if any(token in key for token in ["full item description", "item description", "product description"]):
         return "raw_name"
@@ -420,6 +470,8 @@ def _header_matches(value: Any) -> str | None:
         return "description"
     if any(token in key for token in ["color", "colour"]):
         return "color"
+    if any(token in key for token in ["location", "locality", "area", "city", "municipality", "province", "district"]):
+        return "location"
     # Check for brand/manufacturer column with special handling
     if any(token in key for token in ["brand", "manufacturer", "mfr", "maker"]):
         return "raw_brand"
@@ -638,11 +690,328 @@ def _parse_pdf(path: Path) -> pd.DataFrame:
                     frames.append(frame)
 
     if not frames:
-        return _parse_pdf_text(path)
+        text_fallback = _parse_pdf_text_or_none(path)
+        if text_fallback is not None:
+            return text_fallback
+        dpwh_ocr_fallback = _parse_dpwh_cmpd_ocr_table(path)
+        if dpwh_ocr_fallback is not None:
+            return dpwh_ocr_fallback
+        ocr_fallback = _parse_pdf_ocr_table(path)
+        if ocr_fallback is not None:
+            return ocr_fallback
+        raise ValueError(
+            "No table found in PDF price list. This PDF appears to be scanned; install/configure OCR dependencies "
+            "(Poppler and Tesseract) so image-only DPWH CMPD pages can be read."
+        )
 
     df = pd.concat(frames, ignore_index=True, sort=False)
     df = df.map(lambda cell: cell.strip() if isinstance(cell, str) else cell)
     return df
+
+
+DPWH_NIR_DEO_COLUMNS = [
+    "NEGROS OCCIDENTAL 1ST DEO",
+    "NEGROS OCCIDENTAL 2ND DEO",
+    "NEGROS OCCIDENTAL 3RD DEO",
+    "NEGROS OCCIDENTAL 4TH DEO",
+    "NEGROS OCCIDENTAL 5TH DEO",
+    "NEGROS ORIENTAL 1ST DEO",
+    "NEGROS ORIENTAL 2ND DEO",
+    "NEGROS ORIENTAL 3RD DEO",
+    "BACOLOD DEO",
+    "SIQUIJOR DEO",
+]
+
+
+def _clean_ocr_price(value: str) -> float | None:
+    text = _sanitize_text(value)
+    if not text:
+        return None
+    had_decimal = "." in text
+    text = text.replace("|", "").replace("[", "").replace("]", "")
+    text = text.replace("{", "").replace("}", "").replace(")", "").replace("(", "")
+    text = text.replace("S", "5").replace("O", "0").replace("o", "0")
+    parsed = _parse_price_value(text)
+    if parsed is not None and not had_decimal and parsed >= 10000:
+        return parsed / 100
+    return parsed
+
+
+def _clean_dpwh_ocr_text(value: str) -> str:
+    text = _sanitize_text(value)
+    text = re.sub(r"\bI?M[Gg][0O][A-Za-z0-9]{1,2}[.,]\d{3,4}\b", "", text)
+    text = re.sub(r"[_`'‘’]+", " ", text)
+    text = re.sub(r"[^A-Za-z0-9À-ÿ\s.,/&()\"'°@+\-]", " ", text)
+    text = re.sub(r"^[|_\-:\s]+|[|_\-:\s]+$", "", text)
+    text = re.sub(r"^[JTI]\s*(?=[A-Z(])", "", text)
+    text = re.sub(r"\s*[=|]+\s*$", "", text)
+    text = re.sub(r"\s+", " ", text)
+    return text.strip(" |[]{}")
+
+
+def _normalize_dpwh_material_code(value: str) -> str | None:
+    match = re.search(r"\bI?M[Gg]([0O][A-Za-z0-9]{1,2})[.,](\d{3,4})\b", value)
+    if match is None:
+        return None
+    section_digits = re.sub(r"\D", "", match.group(1).upper().replace("O", "0").replace("S", "5"))
+    item_digits = re.sub(r"\D", "", match.group(2))
+    if not section_digits or not item_digits:
+        return None
+    section = str(int(section_digits)).zfill(2)
+    return f"MG{section}.{item_digits.zfill(4)}"
+
+
+def _clean_dpwh_unit(value: str, raw_name: str) -> str:
+    text = re.sub(r"[^A-Za-z0-9./-]", "", _sanitize_text(value)).upper()
+    replacements = {
+        "KET": "KG",
+        "KE": "KG",
+        "GAT": "GAL",
+        "6AL": "GAL",
+        "UR": "LTR",
+        "UE": "LTR",
+        "ET": "LTR",
+        "PT": "PC",
+        "PE": "PC",
+        "NA": "PC",
+        "CON": "KG",
+    }
+    text = replacements.get(text, text)
+    if text not in {"KG", "GAL", "LTR", "BDFT", "PC", "M", "CUM", "NONE"}:
+        extracted = _extract_unit_from_text(raw_name).upper()
+        text = extracted or text
+    return text[:30] or "unit"
+
+
+def _ocr_single_line(image: Any, box: tuple[int, int, int, int], whitelist: str | None = None) -> str:
+    try:
+        from PIL import ImageOps
+        import pytesseract
+    except ImportError:
+        return ""
+
+    crop = ImageOps.expand(image.crop(box), border=8, fill=255)
+    config = "--psm 7"
+    if whitelist:
+        config += f" -c tessedit_char_whitelist={whitelist}"
+    try:
+        return _sanitize_text(pytesseract.image_to_string(crop, config=config))
+    except Exception:
+        return ""
+
+
+def _dpwh_horizontal_grid_lines(image: Any) -> list[int]:
+    try:
+        import numpy as np
+    except ImportError:
+        return []
+
+    grayscale = image.convert("L")
+    pixels = np.array(grayscale)
+    dark_pixels = pixels < 120
+    row_density = dark_pixels.mean(axis=1)
+    candidate_rows = np.where(row_density > 0.25)[0]
+    if len(candidate_rows) == 0:
+        return []
+
+    runs: list[tuple[int, int]] = []
+    start = previous = int(candidate_rows[0])
+    for row in candidate_rows[1:]:
+        current = int(row)
+        if current - previous > 2:
+            runs.append((start, previous))
+            start = current
+        previous = current
+    runs.append((start, previous))
+    return [(start + end) // 2 for start, end in runs]
+
+
+def _dpwh_bucket_index(center_x: float, image_width: int) -> int | None:
+    # Ratios measured from the scanned DPWH CMPD landscape pages. They target
+    # the centers of the ten DEO price columns after Material Code/Description/Unit.
+    centers = [0.521, 0.568, 0.616, 0.663, 0.710, 0.758, 0.805, 0.853, 0.902, 0.949]
+    tolerance = 0.030
+    ratio = center_x / image_width
+    nearest_index = min(range(len(centers)), key=lambda index: abs(ratio - centers[index]))
+    return nearest_index if abs(ratio - centers[nearest_index]) <= tolerance else None
+
+
+def _parse_dpwh_cmpd_ocr_table(path: Path) -> pd.DataFrame | None:
+    try:
+        from pdf2image import convert_from_path
+    except ImportError:
+        return None
+
+    try:
+        images = convert_from_path(str(path), dpi=220)
+    except Exception:
+        return None
+
+    rows: list[dict[str, Any]] = []
+    for image in images:
+        image = image.convert("L")
+        width, _ = image.size
+        grid_lines = _dpwh_horizontal_grid_lines(image)
+        if len(grid_lines) < 4:
+            continue
+
+        price_centers = [0.521, 0.568, 0.616, 0.663, 0.710, 0.758, 0.805, 0.853, 0.902, 0.949]
+        price_edges = [0.500] + [
+            (price_centers[index] + price_centers[index + 1]) / 2 for index in range(len(price_centers) - 1)
+        ] + [0.975]
+
+        for index in range(len(grid_lines) - 1):
+            top = grid_lines[index] + 1
+            bottom = grid_lines[index + 1] - 1
+            if bottom - top < 8:
+                continue
+
+            code_text = _ocr_single_line(
+                image,
+                (int(width * 0.020), top, int(width * 0.095), bottom),
+                "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789.,",
+            )
+            normalized_code = _normalize_dpwh_material_code(code_text)
+            if normalized_code is None:
+                continue
+            if normalized_code.endswith(".0000"):
+                continue
+
+            raw_name = _clean_dpwh_ocr_text(
+                _ocr_single_line(image, (int(width * 0.090), top, int(width * 0.450), bottom))
+            )
+            if not raw_name or _parse_price_value(raw_name) is not None:
+                continue
+
+            raw_unit = _clean_dpwh_unit(
+                _ocr_single_line(
+                    image,
+                    (int(width * 0.450), top, int(width * 0.500), bottom),
+                    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz./",
+                ),
+                raw_name,
+            )
+
+            row: dict[str, Any] = {
+                "raw_name": raw_name,
+                "raw_unit": raw_unit,
+                "raw_brand": "Generic",
+                "material_code": normalized_code,
+            }
+            found_price = False
+            for bucket_index, column in enumerate(DPWH_NIR_DEO_COLUMNS):
+                price_text = _ocr_single_line(
+                    image,
+                    (
+                        int(width * price_edges[bucket_index]),
+                        top,
+                        int(width * price_edges[bucket_index + 1]),
+                        bottom,
+                    ),
+                    "0123456789,.",
+                )
+                price = _clean_ocr_price(price_text)
+                if price is None:
+                    continue
+                row[column] = price
+                found_price = True
+            if found_price:
+                rows.append(row)
+
+    if not rows:
+        return None
+    return pd.DataFrame(rows).drop_duplicates(
+        subset=["material_code", "raw_name", "raw_unit", *DPWH_NIR_DEO_COLUMNS],
+        keep="first",
+    )
+
+
+def _cluster_ocr_words_into_rows(words: list[dict[str, Any]]) -> list[list[dict[str, Any]]]:
+    rows: list[list[dict[str, Any]]] = []
+    for word in sorted(words, key=lambda item: (item["top"], item["left"])):
+        placed = False
+        word_mid = word["top"] + word["height"] / 2
+        for row in rows:
+            row_mid = sum(item["top"] + item["height"] / 2 for item in row) / len(row)
+            if abs(word_mid - row_mid) <= max(10, word["height"] * 0.8):
+                row.append(word)
+                placed = True
+                break
+        if not placed:
+            rows.append([word])
+    return [sorted(row, key=lambda item: item["left"]) for row in rows]
+
+
+def _ocr_row_to_cells(row: list[dict[str, Any]]) -> list[str]:
+    if not row:
+        return []
+    gaps = [
+        row[index + 1]["left"] - (row[index]["left"] + row[index]["width"])
+        for index in range(len(row) - 1)
+    ]
+    large_gap = max(18, (sum(gaps) / len(gaps) * 1.8) if gaps else 18)
+
+    cells: list[list[str]] = [[row[0]["text"]]]
+    for index, word in enumerate(row[1:], start=1):
+        previous = row[index - 1]
+        gap = word["left"] - (previous["left"] + previous["width"])
+        if gap >= large_gap:
+            cells.append([word["text"]])
+        else:
+            cells[-1].append(word["text"])
+    return [_sanitize_text(" ".join(cell)) for cell in cells if _sanitize_text(" ".join(cell))]
+
+
+def _parse_pdf_ocr_table(path: Path) -> pd.DataFrame | None:
+    try:
+        from pdf2image import convert_from_path
+        import pytesseract
+    except ImportError:
+        return None
+
+    try:
+        images = convert_from_path(str(path), dpi=300)
+    except Exception:
+        return None
+
+    table_rows: list[list[str]] = []
+    for image in images:
+        try:
+            data = pytesseract.image_to_data(image, output_type=pytesseract.Output.DICT, config="--psm 6")
+        except Exception:
+            continue
+
+        words: list[dict[str, Any]] = []
+        for index, text in enumerate(data.get("text", [])):
+            clean = _sanitize_text(text)
+            if not clean:
+                continue
+            try:
+                confidence = float(data.get("conf", ["-1"])[index])
+            except (TypeError, ValueError):
+                confidence = -1
+            if confidence < 25:
+                continue
+            words.append(
+                {
+                    "text": clean,
+                    "left": int(data["left"][index]),
+                    "top": int(data["top"][index]),
+                    "width": int(data["width"][index]),
+                    "height": int(data["height"][index]),
+                }
+            )
+
+        for row in _cluster_ocr_words_into_rows(words):
+            cells = _ocr_row_to_cells(row)
+            if len(cells) >= 3:
+                table_rows.append(cells)
+
+    if not table_rows:
+        return None
+
+    width = max(len(row) for row in table_rows)
+    return pd.DataFrame(_pad_pdf_rows(table_rows, width), columns=[f"column_{index + 1}" for index in range(width)])
 
 
 def _is_pdf_noise_line(line: str) -> bool:
@@ -826,10 +1195,81 @@ def _finalize_pdf_fallback_frame(df: pd.DataFrame) -> pd.DataFrame:
         df["description"] = df["description"].map(_sanitize_text)
     if "color" in df.columns:
         df["color"] = df["color"].map(_sanitize_text)
+    if "location" in df.columns:
+        df["location"] = df["location"].map(_sanitize_text)
     df["raw_unit"] = df["raw_unit"].map(_sanitize_text)
     df["raw_price"] = df["raw_price"].map(_parse_price_value)
     df = df[~df.apply(lambda row: _is_non_material_row(row["raw_name"], row["raw_price"]), axis=1)]
     return df.reset_index(drop=True)
+
+
+def _is_metadata_column(column: Any) -> bool:
+    key = _header_key(column)
+    if key in {_header_key(value) for value in REQUIRED_COLUMNS | {"description", "raw_brand", "color", "location"}}:
+        return True
+    return any(
+        token in key
+        for token in (
+            "item no", "item number", "item code", "material id", "code",
+            "unit", "uom", "measure", "description", "material", "brand",
+            "color", "quarter", "period", "year", "region", "location",
+        )
+    )
+
+
+def _is_probable_location_price_column(df: pd.DataFrame, column: Any) -> bool:
+    if _is_metadata_column(column):
+        return False
+    parsed_values = [_parse_price_value(value) for value in df[column]]
+    prices = [value for value in parsed_values if value is not None]
+    if not prices:
+        return False
+    if _is_probably_sequence(prices):
+        return False
+    non_blank_values = [value for value in df[column] if not _is_blank(value)]
+    return len(prices) >= max(1, len(non_blank_values) // 2)
+
+
+def expand_dpwh_deo_price_columns(df: pd.DataFrame, *, default_region: str | None = None) -> pd.DataFrame:
+    """Convert DPWH CMPD wide DEO price columns into location-specific rows."""
+    if df.empty or not {"raw_name", "raw_unit"}.issubset(df.columns):
+        return df
+
+    location_price_columns = [
+        column
+        for column in df.columns
+        if column != "raw_price" and _is_probable_location_price_column(df, column)
+    ]
+    if not location_price_columns:
+        return df
+
+    rows: list[dict[str, Any]] = []
+    passthrough_columns = [
+        column
+        for column in df.columns
+        if column not in set(location_price_columns) | {"raw_price", "location"}
+    ]
+    for _, row in df.iterrows():
+        for column in location_price_columns:
+            price = _parse_price_value(row.get(column))
+            if price is None:
+                continue
+            expanded_row = {column_name: row.get(column_name) for column_name in passthrough_columns}
+            expanded_row["raw_price"] = price
+            expanded_row["location"] = _sanitize_text(column)
+            if default_region is not None and "region" not in expanded_row:
+                expanded_row["region"] = default_region
+            rows.append(expanded_row)
+
+    if not rows:
+        return df
+    expanded = pd.DataFrame(rows)
+    dedupe_columns = [
+        column
+        for column in ("material_code", "raw_name", "raw_unit", "raw_price", "location")
+        if column in expanded.columns
+    ]
+    return expanded.drop_duplicates(subset=dedupe_columns, keep="first") if dedupe_columns else expanded
 
 
 def _pdf_text_preview_dataframe(path: Path) -> pd.DataFrame | None:
@@ -936,6 +1376,8 @@ def parse_pricelist_file(file_path: str, column_mapping: Mapping[str, str] | Non
         df["description"] = df["description"].map(_sanitize_text)
     if "color" in df.columns:
         df["color"] = df["color"].map(_sanitize_text)
+    if "location" in df.columns:
+        df["location"] = df["location"].map(_sanitize_text)
     df["raw_unit"] = df["raw_unit"].map(_sanitize_text)
     df["raw_price"] = df["raw_price"].map(_parse_price_value)
     df = df[~df.apply(lambda row: _is_non_material_row(row["raw_name"], row["raw_price"]), axis=1)]

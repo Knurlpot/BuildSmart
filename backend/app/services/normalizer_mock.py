@@ -41,7 +41,17 @@ def normalize_material_mock(
             best_score = score
             best_candidate = candidate
 
-    assert best_candidate is not None
+    if best_candidate is None:
+        return MaterialMatch(
+            matched_item_code=None,
+            confidence=0.0,
+            category_type="Others",
+            item_name=raw_name,
+            material=raw_name,
+            brand="Generic",
+            unit=raw_unit,
+            is_new_item=True,
+        )
 
     is_new_item = best_score < MATCH_THRESHOLD
 

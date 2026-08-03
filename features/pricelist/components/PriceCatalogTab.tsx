@@ -439,6 +439,7 @@ export function PriceCatalogTab() {
         cell: ({ row }) => <span>{row.original.category_type ?? "Uncategorized"}</span>,
       },
       { accessorKey: "region", header: "Region", enableGlobalFilter: false },
+      { accessorKey: "location", header: "Location", enableGlobalFilter: false },
       {
         id: "period",
         header: "Period",
@@ -704,28 +705,6 @@ export function PriceCatalogTab() {
       </div>
 
       <div className="flex flex-wrap items-center justify-end gap-2">
-        {subTab === "supplier" && (
-          <button
-            type="button"
-            onClick={isEditingAll ? cancelEditingAll : startEditingAll}
-            disabled={supplierRows.length === 0 || isBulkDeleting || isSavingAll}
-            className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-600 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            <Pencil className="h-3.5 w-3.5" />
-            {isEditingAll ? "Cancel Editing" : "Edit"}
-          </button>
-        )}
-        {isEditingAll && (
-          <button
-            type="button"
-            onClick={saveAllSupplierEdits}
-            disabled={isSavingAll}
-            className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-bold text-primary-foreground shadow-sm transition hover:bg-(--primary-hover) disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {isSavingAll ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
-            {isSavingAll ? "Saving…" : "Save All Changes"}
-          </button>
-        )}
         {!isEditingAll && (
           <>
             <button
@@ -736,6 +715,18 @@ export function PriceCatalogTab() {
             >
               {allSelected ? "Deselect All" : "Select All"}
             </button>
+            {subTab === "supplier" && (
+              <button
+                type="button"
+                onClick={startEditingAll}
+                disabled={supplierRows.length === 0 || isBulkDeleting || isSavingAll}
+                aria-label="Edit"
+                title="Edit"
+                className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-600 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <Pencil className="h-3.5 w-3.5" />
+              </button>
+            )}
             {confirmingBulkDelete && (
               <button
                 type="button"
@@ -749,6 +740,24 @@ export function PriceCatalogTab() {
               type="button"
               onClick={handleDeleteToolbar}
               disabled={(selectedIds.size === 0 && selectableIds.length === 0) || isBulkDeleting}
+              aria-label={
+                isBulkDeleting
+                  ? "Deleting…"
+                  : confirmingBulkDelete
+                    ? `Confirm delete ${selectedIds.size > 0 ? selectedIds.size : "all"}`
+                    : selectedIds.size > 0
+                      ? `Delete selected (${selectedIds.size})`
+                      : "Delete"
+              }
+              title={
+                isBulkDeleting
+                  ? "Deleting…"
+                  : confirmingBulkDelete
+                    ? `Confirm delete ${selectedIds.size > 0 ? selectedIds.size : "all"}`
+                    : selectedIds.size > 0
+                      ? `Delete selected (${selectedIds.size})`
+                      : "Delete"
+              }
               className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-50 ${
                 confirmingBulkDelete
                   ? "border-red-200 bg-red-50 text-red-600 hover:bg-red-100"
@@ -756,22 +765,38 @@ export function PriceCatalogTab() {
               }`}
             >
               {isBulkDeleting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
-              {isBulkDeleting
-                ? "Deleting…"
-                : confirmingBulkDelete
-                  ? `Confirm — delete ${selectedIds.size > 0 ? selectedIds.size : "all"}?`
-                  : selectedIds.size > 0
-                    ? `Delete Selected (${selectedIds.size})`
-                    : "Delete"}
+            </button>
+          </>
+        )}
+        {isEditingAll && (
+          <>
+            <button
+              type="button"
+              onClick={cancelEditingAll}
+              disabled={isSavingAll}
+              className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-600 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Cancel Editing
+            </button>
+            <button
+              type="button"
+              onClick={saveAllSupplierEdits}
+              disabled={isSavingAll}
+              className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-bold text-primary-foreground shadow-sm transition hover:bg-(--primary-hover) disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {isSavingAll ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+              {isSavingAll ? "Saving…" : "Save All Changes"}
             </button>
           </>
         )}
         <button
           type="button"
           onClick={active.refetch}
-          className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-600 transition hover:bg-gray-50"
+          aria-label="Refresh"
+          title="Refresh"
+          className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-600 transition hover:bg-gray-50"
         >
-          <RefreshCw className="h-3.5 w-3.5" /> Refresh
+          <RefreshCw className="h-3.5 w-3.5" />
         </button>
       </div>
       {saveError && (

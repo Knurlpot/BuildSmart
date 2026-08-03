@@ -10,5 +10,6 @@ export interface Items {
   unit: string;
   color?: string;
   item_source: 'DPWH' | 'PSA' | 'Supplier' | 'Internal';
+  source_location?: string | null;
   description?: string;
 }
