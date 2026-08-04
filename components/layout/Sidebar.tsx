@@ -52,14 +52,16 @@ export default function Sidebar() {
 
   return (
     <aside className="flex h-screen w-64 flex-shrink-0 flex-col bg-white shadow-[2px_0_8px_rgba(0,0,0,0.08)]">
-      <div
+      <Link
+        href="/dashboard"
+        aria-label="Go to dashboard"
         className={`flex h-16 items-center gap-2 px-4 transition-colors ${
           workflow ? "bg-primary" : "border-b border-gray-100"
         }`}
       >
         <Image src={logoFrame(13)} alt="" className={`h-7 w-7 ${workflow ? "brightness-0 invert" : ""}`} />
         <span className={`text-base font-bold ${workflow ? "text-white" : "text-gray-900"}`}>BuildSmart</span>
-      </div>
+      </Link>
 
       {onboardingStep < 2 && (
         <div className="mx-3 mt-3 rounded-lg border border-amber-200 bg-amber-50 p-2 text-center">
