@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertTriangle,
+  Building2,
   Check,
   CheckCircle2,
   ChevronLeft,
@@ -21,6 +22,8 @@ import {
 import { QueryState } from "@/components/feedback/QueryState";
 import { ColumnMappingStep, type DetectedColumn } from "./ColumnMappingStep";
 import { QuickUploadGuide } from "./QuickUploadGuide";
+import { useFetch } from "@/hooks/useFetch";
+import { useMutation } from "@/hooks/useMutation";
 import {
   NORMALIZATION_FIELD_LABELS,
   usePricelistNormalization,
@@ -29,10 +32,12 @@ import {
   type PricelistReviewItemUpdate,
   type QueueItem,
 } from "@/hooks/usePricelistNormalization";
+import { PH_REGIONS, type PhRegion } from "@/types/entities/common";
 
 const NORMALIZATION_FIELDS: NormalizationField[] = ["raw_name", "raw_unit", "raw_price"];
 
 const SOURCES = ["DPWH", "Supplier"] as const;
+const SUPPLIER_TYPES = ["Distributor", "Warehouse", "Retailer"] as const;
 const CATEGORIES = [
   "Uncategorized",
   "Concrete & Masonry",
@@ -50,6 +55,44 @@ const CATEGORIES = [
 const ACCEPTED_EXTENSIONS = [".csv", ".xlsx", ".xls", ".pdf"];
 const QUARTERS = ["Q1", "Q2", "Q3", "Q4"] as const;
 const REVIEW_PAGE_SIZE = 30;
+
+type SupplierMode = "existing" | "new";
+type SupplierType = (typeof SUPPLIER_TYPES)[number];
+
+type SupplierRecord = {
+  supplier_id: number;
+  supplier_name: string;
+  supplier_address: string;
+  warehouse_loc: string | null;
+  city: string;
+  region: PhRegion;
+  contact_email: string;
+  contact_number: string;
+  supplier_type: SupplierType;
+  status: "Active" | "Inactive";
+};
+
+type SupplierForm = {
+  supplier_name: string;
+  supplier_address: string;
+  city: string;
+  region: PhRegion;
+  contact_email: string;
+  contact_number: string;
+  supplier_type: SupplierType;
+  warehouse_loc: string;
+};
+
+const emptySupplierForm = (): SupplierForm => ({
+  supplier_name: "",
+  supplier_address: "",
+  city: "",
+  region: "NCR",
+  contact_email: "",
+  contact_number: "",
+  supplier_type: "Distributor",
+  warehouse_loc: "",
+});
 
 function inferRegionFromLocation(location?: string | null) {
   if (!location) return null;
@@ -378,6 +421,8 @@ export function AiNormalizationPanel({ companyId, onCatalogChanged }: AiNormaliz
     refetchReview,
     clearReviewError,
   } = usePricelistNormalization(companyId);
+  const suppliers = useFetch<SupplierRecord[]>("/api/suppliers");
+  const createSupplier = useMutation<SupplierRecord>();
 
   const mappingItem = queue.find((item) => item.status === "needs_mapping");
 
@@ -428,6 +473,9 @@ export function AiNormalizationPanel({ companyId, onCatalogChanged }: AiNormaliz
   const [fileTypeError, setFileTypeError] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
   const [source, setSource] = useState<(typeof SOURCES)[number]>("Supplier");
+  const [supplierMode, setSupplierMode] = useState<SupplierMode>("existing");
+  const [selectedSupplierId, setSelectedSupplierId] = useState<number | null>(null);
+  const [supplierForm, setSupplierForm] = useState<SupplierForm>(() => emptySupplierForm());
   const [quarter, setQuarter] = useState<(typeof QUARTERS)[number]>(
     QUARTERS[Math.floor(new Date().getMonth() / 3)]
   );
@@ -476,9 +524,36 @@ export function AiNormalizationPanel({ companyId, onCatalogChanged }: AiNormaliz
     setPendingFiles((prev) => prev.filter((entry) => entry.id !== id));
   };
 
-  const handleUpload = () => {
+  const supplierFormComplete =
+    supplierForm.supplier_name.trim() &&
+    supplierForm.supplier_address.trim() &&
+    supplierForm.city.trim() &&
+    supplierForm.contact_email.trim() &&
+    supplierForm.contact_number.trim();
+  const supplierReady =
+    source !== "Supplier"
+      ? true
+      : supplierMode === "existing"
+        ? selectedSupplierId != null
+        : Boolean(supplierFormComplete);
+  const uploadDisabled = pendingFiles.length === 0 || !supplierReady || createSupplier.isLoading;
+
+  const updateSupplierForm = (patch: Partial<SupplierForm>) => {
+    setSupplierForm((prev) => ({ ...prev, ...patch }));
+  };
+
+  const handleUpload = async () => {
     if (pendingFiles.length === 0) return;
-    enqueueFiles(pendingFiles.map((entry) => entry.file), source, { quarter, year });
+    let supplierId = source === "Supplier" ? selectedSupplierId : null;
+    if (source === "Supplier" && supplierMode === "new") {
+      const created = await createSupplier.mutate("/api/suppliers", supplierForm, "POST");
+      supplierId = created.supplier_id;
+      setSelectedSupplierId(created.supplier_id);
+      setSupplierMode("existing");
+      suppliers.refetch();
+    }
+    if (source === "Supplier" && supplierId == null) return;
+    enqueueFiles(pendingFiles.map((entry) => entry.file), source, { quarter, year, supplierId });
     setPendingFiles([]);
   };
 
@@ -766,6 +841,110 @@ export function AiNormalizationPanel({ companyId, onCatalogChanged }: AiNormaliz
               </div>
             </div>
 
+            {source === "Supplier" && (
+              <div className="flex flex-col gap-3 rounded-2xl border border-gray-200 bg-white p-4">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="flex items-center gap-2">
+                    <Building2 className="h-4 w-4 text-primary" />
+                    <p className="text-sm font-bold text-gray-900">Supplier</p>
+                  </div>
+                  <div className="grid grid-cols-2 rounded-xl border border-gray-200 bg-gray-50 p-1">
+                    {(["existing", "new"] as const).map((mode) => (
+                      <button
+                        key={mode}
+                        type="button"
+                        onClick={() => setSupplierMode(mode)}
+                        className={`rounded-lg px-3 py-1.5 text-xs font-bold transition ${
+                          supplierMode === mode ? "bg-white text-primary shadow-sm" : "text-gray-500 hover:text-gray-700"
+                        }`}
+                      >
+                        {mode === "existing" ? "Existing Supplier" : "New Supplier"}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {supplierMode === "existing" ? (
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-xs font-semibold uppercase tracking-wide text-gray-600">Supplier Name</label>
+                    <select
+                      value={selectedSupplierId ?? ""}
+                      onChange={(e) => setSelectedSupplierId(e.target.value ? Number(e.target.value) : null)}
+                      disabled={suppliers.isLoading}
+                      className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm outline-none focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/20 disabled:opacity-60"
+                    >
+                      <option value="">{suppliers.isLoading ? "Loading suppliers..." : "Select supplier"}</option>
+                      {(suppliers.data ?? []).map((supplier) => (
+                        <option key={supplier.supplier_id} value={supplier.supplier_id}>
+                          {supplier.supplier_name}
+                        </option>
+                      ))}
+                    </select>
+                    {suppliers.error && <p className="text-xs text-red-500">Couldn&apos;t load suppliers: {suppliers.error.message}</p>}
+                  </div>
+                ) : (
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <input
+                      value={supplierForm.supplier_name}
+                      onChange={(e) => updateSupplierForm({ supplier_name: e.target.value })}
+                      placeholder="Supplier name"
+                      className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm outline-none focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/20"
+                    />
+                    <input
+                      value={supplierForm.contact_email}
+                      onChange={(e) => updateSupplierForm({ contact_email: e.target.value })}
+                      placeholder="Email"
+                      type="email"
+                      className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm outline-none focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/20"
+                    />
+                    <input
+                      value={supplierForm.supplier_address}
+                      onChange={(e) => updateSupplierForm({ supplier_address: e.target.value })}
+                      placeholder="Address"
+                      className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm outline-none focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/20"
+                    />
+                    <input
+                      value={supplierForm.contact_number}
+                      onChange={(e) => updateSupplierForm({ contact_number: e.target.value })}
+                      placeholder="Contact number"
+                      className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm outline-none focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/20"
+                    />
+                    <input
+                      value={supplierForm.city}
+                      onChange={(e) => updateSupplierForm({ city: e.target.value })}
+                      placeholder="City"
+                      className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm outline-none focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/20"
+                    />
+                    <select
+                      value={supplierForm.region}
+                      onChange={(e) => updateSupplierForm({ region: e.target.value as PhRegion })}
+                      className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm outline-none focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/20"
+                    >
+                      {PH_REGIONS.map((region) => (
+                        <option key={region}>{region}</option>
+                      ))}
+                    </select>
+                    <select
+                      value={supplierForm.supplier_type}
+                      onChange={(e) => updateSupplierForm({ supplier_type: e.target.value as SupplierType })}
+                      className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm outline-none focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/20"
+                    >
+                      {SUPPLIER_TYPES.map((type) => (
+                        <option key={type}>{type}</option>
+                      ))}
+                    </select>
+                    <input
+                      value={supplierForm.warehouse_loc}
+                      onChange={(e) => updateSupplierForm({ warehouse_loc: e.target.value })}
+                      placeholder="Warehouse location"
+                      className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm outline-none focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/20"
+                    />
+                  </div>
+                )}
+                {createSupplier.error && <p className="text-xs text-red-500">Couldn&apos;t save supplier: {createSupplier.error.message}</p>}
+              </div>
+            )}
+
             <div
               onDragOver={(e) => {
                 e.preventDefault();
@@ -841,10 +1020,13 @@ export function AiNormalizationPanel({ companyId, onCatalogChanged }: AiNormaliz
                 <button
                   type="button"
                   onClick={handleUpload}
+                  disabled={uploadDisabled}
                   className="mt-2 flex w-fit items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-bold text-primary-foreground shadow-sm transition hover:bg-(--primary-hover)"
                 >
-                  <Upload className="h-4 w-4" />
-                  {pendingFiles.length > 1
+                  {createSupplier.isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+                  {createSupplier.isLoading
+                    ? "Saving Supplier..."
+                    : pendingFiles.length > 1
                     ? `Upload & Normalize ${pendingFiles.length} Files`
                     : "Upload & Normalize"}
                 </button>

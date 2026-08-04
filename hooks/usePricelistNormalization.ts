@@ -147,6 +147,7 @@ export interface QueueItem {
   id: string;
   file: File;
   source: string;
+  supplierId?: number | null;
   companyId?: number | null;
   quarter: string;
   year: number;
@@ -236,6 +237,9 @@ export function usePricelistNormalization(companyId?: number | null) {
         if (item.companyId != null) {
           form.append('company_id', String(item.companyId));
         }
+        if (item.supplierId != null) {
+          form.append('supplier_id', String(item.supplierId));
+        }
         form.append('quarter', item.quarter);
         form.append('year', String(item.year));
 
@@ -282,13 +286,18 @@ export function usePricelistNormalization(companyId?: number | null) {
     }
   };
 
-  const enqueueFiles = (files: File[], source: string, period?: { quarter: string; year: number }) => {
+  const enqueueFiles = (
+    files: File[],
+    source: string,
+    period?: { quarter: string; year: number; supplierId?: number | null }
+  ) => {
     const fallbackQuarter = `Q${Math.floor(new Date().getMonth() / 3) + 1}`;
     const fallbackYear = new Date().getFullYear();
     const newItems: QueueItem[] = files.map((file) => ({
       id: `${file.name}-${file.size}-${Date.now()}-${Math.random()}`,
       file,
       source,
+      supplierId: period?.supplierId ?? null,
       companyId,
       quarter: period?.quarter ?? fallbackQuarter,
       year: period?.year ?? fallbackYear,
@@ -315,6 +324,9 @@ export function usePricelistNormalization(companyId?: number | null) {
     form.append('source', item.source);
     if (item.companyId != null) {
       form.append('company_id', String(item.companyId));
+    }
+    if (item.supplierId != null) {
+      form.append('supplier_id', String(item.supplierId));
     }
     form.append('quarter', item.quarter);
     form.append('year', String(item.year));
