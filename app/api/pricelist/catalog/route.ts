@@ -6,6 +6,7 @@ type SupplierCatalogRecord = {
   historicalrec_id: number;
   item_code: number;
   item_name: string;
+  supplier_name: string | null;
   brand: string;
   category_type: string | null;
   description_material: string;
@@ -27,6 +28,7 @@ export async function GET(request: NextRequest) {
        h.historicalrec_id,
        i.item_code,
        i.item_name,
+       s.supplier_name,
        i.brand,
        c.category_type,
        COALESCE(NULLIF(i.description, ''), i.item_name) AS description_material,
@@ -41,6 +43,7 @@ export async function GET(request: NextRequest) {
      JOIN LATERAL (
        SELECT
          hp.historicalrec_id,
+         hp.supplier_id,
          hp.price,
          hp.region,
          hp.effective_date,
@@ -51,6 +54,7 @@ export async function GET(request: NextRequest) {
        ORDER BY hp.effective_date DESC, hp.recorded_at DESC, hp.historicalrec_id DESC
        LIMIT 1
      ) h ON TRUE
+     LEFT JOIN suppliers s ON s.supplier_id = h.supplier_id
      WHERE i.item_source = 'Supplier'
        AND (i.company_id IS NULL OR i.company_id = (SELECT company_id FROM users WHERE user_id = $1))
      ORDER BY h.effective_date DESC, h.recorded_at DESC, i.item_code DESC`,

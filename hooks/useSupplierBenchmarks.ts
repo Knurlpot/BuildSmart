@@ -1,19 +1,13 @@
-// Assumed endpoint: GET /api/supplier-benchmarks?region=<region>&category=<category>
-// UNVERIFIED — confirm with the backend team:
-//   - exact path and query param names
-//   - whether supplier_name/region come pre-joined (assumed here) or need a
-//     separate GET /api/suppliers lookup joined client-side
-//   - whether `category` is even a valid filter on this endpoint, since
-//     SupplierBenchmark itself carries no category field — it would only
-//     make sense as a filter the backend applies while joining Items/Categories
+// GET /api/supplier-benchmarks?region=<region>&category=<category>
+// Returns supplier score fields from suppliers, enriched with supplier_name and region.
+// Category filtering is applied server-side through supplier price records when provided.
 import { useMemo } from 'react';
 import { useFetch, type UseFetchResult } from './useFetch';
 import type { SupplierBenchmark } from '@/types/entities';
 
-// Assumed enrichment beyond the raw SupplierBenchmark row — unconfirmed, see above.
 export interface SupplierBenchmarkRow extends SupplierBenchmark {
-  supplier_name?: string;
-  region?: string;
+  supplier_name: string;
+  region: string;
 }
 
 export interface UseSupplierBenchmarksParams {

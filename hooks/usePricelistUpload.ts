@@ -185,10 +185,16 @@ export function usePricelistUpload() {
   const upload = useMutation<UploadResponse>();
   const commit = useMutation<CommitResponse>();
 
-  const uploadFiles = async (files: File[], effectiveDate?: string) => {
+  const uploadFiles = async (
+    files: File[],
+    effectiveDate?: string,
+    options?: { source?: "DPWH" | "Supplier"; supplierId?: number | null }
+  ) => {
     const form = new FormData();
     files.forEach((f) => form.append('files', f));
     if (effectiveDate) form.append('effective_date', effectiveDate);
+    if (options?.source) form.append('source', options.source);
+    if (options?.supplierId != null) form.append('supplier_id', String(options.supplierId));
     const res = await upload.mutate('/api/pricelist/upload', form, 'POST');
     setColumns(res.columns ?? []);
     setItemRows(res.item_rows ?? []);
@@ -212,7 +218,12 @@ export function usePricelistUpload() {
     setSupplierRows((prev) => prev.map((r) => (r.row_key === rowKey ? { ...r, ...patch } : r)));
   };
 
-  const approve = () => commit.mutate('/api/pricelist/commit', { columns, item_rows: itemRows, supplier_rows: supplierRows }, 'POST');
+  const approve = (options?: { source?: "DPWH" | "Supplier"; supplierId?: number | null }) =>
+    commit.mutate(
+      '/api/pricelist/commit',
+      { columns, item_rows: itemRows, supplier_rows: supplierRows, source: options?.source, supplier_id: options?.supplierId ?? null },
+      'POST'
+    );
 
   const reset = () => {
     setItemRows([]);

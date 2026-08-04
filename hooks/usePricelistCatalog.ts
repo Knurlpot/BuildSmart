@@ -19,6 +19,7 @@ export interface SavedPriceRecord {
   historicalrec_id: number;
   item_code: number;
   item_name: string;
+  supplier_name: string | null;
   brand: string;
   category_type: string | null;
   description_material: string;

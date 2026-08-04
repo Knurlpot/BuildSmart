@@ -12,7 +12,7 @@ import {
 } from "lucide-react";
 import { ScopeTemplatesForm } from "./ScopeTemplatesForm";
 import { MaterialRulesForm } from "./MaterialRulesForm";
-import { SupplierRulesPlaceholder } from "./SupplierRulesPlaceholder";
+import { SupplierRulesForm } from "./SupplierRulesForm";
 import { LaborRulesForm } from "./LaborRulesForm";
 import { PricingStrategyForm } from "./PricingStrategyForm";
 import { UnitRulesForm } from "./UnitRulesForm";
@@ -23,11 +23,23 @@ import {
   useMaterialRules,
   useLaborRules,
   usePricingStrategies,
+  useSupplierRules,
   useUnitRules,
 } from "@/lib/dev/provisional/useCompanyRulesProvisional";
 import { useAuth } from "@/providers/AuthProvider";
 import { advanceOnboardingStep, hasCompletedCompanyRulesStep } from "@/lib/onboarding";
 
+// Mirrors the CPRM activity diagram's "Rule Action?" fork: six Configure-X branches plus
+// the separate Manage Existing Rules branch. Supplier Rules is schema-backed
+// (supplier_discount_rule, a REAL confirmed table) and now fully wired — see
+// SupplierRulesForm.tsx. The other five have no confirmed schema yet; their forms are
+// presentation-only against PROVISIONAL local shapes (lib/dev/provisional/).
+//
+// v6 Correction 2: there is no guided wizard here anymore. Scope Templates is an
+// optional, advisory feature (client: "no packages as no two areas are the same") — saving
+// one does not drive, gate, or pre-populate Material/Unit Rules. Each tab is fully
+// independent; the only cross-tab behavior left is Manage Existing Rules jumping to a
+// rule's owning tab, which is a navigation convenience, not a forced flow.
 const TABS = [
   { id: "scope-templates", label: "Scope Templates", icon: ClipboardList },
   { id: "material-rules", label: "Material Rules", icon: ListChecks },
@@ -40,17 +52,8 @@ const TABS = [
 
 type TabId = (typeof TABS)[number]["id"];
 
-const RULE_KIND_TO_TAB: Record<string, TabId> = {
-  "scope-templates": "scope-templates",
-  "material-rules": "material-rules",
-  "labor-rules": "labor-rules",
-  "pricing-strategy": "pricing-strategy",
-  "unit-rules": "unit-rules",
-};
-
 export default function CompanyRulesShell() {
   const [activeTab, setActiveTab] = useState<TabId>("scope-templates");
-  const [completedTabs, setCompletedTabs] = useState<Set<TabId>>(new Set());
   // "Manage Existing Rules" rows jump to the rule's owning tab with that rule
   // pre-selected, instead of dumping the user on the tab with no idea what to look for.
   const [focusRuleId, setFocusRuleId] = useState<string | null>(null);
@@ -61,76 +64,41 @@ export default function CompanyRulesShell() {
   };
 
   // "needs configuration" dots, driven by the same real fetched lists each form already
-  // uses (not a hardcoded list of "which tabs matter"). Supplier Rules is excluded (still
-  // a deferred placeholder — there's no save flow yet, so a dot there could never clear)
-  // and so is Manage Existing Rules (a management/utility tab, not a "configure this" one).
+  // uses (not a hardcoded list of "which tabs matter"). Manage Existing Rules is excluded
+  // (a management/utility tab, not a "configure this" one) — every Configure-X tab,
+  // including Supplier Rules now that it's wired, gets a dot.
   const { currentUser, updateOnboardingStep } = useAuth();
-  const scopeTemplates = useScopeTemplates();
-  const material = useMaterialRules();
-  const labor = useLaborRules();
-  const pricing = usePricingStrategies();
-  const units = useUnitRules();
-  const templates = scopeTemplates.templates;
-  const materialRules = material.rules;
-  const laborRules = labor.rules;
-  const strategies = pricing.strategies;
-  const unitRules = units.rules;
-  const refetchScopeTemplates = scopeTemplates.refetch;
-  const refetchMaterialRules = material.refetch;
-  const refetchLaborRules = labor.refetch;
-  const refetchPricingStrategies = pricing.refetch;
-  const refetchUnitRules = units.refetch;
+  const { templates } = useScopeTemplates();
+  const { rules: materialRules } = useMaterialRules();
+  const { rules: laborRules } = useLaborRules();
+  const { strategies } = usePricingStrategies();
+  const { rules: unitRules } = useUnitRules();
+  const { rules: supplierRules } = useSupplierRules();
 
   const needsAttention: Partial<Record<TabId, boolean>> = {
-    "scope-templates": templates.length === 0 && !completedTabs.has("scope-templates"),
-    "material-rules": materialRules.length === 0 && !completedTabs.has("material-rules"),
-    "labor-rules": laborRules.length === 0 && !completedTabs.has("labor-rules"),
-    "pricing-strategy": strategies.length === 0 && !completedTabs.has("pricing-strategy"),
-    "unit-rules": unitRules.length === 0 && !completedTabs.has("unit-rules"),
+    "scope-templates": templates.length === 0,
+    "material-rules": materialRules.length === 0,
+    "supplier-rules": supplierRules.length === 0,
+    "labor-rules": laborRules.length === 0,
+    "pricing-strategy": strategies.length === 0,
+    "unit-rules": unitRules.length === 0,
   };
 
-  // Step 1 -> 2 onboarding gate. This intentionally matches the tabs that show orange
-  // setup dots: once all dotted tabs have at least one saved rule/configuration, the
-  // sidebar unlocks Quotation Generation, Open Projects, Price Trends, and Benchmark Suppliers.
+  // Step 1 -> 2 onboarding gate (see lib/onboarding.ts's hasCompletedCompanyRulesStep for
+  // the flagged decision this reads). Correction 2: deliberately does NOT factor in
+  // scopeTemplateCount — a specialty contractor may never create one, and Scope Templates
+  // must not gate anything.
   const rulesConfigured = hasCompletedCompanyRulesStep({
     scopeTemplateCount: templates.length,
     materialRuleCount: materialRules.length,
     laborRuleCount: laborRules.length,
     pricingStrategyCount: strategies.length,
     unitRuleCount: unitRules.length,
-  }) || (
-    completedTabs.has("scope-templates") &&
-    completedTabs.has("material-rules") &&
-    completedTabs.has("labor-rules") &&
-    completedTabs.has("pricing-strategy") &&
-    completedTabs.has("unit-rules")
-  );
+  });
 
   useEffect(() => {
-    const handleRulesChanged = (event: Event) => {
-      const kind = event instanceof CustomEvent ? event.detail?.kind : null;
-      const tab = typeof kind === "string" ? RULE_KIND_TO_TAB[kind] : null;
-      if (tab) {
-        setCompletedTabs((current) => new Set(current).add(tab));
-      }
-      refetchScopeTemplates();
-      refetchMaterialRules();
-      refetchLaborRules();
-      refetchPricingStrategies();
-      refetchUnitRules();
-    };
-
-    window.addEventListener("buildsmart:company-rules-changed", handleRulesChanged);
-    return () => window.removeEventListener("buildsmart:company-rules-changed", handleRulesChanged);
-  }, [refetchScopeTemplates, refetchMaterialRules, refetchLaborRules, refetchPricingStrategies, refetchUnitRules]);
-
-  useEffect(() => {
-    if (!currentUser) return;
-
-    if (rulesConfigured) {
+    if (currentUser && rulesConfigured) {
       advanceOnboardingStep(currentUser.onboardingStep, 2, updateOnboardingStep);
-    } else if (currentUser.onboardingStep > 1) {
-      updateOnboardingStep(1);
     }
     // updateOnboardingStep is recreated every AuthProvider render; advanceOnboardingStep
     // no-ops once past the target step, so omitting it here can't miss or double-fire.
@@ -169,7 +137,9 @@ export default function CompanyRulesShell() {
       {activeTab === "material-rules" && (
         <MaterialRulesForm focusRuleId={focusRuleId} onFocusHandled={() => setFocusRuleId(null)} />
       )}
-      {activeTab === "supplier-rules" && <SupplierRulesPlaceholder />}
+      {activeTab === "supplier-rules" && (
+        <SupplierRulesForm focusRuleId={focusRuleId} onFocusHandled={() => setFocusRuleId(null)} />
+      )}
       {activeTab === "labor-rules" && (
         <LaborRulesForm focusRuleId={focusRuleId} onFocusHandled={() => setFocusRuleId(null)} />
       )}

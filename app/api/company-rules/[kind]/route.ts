@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { companyIdFor, createRule, unauthorized, type RuleKindParam } from "../db";
 
-const RULE_KINDS = new Set(["scope-templates", "material-rules", "labor-rules", "pricing-strategy", "unit-rules"]);
+const RULE_KINDS = new Set(["scope-templates", "material-rules", "labor-rules", "pricing-strategy", "unit-rules", "supplier-rules"]);
 
 export async function POST(
   request: NextRequest,

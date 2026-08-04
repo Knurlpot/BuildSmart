@@ -9,6 +9,7 @@ import type {
   MaterialRuleEntry,
   PricingStrategyRule,
   ScopeTemplate,
+  SupplierRuleEntry,
   UnitRule,
 } from "./companyRulesTypes";
 
@@ -18,6 +19,7 @@ type CompanyRulesPayload = {
   laborRules: LaborRule[];
   pricingStrategies: PricingStrategyRule[];
   unitRules: UnitRule[];
+  supplierRules: SupplierRuleEntry[];
   existingRules: ExistingRuleSummary[];
 };
 
@@ -27,6 +29,7 @@ const EMPTY_RULES: CompanyRulesPayload = {
   laborRules: [],
   pricingStrategies: [],
   unitRules: [],
+  supplierRules: [],
   existingRules: [],
 };
 
@@ -81,7 +84,9 @@ function latestForKind<T>(kind: string, payload: CompanyRulesPayload): T {
           ? payload.laborRules
           : kind === "pricing-strategy"
             ? payload.pricingStrategies
-            : payload.unitRules;
+            : kind === "supplier-rules"
+              ? payload.supplierRules
+              : payload.unitRules;
   return list[0] as T;
 }
 
@@ -159,6 +164,46 @@ export function useUnitRules() {
     error,
     refetch,
     ...actions,
+  };
+}
+
+export function useSupplierRules() {
+  const { data, isLoading, error, refetch } = useCompanyRulesData();
+  const saveMutation = useMutation<CompanyRulesPayload>();
+  const updateMutation = useMutation<CompanyRulesPayload>();
+  const deactivateMutation = useMutation<CompanyRulesPayload>();
+
+  return {
+    rules: data.supplierRules ?? [],
+    isLoading,
+    error,
+    refetch,
+    save: async (payload: Omit<SupplierRuleEntry, "rule_id">) => {
+      const next = await saveMutation.mutate("/api/company-rules/supplier-rules", payload, "POST");
+      window.dispatchEvent(new CustomEvent("buildsmart:company-rules-changed", { detail: { kind: "supplier-rules" } }));
+      refetch();
+      return latestForKind<SupplierRuleEntry>("supplier-rules", next);
+    },
+    isSaving: saveMutation.isLoading,
+    saveError: saveMutation.error,
+    resetSave: saveMutation.reset,
+    update: async (ruleId: string, payload: Partial<SupplierRuleEntry>) => {
+      const next = await updateMutation.mutate(`/api/company-rules/supplier-rules/${ruleId}`, payload, "PATCH");
+      window.dispatchEvent(new CustomEvent("buildsmart:company-rules-changed", { detail: { kind: "supplier-rules" } }));
+      refetch();
+      return latestForKind<SupplierRuleEntry>("supplier-rules", next);
+    },
+    isUpdating: updateMutation.isLoading,
+    updateError: updateMutation.error,
+    resetUpdate: updateMutation.reset,
+    deactivate: async (ruleId: string) => {
+      const next = await deactivateMutation.mutate(`/api/company-rules/supplier-rules/${ruleId}`, undefined, "DELETE");
+      window.dispatchEvent(new CustomEvent("buildsmart:company-rules-changed", { detail: { kind: "supplier-rules" } }));
+      refetch();
+      return latestForKind<SupplierRuleEntry>("supplier-rules", next);
+    },
+    isDeactivating: deactivateMutation.isLoading,
+    deactivateError: deactivateMutation.error,
   };
 }
 

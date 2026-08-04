@@ -105,6 +105,9 @@ CREATE TABLE supplier_discount_rule (
     CONSTRAINT fk_supplier_discount_supplier FOREIGN KEY (supplier_id) REFERENCES suppliers(supplier_id) ON DELETE CASCADE
 );
 
+CREATE INDEX ix_supplier_discount_company ON supplier_discount_rule (company_id, is_active, effective_date DESC);
+CREATE INDEX ix_supplier_discount_supplier ON supplier_discount_rule (supplier_id, is_active, effective_date DESC);
+
 -- =====================================================
 -- 7. Category
 -- =====================================================

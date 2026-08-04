@@ -1,14 +1,23 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { Database, LibraryBig, Upload } from "lucide-react";
 import { RequireAuth } from "@/components/auth/RequireAuth";
-import { AiNormalizationPanel, PriceCatalogTab, PublishedSourceTab } from "@/features/pricelist/components";
+import { PriceCatalogTab, PublishedSourceTab, UploadPricelistTab } from "@/features/pricelist/components";
 import { usePricelistCatalog } from "@/hooks/usePricelistCatalog";
 import { usePricelistPublishedSource } from "@/hooks/usePricelistPublishedSource";
 import { useAuth } from "@/providers/AuthProvider";
 import { advanceOnboardingStep, hasCompletedPricelistStep } from "@/lib/onboarding";
 
+// Price Trends and Source Priority tabs REMOVED (Supplier Rules + PLM cleanup task):
+// - Price Trends duplicated the dedicated Analyze Market Intelligence page, which renders
+//   the exact same shared PriceTrendsPanel component (this tab used to pass `compact` to
+//   hide two sections that only make sense there — see that component's own history).
+// - Source Priority was a global ranking over an UNCONFIRMED schema (no source-priority
+//   table in the 13-table schema — see the deleted usePricelistSourcePriority.ts's own
+//   flag). The source decision (Uploaded Pricelist vs DPWH CMPD) is relocated to quote
+//   time, where it already lives as the Pricelist Basis toggle in the Quotation Breakdown
+//   modal and Minor Revision — no reduced global default was kept, see this task's summary.
 const TABS = [
   { id: "upload", label: "Upload Pricelist", icon: Upload },
   { id: "published", label: "Published Sources", icon: Database },
@@ -20,34 +29,26 @@ type TabId = (typeof TABS)[number]["id"];
 export default function PricelistPage() {
   const [activeTab, setActiveTab] = useState<TabId>("upload");
   const goToCatalog = () => setActiveTab("catalog");
+
   const { currentUser, updateOnboardingStep } = useAuth();
-  const companyId =
-    typeof currentUser?.companyId === "number"
-      ? currentUser.companyId
-      : Number.isFinite(Number(currentUser?.companyId))
-        ? Number(currentUser?.companyId)
-        : null;
   const supplierCatalog = usePricelistCatalog();
   const { dpwhCatalog } = usePricelistPublishedSource();
-  const [pricelistConfigured, setPricelistConfigured] = useState(false);
-  const loadSupplierCatalog = supplierCatalog.load;
-  const loadDpwhCatalog = dpwhCatalog.load;
 
-  const refreshPricelistCompletion = useCallback(() => {
-    loadSupplierCatalog();
-    loadDpwhCatalog();
-  }, [loadSupplierCatalog, loadDpwhCatalog]);
-
-  const markPricelistConfigured = useCallback(() => {
-    setPricelistConfigured(true);
-    refreshPricelistCompletion();
-  }, [refreshPricelistCompletion]);
-
+  // Both catalogs are lazy-by-default elsewhere (only fetched once their own tab is
+  // visited) — loaded eagerly here so Part D's gate and Part E's tab indicators reflect
+  // real state as soon as this page mounts, not just after the user happens to open
+  // those specific tabs.
   useEffect(() => {
-    refreshPricelistCompletion();
-  }, [refreshPricelistCompletion]);
+    supplierCatalog.load();
+    dpwhCatalog.load();
+    // .load() setters are recreated every render (not stable) — this must run once on
+    // mount only, not on every render they'd otherwise trigger.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-   const pricelistDone = pricelistConfigured || hasCompletedPricelistStep({
+  // Part D — Step 0 -> 1 gate: real catalog state, not a session flag (see
+  // lib/onboarding.ts). Also drives Part E's "needs configuration" dots below.
+  const pricelistDone = hasCompletedPricelistStep({
     uploadCatalogCount: supplierCatalog.records.length,
     dpwhCatalogCount: dpwhCatalog.records.length,
   });
@@ -56,10 +57,16 @@ export default function PricelistPage() {
     if (currentUser && pricelistDone) {
       advanceOnboardingStep(currentUser.onboardingStep, 1, updateOnboardingStep);
     }
-  }, [currentUser, pricelistDone, updateOnboardingStep]);
+    // updateOnboardingStep is recreated every AuthProvider render; advanceOnboardingStep
+    // no-ops once past the target step, so omitting it here can't miss or double-fire.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentUser, pricelistDone]);
 
-   const needsAttention: Partial<Record<TabId, boolean>> = {
+  // Part E — calm "needs configuration" dot: shown on the two tabs that can actually
+  // satisfy the Part D gate, cleared the moment either one has real data.
+  const needsAttention: Partial<Record<TabId, boolean>> = {
     upload: !pricelistDone,
+    published: !pricelistDone,
   };
 
   return (
@@ -89,8 +96,8 @@ export default function PricelistPage() {
           })}
         </div>
 
-        {activeTab === "upload" && <AiNormalizationPanel companyId={companyId} onCatalogChanged={markPricelistConfigured} />}
-        {activeTab === "published" && <PublishedSourceTab onViewCatalog={goToCatalog} onCatalogChanged={markPricelistConfigured} />}
+        {activeTab === "upload" && <UploadPricelistTab onViewCatalog={goToCatalog} workflowComplete={pricelistDone} />}
+        {activeTab === "published" && <PublishedSourceTab onViewCatalog={goToCatalog} />}
         {activeTab === "catalog" && <PriceCatalogTab />}
       </div>
     </RequireAuth>

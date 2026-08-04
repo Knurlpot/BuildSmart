@@ -19,69 +19,6 @@ function formatDate(iso: string) {
   return d.toLocaleDateString("en-PH", { month: "short", day: "numeric", year: "numeric" });
 }
 
-function DeleteCell({
-  id,
-  confirmingId,
-  deletingId,
-  onConfirm,
-  onStartConfirm,
-  onCancel,
-}: {
-  id: number | null;
-  confirmingId: number | null;
-  deletingId: number | null;
-  onConfirm: (id: number) => void;
-  onStartConfirm: (id: number) => void;
-  onCancel: () => void;
-}) {
-  if (id === null) {
-    return (
-      <span className="text-xs text-gray-300" title="No price record saved for this item yet">
-        —
-      </span>
-    );
-  }
-
-  const isConfirming = confirmingId === id;
-  const isDeleting = deletingId === id;
-
-  if (isConfirming) {
-    return (
-      <div className="flex justify-end gap-1">
-        <button
-          type="button"
-          disabled={isDeleting}
-          onClick={() => onConfirm(id)}
-          className="rounded-lg border border-red-200 bg-red-50 px-2 py-1 text-[10px] font-bold text-red-600 transition hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          {isDeleting ? <Loader2 className="h-3 w-3 animate-spin" /> : "Confirm"}
-        </button>
-        <button
-          type="button"
-          disabled={isDeleting}
-          onClick={onCancel}
-          className="rounded-lg border border-gray-200 bg-white px-2 py-1 text-[10px] font-semibold text-gray-500 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          Cancel
-        </button>
-      </div>
-    );
-  }
-
-  return (
-    <div className="flex justify-end">
-      <button
-        type="button"
-        onClick={() => onStartConfirm(id)}
-        className="rounded-lg p-1.5 text-gray-400 transition hover:bg-red-50 hover:text-red-600"
-        aria-label="Remove this price record"
-      >
-        <Trash2 className="h-3.5 w-3.5" />
-      </button>
-    </div>
-  );
-}
-
 function SelectCell({
   id,
   isSelected,
@@ -93,8 +30,8 @@ function SelectCell({
   disabled: boolean;
   onToggle: (id: number) => void;
 }) {
-  // Nothing to select for a row with no historical_price_record yet (see
-  // DeleteCell's own null case) — render a blank spacer, not a checkbox.
+  // Nothing to select for a row with no historical_price_record yet — render
+  // a blank spacer, not a checkbox.
   if (id === null) {
     return <span className="block h-4 w-4" aria-hidden />;
   }
@@ -164,9 +101,9 @@ function EditableTextCell({
 // Canonical catalog view — historical_price_record filtered by price_source.
 // The post-upload "Saved Catalog" summary and the Published Sources post-resolution recap
 // both link here instead of rendering their own full catalog table; this is the one place
-// that does. A row can always be removed (deletes just that one price record, not the
-// underlying Items row) — see DeleteCell. Supplier rows can also be bulk-edited (see
-// isEditingAll below); DPWH/PSA stay read-only since that data is externally published.
+// that does. Records can be removed from the toolbar after selection. Supplier rows can
+// also be bulk-edited (see isEditingAll below); DPWH/PSA stay read-only since that data is
+// externally published.
 export function PriceCatalogTab() {
   const [subTab, setSubTab] = useState<"dpwh" | "supplier">("dpwh");
   const [search, setSearch] = useState("");
@@ -183,18 +120,11 @@ export function PriceCatalogTab() {
     else supplierLoad();
   }, [subTab, dpwhLoad, supplierLoad]);
 
-  // Two-click inline confirm per row (matches the pattern used for "Clear" in
-  // AiNormalizationPanel) rather than a native confirm() dialog — deletes only
-  // the one historical_price_record shown, not the underlying Items row.
-  const [confirmingId, setConfirmingId] = useState<number | null>(null);
-  const [deletingId, setDeletingId] = useState<number | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
-  // Bulk selection/delete — mirrors Pending Review's toolbar (Select All +
-  // one Delete button that targets the selection if any, otherwise every
-  // selectable row currently in view). No "Approve" here: unlike Pending
-  // Review, a Price Catalog row is already a saved, committed record —
-  // there's nothing left to approve.
+  // Bulk selection/delete — the toolbar delete button targets only explicitly
+  // selected records. No "Approve" here: unlike Pending Review, a Price Catalog
+  // row is already a saved, committed record.
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [isBulkDeleting, setIsBulkDeleting] = useState(false);
   const [confirmingBulkDelete, setConfirmingBulkDelete] = useState(false);
@@ -222,7 +152,6 @@ export function PriceCatalogTab() {
   editDraftsRef.current = editDrafts;
 
   useEffect(() => {
-    setConfirmingId(null);
     setDeleteError(null);
     setSelectedIds(new Set());
     setConfirmingBulkDelete(false);
@@ -231,32 +160,6 @@ export function PriceCatalogTab() {
     setSaveError(null);
     setCategory("All");
   }, [subTab]);
-
-  const handleDeleteDpwh = async (historicalrecId: number) => {
-    setDeletingId(historicalrecId);
-    setDeleteError(null);
-    try {
-      await dpwhCatalog.remove(historicalrecId);
-    } catch (err) {
-      setDeleteError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setDeletingId(null);
-      setConfirmingId(null);
-    }
-  };
-
-  const handleDeleteSupplier = async (historicalrecId: number) => {
-    setDeletingId(historicalrecId);
-    setDeleteError(null);
-    try {
-      await supplierCatalog.remove(historicalrecId);
-    } catch (err) {
-      setDeleteError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setDeletingId(null);
-      setConfirmingId(null);
-    }
-  };
 
   const dpwhRows = useMemo(
     () =>
@@ -307,9 +210,8 @@ export function PriceCatalogTab() {
     });
   };
 
-  // Sequential, same rationale as AiNormalizationPanel's bulk actions — each
-  // call hits its own DELETE endpoint, and this reuses the single-row
-  // deletingId spinner DeleteCell already renders, one row at a time.
+  // Sequential, same rationale as AiNormalizationPanel's bulk actions: each
+  // selected record hits its own DELETE endpoint.
   const deleteRecords = async (ids: number[]) => {
     if (ids.length === 0) return;
     setIsBulkDeleting(true);
@@ -318,7 +220,6 @@ export function PriceCatalogTab() {
     let failedCount = 0;
 
     for (const id of ids) {
-      setDeletingId(id);
       try {
         await removeOne(id);
       } catch {
@@ -331,23 +232,22 @@ export function PriceCatalogTab() {
       });
     }
 
-    setDeletingId(null);
     setIsBulkDeleting(false);
     if (failedCount > 0) {
       setDeleteError(`Failed to remove ${failedCount} record${failedCount !== 1 ? "s" : ""}`);
     }
   };
 
-  // One button, two targets — whatever's checked if anything is, otherwise
-  // every selectable row currently in view (search/region-filtered).
+  // Delete only acts on explicitly selected rows; the toolbar icon stays
+  // disabled until the user checks at least one record.
   const handleDeleteToolbar = () => {
+    if (selectedIds.size === 0) return;
     if (!confirmingBulkDelete) {
       setConfirmingBulkDelete(true);
       return;
     }
     setConfirmingBulkDelete(false);
-    const ids = selectedIds.size > 0 ? Array.from(selectedIds) : selectableIds;
-    deleteRecords(ids).catch(() => {});
+    deleteRecords(Array.from(selectedIds)).catch(() => {});
   };
 
   // Seeds every currently-visible Supplier row's draft (skipping rows with
@@ -462,24 +362,8 @@ export function PriceCatalogTab() {
         enableGlobalFilter: false,
         cell: ({ getValue }) => <span className="text-gray-500">{formatDate(getValue<string>())}</span>,
       },
-      {
-        id: "__delete",
-        header: "",
-        enableGlobalFilter: false,
-        enableSorting: false,
-        cell: ({ row }) => (
-          <DeleteCell
-            id={row.original.historicalrec_id}
-            confirmingId={confirmingId}
-            deletingId={deletingId}
-            onConfirm={handleDeleteDpwh}
-            onStartConfirm={setConfirmingId}
-            onCancel={() => setConfirmingId(null)}
-          />
-        ),
-      },
     ],
-    [confirmingId, deletingId, selectedIds, isBulkDeleting]
+    [selectedIds, isBulkDeleting]
   );
 
   const supplierColumns = useMemo<ColumnDef<SavedPriceRecord>[]>(
@@ -515,6 +399,11 @@ export function PriceCatalogTab() {
           }
           return <span className="font-medium text-gray-800">{rec.item_name}</span>;
         },
+      },
+      {
+        accessorKey: "supplier_name",
+        header: "Supplier",
+        cell: ({ row }) => <span className="text-gray-700">{row.original.supplier_name ?? "Unassigned"}</span>,
       },
       {
         accessorKey: "brand",
@@ -598,26 +487,10 @@ export function PriceCatalogTab() {
         enableGlobalFilter: false,
         cell: ({ getValue }) => <span className="text-gray-500">{formatDate(getValue<string>())}</span>,
       },
-      {
-        id: "__delete",
-        header: "",
-        enableGlobalFilter: false,
-        enableSorting: false,
-        cell: ({ row }) => (
-          <DeleteCell
-            id={row.original.historicalrec_id}
-            confirmingId={confirmingId}
-            deletingId={deletingId}
-            onConfirm={handleDeleteSupplier}
-            onStartConfirm={setConfirmingId}
-            onCancel={() => setConfirmingId(null)}
-          />
-        ),
-      },
     ],
     // editDrafts is deliberately NOT a dep — see editDraftsRef above.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [confirmingId, deletingId, selectedIds, isBulkDeleting, isEditingAll]
+    [selectedIds, isBulkDeleting, isEditingAll]
   );
 
   const active = subTab === "dpwh"
@@ -739,24 +612,24 @@ export function PriceCatalogTab() {
             <button
               type="button"
               onClick={handleDeleteToolbar}
-              disabled={(selectedIds.size === 0 && selectableIds.length === 0) || isBulkDeleting}
+              disabled={selectedIds.size === 0 || isBulkDeleting}
               aria-label={
                 isBulkDeleting
                   ? "Deleting…"
                   : confirmingBulkDelete
-                    ? `Confirm delete ${selectedIds.size > 0 ? selectedIds.size : "all"}`
+                    ? `Confirm delete ${selectedIds.size}`
                     : selectedIds.size > 0
                       ? `Delete selected (${selectedIds.size})`
-                      : "Delete"
+                      : "Select records to delete"
               }
               title={
                 isBulkDeleting
                   ? "Deleting…"
                   : confirmingBulkDelete
-                    ? `Confirm delete ${selectedIds.size > 0 ? selectedIds.size : "all"}`
+                    ? `Confirm delete ${selectedIds.size}`
                     : selectedIds.size > 0
                       ? `Delete selected (${selectedIds.size})`
-                      : "Delete"
+                      : "Select records to delete"
               }
               className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-50 ${
                 confirmingBulkDelete

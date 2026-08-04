@@ -9,6 +9,7 @@ import type {
   MaterialRuleEntry,
   PricingStrategyRule,
   ScopeTemplate,
+  SupplierRuleEntry,
   UnitRule,
   ExistingRuleSummary,
   PriceSource,
@@ -16,7 +17,7 @@ import type {
 import type { CategoryType } from "@/types/entities/category";
 import type { PhRegion } from "@/types/entities/common";
 
-export type RuleKindParam = "scope-templates" | "material-rules" | "labor-rules" | "pricing-strategy" | "unit-rules";
+export type RuleKindParam = "scope-templates" | "material-rules" | "labor-rules" | "pricing-strategy" | "unit-rules" | "supplier-rules";
 
 export type CompanyRulesPayload = {
   scopeTemplates: ScopeTemplate[];
@@ -24,6 +25,7 @@ export type CompanyRulesPayload = {
   laborRules: LaborRule[];
   pricingStrategies: PricingStrategyRule[];
   unitRules: UnitRule[];
+  supplierRules: SupplierRuleEntry[];
   existingRules: ExistingRuleSummary[];
 };
 
@@ -73,7 +75,7 @@ async function categoryId(client: PoolClient, category: CategoryType | null) {
 }
 
 export async function fetchCompanyRules(companyId: number): Promise<CompanyRulesPayload> {
-  const [scopeResult, materialResult, laborResult, pricingResult, unitResult] = await Promise.all([
+  const [scopeResult, materialResult, laborResult, pricingResult, unitResult, supplierResult] = await Promise.all([
     pool.query(
       `SELECT st.scope_template_id, st.template_name, st.specialization, st.description, st.status,
               st.date_created, COALESCE(array_agg(c.category_type) FILTER (WHERE c.category_type IS NOT NULL), '{}') AS categories
@@ -121,6 +123,20 @@ export async function fetchCompanyRules(companyId: number): Promise<CompanyRules
        LEFT JOIN category c ON c.category_id = ur.category_id
        WHERE ur.company_id = $1
        ORDER BY ur.created_at DESC, ur.unit_rule_id DESC`,
+      [companyId]
+    ),
+    pool.query(
+      `SELECT sdr.supplierdisc_id, sdr.supplier_id, s.supplier_name, sdr.rule_type,
+              sdr.minimum_order_amount::float AS minimum_order_amount,
+              sdr.discount_percentage_rate::float AS discount_percentage_rate,
+              sdr.fixed_discount_amount::float AS fixed_discount_amount,
+              sdr.effective_date::text AS effective_date,
+              sdr.expiration_date::text AS expiration_date,
+              sdr.is_active
+       FROM supplier_discount_rule sdr
+       JOIN suppliers s ON s.supplier_id = sdr.supplier_id
+       WHERE sdr.company_id = $1
+       ORDER BY sdr.effective_date DESC, sdr.supplierdisc_id DESC`,
       [companyId]
     ),
   ]);
@@ -200,12 +216,26 @@ export async function fetchCompanyRules(companyId: number): Promise<CompanyRules
     };
   });
 
+  const supplierRules: SupplierRuleEntry[] = supplierResult.rows.map((row) => ({
+    rule_id: `sr-${row.supplierdisc_id}`,
+    supplier_id: Number(row.supplier_id),
+    supplier_name: row.supplier_name,
+    rule_type: row.rule_type,
+    minimum_order_amount: row.minimum_order_amount === null ? null : Number(row.minimum_order_amount),
+    discount_percentage_rate: row.discount_percentage_rate === null ? null : Number(row.discount_percentage_rate),
+    fixed_discount_amount: row.fixed_discount_amount === null ? null : Number(row.fixed_discount_amount),
+    effective_date: row.effective_date,
+    expiration_date: row.expiration_date,
+    is_active: Boolean(row.is_active),
+  }));
+
   return {
     scopeTemplates,
     materialRules,
     laborRules,
     pricingStrategies,
     unitRules,
+    supplierRules,
     existingRules: [
       ...scopeTemplates.map((rule) => ({
         rule_id: rule.rule_id,
@@ -368,6 +398,26 @@ export async function createRule(companyId: number, kind: RuleKindParam, body: R
           description,
         ]
       );
+    } else if (kind === "supplier-rules") {
+      await client.query(
+        `INSERT INTO supplier_discount_rule (
+           company_id, supplier_id, rule_type, minimum_order_amount,
+           discount_percentage_rate, fixed_discount_amount, effective_date,
+           expiration_date, is_active
+         )
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+        [
+          companyId,
+          body.supplier_id,
+          body.rule_type,
+          body.minimum_order_amount ?? null,
+          body.discount_percentage_rate ?? null,
+          body.fixed_discount_amount ?? null,
+          body.effective_date,
+          body.expiration_date || null,
+          body.is_active ?? true,
+        ]
+      );
     }
 
     await client.query("COMMIT");
@@ -385,7 +435,12 @@ export async function setRuleStatus(companyId: number, ruleId: string, status: "
   const id = Number(rawId);
   if (!Number.isFinite(id)) throw new Error("Invalid rule id");
 
-  if (prefix === "st") {
+  if (prefix === "sr") {
+    await pool.query(
+      "UPDATE supplier_discount_rule SET is_active = $1 WHERE company_id = $2 AND supplierdisc_id = $3",
+      [status === "Active", companyId, id]
+    );
+  } else if (prefix === "st") {
     await pool.query("UPDATE scope_template SET status = $1, date_updated = NOW() WHERE company_id = $2 AND scope_template_id = $3", [
       status,
       companyId,
