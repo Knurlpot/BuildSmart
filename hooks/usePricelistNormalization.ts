@@ -176,7 +176,9 @@ export function usePricelistNormalization(companyId?: number | null) {
     // auth to send (unlike the Next.js routes apiClient calls), and sending it forces
     // the browser to require Access-Control-Allow-Credentials on a backend that has
     // no reason to set it.
-    const query = companyId != null ? `?company_id=${encodeURIComponent(String(companyId))}` : '';
+    const params = new URLSearchParams({ latest_upload_only: 'true' });
+    if (companyId != null) params.set('company_id', String(companyId));
+    const query = `?${params.toString()}`;
     normalizationApiClient<PricelistReviewItem[]>(`/pricelist/review${query}`)
       .then(setReviewItems)
       .catch((err) => setReviewError(err instanceof Error ? err : new Error(String(err))))

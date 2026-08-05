@@ -4,12 +4,12 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from fastapi.testclient import TestClient
-from sqlalchemy import select
+from sqlalchemy import select, text
 
 from app.database import get_db
 from app.ingest.models import MaterialPriceVariance
 from app.main import app
-from app.models import ApprovedMatchCache, HistoricalPriceRecord, Items, PriceListReviewItem
+from app.models import ApprovedMatchCache, HistoricalPriceRecord, Items, PriceListReviewItem, PriceListUpload
 from app.routers import pricelist as pricelist_router
 from app.services.match_cache import normalize_match_key
 
@@ -212,6 +212,80 @@ def test_review_list_returns_only_pending_items(db_session):
     assert matched["raw_name"] == "Vinyl Floor Tile 300x300"
     assert matched["status"] == "Pending"
     assert matched["suggested_category_type"] == "Structural"
+
+
+def test_review_list_can_return_only_latest_upload_items(db_session):
+    company_id = db_session.execute(
+        text(
+            "INSERT INTO company (company_name, company_address, contact_email, contact_number, specialization_1) "
+            "VALUES ('Latest Review Co', 'Test Address', 'latest-review@example.com', '09170000000', 'General Contractor') "
+            "RETURNING company_id"
+        )
+    ).scalar_one()
+    older_upload = PriceListUpload(
+        company_id=company_id,
+        file_name="old.pdf",
+        file_hash="old-review-list-hash",
+        source="Supplier",
+        effective_date="2026-01-01",
+        processing_status="processing",
+    )
+    latest_upload = PriceListUpload(
+        company_id=company_id,
+        file_name="latest.pdf",
+        file_hash="latest-review-list-hash",
+        source="Supplier",
+        effective_date="2026-01-02",
+        processing_status="processing",
+    )
+    db_session.add_all([older_upload, latest_upload])
+    db_session.flush()
+
+    older_item = PriceListReviewItem(
+        raw_name="Old broken OCR row",
+        raw_unit="unit",
+        raw_price=100.00,
+        confidence=0.5,
+        suggested_category_type="Plumbing & Pipework",
+        suggested_material="Old broken OCR row",
+        suggested_brand="Generic",
+        source="Supplier",
+        company_id=company_id,
+        upload_id=older_upload.upload_id,
+    )
+    latest_item = PriceListReviewItem(
+        raw_name="PVC Pipe Blue, S-1000 potable",
+        raw_unit="pc",
+        raw_price=124.00,
+        confidence=0.5,
+        suggested_category_type="Plumbing & Pipework",
+        suggested_material="PVC Pipe Blue, S-1000 potable",
+        suggested_brand="Neltex",
+        description="20mm x 3m",
+        source="Supplier",
+        company_id=company_id,
+        upload_id=latest_upload.upload_id,
+    )
+    db_session.add_all([older_item, latest_item])
+    db_session.flush()
+
+    def override_get_db():
+        yield db_session
+
+    app.dependency_overrides[get_db] = override_get_db
+    try:
+        response = client.get(f"/pricelist/review?company_id={company_id}&latest_upload_only=true")
+    finally:
+        del app.dependency_overrides[get_db]
+
+    assert response.status_code == 200
+    body = response.json()
+    review_ids = {item["review_id"] for item in body}
+    assert latest_item.review_id in review_ids
+    assert older_item.review_id not in review_ids
+    matched = next(item for item in body if item["review_id"] == latest_item.review_id)
+    assert matched["description"] == "20mm x 3m"
+    assert matched["suggested_brand"] == "Neltex"
 
 
 def test_clear_pending_review_deletes_only_pending_items(db_session):

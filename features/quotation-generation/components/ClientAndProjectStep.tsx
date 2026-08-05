@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { AlertTriangle, Plus, Search } from "lucide-react";
+import { AlertTriangle, Search } from "lucide-react";
 import { QueryState } from "@/components/feedback/QueryState";
 import {
   Dialog,
@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/dialog";
 import { useClients } from "@/hooks/useClients";
 import { useCreateQuotation } from "@/hooks/useQuotationGeneration";
+import { formatPhMobileE164, normalizePhMobileDigits } from "@/lib/ph-phone";
 import { ClientInsightCard } from "./ClientInsightCard";
 import { NewClientForm, emptyNewClientDraft, type NewClientDraft } from "./NewClientForm";
 import { PH_REGIONS, type PhRegion } from "@/types/entities/common";
@@ -76,10 +77,6 @@ function ChipRow({ title, subtitle, actionLabel, onAction }: { title: string; su
 // components/forms/SpecializationSelect.tsx. Single-select (unlike that one); "no match"
 // hands off to the parent (the actual new-client fields live in the RIGHT-column card, not
 // inline here — see NewClientForm.tsx).
-//
-// Part C — list rows show client_name ONLY (no email/subtitle). A firm may have 100+
-// clients; keeping rows to one line keeps the list scannable. Contact details surface in
-// the card once a client is selected, not here.
 function ClientPicker({
   clients,
   isLoading,
@@ -125,38 +122,19 @@ function ClientPicker({
 
   return (
     <div ref={containerRef} className="relative">
-      <div className="flex items-center gap-2">
-        <div className="relative flex-1">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-          <input
-            value={query}
-            onChange={(e) => {
-              setQuery(e.target.value);
-              setOpen(true);
-            }}
-            onFocus={() => setOpen(true)}
-            placeholder="Search clients, or type a new name…"
-            className={`${inputCls} pl-9`}
-            autoFocus={!!selected}
-          />
-        </div>
-        {/* Part A (Task 7) — explicit "add a new client" affordance beside the search bar,
-            independent of typing a non-matching name into it. Opens the SAME new-client
-            card (NewClientForm) as the inline "Create '…' as a new client" row below,
-            just starting from a blank name instead of whatever was typed. */}
-        <button
-          type="button"
-          onClick={() => {
-            onStartCreate("");
-            setOpen(false);
-            setQuery("");
+      <div className="relative">
+        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+        <input
+          value={query}
+          onChange={(e) => {
+            setQuery(e.target.value);
+            setOpen(true);
           }}
-          title="Add a new client"
-          aria-label="Add a new client"
-          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-gray-200 bg-white text-gray-500 transition hover:border-primary hover:bg-orange-50/50 hover:text-primary"
-        >
-          <Plus className="h-4 w-4" />
-        </button>
+          onFocus={() => setOpen(true)}
+          placeholder="Search clients, or type a new name…"
+          className={`${inputCls} pl-9`}
+          autoFocus={!!selected}
+        />
       </div>
 
       {open && (
@@ -171,9 +149,10 @@ function ClientPicker({
                   setOpen(false);
                   setQuery("");
                 }}
-                className="flex w-full items-center px-3.5 py-2.5 text-left text-sm transition hover:bg-gray-50"
+                className="flex w-full flex-col items-start gap-0.5 px-3.5 py-2.5 text-left text-sm transition hover:bg-gray-50"
               >
                 <span className="font-medium text-gray-800">{c.client_name}</span>
+                <span className="text-xs text-gray-400">{c.contact_email || "No email on file"}</span>
               </button>
             ))}
             {query.trim() && !exactMatch && (
@@ -186,7 +165,6 @@ function ClientPicker({
                 }}
                 className="flex w-full items-center gap-2 border-t border-gray-100 px-3.5 py-2.5 text-left text-sm font-semibold text-primary transition hover:bg-orange-50/50"
               >
-                <Plus className="h-3.5 w-3.5" />
                 {`Create "${query.trim()}" as a new client`}
               </button>
             )}
@@ -243,14 +221,14 @@ export function ClientAndProjectStep({ onContinue }: ClientAndProjectStepProps) 
       //
       // company_id/client_id/status/created_at are never invented here — company_id comes
       // from the session server-side, client_id is read back from the response.
-      const trimmedNumber = draft.contact_number.trim();
-      const contactNumber = trimmedNumber && trimmedNumber !== "+63" ? trimmedNumber : null;
+      const contactDigits = normalizePhMobileDigits(draft.contact_number);
+      const contactNumber = contactDigits ? formatPhMobileE164(contactDigits) : null;
       const created = await createClient({
         client_name: draft.client_name.trim(),
         contact_person: draft.contact_person.trim() || null,
         contact_email: draft.contact_email.trim() || null,
-        // "+63 " on its own (the untouched default — see emptyNewClientDraft) isn't a real
-        // contact number; treat it the same as blank rather than saving a placeholder.
+        // Store Philippine mobile numbers in E.164 form (+639171234567); an untouched
+        // input has no digits and is saved as blank.
         contact_number: contactNumber,
         client_address: draft.client_address.trim() || null,
         // Part B — never a user choice at creation: every client this form creates starts

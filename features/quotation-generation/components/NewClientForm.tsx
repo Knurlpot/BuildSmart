@@ -1,6 +1,7 @@
 "use client";
 
 import { AlertTriangle, Mail, MapPin, Phone, User, UserPlus } from "lucide-react";
+import { formatPhMobileNationalNumber, normalizePhMobileDigits } from "@/lib/ph-phone";
 import { NEUTRAL_HUE, regionToHue } from "@/lib/regionColor";
 
 export interface NewClientDraft {
@@ -17,10 +18,7 @@ export interface NewClientDraft {
 // client_type field on this draft at all: the caller supplies the literal 'New' when it
 // actually creates the row (see ClientAndProjectStep.tsx's handleCreateSubmit).
 export function emptyNewClientDraft(name: string): NewClientDraft {
-  // "+63 " is a helpful DEFAULT, not a validated format — landlines and other valid PH
-  // numbers don't all fit the 10-digit mobile pattern, so this is freely editable/replaceable
-  // plain text, never masked or hard-rejected (Part B).
-  return { client_name: name, contact_person: "", contact_email: "", contact_number: "+63 ", client_address: "" };
+  return { client_name: name, contact_person: "", contact_email: "", contact_number: "", client_address: "" };
 }
 
 interface NewClientFormProps {
@@ -49,6 +47,7 @@ function initials(name: string): string {
 // ClientAndProjectStep.tsx); the left column stays project-fields-only.
 export function NewClientForm({ draft, onChange, onCreate, onCancel, isCreating, createError, region = "" }: NewClientFormProps) {
   const set = (patch: Partial<NewClientDraft>) => onChange({ ...draft, ...patch });
+  const contactDigits = normalizePhMobileDigits(draft.contact_number);
   const hue = region.trim() ? regionToHue(region) : NEUTRAL_HUE;
   const accent = `hsl(${hue} 72% 58%)`;
   const accentBg = `hsl(${hue} 72% 58% / 0.16)`;
@@ -130,16 +129,14 @@ export function NewClientForm({ draft, onChange, onCreate, onCancel, isCreating,
             <label className={labelCls}>Contact Number</label>
             <div className="relative flex items-center">
               <Phone className="pointer-events-none absolute left-3 h-3.5 w-3.5 text-white/40" />
-              {/* Part B — "+63 " is only a starting default (see emptyNewClientDraft); this
-                  is plain free text with a generous soft cap, never a hard mask. Landlines
-                  and other valid PH formats don't fit a fixed mobile-length pattern, so
-                  nothing here rejects them. */}
+              <span className="pointer-events-none absolute left-9 text-sm font-semibold text-white/75">+63</span>
               <input
-                value={draft.contact_number}
-                onChange={(e) => set({ contact_number: e.target.value })}
-                placeholder="+63 917 123 4567"
-                maxLength={20}
-                className={fieldCls}
+                inputMode="numeric"
+                value={formatPhMobileNationalNumber(contactDigits)}
+                onChange={(e) => set({ contact_number: normalizePhMobileDigits(e.target.value) })}
+                placeholder="917 123 4567"
+                maxLength={12}
+                className={`${fieldCls} pl-[4.45rem]`}
                 style={{ background: fieldBg, borderColor: fieldBorder, "--tw-ring-color": accent } as React.CSSProperties}
               />
             </div>

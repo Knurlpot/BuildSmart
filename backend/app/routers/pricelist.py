@@ -756,10 +756,27 @@ def get_task_status(task_id: str):
 
 
 @router.get("/review", response_model=list[ReviewItemResponse])
-def list_review_items(company_id: int | None = None, db: Session = Depends(get_db)):
+def list_review_items(
+    company_id: int | None = None,
+    latest_upload_only: bool = False,
+    db: Session = Depends(get_db),
+):
     statement = select(PriceListReviewItem).where(PriceListReviewItem.status == "Pending")
     if company_id is not None:
         statement = statement.where(PriceListReviewItem.company_id == company_id)
+    if latest_upload_only:
+        latest_upload_statement = (
+            select(PriceListUpload.upload_id)
+            .where(PriceListUpload.processing_status == "processing")
+            .order_by(PriceListUpload.upload_timestamp.desc(), PriceListUpload.upload_id.desc())
+            .limit(1)
+        )
+        if company_id is not None:
+            latest_upload_statement = latest_upload_statement.where(PriceListUpload.company_id == company_id)
+        latest_upload_id = db.execute(latest_upload_statement).scalar_one_or_none()
+        if latest_upload_id is None:
+            return []
+        statement = statement.where(PriceListReviewItem.upload_id == latest_upload_id)
     rows = db.execute(statement).scalars().all()
     return rows
 

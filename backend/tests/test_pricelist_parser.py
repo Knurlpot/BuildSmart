@@ -11,6 +11,7 @@ from app.services.pricelist_parser import (
     _parse_collapsed_pdf_item,
     _parse_pdf_text,
     _parse_pdf_ocr_table,
+    _parse_simple_pricelist_ocr_line,
     _parse_simple_pricelist_ocr_table,
     _dedupe_and_label_columns,
     _pdf_table_to_dataframe,
@@ -72,6 +73,89 @@ def test_recognizes_common_header_synonyms():
     assert df.iloc[0]["raw_name"] == "Portland Cement Type 1"
     assert df.iloc[0]["raw_unit"] == "bag"
     assert df.iloc[0]["raw_price"] == 255.0
+
+
+def test_strips_supplier_item_code_and_preserves_table_fields(tmp_path):
+    supplier_file = tmp_path / "supplier-code-table.csv"
+    supplier_file.write_text(
+        "Item Code,Description,Brand,Size / Spec,Unit,Unit Price\n"
+        "PVC-B-013,\"PVC Pipe Blue, S-1000 potable\",Neltex,13mm x 3m,pc,78.00\n"
+        "FIT-EL90-020,PVC Elbow 90°,Neltex,20mm,pc,9.50\n"
+    )
+
+    df = parse_pricelist_file(str(supplier_file))
+
+    assert df[["raw_name", "description", "raw_brand", "raw_unit", "raw_price"]].to_dict("records") == [
+        {
+            "raw_name": "PVC Pipe Blue, S-1000 potable",
+            "description": "13mm x 3m",
+            "raw_brand": "Neltex",
+            "raw_unit": "pc",
+            "raw_price": 78.0,
+        },
+        {
+            "raw_name": "PVC Elbow 90°",
+            "description": "20mm",
+            "raw_brand": "Neltex",
+            "raw_unit": "pc",
+            "raw_price": 9.5,
+        },
+    ]
+
+
+def test_strips_supplier_item_code_from_flat_ocr_row():
+    parsed = _parse_simple_pricelist_ocr_line(
+        "PVC-B-020 PVC Pipe Blue, S-1000 potable Neltex 20mm x 3m pc 124.00"
+    )
+
+    assert parsed is not None
+    assert parsed["raw_name"] == "PVC Pipe Blue, S-1000 potable Neltex 20mm x 3m"
+    assert parsed["raw_unit"] == "pc"
+    assert parsed["raw_price"] == "124.00"
+
+
+def test_parse_pricelist_splits_inline_brand_and_size_spec(tmp_path):
+    supplier_file = tmp_path / "flat-ocr-like.csv"
+    supplier_file.write_text(
+        "Material,Unit,Price\n"
+        "\"PVC-B-013 PVC Pipe Blue, S-1000 potable Neltex 43mmx3m pe\",unit,78.00\n"
+        "\"PVC-B-020 PVC Pipe Blue, S-1000 potable Neltex 20mm x 3m\",pc,12400\n"
+        "\"FIT-EL90-020 PVC Elbow 90° Neltex 20mm pe\",mm,9.50\n"
+        "\"PVC-S-100 PVC Pipe Orange, sanitary Atlanta 100mm x 3m\",pc,612.00\n"
+    )
+
+    df = parse_pricelist_file(str(supplier_file))
+
+    assert df[["raw_name", "description", "raw_brand", "raw_unit", "raw_price"]].to_dict("records") == [
+        {
+            "raw_name": "PVC Pipe Blue, S-1000 potable",
+            "description": "13mm x 3m",
+            "raw_brand": "Neltex",
+            "raw_unit": "pc",
+            "raw_price": 78.0,
+        },
+        {
+            "raw_name": "PVC Pipe Blue, S-1000 potable",
+            "description": "20mm x 3m",
+            "raw_brand": "Neltex",
+            "raw_unit": "pc",
+            "raw_price": 124.0,
+        },
+        {
+            "raw_name": "PVC Elbow 90°",
+            "description": "20mm",
+            "raw_brand": "Neltex",
+            "raw_unit": "pc",
+            "raw_price": 9.5,
+        },
+        {
+            "raw_name": "PVC Pipe Orange, sanitary",
+            "description": "100mm x 3m",
+            "raw_brand": "Atlanta",
+            "raw_unit": "pc",
+            "raw_price": 612.0,
+        },
+    ]
 
 
 def test_recognizes_header_with_currency_annotation(tmp_path):

@@ -102,6 +102,11 @@ MATERIAL_HINT_PATTERN = re.compile(
     re.I,
 )
 
+ITEM_CODE_PREFIX_PATTERN = re.compile(
+    r"^\s*(?:[A-Z]{2,8}(?:-[A-Z0-9]{1,8}){1,4}|[A-Z]{1,5}\d{1,5}[A-Z]?)\s+",
+    re.I,
+)
+
 COLOR_WORDS = {
     "black", "blue", "brown", "charcoal", "cream", "dark", "gray", "green",
     "grey", "ivory", "natural", "off-white", "orange", "red", "silver",
@@ -122,8 +127,13 @@ KNOWN_BRAND_SUFFIXES = [
     "APO Building Products", "Republic Cement", "Pag-asa Steel", "Local Aggregate",
     "Phelps Dodge", "Santa Clara", "Standard Metal", "ABC System", "Puyat Steel",
     "HardieFlex", "SteelAsia", "Jackbilt", "Neltex", "Cemex", "Boysen", "Davies",
-    "Mariwasa", "Eurotiles", "Knauf", "DN Steel", "InsuFoam",
+    "Mariwasa", "Eurotiles", "Knauf", "DN Steel", "InsuFoam", "Atlanta", "Emerald",
+    "Powerhouse",
 ]
+
+BRAND_ALIASES = {
+    "Nettex": "Neltex",
+}
 
 KNOWN_MATERIAL_PREFIXES = [
     "Elastomeric Waterproofing Paint", "Rib-Type Pre-painted Roofing",
@@ -168,6 +178,48 @@ def _sanitize_text(value: Any) -> str:
     return re.sub(r"\s+", " ", str(value).replace("\u00a0", " ")).strip()
 
 
+def _strip_item_code_prefix(value: Any) -> str:
+    text = _sanitize_text(value)
+    previous = None
+    while text and text != previous:
+        previous = text
+        text = ITEM_CODE_PREFIX_PATTERN.sub("", text).strip(" -:|")
+    return text
+
+
+def _item_code_size_hint(value: Any) -> str | None:
+    text = _sanitize_text(value)
+    match = re.match(r"^\s*([A-Z]{2,8}(?:-[A-Z0-9]{1,8}){1,4})\b", text, re.I)
+    if match is None:
+        return None
+    code = match.group(1).upper()
+    suffix = code.rsplit("-", 1)[-1]
+    if not suffix.isdigit():
+        return None
+    size = int(suffix)
+    return f"{size}mm" if size > 0 else None
+
+
+def _clean_trailing_ocr_unit_noise(value: Any) -> tuple[str, str | None]:
+    text = _sanitize_text(value)
+    if re.search(r"\b(?:pc|pe|pcs)\s*$", text, re.I):
+        text = re.sub(r"\b(?:pc|pe|pcs)\s*$", "", text, flags=re.I).strip(" -:;,.|")
+        return text, "pc"
+    return text, None
+
+
+def _clean_supplier_spec(value: Any, *, size_hint: str | None = None) -> str:
+    text = _sanitize_text(value)
+    text = re.sub(r"\b(?:pc|pe|pcs)\s*$", "", text, flags=re.I).strip(" -:;,.|")
+    text = re.sub(r"^[^A-Za-z0-9]*(?:Fe\)?|F\)?|e\)?)\s*", "", text, flags=re.I).strip(" -:;,.|")
+    text = re.sub(r"(\d+\s*mm)\s*[xX]\s*(\d)", r"\1 x \2", text, flags=re.I)
+    text = re.sub(r"(\d)\s*[xX]\s*(\d)", r"\1 x \2", text)
+    text = re.sub(r"\b(\d+)\s*mm(?=\W|$)", lambda match: f"{int(match.group(1))}mm", text, flags=re.I)
+    if size_hint and re.search(r"\d+\s*mm", text, re.I):
+        text = re.sub(r"\b\d+\s*mm(?=\W|$)", size_hint, text, count=1, flags=re.I)
+    return re.sub(r"\s+", " ", text).strip()
+
+
 def _is_blank(value: Any) -> bool:
     return _sanitize_text(value) == ""
 
@@ -197,6 +249,24 @@ def _parse_price_value(value: Any) -> float | None:
     except ValueError:
         return None
     return parsed if parsed > 0 else None
+
+
+def _parse_price_value_with_ocr_cents(value: Any) -> float | None:
+    parsed = _parse_price_value(value)
+    if parsed is None:
+        return None
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        numeric = float(value)
+        if numeric.is_integer() and numeric >= 10000 and numeric % 100 == 0:
+            return numeric / 100
+    text = _sanitize_text(value)
+    if (
+        isinstance(value, str)
+        and parsed >= 10000
+        and re.fullmatch(r"(?:[₱$]|p\s*)?\d{4,6}", text.replace(",", ""), re.I)
+    ):
+        return parsed / 100
+    return parsed
 
 
 def _is_probably_sequence(values: list[float]) -> bool:
@@ -281,6 +351,50 @@ def _split_flat_pdf_content(content: str) -> dict[str, str]:
         }
 
     return {"raw_name": text, "description": "", "raw_brand": brand}
+
+
+def _split_inline_brand_and_spec(raw_name: str, current_brand: Any = None, current_description: Any = None) -> dict[str, str]:
+    size_hint = _item_code_size_hint(raw_name)
+    text = _strip_item_code_prefix(raw_name)
+    brand = _sanitize_text(current_brand) or "Generic"
+    description = _clean_supplier_spec(current_description, size_hint=size_hint)
+
+    if description and brand != "Generic":
+        return {"raw_name": text, "description": description, "raw_brand": brand}
+
+    for candidate in sorted(KNOWN_BRAND_SUFFIXES, key=len, reverse=True):
+        match = re.search(rf"\b{re.escape(candidate)}\b", text, re.I)
+        if match is None:
+            continue
+
+        before = text[: match.start()].strip(" -:;,.|")
+        after = text[match.end() :].strip(" -:;,.|")
+        if len(before) < 3:
+            continue
+        if after and not (
+            re.search(r"\d", after)
+            or re.search(r"\b(?:mm|cm|m|in|inch|inches|kg|x|pn|s-|series|schedule|sched)\b", after, re.I)
+        ):
+            continue
+
+        canonical_brand = BRAND_ALIASES.get(candidate, candidate)
+        before, trailing_unit = _clean_trailing_ocr_unit_noise(before)
+        after, after_trailing_unit = _clean_trailing_ocr_unit_noise(after)
+        clean_after = _clean_supplier_spec(after, size_hint=size_hint)
+        return {
+            "raw_name": before,
+            "description": description or clean_after,
+            "raw_brand": canonical_brand,
+            "raw_unit": trailing_unit or after_trailing_unit or "",
+        }
+
+    text, trailing_unit = _clean_trailing_ocr_unit_noise(text)
+    return {
+        "raw_name": text,
+        "description": _clean_supplier_spec(description, size_hint=size_hint),
+        "raw_brand": BRAND_ALIASES.get(brand, brand),
+        "raw_unit": trailing_unit or "",
+    }
 
 
 def _is_non_material_row(raw_name: Any, raw_price: Any, *, require_price: bool = True) -> bool:
@@ -396,18 +510,33 @@ def _normalize_columns(df: pd.DataFrame) -> tuple[pd.DataFrame, dict[str, str]]:
                 assigned_columns.add(col)
                 break
 
-    for col in df.columns:
-        header_key = _header_key(col)
-        if header_key in REQUIRED_COLUMNS:
-            continue
-        if any(token in header_key for token in ["spec", "description", "detail"]):
-            if "description" not in df.columns and "description" not in rename_map.values():
-                rename_map[col] = "description"
-                assigned_columns.add(col)
+    if "description" not in df.columns and "description" not in rename_map.values():
+        description_candidates: list[tuple[float, Any]] = []
+        for col in df.columns:
+            header_key = _header_key(col)
+            if header_key in REQUIRED_COLUMNS:
+                continue
+            if any(token in header_key for token in ["spec", "description", "detail"]):
+                score = 0.0
+                if "spec" in header_key:
+                    score += 8.0
+                if "size" in header_key:
+                    score += 3.0
+                if "detail" in header_key:
+                    score += 2.0
+                if "description" in header_key:
+                    score += 1.0
+                description_candidates.append((score, col))
+        if description_candidates:
+            _, best_col = max(description_candidates, key=lambda item: item[0])
+            rename_map[best_col] = "description"
+            assigned_columns.add(best_col)
 
     if "raw_name" not in df.columns and "raw_name" not in rename_map.values():
         if any(_header_matches(col) == "raw_name" for col in df.columns):
             for col in df.columns:
+                if col in assigned_columns:
+                    continue
                 if _header_matches(col) == "raw_name":
                     rename_map[col] = "raw_name"
                     assigned_columns.add(col)
@@ -1130,6 +1259,7 @@ def _parse_simple_pricelist_ocr_line(line: str) -> dict[str, str] | None:
         raw_unit = after_price_unit.group(0) if after_price_unit else _extract_unit_from_text(raw_name)
 
     raw_name = re.sub(r"^\s*(?:\d+[\.)-]?\s*)", "", raw_name).strip()
+    raw_name = _strip_item_code_prefix(raw_name)
     raw_name = re.sub(r"\b(?:item|price|uom|unit)\b", "", raw_name, flags=re.I).strip(" -:|")
     if not raw_name or len(raw_name) < 3:
         return None
@@ -1412,7 +1542,23 @@ def _finalize_pdf_fallback_frame(df: pd.DataFrame) -> pd.DataFrame:
     if "raw_brand" not in df.columns:
         df["raw_brand"] = "Generic"
     df["raw_brand"] = df["raw_brand"].fillna("Generic")
-    df["raw_name"] = df["raw_name"].map(_sanitize_text)
+    split_rows = df.apply(
+        lambda row: _split_inline_brand_and_spec(
+            row.get("raw_name"),
+            row.get("raw_brand"),
+            row.get("description") if "description" in df.columns else None,
+        ),
+        axis=1,
+    )
+    df["raw_name"] = split_rows.map(lambda row: row["raw_name"])
+    df["raw_brand"] = split_rows.map(lambda row: row["raw_brand"])
+    df["description"] = split_rows.map(lambda row: row["description"])
+    split_units = split_rows.map(lambda row: row.get("raw_unit") or "")
+    if "raw_unit" in df.columns:
+        df["raw_unit"] = [
+            split_unit or original_unit
+            for split_unit, original_unit in zip(split_units, df["raw_unit"], strict=False)
+        ]
     if "description" in df.columns:
         df["description"] = df["description"].map(_sanitize_text)
     if "color" in df.columns:
@@ -1420,7 +1566,7 @@ def _finalize_pdf_fallback_frame(df: pd.DataFrame) -> pd.DataFrame:
     if "location" in df.columns:
         df["location"] = df["location"].map(_sanitize_text)
     df["raw_unit"] = df["raw_unit"].map(_sanitize_text)
-    df["raw_price"] = df["raw_price"].map(_parse_price_value)
+    df["raw_price"] = df["raw_price"].map(_parse_price_value_with_ocr_cents)
     df = df[~df.apply(lambda row: _is_non_material_row(row["raw_name"], row["raw_price"]), axis=1)]
     return df.reset_index(drop=True)
 
@@ -1595,7 +1741,22 @@ def parse_pricelist_file(file_path: str, column_mapping: Mapping[str, str] | Non
     df["raw_brand"] = df["raw_brand"].apply(lambda x: "Generic" if (isinstance(x, str) and x.strip() == "") else x)
 
     df = df.copy()
-    df["raw_name"] = df["raw_name"].map(_sanitize_text)
+    split_rows = df.apply(
+        lambda row: _split_inline_brand_and_spec(
+            row.get("raw_name"),
+            row.get("raw_brand"),
+            row.get("description") if "description" in df.columns else None,
+        ),
+        axis=1,
+    )
+    df["raw_name"] = split_rows.map(lambda row: row["raw_name"])
+    df["raw_brand"] = split_rows.map(lambda row: row["raw_brand"])
+    df["description"] = split_rows.map(lambda row: row["description"])
+    split_units = split_rows.map(lambda row: row.get("raw_unit") or "")
+    df["raw_unit"] = [
+        split_unit or original_unit
+        for split_unit, original_unit in zip(split_units, df["raw_unit"], strict=False)
+    ]
     if "description" in df.columns:
         df["description"] = df["description"].map(_sanitize_text)
     if "color" in df.columns:
@@ -1603,7 +1764,7 @@ def parse_pricelist_file(file_path: str, column_mapping: Mapping[str, str] | Non
     if "location" in df.columns:
         df["location"] = df["location"].map(_sanitize_text)
     df["raw_unit"] = df["raw_unit"].map(_sanitize_text)
-    df["raw_price"] = df["raw_price"].map(_parse_price_value)
+    df["raw_price"] = df["raw_price"].map(_parse_price_value_with_ocr_cents)
     df = df[~df.apply(lambda row: _is_non_material_row(row["raw_name"], row["raw_price"], require_price=False), axis=1)]
 
     if df.empty and suffix == ".pdf" and column_mapping is None:
