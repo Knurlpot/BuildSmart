@@ -437,7 +437,7 @@ export function PriceCatalogTab() {
               />
             );
           }
-          return <span>{rec.description_material}</span>;
+          return <span>{rec.description_material || ""}</span>;
         },
       },
       {

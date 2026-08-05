@@ -25,6 +25,12 @@ import { QuickUploadGuide } from "./QuickUploadGuide";
 import { useFetch } from "@/hooks/useFetch";
 import { useMutation } from "@/hooks/useMutation";
 import {
+  formatPhMobileE164,
+  formatPhMobileNationalNumber,
+  isValidPhMobileNumber,
+  normalizePhMobileDigits,
+} from "@/lib/ph-phone";
+import {
   NORMALIZATION_FIELD_LABELS,
   usePricelistNormalization,
   type NormalizationField,
@@ -110,7 +116,8 @@ function inferRegionFromLocation(location?: string | null) {
   return null;
 }
 
-function fmt(n: number) {
+function fmt(n: number | null) {
+  if (n == null) return "";
   return "₱" + n.toLocaleString("en-PH", { minimumFractionDigits: 2 });
 }
 
@@ -222,30 +229,28 @@ type PendingFileEntry = {
 };
 
 function reviewItemToDraft(item: PricelistReviewItem): ReviewEditDraft {
-  const initialDescription = item.description || item.suggested_brand || "";
-  const initialBrand = item.description ? item.suggested_brand ?? "" : "";
-
   return {
     raw_name: item.raw_name,
     raw_unit: item.raw_unit,
-    raw_price: String(item.raw_price),
+    raw_price: item.raw_price == null ? "" : String(item.raw_price),
     confidence: String(Math.round(item.confidence * 100)),
     suggested_category_type: item.suggested_category_type ?? "Uncategorized",
     suggested_material: item.suggested_material ?? "",
-    suggested_brand: initialBrand,
-    description: initialDescription,
+    suggested_brand: item.suggested_brand ?? "Generic",
+    description: item.description ?? "",
     color: item.color ?? "",
   };
 }
 
 function draftToPatch(draft: ReviewEditDraft): PricelistReviewItemUpdate {
   const confidencePercent = Number(draft.confidence);
+  const rawPrice = draft.raw_price.trim() ? Number(draft.raw_price) : null;
   const resolvedDescription = draft.description.trim() || null;
-  const resolvedBrand = draft.suggested_brand.trim() || (resolvedDescription ? "Generic" : null);
+  const resolvedBrand = draft.suggested_brand.trim() || "Generic";
   return {
     raw_name: draft.raw_name.trim(),
     raw_unit: draft.raw_unit.trim(),
-    raw_price: Number(draft.raw_price),
+    raw_price: rawPrice,
     confidence: Number.isFinite(confidencePercent) ? confidencePercent / 100 : 0,
     suggested_category_type: draft.suggested_category_type.trim() || null,
     suggested_material: draft.suggested_material.trim() || null,
@@ -307,7 +312,7 @@ function ReviewItemRow({
           </>
         ) : (
           <>
-            <td className="py-2 pr-4 text-gray-500">{item.description || item.suggested_brand || "—"}</td>
+            <td className="py-2 pr-4 text-gray-500">{item.description || "—"}</td>
             <td className="py-2 pr-4 text-gray-500">{item.color || "—"}</td>
             <td className="py-2 pr-4 text-gray-500">{item.suggested_brand || "Generic"}</td>
           </>
@@ -341,6 +346,7 @@ function ReviewItemRow({
           step="0.01"
           value={draft.raw_price}
           onChange={(e) => onDraftChange({ raw_price: e.target.value })}
+          placeholder=""
           className="h-8 w-28 rounded-lg border border-gray-200 bg-white px-2 text-sm text-gray-700 outline-none focus:border-primary focus:ring-2 focus:ring-primary/15"
         />
       </td>
@@ -476,6 +482,7 @@ export function AiNormalizationPanel({ companyId, onCatalogChanged }: AiNormaliz
   const [supplierMode, setSupplierMode] = useState<SupplierMode>("existing");
   const [selectedSupplierId, setSelectedSupplierId] = useState<number | null>(null);
   const [supplierForm, setSupplierForm] = useState<SupplierForm>(() => emptySupplierForm());
+  const [supplierFormErrors, setSupplierFormErrors] = useState<Partial<Record<keyof SupplierForm, string>>>({});
   const [quarter, setQuarter] = useState<(typeof QUARTERS)[number]>(
     QUARTERS[Math.floor(new Date().getMonth() / 3)]
   );
@@ -540,13 +547,36 @@ export function AiNormalizationPanel({ companyId, onCatalogChanged }: AiNormaliz
 
   const updateSupplierForm = (patch: Partial<SupplierForm>) => {
     setSupplierForm((prev) => ({ ...prev, ...patch }));
+    setSupplierFormErrors((prev) => {
+      const next = { ...prev };
+      for (const key of Object.keys(patch) as (keyof SupplierForm)[]) delete next[key];
+      return next;
+    });
+  };
+
+  const validateSupplierForm = () => {
+    const errors: Partial<Record<keyof SupplierForm, string>> = {};
+    if (!supplierForm.supplier_name.trim()) errors.supplier_name = "Supplier name is required";
+    if (!supplierForm.supplier_address.trim()) errors.supplier_address = "Address is required";
+    if (!supplierForm.city.trim()) errors.city = "City is required";
+    if (!supplierForm.contact_email.trim()) errors.contact_email = "Email is required";
+    if (!isValidPhMobileNumber(supplierForm.contact_number)) {
+      errors.contact_number = "Use +63 format, e.g. +639171234567";
+    }
+    setSupplierFormErrors(errors);
+    return Object.keys(errors).length === 0;
   };
 
   const handleUpload = async () => {
     if (pendingFiles.length === 0) return;
     let supplierId = source === "Supplier" ? selectedSupplierId : null;
     if (source === "Supplier" && supplierMode === "new") {
-      const created = await createSupplier.mutate("/api/suppliers", supplierForm, "POST");
+      if (!validateSupplierForm()) return;
+      const created = await createSupplier.mutate(
+        "/api/suppliers",
+        { ...supplierForm, contact_number: formatPhMobileE164(supplierForm.contact_number) },
+        "POST"
+      );
       supplierId = created.supplier_id;
       setSelectedSupplierId(created.supplier_id);
       setSupplierMode("existing");
@@ -888,32 +918,46 @@ export function AiNormalizationPanel({ companyId, onCatalogChanged }: AiNormaliz
                       value={supplierForm.supplier_name}
                       onChange={(e) => updateSupplierForm({ supplier_name: e.target.value })}
                       placeholder="Supplier name"
-                      className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm outline-none focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/20"
+                      aria-invalid={Boolean(supplierFormErrors.supplier_name)}
+                      className={`rounded-xl border bg-gray-50 px-3 py-2.5 text-sm outline-none focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/20 ${supplierFormErrors.supplier_name ? "border-red-400" : "border-gray-200"}`}
                     />
                     <input
                       value={supplierForm.contact_email}
                       onChange={(e) => updateSupplierForm({ contact_email: e.target.value })}
                       placeholder="Email"
                       type="email"
-                      className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm outline-none focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/20"
+                      aria-invalid={Boolean(supplierFormErrors.contact_email)}
+                      className={`rounded-xl border bg-gray-50 px-3 py-2.5 text-sm outline-none focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/20 ${supplierFormErrors.contact_email ? "border-red-400" : "border-gray-200"}`}
                     />
                     <input
                       value={supplierForm.supplier_address}
                       onChange={(e) => updateSupplierForm({ supplier_address: e.target.value })}
                       placeholder="Address"
-                      className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm outline-none focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/20"
+                      aria-invalid={Boolean(supplierFormErrors.supplier_address)}
+                      className={`rounded-xl border bg-gray-50 px-3 py-2.5 text-sm outline-none focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/20 ${supplierFormErrors.supplier_address ? "border-red-400" : "border-gray-200"}`}
                     />
-                    <input
-                      value={supplierForm.contact_number}
-                      onChange={(e) => updateSupplierForm({ contact_number: e.target.value })}
-                      placeholder="Contact number"
-                      className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm outline-none focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/20"
-                    />
+                    <div className="flex flex-col gap-1">
+                      <div className={`flex items-center rounded-xl border bg-gray-50 text-sm transition focus-within:border-primary focus-within:bg-white focus-within:ring-2 focus-within:ring-primary/20 ${supplierFormErrors.contact_number ? "border-red-400" : "border-gray-200"}`}>
+                        <span className="pl-3 text-gray-500 select-none">+63</span>
+                        <input
+                          value={formatPhMobileNationalNumber(normalizePhMobileDigits(supplierForm.contact_number))}
+                          onChange={(e) => updateSupplierForm({ contact_number: normalizePhMobileDigits(e.target.value) })}
+                          placeholder="917 123 4567"
+                          type="tel"
+                          inputMode="numeric"
+                          autoComplete="tel-national"
+                          aria-invalid={Boolean(supplierFormErrors.contact_number)}
+                          className="min-w-0 flex-1 bg-transparent px-2 py-2.5 outline-none"
+                        />
+                      </div>
+                      {supplierFormErrors.contact_number && <p className="text-xs text-red-500">{supplierFormErrors.contact_number}</p>}
+                    </div>
                     <input
                       value={supplierForm.city}
                       onChange={(e) => updateSupplierForm({ city: e.target.value })}
                       placeholder="City"
-                      className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm outline-none focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/20"
+                      aria-invalid={Boolean(supplierFormErrors.city)}
+                      className={`rounded-xl border bg-gray-50 px-3 py-2.5 text-sm outline-none focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/20 ${supplierFormErrors.city ? "border-red-400" : "border-gray-200"}`}
                     />
                     <select
                       value={supplierForm.region}

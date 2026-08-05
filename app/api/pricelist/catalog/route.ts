@@ -31,7 +31,10 @@ export async function GET(request: NextRequest) {
        s.supplier_name,
        i.brand,
        c.category_type,
-       COALESCE(NULLIF(i.description, ''), i.item_name) AS description_material,
+       CASE
+         WHEN BTRIM(COALESCE(i.description, '')) = BTRIM(i.item_name) THEN ''
+         ELSE COALESCE(i.description, '')
+       END AS description_material,
        i.unit,
        COALESCE(h.price::float, 0) AS price,
        COALESCE(h.region, 'N/A') AS region,

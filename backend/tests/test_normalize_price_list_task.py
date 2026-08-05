@@ -5,7 +5,7 @@ import pandas as pd
 from sqlalchemy import select, text
 
 import app.tasks.normalize_price_list as normalize_price_list_module
-from app.models import ApprovedMatchCache, HistoricalPriceRecord, Items, PriceListReviewItem
+from app.models import ApprovedMatchCache, Category, HistoricalPriceRecord, Items, PriceListReviewItem
 from app.services.candidates import get_item_candidates
 from app.services.match_cache import normalize_match_key
 from app.tasks.normalize_price_list import normalize_price_list
@@ -204,3 +204,172 @@ def test_normalize_price_list_stores_uploaded_item_metadata_for_matched_rows(tmp
     assert saved_item.company_id == company_id
     assert saved_item.description == "Class A 40kg bag"
     assert saved_item.color == "Gray"
+
+
+def test_upload_without_spec_or_brand_keeps_review_spec_blank_and_brand_generic(tmp_path, db_session, monkeypatch):
+    cement_item_code = next(
+        i.item_code
+        for i in db_session.execute(select(Items)).scalars()
+        if i.item_code in db_session.seeded_item_codes and i.item_name == "Portland Cement Type 1"
+    )
+
+    def scoped_get_item_candidates(db):
+        return [c for c in get_item_candidates(db) if c["item_code"] == cement_item_code]
+
+    monkeypatch.setattr(normalize_price_list_module, "get_item_candidates", scoped_get_item_candidates)
+
+    upload = tmp_path / "missing_spec_brand.csv"
+    pd.DataFrame(
+        [
+            {
+                "Item Name": "Portland Cement Type 1",
+                "Supplier": "BuildPro Supplies Ltd.",
+                "Category": "Concrete & Masonry",
+                "Unit/UOM": "Bag",
+                "Price": 12.5,
+            }
+        ]
+    ).to_csv(upload, index=False)
+
+    existing_review_ids = {
+        r.review_id for r in db_session.execute(select(PriceListReviewItem)).scalars()
+    }
+
+    result = normalize_price_list(
+        file_path=str(upload),
+        source="Supplier",
+        supplier_id=1,
+        company_id=1,
+        upload_id=1,
+        db=db_session,
+    )
+
+    assert result["processed"] == 1
+    assert result["needs_review"] == 1
+
+    review_item = next(
+        r
+        for r in db_session.execute(select(PriceListReviewItem)).scalars()
+        if r.review_id not in existing_review_ids
+    )
+    assert review_item.description == ""
+    assert review_item.suggested_brand == "Generic"
+
+
+def test_blank_description_cell_stays_blank_even_when_supplier_and_brand_are_present(tmp_path, db_session, monkeypatch):
+    category_id = db_session.execute(select(Category.category_id).order_by(Category.category_id)).scalars().first()
+    assert category_id is not None
+    plywood_item = Items(
+        category_id=category_id,
+        item_name="Plywood Marine Grade 3/4 inch",
+        brand="HardPly",
+        unit="Sheet",
+        item_source="Supplier",
+        description=None,
+    )
+    db_session.add(plywood_item)
+    db_session.flush()
+
+    def scoped_get_item_candidates(db):
+        return [
+            {
+                "item_code": plywood_item.item_code,
+                "item_name": plywood_item.item_name,
+                "material": plywood_item.description or plywood_item.item_name,
+                "brand": plywood_item.brand,
+                "unit": plywood_item.unit,
+                "category_type": "Timber & Lumber",
+            }
+        ]
+
+    monkeypatch.setattr(normalize_price_list_module, "get_item_candidates", scoped_get_item_candidates)
+
+    upload = tmp_path / "blank_description_cell.csv"
+    pd.DataFrame(
+        [
+            {
+                "Item Name": "Plywood Marine Grade 3/4 inch",
+                "Supplier": "TimberLand Distro",
+                "Brand": "HardPly",
+                "Category": "Lumber & Wood",
+                "Description": "",
+                "Unit/UOM": "Sheet",
+                "Price": 45,
+            }
+        ]
+    ).to_csv(upload, index=False)
+
+    existing_review_ids = {
+        r.review_id for r in db_session.execute(select(PriceListReviewItem)).scalars()
+    }
+
+    result = normalize_price_list(
+        file_path=str(upload),
+        source="Supplier",
+        supplier_id=1,
+        company_id=1,
+        upload_id=1,
+        db=db_session,
+    )
+
+    assert result["processed"] == 1
+    assert result["needs_review"] == 1
+
+    review_item = next(
+        r
+        for r in db_session.execute(select(PriceListReviewItem)).scalars()
+        if r.review_id not in existing_review_ids
+    )
+    assert review_item.description == ""
+    assert review_item.suggested_brand == "HardPly"
+
+
+def test_blank_price_cell_stays_blank_in_review(tmp_path, db_session, monkeypatch):
+    cement_item_code = next(
+        i.item_code
+        for i in db_session.execute(select(Items)).scalars()
+        if i.item_code in db_session.seeded_item_codes and i.item_name == "Portland Cement Type 1"
+    )
+
+    def scoped_get_item_candidates(db):
+        return [c for c in get_item_candidates(db) if c["item_code"] == cement_item_code]
+
+    monkeypatch.setattr(normalize_price_list_module, "get_item_candidates", scoped_get_item_candidates)
+
+    upload = tmp_path / "blank_price_cell.csv"
+    pd.DataFrame(
+        [
+            {
+                "Item Name": "Portland Cement Type 1",
+                "Supplier": "BuildPro Supplies Ltd.",
+                "Brand": "Holcim",
+                "Category": "Concrete & Masonry",
+                "Description": "General purpose 40kg bag portland cement",
+                "Unit/UOM": "Bag",
+                "Price": "",
+            }
+        ]
+    ).to_csv(upload, index=False)
+
+    existing_review_ids = {
+        r.review_id for r in db_session.execute(select(PriceListReviewItem)).scalars()
+    }
+
+    result = normalize_price_list(
+        file_path=str(upload),
+        source="Supplier",
+        supplier_id=1,
+        company_id=1,
+        upload_id=1,
+        db=db_session,
+    )
+
+    assert result["processed"] == 1
+    assert result["needs_review"] == 1
+
+    review_item = next(
+        r
+        for r in db_session.execute(select(PriceListReviewItem)).scalars()
+        if r.review_id not in existing_review_ids
+    )
+    assert review_item.raw_price is None

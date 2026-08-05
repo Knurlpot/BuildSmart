@@ -74,6 +74,29 @@ def test_upload_with_unrecognized_columns_returns_structured_422():
     _cleanup_upload(body["upload_id"])
 
 
+def test_upload_unrelated_file_returns_file_not_supported():
+    csv_bytes = (
+        b"Section,Data Type,Notes\n"
+        b"UC-01,unit,\n"
+        b"Log-In,unit,\n"
+        b"Security,unit,3\n"
+        b"Performance,unit,3\n"
+        b"This use case outlines the authentication process wherein users provide their login credentials,unit,\n"
+        b"Student Instructor Admin,unit,\n"
+    )
+
+    with patch.object(pricelist_router.normalize_price_list, "delay") as mock_delay:
+        response = client.post(
+            "/pricelist/upload",
+            files={"file": ("proposal.csv", io.BytesIO(csv_bytes), "text/csv")},
+            data={"source": "Supplier"},
+        )
+
+    assert mock_delay.call_count == 0
+    assert response.status_code == 422
+    assert response.json()["detail"] == "File NOT Supported"
+
+
 def test_confirm_mapping_triggers_task_after_manual_resolution():
     csv_bytes = b"Foo,Bar,Baz\nPortland Cement Type 1,bag,255.00\n"
     fake_result = SimpleNamespace(id="fake-task-id-2")
@@ -358,7 +381,7 @@ def test_update_review_item_approve_saves_to_supplier_catalog(db_session):
     saved_item = db_session.execute(
         select(Items)
         .where(Items.item_name == "Portland Cement Type 1 40kg")
-        .where(Items.description == "Cement")
+        .where(Items.description.is_(None))
         .where(Items.brand == "Holcim")
         .where(Items.unit == "bag")
         .where(Items.item_source == "Supplier")
@@ -407,12 +430,53 @@ def test_update_review_item_approve_creates_supplier_item_even_if_internal_exist
     supplier_item = db_session.execute(
         select(Items)
         .where(Items.item_name == "Portland Cement Type 1")
-        .where(Items.description == "Cement")
+        .where(Items.description.is_(None))
         .where(Items.brand == "Holcim")
         .where(Items.unit == "bag")
         .where(Items.item_source == "Supplier")
     ).scalars().first()
     assert supplier_item is not None
+
+
+def test_update_review_item_approve_does_not_store_missing_description_as_item_name(db_session):
+    item = PriceListReviewItem(
+        raw_name="Plywood Marine Grade 3/4 inch",
+        raw_unit="Sheet",
+        raw_price=45.00,
+        confidence=0.74,
+        suggested_category_type="Timber & Lumber",
+        suggested_material="Plywood Marine Grade 3/4 inch",
+        suggested_brand="HardPly",
+        description="",
+        source="Supplier",
+        supplier_id=None,
+    )
+    db_session.add(item)
+    db_session.flush()
+
+    def override_get_db():
+        yield db_session
+
+    app.dependency_overrides[get_db] = override_get_db
+    try:
+        response = client.patch(
+            f"/pricelist/review/{item.review_id}",
+            json={"status": "Approved"},
+        )
+    finally:
+        del app.dependency_overrides[get_db]
+
+    assert response.status_code == 200
+
+    saved_item = db_session.execute(
+        select(Items)
+        .where(Items.item_name == "Plywood Marine Grade 3/4 inch")
+        .where(Items.brand == "HardPly")
+        .where(Items.unit == "Sheet")
+        .where(Items.item_source == "Supplier")
+    ).scalars().first()
+    assert saved_item is not None
+    assert saved_item.description is None
 
 
 def test_approving_review_item_writes_approved_match_cache_entry(db_session):

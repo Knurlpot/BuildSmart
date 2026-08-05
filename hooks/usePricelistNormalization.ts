@@ -50,7 +50,7 @@ export interface PricelistReviewItem {
   review_id: number;
   raw_name: string;
   raw_unit: string;
-  raw_price: number;
+  raw_price: number | null;
   confidence: number;
   suggested_category_type: string | null;
   suggested_material: string | null;

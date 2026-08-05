@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { pool } from "@/lib/server/db";
 import { readSession } from "@/lib/server/session";
+import { formatPhMobileE164, isValidPhMobileNumber } from "@/lib/ph-phone";
 import { PH_REGIONS } from "@/types/entities/common";
 
 const SUPPLIER_TYPES = ["Distributor", "Warehouse", "Retailer"] as const;
@@ -78,6 +79,10 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Select a valid supplier type" }, { status: 400 });
   }
 
+  if (!isValidPhMobileNumber(contactNumber)) {
+    return NextResponse.json({ error: "Contact number must use Philippine +63 mobile format, e.g. +639171234567" }, { status: 400 });
+  }
+
   try {
     const result = await pool.query<SupplierRow>(
       `INSERT INTO suppliers (
@@ -96,7 +101,7 @@ export async function POST(request: NextRequest) {
          status = 'Active'
        RETURNING supplier_id, supplier_name, supplier_address, warehouse_loc, city, region,
                  contact_email, contact_number, supplier_type, status`,
-      [supplierName, supplierAddress, warehouseLoc, city, region, contactEmail, contactNumber, supplierType]
+      [supplierName, supplierAddress, warehouseLoc, city, region, contactEmail, formatPhMobileE164(contactNumber), supplierType]
     );
 
     return NextResponse.json(result.rows[0], { status: 201 });

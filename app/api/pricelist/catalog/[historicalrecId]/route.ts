@@ -74,7 +74,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     }
     if (body.description !== undefined) {
       itemAssignments.push(`description = $${paramIndex++}`);
-      itemValues.push(body.description);
+      itemValues.push(body.description.trim() || null);
     }
     if (body.unit !== undefined) {
       itemAssignments.push(`unit = $${paramIndex++}`);
@@ -101,7 +101,10 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
          i.item_code,
          i.item_name,
          i.brand,
-         COALESCE(NULLIF(i.description, ''), i.item_name) AS description_material,
+         CASE
+           WHEN BTRIM(COALESCE(i.description, '')) = BTRIM(i.item_name) THEN ''
+           ELSE COALESCE(i.description, '')
+         END AS description_material,
          i.unit,
          COALESCE(h.price::float, 0) AS price,
          COALESCE(h.region, 'N/A') AS region,

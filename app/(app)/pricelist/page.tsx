@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { Database, LibraryBig, Upload } from "lucide-react";
 import { RequireAuth } from "@/components/auth/RequireAuth";
-import { PriceCatalogTab, PublishedSourceTab, UploadPricelistTab } from "@/features/pricelist/components";
+import { AiNormalizationPanel, PriceCatalogTab, PublishedSourceTab } from "@/features/pricelist/components";
 import { usePricelistCatalog } from "@/hooks/usePricelistCatalog";
 import { usePricelistPublishedSource } from "@/hooks/usePricelistPublishedSource";
 import { useAuth } from "@/providers/AuthProvider";
@@ -26,11 +26,17 @@ const TABS = [
 
 type TabId = (typeof TABS)[number]["id"];
 
+function asCompanyId(value: unknown): number | null {
+  const n = typeof value === "number" ? value : typeof value === "string" ? Number(value) : NaN;
+  return Number.isFinite(n) ? n : null;
+}
+
 export default function PricelistPage() {
   const [activeTab, setActiveTab] = useState<TabId>("upload");
   const goToCatalog = () => setActiveTab("catalog");
 
   const { currentUser, updateOnboardingStep } = useAuth();
+  const companyId = asCompanyId(currentUser?.companyId);
   const supplierCatalog = usePricelistCatalog();
   const { dpwhCatalog } = usePricelistPublishedSource();
 
@@ -96,7 +102,15 @@ export default function PricelistPage() {
           })}
         </div>
 
-        {activeTab === "upload" && <UploadPricelistTab onViewCatalog={goToCatalog} workflowComplete={pricelistDone} />}
+        {activeTab === "upload" && (
+          <AiNormalizationPanel
+            companyId={companyId}
+            onCatalogChanged={() => {
+              supplierCatalog.refetch();
+              goToCatalog();
+            }}
+          />
+        )}
         {activeTab === "published" && <PublishedSourceTab onViewCatalog={goToCatalog} />}
         {activeTab === "catalog" && <PriceCatalogTab />}
       </div>

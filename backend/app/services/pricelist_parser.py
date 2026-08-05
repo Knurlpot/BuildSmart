@@ -1,4 +1,5 @@
 import re
+import shutil
 from pathlib import Path
 from typing import Any, Mapping
 
@@ -6,6 +7,29 @@ import pandas as pd
 import pdfplumber
 
 REQUIRED_COLUMNS = {"raw_name", "raw_unit", "raw_price"}
+
+
+def _poppler_path() -> str | None:
+    for candidate in (shutil.which("pdftoppm"), "/opt/homebrew/bin/pdftoppm", "/usr/local/bin/pdftoppm"):
+        if candidate and Path(candidate).exists():
+            return str(Path(candidate).parent)
+    return None
+
+
+def _configure_tesseract(pytesseract_module: Any) -> None:
+    for candidate in (shutil.which("tesseract"), "/opt/homebrew/bin/tesseract", "/usr/local/bin/tesseract"):
+        if candidate and Path(candidate).exists():
+            tesseract_config = getattr(pytesseract_module, "pytesseract", None)
+            if tesseract_config is not None:
+                tesseract_config.tesseract_cmd = candidate
+            return
+
+
+def _convert_pdf_to_images(convert_from_path: Any, path: Path, *, dpi: int) -> list[Any]:
+    try:
+        return convert_from_path(str(path), dpi=dpi, poppler_path=_poppler_path())
+    except TypeError:
+        return convert_from_path(str(path), dpi=dpi)
 
 # Small, explicit synonym list — not fuzzy/NLP matching. Real DPWH/PSA/supplier
 # files use human column headers, not these literal field names; this covers
@@ -50,7 +74,7 @@ COLUMN_SYNONYMS: dict[str, set[str]] = {
     },
     "raw_brand": {
         "brand", "brand name", "manufacturer", "brand / manufacturer",
-        "brand/manufacturer", "mfr", "make", "maker", "supplier name",
+        "brand/manufacturer", "mfr", "make", "maker",
     },
 }
 
@@ -83,6 +107,16 @@ COLOR_WORDS = {
     "grey", "ivory", "natural", "off-white", "orange", "red", "silver",
     "white", "wood", "yellow", "zinc",
 }
+
+UNRELATED_TEXT_HINT_PATTERN = re.compile(
+    r"\b("
+    r"proposal|abstract|introduction|methodology|recommendation|conclusion|"
+    r"admin|student|database|deadlock|storage|archive|schema|table|varchar|"
+    r"int\(|enum|tinyint|foreign key|primary key|chapter|appendix|"
+    r"log-?in|authentication|credentials|use case|security|performance|instructor"
+    r")\b",
+    re.I,
+)
 
 KNOWN_BRAND_SUFFIXES = [
     "APO Building Products", "Republic Cement", "Pag-asa Steel", "Local Aggregate",
@@ -249,11 +283,11 @@ def _split_flat_pdf_content(content: str) -> dict[str, str]:
     return {"raw_name": text, "description": "", "raw_brand": brand}
 
 
-def _is_non_material_row(raw_name: Any, raw_price: Any) -> bool:
+def _is_non_material_row(raw_name: Any, raw_price: Any, *, require_price: bool = True) -> bool:
     name = _sanitize_text(raw_name)
     if not name:
         return True
-    if _parse_price_value(raw_price) is None:
+    if require_price and _parse_price_value(raw_price) is None:
         return True
     if any(pattern.search(name) for pattern in NON_MATERIAL_PATTERNS):
         return True
@@ -354,7 +388,10 @@ def _normalize_columns(df: pd.DataFrame) -> tuple[pd.DataFrame, dict[str, str]]:
     for col in df.columns:
         header_key = _header_key(col)
         if "location" not in df.columns and "location" not in rename_map.values():
-            if any(token in header_key for token in ["location", "locality", "area", "city", "municipality", "province", "district"]):
+            if (
+                any(token in header_key for token in ["location", "locality", "area", "city", "municipality", "province", "district"])
+                and not _column_has_parseable_prices(df[col])
+            ):
                 rename_map[col] = "location"
                 assigned_columns.add(col)
                 break
@@ -435,6 +472,8 @@ def _normalize_columns(df: pd.DataFrame) -> tuple[pd.DataFrame, dict[str, str]]:
         and _column_has_parseable_prices(df[col])
     ]
     renamed = df.rename(columns=rename_map)
+    if raw_price_source_col is None and len(price_like_columns) > 1 and "raw_price" not in renamed.columns:
+        renamed["raw_price"] = df[price_like_columns[0]].values
     if raw_price_source_col is not None and price_like_columns:
         original_label = _sanitize_text(raw_price_source_col)
         if original_label and original_label not in renamed.columns:
@@ -614,6 +653,52 @@ def _infer_missing_columns(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
+def _has_pricelist_relevance(df: pd.DataFrame) -> bool:
+    if df.empty or not {"raw_name", "raw_unit", "raw_price"}.issubset(df.columns):
+        return False
+
+    rows = []
+    for _, row in df.iterrows():
+        name = _sanitize_text(row.get("raw_name"))
+        if not name:
+            continue
+        unit = _sanitize_text(row.get("raw_unit"))
+        price = row.get("raw_price")
+        has_price = _parse_price_value(price) is not None
+        has_unit = bool(unit) and (unit != "unit" or _extract_unit_from_text(name))
+        has_material_hint = bool(MATERIAL_HINT_PATTERN.search(name))
+        has_unrelated_hint = bool(UNRELATED_TEXT_HINT_PATTERN.search(name))
+        has_pricelist_shape = has_price and has_unit and not has_unrelated_hint
+        rows.append((has_price, has_unit, has_material_hint or has_pricelist_shape, has_unrelated_hint))
+
+    if not rows:
+        return False
+
+    material_like = sum(1 for has_price, has_unit, has_material_hint, has_unrelated_hint in rows if not has_unrelated_hint and has_material_hint and (has_price or has_unit))
+    unrelated = sum(1 for _, _, _, has_unrelated_hint in rows if has_unrelated_hint)
+
+    if material_like == 0:
+        return False
+    if material_like < max(1, len(rows) // 3):
+        return False
+    if unrelated > material_like:
+        return False
+    return True
+
+
+def _has_unrelated_document_signals(df: pd.DataFrame) -> bool:
+    texts = [
+        _sanitize_text(value)
+        for value in df.to_numpy().flatten().tolist()
+        if _sanitize_text(value)
+    ]
+    if not texts:
+        return False
+    unrelated = sum(1 for text in texts if UNRELATED_TEXT_HINT_PATTERN.search(text))
+    material = sum(1 for text in texts if MATERIAL_HINT_PATTERN.search(text))
+    return unrelated > 0 and material == 0
+
+
 def _dedupe_and_label_columns(df: pd.DataFrame) -> pd.DataFrame:
     deduped = df.copy()
     used: set[str] = set()
@@ -696,12 +781,15 @@ def _parse_pdf(path: Path) -> pd.DataFrame:
         dpwh_ocr_fallback = _parse_dpwh_cmpd_ocr_table(path)
         if dpwh_ocr_fallback is not None:
             return dpwh_ocr_fallback
+        simple_ocr_fallback = _parse_simple_pricelist_ocr_table(path)
+        if simple_ocr_fallback is not None:
+            return simple_ocr_fallback
         ocr_fallback = _parse_pdf_ocr_table(path)
         if ocr_fallback is not None:
             return ocr_fallback
         raise ValueError(
             "No table found in PDF price list. This PDF appears to be scanned; install/configure OCR dependencies "
-            "(Poppler and Tesseract) so image-only DPWH CMPD pages can be read."
+            "(Poppler and Tesseract) so image-only price list pages can be read."
         )
 
     df = pd.concat(frames, ignore_index=True, sort=False)
@@ -790,6 +878,7 @@ def _ocr_single_line(image: Any, box: tuple[int, int, int, int], whitelist: str 
     except ImportError:
         return ""
 
+    _configure_tesseract(pytesseract)
     crop = ImageOps.expand(image.crop(box), border=8, fill=255)
     config = "--psm 7"
     if whitelist:
@@ -843,7 +932,7 @@ def _parse_dpwh_cmpd_ocr_table(path: Path) -> pd.DataFrame | None:
         return None
 
     try:
-        images = convert_from_path(str(path), dpi=220)
+        images = _convert_pdf_to_images(convert_from_path, path, dpi=220)
     except Exception:
         return None
 
@@ -949,7 +1038,7 @@ def _ocr_row_to_cells(row: list[dict[str, Any]]) -> list[str]:
         row[index + 1]["left"] - (row[index]["left"] + row[index]["width"])
         for index in range(len(row) - 1)
     ]
-    large_gap = max(18, (sum(gaps) / len(gaps) * 1.8) if gaps else 18)
+    large_gap = max(18, (sum(gaps) / len(gaps) * 0.8) if gaps else 18)
 
     cells: list[list[str]] = [[row[0]["text"]]]
     for index, word in enumerate(row[1:], start=1):
@@ -969,8 +1058,9 @@ def _parse_pdf_ocr_table(path: Path) -> pd.DataFrame | None:
     except ImportError:
         return None
 
+    _configure_tesseract(pytesseract)
     try:
-        images = convert_from_path(str(path), dpi=300)
+        images = _convert_pdf_to_images(convert_from_path, path, dpi=300)
     except Exception:
         return None
 
@@ -1012,6 +1102,138 @@ def _parse_pdf_ocr_table(path: Path) -> pd.DataFrame | None:
 
     width = max(len(row) for row in table_rows)
     return pd.DataFrame(_pad_pdf_rows(table_rows, width), columns=[f"column_{index + 1}" for index in range(width)])
+
+
+def _ocr_row_to_line(row: list[dict[str, Any]]) -> str:
+    return _sanitize_text(" ".join(word["text"] for word in sorted(row, key=lambda item: item["left"])))
+
+
+def _parse_simple_pricelist_ocr_line(line: str) -> dict[str, str] | None:
+    clean = re.sub(r"\s+", " ", line).strip()
+    if not clean or _is_pdf_noise_line(clean):
+        return None
+
+    price_matches = list(re.finditer(r"(?<![A-Za-z'\"])(?:[₱$]|p\s*)?\d[\d,]*(?:\.\d{1,2})?(?![A-Za-z'\"])", clean, re.I))
+    price_match = price_matches[-1] if price_matches else None
+    before_price = clean[: price_match.start()].strip() if price_match else clean
+    after_price = clean[price_match.end() :].strip() if price_match else ""
+    price = price_match.group(0) if price_match else ""
+
+    unit_matches = list(re.finditer(rf"\b(?:{_unit_pattern()})\b", before_price, re.I))
+    if unit_matches:
+        unit_match = unit_matches[-1]
+        raw_name = before_price[: unit_match.start()].strip(" -:|")
+        raw_unit = unit_match.group(0)
+    else:
+        raw_name = before_price.strip(" -:|")
+        after_price_unit = re.search(rf"\b(?:{_unit_pattern()})\b", after_price, re.I)
+        raw_unit = after_price_unit.group(0) if after_price_unit else _extract_unit_from_text(raw_name)
+
+    raw_name = re.sub(r"^\s*(?:\d+[\.)-]?\s*)", "", raw_name).strip()
+    raw_name = re.sub(r"\b(?:item|price|uom|unit)\b", "", raw_name, flags=re.I).strip(" -:|")
+    if not raw_name or len(raw_name) < 3:
+        return None
+    if not raw_unit and not price:
+        return None
+    if not MATERIAL_HINT_PATTERN.search(raw_name) and not (raw_unit and price):
+        return None
+    if UNRELATED_TEXT_HINT_PATTERN.search(raw_name):
+        return None
+
+    return {
+        "raw_name": raw_name,
+        "raw_unit": raw_unit or "unit",
+        "raw_price": price,
+        "raw_brand": "Generic",
+        "description": "",
+    }
+
+
+def _prepare_ocr_image_variants(image: Any) -> list[Any]:
+    variants = [image]
+    try:
+        from PIL import ImageEnhance, ImageFilter, ImageOps
+    except ImportError:
+        return variants
+
+    try:
+        grayscale = image.convert("L")
+        variants.append(grayscale)
+        variants.append(ImageOps.autocontrast(grayscale).resize((grayscale.width * 2, grayscale.height * 2)))
+        enhanced = ImageEnhance.Contrast(grayscale).enhance(2.5)
+        enhanced = ImageEnhance.Sharpness(enhanced).enhance(2.0)
+        variants.append(enhanced.resize((enhanced.width * 2, enhanced.height * 2)))
+        variants.append(enhanced.filter(ImageFilter.MedianFilter(size=3)).point(lambda pixel: 0 if pixel < 170 else 255))
+    except Exception:
+        return variants
+    return variants
+
+
+def _parse_simple_pricelist_ocr_text(text: str) -> list[dict[str, str]]:
+    rows: list[dict[str, str]] = []
+    for line in text.splitlines():
+        parsed = _parse_simple_pricelist_ocr_line(line)
+        if parsed is not None:
+            rows.append(parsed)
+    return rows
+
+
+def _parse_simple_pricelist_ocr_table(path: Path) -> pd.DataFrame | None:
+    try:
+        from pdf2image import convert_from_path
+        import pytesseract
+    except ImportError:
+        return None
+
+    _configure_tesseract(pytesseract)
+    try:
+        images = _convert_pdf_to_images(convert_from_path, path, dpi=300)
+    except Exception:
+        return None
+
+    parsed_rows: list[dict[str, str]] = []
+    for image in images:
+        for variant in _prepare_ocr_image_variants(image):
+            try:
+                text = pytesseract.image_to_string(variant, config="--psm 6")
+            except Exception:
+                text = ""
+            parsed_rows.extend(_parse_simple_pricelist_ocr_text(text))
+
+            try:
+                data = pytesseract.image_to_data(variant, output_type=pytesseract.Output.DICT, config="--psm 6")
+            except Exception:
+                continue
+
+            words: list[dict[str, Any]] = []
+            for index, text in enumerate(data.get("text", [])):
+                clean = _sanitize_text(text)
+                if not clean:
+                    continue
+                try:
+                    confidence = float(data.get("conf", ["-1"])[index])
+                except (TypeError, ValueError):
+                    confidence = -1
+                if confidence < 0:
+                    continue
+                words.append(
+                    {
+                        "text": clean,
+                        "left": int(data["left"][index]),
+                        "top": int(data["top"][index]),
+                        "width": int(data["width"][index]),
+                        "height": int(data["height"][index]),
+                    }
+                )
+
+            for row in _cluster_ocr_words_into_rows(words):
+                parsed = _parse_simple_pricelist_ocr_line(_ocr_row_to_line(row))
+                if parsed is not None:
+                    parsed_rows.append(parsed)
+
+    if not parsed_rows:
+        return None
+    return pd.DataFrame(parsed_rows).drop_duplicates(subset=["raw_name", "raw_unit", "raw_price"], keep="first")
 
 
 def _is_pdf_noise_line(line: str) -> bool:
@@ -1354,6 +1576,8 @@ def parse_pricelist_file(file_path: str, column_mapping: Mapping[str, str] | Non
         missing = REQUIRED_COLUMNS - set(df.columns)
 
     if missing:
+        if _has_unrelated_document_signals(df):
+            raise ValueError("File NOT Supported")
         if len(available_columns) <= 3 and not any(_is_generic_column_name(column) for column in available_columns):
             raise MissingColumnsError(
                 missing_columns=sorted(missing),
@@ -1380,7 +1604,7 @@ def parse_pricelist_file(file_path: str, column_mapping: Mapping[str, str] | Non
         df["location"] = df["location"].map(_sanitize_text)
     df["raw_unit"] = df["raw_unit"].map(_sanitize_text)
     df["raw_price"] = df["raw_price"].map(_parse_price_value)
-    df = df[~df.apply(lambda row: _is_non_material_row(row["raw_name"], row["raw_price"]), axis=1)]
+    df = df[~df.apply(lambda row: _is_non_material_row(row["raw_name"], row["raw_price"], require_price=False), axis=1)]
 
     if df.empty and suffix == ".pdf" and column_mapping is None:
         text_fallback = _parse_pdf_text_or_none(path)
@@ -1398,5 +1622,8 @@ def parse_pricelist_file(file_path: str, column_mapping: Mapping[str, str] | Non
         raise ValueError(
             "No material rows were found in this price list. For PDFs, make sure the file contains selectable text or a table, not only a scanned image."
         )
+
+    if not _has_pricelist_relevance(df):
+        raise ValueError("File NOT Supported")
 
     return df

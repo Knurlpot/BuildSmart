@@ -9,6 +9,12 @@ import { SavedCatalogView } from "./SavedCatalogView";
 import { useFetch } from "@/hooks/useFetch";
 import { useMutation } from "@/hooks/useMutation";
 import {
+  formatPhMobileNationalNumber,
+  formatPhMobileE164,
+  isValidPhMobileNumber,
+  normalizePhMobileDigits,
+} from "@/lib/ph-phone";
+import {
   ITEM_OPTIONAL_FIELDS,
   ITEM_REQUIRED_FIELDS,
   SUPPLIER_OPTIONAL_FIELDS,
@@ -130,6 +136,7 @@ export function UploadPricelistTab({
   const [supplierMode, setSupplierMode] = useState<SupplierMode>("new");
   const [selectedSupplierId, setSelectedSupplierId] = useState<number | null>(null);
   const [supplierForm, setSupplierForm] = useState<SupplierForm>(() => emptySupplierForm());
+  const [supplierFormErrors, setSupplierFormErrors] = useState<Partial<Record<keyof SupplierForm, string>>>({});
   const [effectiveDate, setEffectiveDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [dragging, setDragging] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -148,6 +155,24 @@ export function UploadPricelistTab({
 
   const updateSupplierForm = (patch: Partial<SupplierForm>) => {
     setSupplierForm((prev) => ({ ...prev, ...patch }));
+    setSupplierFormErrors((prev) => {
+      const next = { ...prev };
+      for (const key of Object.keys(patch) as (keyof SupplierForm)[]) delete next[key];
+      return next;
+    });
+  };
+
+  const validateSupplierForm = () => {
+    const errors: Partial<Record<keyof SupplierForm, string>> = {};
+    if (!supplierForm.supplier_name.trim()) errors.supplier_name = "Supplier name is required";
+    if (!supplierForm.supplier_address.trim()) errors.supplier_address = "Address is required";
+    if (!supplierForm.city.trim()) errors.city = "City is required";
+    if (!supplierForm.contact_email.trim()) errors.contact_email = "Email is required";
+    if (!isValidPhMobileNumber(supplierForm.contact_number)) {
+      errors.contact_number = "Use +63 format, e.g. +639171234567";
+    }
+    setSupplierFormErrors(errors);
+    return Object.keys(errors).length === 0;
   };
 
   const supplierFormComplete =
@@ -164,7 +189,12 @@ export function UploadPricelistTab({
     if (files.length === 0 || !effectiveDate) return;
     let supplierId = source === "Supplier" ? selectedSupplierId : null;
     if (source === "Supplier" && supplierMode === "new") {
-      const created = await createSupplier.mutate("/api/suppliers", supplierForm, "POST");
+      if (!validateSupplierForm()) return;
+      const created = await createSupplier.mutate(
+        "/api/suppliers",
+        { ...supplierForm, contact_number: formatPhMobileE164(supplierForm.contact_number) },
+        "POST"
+      );
       supplierId = created.supplier_id;
       setSelectedSupplierId(created.supplier_id);
       setSupplierMode("existing");
@@ -294,11 +324,26 @@ export function UploadPricelistTab({
                   </div>
                 ) : (
                   <div className="grid gap-3 sm:grid-cols-2">
-                    <input value={supplierForm.supplier_name} onChange={(e) => updateSupplierForm({ supplier_name: e.target.value })} placeholder="Supplier name" className="h-10 rounded-xl border border-gray-200 bg-white px-3 text-sm font-semibold text-gray-700 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/15" />
-                    <input value={supplierForm.contact_email} onChange={(e) => updateSupplierForm({ contact_email: e.target.value })} placeholder="Email" type="email" className="h-10 rounded-xl border border-gray-200 bg-white px-3 text-sm font-semibold text-gray-700 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/15" />
-                    <input value={supplierForm.supplier_address} onChange={(e) => updateSupplierForm({ supplier_address: e.target.value })} placeholder="Address" className="h-10 rounded-xl border border-gray-200 bg-white px-3 text-sm font-semibold text-gray-700 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/15" />
-                    <input value={supplierForm.contact_number} onChange={(e) => updateSupplierForm({ contact_number: e.target.value })} placeholder="Contact number" className="h-10 rounded-xl border border-gray-200 bg-white px-3 text-sm font-semibold text-gray-700 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/15" />
-                    <input value={supplierForm.city} onChange={(e) => updateSupplierForm({ city: e.target.value })} placeholder="City" className="h-10 rounded-xl border border-gray-200 bg-white px-3 text-sm font-semibold text-gray-700 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/15" />
+                    <input value={supplierForm.supplier_name} onChange={(e) => updateSupplierForm({ supplier_name: e.target.value })} placeholder="Supplier name" aria-invalid={Boolean(supplierFormErrors.supplier_name)} className={`h-10 rounded-xl border bg-white px-3 text-sm font-semibold text-gray-700 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/15 ${supplierFormErrors.supplier_name ? "border-red-400" : "border-gray-200"}`} />
+                    <input value={supplierForm.contact_email} onChange={(e) => updateSupplierForm({ contact_email: e.target.value })} placeholder="Email" type="email" aria-invalid={Boolean(supplierFormErrors.contact_email)} className={`h-10 rounded-xl border bg-white px-3 text-sm font-semibold text-gray-700 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/15 ${supplierFormErrors.contact_email ? "border-red-400" : "border-gray-200"}`} />
+                    <input value={supplierForm.supplier_address} onChange={(e) => updateSupplierForm({ supplier_address: e.target.value })} placeholder="Address" aria-invalid={Boolean(supplierFormErrors.supplier_address)} className={`h-10 rounded-xl border bg-white px-3 text-sm font-semibold text-gray-700 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/15 ${supplierFormErrors.supplier_address ? "border-red-400" : "border-gray-200"}`} />
+                    <div className="flex flex-col gap-1">
+                      <div className={`flex h-10 items-center rounded-xl border bg-white text-sm font-semibold text-gray-700 transition focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/15 ${supplierFormErrors.contact_number ? "border-red-400" : "border-gray-200"}`}>
+                        <span className="pl-3 text-gray-500 select-none">+63</span>
+                        <input
+                          value={formatPhMobileNationalNumber(normalizePhMobileDigits(supplierForm.contact_number))}
+                          onChange={(e) => updateSupplierForm({ contact_number: normalizePhMobileDigits(e.target.value) })}
+                          placeholder="917 123 4567"
+                          type="tel"
+                          inputMode="numeric"
+                          autoComplete="tel-national"
+                          aria-invalid={Boolean(supplierFormErrors.contact_number)}
+                          className="min-w-0 flex-1 bg-transparent px-2 outline-none"
+                        />
+                      </div>
+                      {supplierFormErrors.contact_number && <p className="text-xs text-red-500">{supplierFormErrors.contact_number}</p>}
+                    </div>
+                    <input value={supplierForm.city} onChange={(e) => updateSupplierForm({ city: e.target.value })} placeholder="City" aria-invalid={Boolean(supplierFormErrors.city)} className={`h-10 rounded-xl border bg-white px-3 text-sm font-semibold text-gray-700 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/15 ${supplierFormErrors.city ? "border-red-400" : "border-gray-200"}`} />
                     <select value={supplierForm.region} onChange={(e) => updateSupplierForm({ region: e.target.value as PhRegion })} className="h-10 rounded-xl border border-gray-200 bg-white px-3 text-sm font-semibold text-gray-700 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/15">
                       {PH_REGIONS.map((region) => <option key={region}>{region}</option>)}
                     </select>

@@ -13,7 +13,6 @@ from app.services.normalize_batch import normalize_pricelist
 from app.services.philippine_regions import infer_region_from_location
 from app.services.pricelist_parser import MissingColumnsError, expand_dpwh_deo_price_columns, parse_pricelist_file
 from app.services.normalizer import determine_category
-import re
 
 CONFIDENCE_THRESHOLD = 0.85
 
@@ -67,39 +66,25 @@ def _get_scoped_item_candidates(session: Session, company_id: int | None) -> lis
         return get_item_candidates(session)
 
 
-def _review_description_from_row(row, df, match) -> str:
-    row_description = (getattr(row, "description", None) or "").strip()
-    if row_description:
-        return row_description
+def _optional_text(value) -> str:
+    if value is None:
+        return ""
+    text = str(value).strip()
+    return "" if text.lower() == "nan" else text
 
-    candidate = ""
-    for col in df.columns:
-        if col in ("raw_name", "raw_unit", "raw_price", "description", "raw_brand"):
-            continue
-        header = str(col).lower()
-        if any(tok in header for tok in ("category", "category_type", "category_desc")):
-            continue
-        if any(tok in header for tok in ("spec", "desc", "description", "particular")):
-            val = getattr(row, col, None)
-            if val and str(val).strip():
-                candidate = str(val).strip()
-                break
 
-    if not candidate:
-        longest = ""
-        for col in df.columns:
-            if col in ("raw_name", "raw_unit", "raw_price", "description", "raw_brand"):
-                continue
-            header = str(col).lower()
-            if any(tok in header for tok in ("category", "category_type", "category_desc")):
-                continue
-            val = getattr(row, col, None)
-            text = str(val).strip() if val is not None else ""
-            if text and len(text) > len(longest) and not re.search(r"^\s*\d+[\d,\.\s]*$", text):
-                longest = text
-        candidate = longest
+def _review_description_from_row(row) -> str:
+    return _fit(_optional_text(getattr(row, "description", None)), 255) or ""
 
-    return _fit((candidate or (match.brand or "")).strip() or "Generic", 255) or "Generic"
+
+def _optional_price(value) -> float | None:
+    if value is None:
+        return None
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError):
+        return None
+    return parsed if parsed == parsed else None
 
 
 def _add_review_item_for_row(
@@ -121,12 +106,12 @@ def _add_review_item_for_row(
         PriceListReviewItem(
             raw_name=review_name,
             raw_unit=_fit(row.raw_unit, 30) or "unit",
-            raw_price=float(row.raw_price),
+            raw_price=_optional_price(row.raw_price),
             confidence=match.confidence,
             suggested_category_type=match.category_type or determine_category(review_name or ""),
             suggested_material=_fit(match.material, 255),
-            suggested_brand=_fit(match.brand, 100),
-            description=_review_description_from_row(row, df, match),
+            suggested_brand=_fit(getattr(row, "raw_brand", None), 100) or "Generic",
+            description=_review_description_from_row(row),
             color=_fit(row_color, 50),
             region=_fit(row_region, 255),
             location=_fit(row_location, 255),
@@ -183,6 +168,7 @@ def normalize_price_list(
         needs_review = 0
 
         for row, match in zip(df.itertuples(), results):
+            row_price = _optional_price(getattr(row, "raw_price", None))
             row_color = (getattr(row, "color", None) or "").strip() or None
             row_description = (getattr(row, "description", None) or "").strip() or None
             row_location = (getattr(row, "location", None) or "").strip() or None
@@ -208,7 +194,7 @@ def normalize_price_list(
 
             # Direct, non-upload task calls retain the old behavior: low-confidence
             # rows go to review, high-confidence rows are persisted immediately.
-            if force_review or match.confidence <= CONFIDENCE_THRESHOLD:
+            if force_review or row_price is None or match.confidence <= CONFIDENCE_THRESHOLD:
                 _add_review_item_for_row(
                     session,
                     row=row,
@@ -239,7 +225,7 @@ def normalize_price_list(
                     color=row_color,
                     item_source=source,
                     source_location=None,
-                    description=row_description or match.material,
+                    description=row_description,
                 )
                 session.add(new_item)
                 session.flush()
@@ -270,7 +256,7 @@ def normalize_price_list(
                     effective_date=price_effective_date,
                     quarter=quarter,
                     year=year,
-                    price=float(row.raw_price),
+                    price=row_price,
                 )
             )
             matched += 1

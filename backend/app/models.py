@@ -130,7 +130,7 @@ class PriceListReviewItem(Base):
     review_id: Mapped[int] = mapped_column(primary_key=True)
     raw_name: Mapped[str] = mapped_column(String(255))
     raw_unit: Mapped[str] = mapped_column(String(30))
-    raw_price: Mapped[float] = mapped_column(Numeric(12, 2))
+    raw_price: Mapped[float | None] = mapped_column(Numeric(12, 2), nullable=True)
     confidence: Mapped[float] = mapped_column(Numeric(5, 4))
     suggested_category_type: Mapped[str | None] = mapped_column(String(40))
     suggested_material: Mapped[str | None] = mapped_column(String(255))

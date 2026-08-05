@@ -39,6 +39,7 @@ def init_db() -> None:
             connection.execute(text("ALTER TABLE pricelist_review_item ADD COLUMN IF NOT EXISTS location VARCHAR(255)"))
             connection.execute(text("ALTER TABLE pricelist_review_item ALTER COLUMN raw_name TYPE VARCHAR(255)"))
             connection.execute(text("ALTER TABLE pricelist_review_item ALTER COLUMN suggested_material TYPE VARCHAR(255)"))
+            connection.execute(text("ALTER TABLE pricelist_review_item ALTER COLUMN raw_price DROP NOT NULL"))
             connection.execute(text("ALTER TABLE items ADD COLUMN IF NOT EXISTS color VARCHAR(50)"))
             connection.execute(text("ALTER TABLE items ADD COLUMN IF NOT EXISTS description VARCHAR(255)"))
             connection.execute(text("ALTER TABLE items ADD COLUMN IF NOT EXISTS company_id INT"))

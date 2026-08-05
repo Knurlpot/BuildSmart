@@ -93,7 +93,7 @@ class ReviewItemResponse(BaseModel):
     review_id: int
     raw_name: str
     raw_unit: str
-    raw_price: float
+    raw_price: float | None
     confidence: float
     suggested_category_type: str | None
     suggested_material: str | None
@@ -302,7 +302,7 @@ def _save_review_item_to_catalog(row: PriceListReviewItem, db: Session) -> None:
     item_name = row.raw_name.strip()
     unit = row.raw_unit.strip()
     brand = (row.suggested_brand or "Generic").strip() or "Generic"
-    description = (row.description or row.suggested_material or row.raw_name).strip() or None
+    description = (row.description or "").strip() or None
     color = (row.color or "").strip() or None
     source = row.source.strip()
     supplier_id = row.supplier_id
@@ -799,6 +799,8 @@ def update_review_item(
 
     imported_delta = 0
     if row.status == "Approved":
+        if row.raw_price is None:
+            raise HTTPException(status_code=400, detail="Enter a price before approving this review item")
         _save_review_item_to_catalog(row, db)
         imported_delta = 1 if previous_status != "Approved" else 0
     elif row.status in ("Deleted", "Rejected"):
