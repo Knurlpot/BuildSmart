@@ -3,7 +3,8 @@
 import { useEffect, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import Image from "next/image";
-import { ChevronDown, LogOut } from "lucide-react";
+import Link from "next/link";
+import { ChevronDown, Info, LogOut } from "lucide-react";
 import { useAuth } from "@/providers/AuthProvider";
 import { useFetch } from "@/hooks/useFetch";
 import type { Company, Users } from "@/types/entities";
@@ -150,6 +151,16 @@ export default function Header({ workflow }: HeaderProps) {
 
         {menuOpen && (
           <div className="absolute right-0 top-full z-10 mt-2 w-44 overflow-hidden rounded-xl border border-gray-200 bg-white shadow-lg">
+            {/* Routes to /about — outside the (app) guard, so it renders the same
+                logged-in/"secondary dashboard" view this dropdown lives inside of. */}
+            <Link
+              href="/about"
+              onClick={() => setMenuOpen(false)}
+              className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm text-gray-600 transition hover:bg-orange-50 hover:text-primary"
+            >
+              <Info className="h-4 w-4" /> About Us
+            </Link>
+            <div className="border-t border-gray-100" />
             <button
               type="button"
               onClick={handleLogout}

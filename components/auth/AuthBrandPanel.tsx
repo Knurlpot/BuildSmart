@@ -1,4 +1,5 @@
 import Image from "next/image";
+import Link from "next/link";
 import { logoFrame } from "@/components/logo-frames";
 
 interface AuthBrandPanelProps {
@@ -37,11 +38,16 @@ export function AuthBrandPanel({
           )}
         </div>
       </div>
-      {footer && (
-        <div className="absolute bottom-8 left-0 right-0 flex justify-center">
-          {footer}
-        </div>
-      )}
+      {/* Always rendered (independent of the `footer` prop) — same quiet treatment as the
+          existing footer content (text-xs text-white/50), just its own link one row below
+          whatever page-specific footer content is passed in. Routes to /about, where a
+          logged-out visitor lands in the public marketing view. */}
+      <div className="absolute bottom-8 left-0 right-0 flex flex-col items-center gap-3">
+        {footer}
+        <Link href="/about" className="text-xs font-medium text-white/50 transition hover:text-white/80 hover:underline">
+          Learn more about us →
+        </Link>
+      </div>
     </div>
   );
 }
