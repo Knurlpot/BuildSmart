@@ -22,7 +22,7 @@ interface SegmentConfigFormProps {
 }
 
 // Remounted via `key={segment.draft_id}` by the caller on every selection change, so the
-// treatment-type "Other" local state never leaks between segments. Every field commits
+// treatment-type "Others" local state never leaks between segments. Every field commits
 // immediately (no per-segment Save button) — completeness is judged at the list level via
 // isSegmentConfigured, and the wizard's own "Save N Segments" action is the real commit
 // point.
@@ -73,7 +73,7 @@ function SegmentConfigForm({ segment, onSave }: SegmentConfigFormProps) {
           {TREATMENT_TYPES.map((t) => (
             <option key={t}>{t}</option>
           ))}
-          <option value="Other">Other…</option>
+          <option value="Other">Others</option>
         </select>
         {treatmentChoice === "Other" && (
           <input
@@ -212,7 +212,7 @@ function ApplyToAllPanel({ segmentCount, onApply }: ApplyToAllPanelProps) {
           {TREATMENT_TYPES.map((t) => (
             <option key={t}>{t}</option>
           ))}
-          <option value="Other">Other…</option>
+          <option value="Other">Others</option>
         </select>
         {treatmentChoice === "Other" && (
           <input

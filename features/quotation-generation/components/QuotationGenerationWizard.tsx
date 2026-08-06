@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { CheckCircle2 } from "lucide-react";
 import { useWorkflowHeader } from "@/providers/WorkflowHeaderProvider";
 import { AmbientBackground } from "./AmbientBackground";
 import { ClientAndProjectStep } from "./ClientAndProjectStep";
@@ -19,7 +18,7 @@ import type { DraftSegment } from "../lib/draftSegment";
 import type { BlueprintFloor } from "@/lib/dev/provisional/quotationGenerationTypes";
 
 // Part 1: client/project through validated + configured segments. Part 2 (FIX 5 / P2-A–E):
-// Generate's loading animation, Economic/Premium results, revision, and finalize — a
+// Generate's loading animation, Practical/Premium results, revision, and finalize — a
 // mock/presentational shell (lib/dev/provisional/quotationBreakdownFixtures.ts), since the
 // schema has none of the columns a real derivation would need yet. See that file and
 // quotationBreakdownTypes.ts for the full list of what's provisional.
@@ -32,7 +31,6 @@ export function QuotationGenerationWizard() {
   const [client, setClient] = useState<Client | null>(null);
   const [quotation, setQuotation] = useState<Quotation | null>(null);
   const [segments, setSegments] = useState<DraftSegment[]>([]);
-  const [savedCount, setSavedCount] = useState<number | null>(null);
   // P2 Part E — lifted out of BlueprintUploadPanel so a Structural revision (which returns
   // here by changing `step` back to "blueprint", unmounting/remounting that component)
   // shows the SAME already-scanned segments instead of forcing a new upload. See
@@ -119,10 +117,10 @@ export function QuotationGenerationWizard() {
         segments={segments}
         onChange={setSegments}
         onSaved={(count) => {
-          setSavedCount(count);
+          void count;
           // FIX 5 — Configure -> Generate, not straight to a terminal screen. The loading
           // overlay plays for its own fixed duration (see GeneratingQuotationAnimation),
-          // then reveals the Economic/Premium results (P2-A).
+          // then reveals the Practical/Premium results (P2-A).
           setStep("generating");
         }}
         onBack={() => setStep(method ?? "method")}
@@ -150,39 +148,8 @@ export function QuotationGenerationWizard() {
         // whichever path this quotation actually used, segments intact (nothing here
         // clears them; the user re-reviews/re-confirms from where they left off).
         onStructuralRevision={() => setStep(method ?? "method")}
-        onFinalize={() => setStep("finalized")}
+        onFinalize={() => router.push("/projects")}
       />
-    );
-  } else if (step === "finalized" && quotation) {
-    body = (
-      <div className="flex max-w-xl flex-col items-center gap-4 rounded-2xl border border-green-200 bg-green-50/50 p-8 text-center">
-        <CheckCircle2 className="h-10 w-10 text-green-500" />
-        <div>
-          <h2 className="text-lg font-bold text-gray-900">Quotation finalized</h2>
-          <p className="mt-1 text-sm text-gray-600">
-            {savedCount} segment{savedCount === 1 ? "" : "s"} saved for {quotation.project_name}. Economic and
-            Premium are saved as a linked pair for this project (mock — see the summary for exactly which
-            tier-linkage fields this depends on).
-            {client?.client_type === "New" && " This client stays 'New' until a later quotation actually references them again."}
-          </p>
-        </div>
-        <div className="flex items-center gap-3">
-          <button
-            type="button"
-            onClick={() => router.push(`/quotations/${quotation.quote_id}`)}
-            className="rounded-xl border border-gray-200 px-5 py-2.5 text-sm font-bold text-gray-600 transition hover:bg-gray-50"
-          >
-            View Quotation
-          </button>
-          <button
-            type="button"
-            onClick={() => router.push("/projects")}
-            className="rounded-xl bg-primary px-5 py-2.5 text-sm font-bold text-primary-foreground shadow-sm transition hover:bg-(--primary-hover)"
-          >
-            Go to Open Projects
-          </button>
-        </div>
-      </div>
     );
   } else {
     // Unreachable in practice: every branch above that needs `quotation` is only ever

@@ -21,7 +21,7 @@ import type { ProvisionalTier } from "@/lib/dev/provisional/quotationBreakdownTy
 // mock fixture data; a PDF implies "this is the real number," which these aren't yet.
 
 const TIER_META: Record<ProvisionalTier, { accent: string; headerBg: string; accentBg: string; badge: string }> = {
-  Economic: { accent: "text-primary", headerBg: "bg-primary", accentBg: "bg-orange-50", badge: "Recommended" },
+  Practical: { accent: "text-primary", headerBg: "bg-primary", accentBg: "bg-orange-50", badge: "Recommended" },
   Premium: { accent: "text-indigo-600", headerBg: "bg-indigo-600", accentBg: "bg-indigo-50", badge: "Best Quality" },
 };
 
@@ -73,7 +73,7 @@ function QuoteSummaryCard({
       <div className={`${meta.headerBg} px-5 py-4 text-white`}>
         <div className="flex items-center justify-between">
           <div>
-            <span className="text-[10px] font-semibold uppercase tracking-widest opacity-80">{tier === "Economic" ? "Option A" : "Option B"}</span>
+            <span className="text-[10px] font-semibold uppercase tracking-widest opacity-80">{tier === "Practical" ? "Option A" : "Option B"}</span>
             <h2 className="text-xl font-bold leading-tight">{tier}</h2>
           </div>
           <div className="flex flex-col items-end gap-1">
@@ -235,9 +235,9 @@ function ProjectDetailContent({ projectId }: { projectId: string }) {
       <div className="flex flex-col gap-5 lg:flex-row">
         <QuoteSummaryCard
           project={project}
-          tier="Economic"
-          onViewBreakdown={(versionId) => setBreakdown({ tier: "Economic", versionId })}
-          onToggleAccepted={() => handleToggleAccepted("Economic")}
+          tier="Practical"
+          onViewBreakdown={(versionId) => setBreakdown({ tier: "Practical", versionId })}
+          onToggleAccepted={() => handleToggleAccepted("Practical")}
         />
         <QuoteSummaryCard
           project={project}

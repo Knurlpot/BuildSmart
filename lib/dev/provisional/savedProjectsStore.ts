@@ -6,6 +6,8 @@ import {
   PROVISIONAL_TIERS,
   type FinalizedQuotationInput,
   type ProvisionalTier,
+  type SavedQuoteSnapshot,
+  type SavedQuoteVersion,
   type SavedProjectRecord,
 } from "./quotationBreakdownTypes";
 
@@ -24,6 +26,49 @@ function subscribe(listener: () => void) {
   return () => listeners.delete(listener);
 }
 
+function newVersion(tier: ProvisionalTier, result: SavedQuoteVersion["result"], versionNumber: number, now: string): SavedQuoteVersion {
+  return {
+    version_id: `${tier.toLowerCase()}-v${versionNumber}-${Date.now()}`,
+    version_number: versionNumber,
+    result,
+    price_reference_date: now,
+  };
+}
+
+function normalizeProject(project: SavedProjectRecord): SavedProjectRecord {
+  const now = project.updated_at || project.created_at || new Date().toISOString();
+  const legacyQuotes = project.quotes as Partial<Record<ProvisionalTier | "Economic", SavedQuoteSnapshot>>;
+  const practical = legacyQuotes.Practical ?? legacyQuotes.Economic;
+  const premium = legacyQuotes.Premium;
+
+  if (!practical || !premium) return project;
+
+  const normalizeQuote = (quote: SavedQuoteSnapshot, tier: ProvisionalTier): SavedQuoteSnapshot => {
+    const versions = Array.isArray(quote.versions) && quote.versions.length > 0
+      ? quote.versions
+      : [newVersion(tier, quote.result, 1, quote.finalized_at || now)];
+
+    return {
+      ...quote,
+      tier,
+      versions,
+      result: versions[0]?.result ?? quote.result,
+      finalized_at: quote.finalized_at || now,
+      is_selected: quote.is_selected === true,
+    };
+  };
+
+  return {
+    ...project,
+    quotes: {
+      Practical: normalizeQuote(practical, "Practical"),
+      Premium: normalizeQuote(premium, "Premium"),
+    },
+    segmentsSnapshot: project.segmentsSnapshot ?? [],
+    blueprintFloors: project.blueprintFloors ?? null,
+  };
+}
+
 function readProjects(): SavedProjectRecord[] {
   if (typeof window === "undefined") return EMPTY_PROJECTS;
   const raw = window.localStorage.getItem(STORAGE_KEY);
@@ -35,7 +80,7 @@ function readProjects(): SavedProjectRecord[] {
   }
   try {
     const parsed = JSON.parse(raw) as unknown;
-    cachedProjects = Array.isArray(parsed) ? (parsed as SavedProjectRecord[]) : EMPTY_PROJECTS;
+    cachedProjects = Array.isArray(parsed) ? (parsed as SavedProjectRecord[]).map(normalizeProject) : EMPTY_PROJECTS;
     return cachedProjects;
   } catch {
     cachedProjects = EMPTY_PROJECTS;
@@ -67,6 +112,8 @@ export function useSavedProjects() {
 export function saveFinalizedQuotation(input: FinalizedQuotationInput): SavedProjectRecord {
   const now = new Date().toISOString();
   const projectId = `proj-${Date.now()}`;
+  const practicalResult = computeTierResult("Practical", input.tierItems.Practical);
+  const premiumResult = computeTierResult("Premium", input.tierItems.Premium);
   const project: SavedProjectRecord = {
     project_id: projectId,
     client_id: input.clientId,
@@ -80,22 +127,51 @@ export function saveFinalizedQuotation(input: FinalizedQuotationInput): SavedPro
     quotes: {
       Practical: {
         tier: "Practical",
-        result: computeTierResult("Practical", input.tierItems.Practical),
+        result: practicalResult,
+        versions: [newVersion("Practical", practicalResult, 1, now)],
         pricelist_basis_at_finalize: input.pricelistBasis,
         finalized_at: now,
         is_selected: false,
       },
       Premium: {
         tier: "Premium",
-        result: computeTierResult("Premium", input.tierItems.Premium),
+        result: premiumResult,
+        versions: [newVersion("Premium", premiumResult, 1, now)],
         pricelist_basis_at_finalize: input.pricelistBasis,
         finalized_at: now,
         is_selected: false,
       },
     },
+    segmentsSnapshot: input.segments,
+    blueprintFloors: input.blueprintFloors,
   };
   writeProjects([project, ...readProjects()]);
   return project;
+}
+
+export function refreshQuotePrices(projectId: string, tier: ProvisionalTier) {
+  const now = new Date().toISOString();
+  writeProjects(
+    readProjects().map((project) => {
+      if (project.project_id !== projectId) return project;
+
+      const quote = project.quotes[tier];
+      const latest = quote.versions[quote.versions.length - 1];
+      const nextVersion = newVersion(tier, latest.result, latest.version_number + 1, now);
+
+      return {
+        ...project,
+        updated_at: now,
+        quotes: {
+          ...project.quotes,
+          [tier]: {
+            ...quote,
+            versions: [...quote.versions, nextVersion],
+          },
+        },
+      };
+    })
+  );
 }
 
 export function setAcceptedTier(projectId: string, tier: ProvisionalTier | null) {

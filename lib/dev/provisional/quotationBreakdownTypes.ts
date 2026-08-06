@@ -34,6 +34,8 @@
 
 import type { HistoricalPriceRecord } from '@/types/entities/historical-price-record';
 import type { PhRegion } from '@/types/entities/common';
+import type { DraftSegment } from '@/features/quotation-generation/lib/draftSegment';
+import type { BlueprintFloor } from './quotationGenerationTypes';
 
 export type ProvisionalTier = 'Practical' | 'Premium';
 export const PROVISIONAL_TIERS: ProvisionalTier[] = ['Practical', 'Premium'];
@@ -153,3 +155,46 @@ export interface ProvisionalQuoteGroup {
 }
 
 export type RevisionType = 'Minor' | 'Structural';
+
+export interface SavedQuoteVersion {
+  version_id: string;
+  version_number: number;
+  result: ProvisionalQuotationTierResult;
+  price_reference_date: string;
+}
+
+export interface SavedQuoteSnapshot {
+  tier: ProvisionalTier;
+  result: ProvisionalQuotationTierResult;
+  versions: SavedQuoteVersion[];
+  pricelist_basis_at_finalize: PricelistBasis;
+  finalized_at: string;
+  is_selected: boolean;
+}
+
+export interface SavedProjectRecord {
+  project_id: string;
+  client_id: number;
+  client_name: string;
+  project_name: string;
+  project_location: string;
+  project_region: string;
+  status: 'Final';
+  created_at: string;
+  updated_at: string;
+  quotes: Record<ProvisionalTier, SavedQuoteSnapshot>;
+  segmentsSnapshot: DraftSegment[];
+  blueprintFloors: BlueprintFloor[] | null;
+}
+
+export interface FinalizedQuotationInput {
+  clientId: number;
+  clientName: string;
+  projectName: string;
+  projectLocation: string;
+  projectRegion: string;
+  tierItems: Record<ProvisionalTier, ProvisionalItemLine[]>;
+  pricelistBasis: PricelistBasis;
+  segments: DraftSegment[];
+  blueprintFloors: BlueprintFloor[] | null;
+}

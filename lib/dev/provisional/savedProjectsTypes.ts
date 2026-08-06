@@ -1,1 +1,1 @@
-export type { SavedProjectRecord } from "./quotationBreakdownTypes";
+export type { SavedProjectRecord, SavedQuoteVersion } from "./quotationBreakdownTypes";

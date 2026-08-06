@@ -19,7 +19,6 @@ export const TREATMENT_TYPES = [
   'Painting',
   'Tile Work',
   'Rendering',
-  'Other',
 ] as const;
 
 let nextId = 0;

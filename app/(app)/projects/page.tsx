@@ -1,6 +1,6 @@
 "use client";
 
-// Part C — "each row = a project," grouping the two saved tier snapshots (Economic/
+// Part C — "each row = a project," grouping the two saved tier snapshots (Practical/
 // Premium) that came out of one Finalize (see lib/dev/provisional/savedProjectsStore.ts).
 // The real /api/quotations endpoint returns flat, per-tier quotation rows with no
 // quote_group_id/tier concept to group them by (that's exactly what's provisional —
@@ -36,8 +36,8 @@ function StatusBadge({ status }: { status: SavedProjectRecord["status"] }) {
 // the project detail page) — reads is_selected off whichever snapshot has it true. Neither
 // tier is selected immediately after Finalize (Part B); this shows that honestly too.
 function AcceptedBadge({ project }: { project: SavedProjectRecord }) {
-  if (project.quotes.Economic.is_selected) {
-    return <span className="rounded-full bg-orange-50 px-2.5 py-0.5 text-[11px] font-bold text-primary">Economic accepted</span>;
+  if (project.quotes.Practical.is_selected) {
+    return <span className="rounded-full bg-orange-50 px-2.5 py-0.5 text-[11px] font-bold text-primary">Practical accepted</span>;
   }
   if (project.quotes.Premium.is_selected) {
     return <span className="rounded-full bg-indigo-50 px-2.5 py-0.5 text-[11px] font-bold text-indigo-600">Premium accepted</span>;
