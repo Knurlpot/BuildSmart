@@ -510,8 +510,8 @@ export function PriceCatalogTab() {
           <h2 className="text-base font-bold text-gray-900">Price Catalog</h2>
           <p className="text-xs text-gray-500">
             {subTab === "supplier"
-              ? "Supplier records can be edited or removed — this is your own catalog data. Removing a row clears that item's entire price history, not just the price shown."
-              : "DPWH is externally published data — read-only here, but a record can still be removed."}
+              ? "Supplier records - only you can modify these records."
+              : "DPWH is externally published data."}
           </p>
         </div>
         <div className="flex w-fit gap-1 rounded-xl border border-gray-200 bg-gray-50 p-1">

@@ -42,7 +42,7 @@ export default function DashboardPage() {
                 <p className="font-bold text-gray-900 transition-colors group-hover:text-primary">
                   {item.label}
                 </p>
-                <p className="truncate text-xs text-gray-400">{item.description}</p>
+                {item.description && <p className="truncate text-xs text-gray-400">{item.description}</p>}
               </div>
               <ChevronRight className="h-4 w-4 shrink-0 text-gray-300" />
             </Link>

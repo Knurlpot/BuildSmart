@@ -10,7 +10,7 @@ import {
 
 export interface NavItem {
   label: string;
-  description: string;
+  description?: string;
   icon: LucideIcon;
   href: string;
   minStep: number;
@@ -20,7 +20,6 @@ export interface NavItem {
 export const NAV_ITEMS: NavItem[] = [
   {
     label: "Manage Pricelist",
-    description: "Manage your material price catalog",
     icon: Tag,
     href: "/pricelist",
     minStep: 0,
