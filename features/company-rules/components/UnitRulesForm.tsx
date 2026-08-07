@@ -25,8 +25,6 @@ export function UnitRulesForm({ focusRuleId, onFocusHandled }: UnitRulesFormProp
   const { items, isLoading: itemsLoading, itemsInCategory } = useItemsCatalog();
   const allRules = editable.applyOverrides([...editable.localExtra, ...rules]);
 
-  // Part C — seeded from the prop at construction, not synced via effect: a jump always
-  // remounts this component fresh (see ScopeTemplatesForm for the full reasoning).
   const [selectedId, setSelectedId] = useState<string | null>(focusRuleId ?? null);
   const [mode, setMode] = useState<"idle" | "add" | "edit">("idle");
   const [targetKind, setTargetKind] = useState<UnitRuleTargetKind>("category");
@@ -128,8 +126,7 @@ export function UnitRulesForm({ focusRuleId, onFocusHandled }: UnitRulesFormProp
       <div>
         <h2 className="text-base font-bold text-gray-900">Unit Rules</h2>
         <p className="text-xs text-gray-500">
-          Define unit conversion factors and wastage allowances — per material category, or
-          for one specific catalog item.
+          *insert short and simple desc
         </p>
       </div>
 

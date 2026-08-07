@@ -239,9 +239,7 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
       <div>
         <h2 className="text-base font-bold text-gray-900">Material Rules</h2>
         <p className="text-xs text-gray-500">
-          Preferred materials picked straight from your catalog, each with a priority rank
-          and a fallback for when the supplier runs out. Category is just a filter here —
-          a real job usually needs several materials together, not one per category.
+          *insert simple and short descripton
         </p>
       </div>
 

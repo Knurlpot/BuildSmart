@@ -27,7 +27,6 @@ export const NAV_ITEMS: NavItem[] = [
   },
   {
     label: "Company Preferences & Rules",
-    description: "Configure business rules and pricing strategies",
     icon: SlidersHorizontal,
     href: "/management",
     minStep: 1,
@@ -37,14 +36,12 @@ export const NAV_ITEMS: NavItem[] = [
     label: "Quotation Generation",
     description: "Create accurate project cost estimates",
     icon: FileSpreadsheet,
-    // Same entry point as Open Projects -> Create New — one workflow, two doors in.
     href: "/quotations/new",
     minStep: 2,
     color: "#E07B39",
   },
   {
     label: "Open Projects",
-    description: "Review and manage saved quotations",
     icon: FolderOpen,
     href: "/projects",
     minStep: 2,
@@ -52,7 +49,6 @@ export const NAV_ITEMS: NavItem[] = [
   },
   {
     label: "Price Trends",
-    description: "Analyze material price trends",
     icon: TrendingUp,
     href: "/market-intelligence",
     minStep: 2,
@@ -60,7 +56,6 @@ export const NAV_ITEMS: NavItem[] = [
   },
   {
     label: "Benchmark Suppliers",
-    description: "Compare supplier prices and rankings",
     icon: Truck,
     href: "/suppliers/benchmark",
     minStep: 2,

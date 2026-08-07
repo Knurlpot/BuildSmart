@@ -146,9 +146,7 @@ export function ScopeTemplatesForm({ focusRuleId, onFocusHandled }: ScopeTemplat
           </span>
         </div>
         <p className="text-xs text-gray-500">
-          A saved reference of the material categories you&apos;d typically expect for a kind
-          of job — a memory aid, not an enforced package. Every job still starts from its
-          own site assessment; nothing here locks in materials or blocks any other tab.
+          *insert simple and short descripton
         </p>
       </div>
 

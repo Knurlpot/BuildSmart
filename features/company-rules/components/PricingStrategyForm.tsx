@@ -23,8 +23,6 @@ interface SliderPercentFieldProps {
   warn?: (n: number) => string | null;
 }
 
-// Part F: slider + numeric input (spinners are terrible for percentages), plus a soft
-// warning (never blocking) against Philippine norms where a range was actually given.
 function SliderPercentField({ label, value, onChange, touched, warn }: SliderPercentFieldProps) {
   const valid = value !== "" && isPercent(Number(value));
   const warning = valid && warn ? warn(Number(value)) : null;
@@ -78,8 +76,6 @@ export function PricingStrategyForm({ focusRuleId, onFocusHandled }: PricingStra
   const editable = useEditableRuleList<PricingStrategyRule>({ checkUsage, update, supersede, idPrefix: "ps" });
   const allStrategies = editable.applyOverrides([...editable.localExtra, ...strategies]);
 
-  // Part C — seeded from the prop at construction, not synced via effect: a jump always
-  // remounts this component fresh (see ScopeTemplatesForm for the full reasoning).
   const [selectedId, setSelectedId] = useState<string | null>(focusRuleId ?? null);
   const [mode, setMode] = useState<"idle" | "add" | "edit">("idle");
   const [tier, setTier] = useState<QuotationTier | "">("");
@@ -87,9 +83,6 @@ export function PricingStrategyForm({ focusRuleId, onFocusHandled }: PricingStra
   const [contingency, setContingency] = useState<number | "">("");
   const [overhead, setOverhead] = useState<number | "">("");
   const [profitMargin, setProfitMargin] = useState<number | "">("");
-  // Part F: VAT toggle + revealed field — same progressive-disclosure pattern as the
-  // SignUp specialization fields. OFF submits 0 (no on/off column exists in the schema —
-  // see companyRulesTypes.ts).
   const [vatEnabled, setVatEnabled] = useState(false);
   const [vatPercentage, setVatPercentage] = useState<number | "">(12);
   const [touched, setTouched] = useState(false);
@@ -108,9 +101,6 @@ export function PricingStrategyForm({ focusRuleId, onFocusHandled }: PricingStra
   const vatValid = !vatEnabled || (vatPercentage !== "" && isPercent(Number(vatPercentage)));
   const formValid = tierValid && markupValid && contingencyValid && overheadValid && profitValid && vatValid;
 
-  // Part F: one ACTIVE strategy per tier — not a hard tier-count cap. Excludes the rule
-  // currently being edited so re-saving the same strategy under its own tier isn't a
-  // false conflict.
   const conflictingActive =
     tier !== ""
       ? allStrategies.find((s) => s.quotation_tier === tier && s.is_active && s.rule_id !== (mode === "edit" ? selectedId : null))
@@ -195,7 +185,7 @@ export function PricingStrategyForm({ focusRuleId, onFocusHandled }: PricingStra
       <div>
         <h2 className="text-base font-bold text-gray-900">Pricing Strategy</h2>
         <p className="text-xs text-gray-500">
-          Configure markup, contingency, overhead, profit margin, and VAT rate per quotation tier.
+          *insert short and simple desc
         </p>
       </div>
 

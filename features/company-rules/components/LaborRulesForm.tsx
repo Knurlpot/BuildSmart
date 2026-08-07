@@ -42,14 +42,8 @@ export function LaborRulesForm({ focusRuleId, onFocusHandled }: LaborRulesFormPr
   const { options: laborTradeOptions } = useLaborTradeOptions();
   const allRules = editable.applyOverrides([...editable.localExtra, ...rules]);
 
-  // seeded from the prop at construction, not synced via effect: a jump always remounts
-  // this component fresh (see ScopeTemplatesForm for the full reasoning).
   const [selectedId, setSelectedId] = useState<string | null>(focusRuleId ?? null);
   const [mode, setMode] = useState<"idle" | "add" | "edit">("idle");
-  // v6 Correction 1: THREE scopes, not two — a specialty subcontractor keys on the
-  // TREATMENT they're applying (one crew, one region); a general contractor keys on TRADE
-  // (+ optional region). Exactly one of the three is ever set (matches the schema's
-  // chk_rule_labor_scope CHECK).
   const [scope, setScope] = useState<LaborRuleScope>("Treatment");
   const [treatmentType, setTreatmentType] = useState("");
   const [region, setRegion] = useState<PhRegion | "">("");
@@ -62,7 +56,6 @@ export function LaborRulesForm({ focusRuleId, onFocusHandled }: LaborRulesFormPr
 
   useEffect(() => {
     if (focusRuleId) onFocusHandled?.();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const treatmentValid = scope !== "Treatment" || isNonEmpty(treatmentType);
@@ -158,8 +151,7 @@ export function LaborRulesForm({ focusRuleId, onFocusHandled }: LaborRulesFormPr
       <div>
         <h2 className="text-base font-bold text-gray-900">Labor Rules</h2>
         <p className="text-xs text-gray-500">
-          Set a base labor rate — by treatment type (specialty subcontractor) or by trade
-          (general contractor) — plus an optional rush uplift.
+          *insert short and simple desc
         </p>
       </div>
 

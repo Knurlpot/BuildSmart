@@ -317,11 +317,10 @@ export function SupplierRulesForm({ focusRuleId, onFocusHandled }: SupplierRules
   const header = (
     <div>
       <h2 className="text-base font-bold text-gray-900">Supplier Rules</h2>
-      <p className="text-xs text-gray-500">Capture each supplier&apos;s negotiated commercial terms — minimum orders, discounts, and preferred status.</p>
+      <p className="text-xs text-gray-500">*insert short and simple desc</p>
       <p className="mt-1.5 flex items-start gap-1.5 text-[11px] text-gray-400">
         <Info className="mt-0.5 h-3 w-3 shrink-0" />
-        This only captures the negotiated terms. Whether a rule automatically applies to a quote (e.g. a bulk
-        discount triggering once an order crosses ₱2M) is backend derivation logic — not built here.
+        *insert short and simple desc
       </p>
     </div>
   );
