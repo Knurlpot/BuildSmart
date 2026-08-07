@@ -192,6 +192,8 @@ export function ClientAndProjectStep({ onContinue }: ClientAndProjectStepProps) 
   const [projectName, setProjectName] = useState("");
   const [projectLocation, setProjectLocation] = useState("");
   const [projectRegion, setProjectRegion] = useState<PhRegion | "">("");
+  const [projectNameFocused, setProjectNameFocused] = useState(false);
+  const [projectLocationFocused, setProjectLocationFocused] = useState(false);
   const [cancelConfirmOpen, setCancelConfirmOpen] = useState(false);
 
   const clientValid = client !== null;
@@ -335,6 +337,8 @@ export function ClientAndProjectStep({ onContinue }: ClientAndProjectStepProps) 
           <input
             value={projectName}
             onChange={(e) => setProjectName(e.target.value)}
+            onFocus={() => setProjectNameFocused(true)}
+            onBlur={() => setProjectNameFocused(false)}
             placeholder="e.g. Rivercrest Residence Roof Waterproofing"
             className={inputCls}
           />
@@ -351,6 +355,8 @@ export function ClientAndProjectStep({ onContinue }: ClientAndProjectStepProps) 
             <input
               value={projectLocation}
               onChange={(e) => setProjectLocation(e.target.value)}
+              onFocus={() => setProjectLocationFocused(true)}
+              onBlur={() => setProjectLocationFocused(false)}
               placeholder="e.g. Quezon City"
               className={inputCls}
             />
@@ -391,20 +397,12 @@ export function ClientAndProjectStep({ onContinue }: ClientAndProjectStepProps) 
               type="button"
               onClick={handleContinue}
               disabled={!formValid || isCreating}
-              aria-describedby={continueHint ? "continue-hint" : undefined}
+              aria-label={continueHint ? `Continue disabled. ${continueHint}` : undefined}
               className="flex w-fit items-center gap-2 rounded-xl bg-primary px-6 py-3 text-sm font-bold text-primary-foreground shadow-sm transition hover:bg-(--primary-hover) disabled:cursor-not-allowed disabled:opacity-50"
             >
               {isCreating ? "Starting…" : "Continue"}
             </button>
           </div>
-          {/* Part F — reason beside Continue instead of per-field error text; disabled
-              buttons are invisible to screen readers on their own, so aria-describedby
-              above ties this hint to the button explicitly. */}
-          {continueHint && (
-            <p id="continue-hint" className="text-xs text-gray-500">
-              {continueHint}
-            </p>
-          )}
         </div>
       </div>
 
@@ -423,7 +421,14 @@ export function ClientAndProjectStep({ onContinue }: ClientAndProjectStepProps) 
           region={projectRegion}
         />
       ) : (
-        <ClientInsightCard client={client} quote={{ projectName, projectLocation, projectRegion }} />
+        <ClientInsightCard
+          client={client}
+          quote={{
+            projectName: projectNameFocused ? "" : projectName,
+            projectLocation: projectLocationFocused ? "" : projectLocation,
+            projectRegion,
+          }}
+        />
       )}
 
       <Dialog open={cancelConfirmOpen} onOpenChange={setCancelConfirmOpen}>

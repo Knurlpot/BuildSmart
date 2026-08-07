@@ -130,7 +130,7 @@ export function ClientInsightCard({ client, quote }: ClientInsightCardProps) {
       {quote.projectName.trim() && <DetailRow icon={Briefcase} label="Project" value={quote.projectName.trim()} />}
       {(quote.projectLocation.trim() || quote.projectRegion.trim()) && (
         <div className="flex items-center justify-between rounded-xl bg-white/10 px-3 py-2">
-          <span className="text-[10px] font-semibold uppercase tracking-wide text-white/45">New Project</span>
+          <span className="text-[10px] font-semibold uppercase tracking-wide text-white/45">Project Location</span>
           <span className="truncate pl-3 text-right text-xs font-bold" style={{ color: swatch(72, 80) }}>
             {[quote.projectLocation.trim(), quote.projectRegion.trim()].filter(Boolean).join(" · ")}
           </span>
