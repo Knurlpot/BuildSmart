@@ -68,12 +68,12 @@ export default function CompanyRulesShell() {
   // (a management/utility tab, not a "configure this" one) — every Configure-X tab,
   // including Supplier Rules now that it's wired, gets a dot.
   const { currentUser, updateOnboardingStep } = useAuth();
-  const { templates } = useScopeTemplates();
-  const { rules: materialRules } = useMaterialRules();
-  const { rules: laborRules } = useLaborRules();
-  const { strategies } = usePricingStrategies();
-  const { rules: unitRules } = useUnitRules();
-  const { rules: supplierRules } = useSupplierRules();
+  const { templates, refetch: refetchScopeTemplates } = useScopeTemplates();
+  const { rules: materialRules, refetch: refetchMaterialRules } = useMaterialRules();
+  const { rules: laborRules, refetch: refetchLaborRules } = useLaborRules();
+  const { strategies, refetch: refetchPricingStrategies } = usePricingStrategies();
+  const { rules: unitRules, refetch: refetchUnitRules } = useUnitRules();
+  const { rules: supplierRules, refetch: refetchSupplierRules } = useSupplierRules();
 
   const needsAttention: Partial<Record<TabId, boolean>> = {
     "scope-templates": templates.length === 0,
@@ -104,6 +104,32 @@ export default function CompanyRulesShell() {
     // no-ops once past the target step, so omitting it here can't miss or double-fire.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentUser, rulesConfigured]);
+
+  useEffect(() => {
+    const refetchByKind: Record<string, () => void> = {
+      "scope-templates": refetchScopeTemplates,
+      "material-rules": refetchMaterialRules,
+      "supplier-rules": refetchSupplierRules,
+      "labor-rules": refetchLaborRules,
+      "pricing-strategy": refetchPricingStrategies,
+      "unit-rules": refetchUnitRules,
+    };
+
+    const handleRulesChanged = (event: Event) => {
+      const kind = event instanceof CustomEvent && typeof event.detail?.kind === "string" ? event.detail.kind : "";
+      refetchByKind[kind]?.();
+    };
+
+    window.addEventListener("buildsmart:company-rules-changed", handleRulesChanged);
+    return () => window.removeEventListener("buildsmart:company-rules-changed", handleRulesChanged);
+  }, [
+    refetchScopeTemplates,
+    refetchMaterialRules,
+    refetchSupplierRules,
+    refetchLaborRules,
+    refetchPricingStrategies,
+    refetchUnitRules,
+  ]);
 
   return (
     <div className="flex flex-col gap-5">

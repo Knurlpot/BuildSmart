@@ -6,10 +6,10 @@
 // doesn't reuse useEditableRuleList/RuleEnvelope the way the other five CPRM forms do (no
 // superseded_by_rule_id column on the real table). Reuses RuleListDetailPanel (fully
 // generic, no changes needed) for the shared list+detail layout.
-import { useEffect, useState } from "react";
+import { type Dispatch, type KeyboardEvent, type SetStateAction, useEffect, useState } from "react";
 import { AlertTriangle, CheckCircle2, Info, Pencil, X, XCircle } from "lucide-react";
 import { RuleListDetailPanel } from "./RuleListDetailPanel";
-import { stagingId, useSupplierRules } from "@/lib/dev/provisional/useCompanyRulesProvisional";
+import { useSupplierRules } from "@/lib/dev/provisional/useCompanyRulesProvisional";
 import { useSuppliers } from "@/hooks/useSuppliers";
 import { isPercent, isPositiveNumber } from "@/lib/dev/provisional/ruleValidation";
 import { SUPPLIER_RULE_TYPES, type SupplierRuleEntry, type SupplierRuleType } from "@/lib/dev/provisional/companyRulesTypes";
@@ -21,6 +21,63 @@ const inputCls =
 // than importing quotation-generation's fmtPeso, keeping the two features decoupled.
 function fmtPeso(n: number): string {
   return "₱" + n.toLocaleString("en-PH", { minimumFractionDigits: 2 });
+}
+
+function fmtPesoAmount(n: number): string {
+  return n.toLocaleString("en-PH", { minimumFractionDigits: 2 });
+}
+
+function parsePesoInput(value: string): number {
+  const amount = Number(value.replace(/[₱,\s]/g, ""));
+  return Number.isFinite(amount) ? amount : Number.NaN;
+}
+
+function fmtPesoInput(value: string | number): string {
+  const amount = typeof value === "number" ? value : parsePesoInput(value);
+  return Number.isFinite(amount) ? fmtPesoAmount(amount) : "";
+}
+
+function formatPesoInputFromDigits(value: string): string {
+  const digits = value.split(".")[0].replace(/\D/g, "");
+  if (digits === "") return "";
+  return fmtPesoAmount(Number(digits));
+}
+
+function handlePesoKeyDown(event: KeyboardEvent<HTMLInputElement>, value: string, setValue: Dispatch<SetStateAction<string>>) {
+  const input = event.currentTarget;
+
+  if (/^\d$/.test(event.key)) {
+    event.preventDefault();
+    const digits = value.split(".")[0].replace(/\D/g, "") + event.key;
+    const nextValue = formatPesoInputFromDigits(digits);
+    setValue(nextValue);
+    requestAnimationFrame(() => moveCaretBeforeDecimals(input));
+    return;
+  }
+
+  if (event.key === "Backspace") {
+    event.preventDefault();
+    const digits = value.split(".")[0].replace(/\D/g, "").slice(0, -1);
+    const nextValue = digits === "" ? "" : formatPesoInputFromDigits(digits);
+    setValue(nextValue);
+    requestAnimationFrame(() => moveCaretBeforeDecimals(input));
+  }
+}
+
+function moveCaretBeforeDecimals(input: HTMLInputElement) {
+  const decimalIndex = input.value.indexOf(".");
+  const position = decimalIndex === -1 ? input.value.length : decimalIndex;
+  input.setSelectionRange(position, position);
+}
+
+function parsePercentInput(value: string): number {
+  const amount = Number(value.replace(/[%\s]/g, ""));
+  return Number.isFinite(amount) ? amount : Number.NaN;
+}
+
+function fmtPercentInput(value: string | number): string {
+  const amount = typeof value === "number" ? value : parsePercentInput(value);
+  return Number.isFinite(amount) ? String(amount) : "";
 }
 
 function todayIso(): string {
@@ -56,6 +113,19 @@ function ruleSummary(r: SupplierRuleEntry): string {
     return "Negotiated price";
   }
   return "Preferred supplier — no discount terms";
+}
+
+function supplierRuleRecordKey(r: SupplierRuleEntry): string {
+  return [
+    r.supplier_id,
+    r.rule_type,
+    r.minimum_order_amount ?? "",
+    r.discount_percentage_rate ?? "",
+    r.fixed_discount_amount ?? "",
+    r.effective_date,
+    r.expiration_date ?? "",
+    r.is_active ? "active" : "inactive",
+  ].join("|");
 }
 
 const RULE_TYPE_BADGE_CLS: Record<SupplierRuleType, string> = {
@@ -98,7 +168,9 @@ export function SupplierRulesForm({ focusRuleId, onFocusHandled }: SupplierRules
   // the fixture" pattern every other CPRM form in this feature uses.
   const [overrides, setOverrides] = useState<Record<string, Partial<SupplierRuleEntry>>>({});
   const [localExtra, setLocalExtra] = useState<SupplierRuleEntry[]>([]);
-  const allRules = [...localExtra, ...rules]
+  const persistedRuleKeys = new Set(rules.map(supplierRuleRecordKey));
+  const visibleLocalExtra = localExtra.filter((r) => !persistedRuleKeys.has(supplierRuleRecordKey(r)));
+  const allRules = [...visibleLocalExtra, ...rules]
     .map((r) => (overrides[r.rule_id] ? { ...r, ...overrides[r.rule_id] } : r))
     .sort((a, b) => a.supplier_name.localeCompare(b.supplier_name) || a.rule_type.localeCompare(b.rule_type));
 
@@ -107,9 +179,9 @@ export function SupplierRulesForm({ focusRuleId, onFocusHandled }: SupplierRules
   const [supplierId, setSupplierId] = useState<number | "">("");
   const [ruleType, setRuleType] = useState<SupplierRuleType | "">("");
   const [discountKind, setDiscountKind] = useState<DiscountKind>("percentage");
-  const [minimumOrder, setMinimumOrder] = useState<number | "">("");
-  const [percentageRate, setPercentageRate] = useState<number | "">("");
-  const [fixedAmount, setFixedAmount] = useState<number | "">("");
+  const [minimumOrder, setMinimumOrder] = useState("");
+  const [percentageRate, setPercentageRate] = useState("");
+  const [fixedAmount, setFixedAmount] = useState("");
   const [effectiveDate, setEffectiveDate] = useState(todayIso());
   const [expirationDate, setExpirationDate] = useState("");
   const [isActive, setIsActive] = useState(true);
@@ -148,9 +220,9 @@ export function SupplierRulesForm({ focusRuleId, onFocusHandled }: SupplierRules
     setSupplierId(r.supplier_id);
     setRuleType(r.rule_type);
     setDiscountKind(r.fixed_discount_amount !== null ? "fixed" : "percentage");
-    setMinimumOrder(r.minimum_order_amount ?? "");
-    setPercentageRate(r.discount_percentage_rate ?? "");
-    setFixedAmount(r.fixed_discount_amount ?? "");
+    setMinimumOrder(r.minimum_order_amount !== null ? fmtPesoInput(r.minimum_order_amount) : "");
+    setPercentageRate(r.discount_percentage_rate !== null ? fmtPercentInput(r.discount_percentage_rate) : "");
+    setFixedAmount(r.fixed_discount_amount !== null ? fmtPesoInput(r.fixed_discount_amount) : "");
     setEffectiveDate(r.effective_date);
     setExpirationDate(r.expiration_date ?? "");
     setIsActive(r.is_active);
@@ -161,11 +233,16 @@ export function SupplierRulesForm({ focusRuleId, onFocusHandled }: SupplierRules
 
   const supplierValid = supplierId !== "";
   const ruleTypeValid = ruleType !== "";
-  const minimumOrderValid = ruleType === "" || !usesMinimumOrder(ruleType) || (minimumOrder !== "" && isPositiveNumber(Number(minimumOrder)));
+  const minimumOrderAmount = parsePesoInput(minimumOrder);
+  const percentageRateAmount = parsePercentInput(percentageRate);
+  const fixedDiscountAmount = parsePesoInput(fixedAmount);
+  const minimumOrderValid = ruleType === "" || !usesMinimumOrder(ruleType) || (minimumOrder !== "" && isPositiveNumber(minimumOrderAmount));
   const discountValid =
     ruleType === "" ||
     !usesDiscountFields(ruleType) ||
-    (discountKind === "percentage" ? percentageRate !== "" && isPercent(Number(percentageRate)) : fixedAmount !== "" && isPositiveNumber(Number(fixedAmount)));
+    (discountKind === "percentage"
+      ? percentageRate !== "" && isPercent(percentageRateAmount)
+      : fixedAmount !== "" && isPositiveNumber(fixedDiscountAmount));
   const effectiveValid = effectiveDate !== "";
   const expirationValid = expirationDate === "" || expirationDate >= effectiveDate;
   const formValid = supplierValid && ruleTypeValid && minimumOrderValid && discountValid && effectiveValid && expirationValid;
@@ -186,9 +263,9 @@ export function SupplierRulesForm({ focusRuleId, onFocusHandled }: SupplierRules
       supplier_id: Number(supplierId),
       supplier_name: supplier?.supplier_name ?? "",
       rule_type: type,
-      minimum_order_amount: usesMinimumOrder(type) && minimumOrder !== "" ? Number(minimumOrder) : null,
-      discount_percentage_rate: usesDiscountFields(type) && discountKind === "percentage" && percentageRate !== "" ? Number(percentageRate) : null,
-      fixed_discount_amount: usesDiscountFields(type) && discountKind === "fixed" && fixedAmount !== "" ? Number(fixedAmount) : null,
+      minimum_order_amount: usesMinimumOrder(type) && minimumOrder !== "" ? minimumOrderAmount : null,
+      discount_percentage_rate: usesDiscountFields(type) && discountKind === "percentage" && percentageRate !== "" ? percentageRateAmount : null,
+      fixed_discount_amount: usesDiscountFields(type) && discountKind === "fixed" && fixedAmount !== "" ? fixedDiscountAmount : null,
       effective_date: effectiveDate,
       expiration_date: expirationDate || null,
       is_active: isActive,
@@ -213,11 +290,10 @@ export function SupplierRulesForm({ focusRuleId, onFocusHandled }: SupplierRules
     }
 
     try {
-      await save(payload);
-      const optimistic: SupplierRuleEntry = { rule_id: stagingId("sr"), ...payload };
-      setLocalExtra((prev) => [optimistic, ...prev]);
+      const saved = await save(payload);
+      setLocalExtra((prev) => [saved, ...prev.filter((r) => supplierRuleRecordKey(r) !== supplierRuleRecordKey(saved))]);
       setMode("idle");
-      setSelectedId(optimistic.rule_id);
+      setSelectedId(saved.rule_id);
       setSavedMessage(true);
     } catch {
       // surfaced via saveError below — no fabricated success
@@ -335,68 +411,85 @@ export function SupplierRulesForm({ focusRuleId, onFocusHandled }: SupplierRules
                 {touched && !ruleTypeValid && <p className="text-xs text-red-500">Select a rule type.</p>}
               </div>
 
-              {ruleType !== "" && usesMinimumOrder(ruleType) && (
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-xs font-semibold text-gray-600">
-                    {ruleType === "Minimum Order" ? "Minimum Order Amount" : "Order Threshold"} (₱) <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    type="number"
-                    min={0}
-                    step="0.01"
-                    value={minimumOrder}
-                    onChange={(e) => setMinimumOrder(e.target.value === "" ? "" : Number(e.target.value))}
-                    placeholder="e.g. 500000"
-                    className={inputCls}
-                  />
-                  {touched && !minimumOrderValid && <p className="text-xs text-red-500">Enter a positive amount.</p>}
-                </div>
-              )}
+              {(ruleType !== "" && usesMinimumOrder(ruleType)) || (ruleType !== "" && usesDiscountFields(ruleType)) ? (
+                <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-2">
+                  {ruleType !== "" && usesMinimumOrder(ruleType) && (
+                    <div className="flex flex-col gap-2">
+                      <div className="flex min-h-8 items-center">
+                        <label className="text-xs font-semibold text-gray-600">
+                          {ruleType === "Minimum Order" ? "Minimum Order Amount" : "Order Threshold"} (₱) <span className="text-red-500">*</span>
+                        </label>
+                      </div>
+                      <div className="relative">
+                        <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-gray-500">₱</span>
+                        <input
+                          type="text"
+                          inputMode="numeric"
+                          value={minimumOrder}
+                          onFocus={(e) => moveCaretBeforeDecimals(e.currentTarget)}
+                          onKeyDown={(e) => handlePesoKeyDown(e, minimumOrder, setMinimumOrder)}
+                          onChange={(e) => setMinimumOrder(formatPesoInputFromDigits(e.target.value))}
+                          placeholder="500,000.00"
+                          className={`${inputCls} pl-7`}
+                        />
+                      </div>
+                      {touched && !minimumOrderValid && <p className="text-xs text-red-500">Enter a positive amount.</p>}
+                    </div>
+                  )}
 
-              {ruleType !== "" && usesDiscountFields(ruleType) && (
-                <div className="flex flex-col gap-2">
-                  <label className="text-xs font-semibold text-gray-600">Discount</label>
-                  <div className="flex w-fit gap-1 rounded-lg border border-gray-200 bg-white p-1">
-                    {(["percentage", "fixed"] as DiscountKind[]).map((k) => (
-                      <button
-                        key={k}
-                        type="button"
-                        onClick={() => setDiscountKind(k)}
-                        className={`rounded-md px-3 py-1 text-xs font-semibold transition ${
-                          discountKind === k ? "bg-primary text-primary-foreground" : "text-gray-500 hover:bg-gray-50"
-                        }`}
-                      >
-                        {k === "percentage" ? "Percentage" : "Fixed Amount"}
-                      </button>
-                    ))}
-                  </div>
-                  {discountKind === "percentage" ? (
-                    <input
-                      type="number"
-                      min={0}
-                      max={100}
-                      step="0.1"
-                      value={percentageRate}
-                      onChange={(e) => setPercentageRate(e.target.value === "" ? "" : Number(e.target.value))}
-                      placeholder="e.g. 5"
-                      className={inputCls}
-                    />
-                  ) : (
-                    <input
-                      type="number"
-                      min={0}
-                      step="0.01"
-                      value={fixedAmount}
-                      onChange={(e) => setFixedAmount(e.target.value === "" ? "" : Number(e.target.value))}
-                      placeholder="e.g. 15000"
-                      className={inputCls}
-                    />
-                  )}
-                  {touched && !discountValid && (
-                    <p className="text-xs text-red-500">{discountKind === "percentage" ? "Enter a percentage between 0 and 100." : "Enter a positive amount."}</p>
+                  {ruleType !== "" && usesDiscountFields(ruleType) && (
+                    <div className="flex flex-col gap-2">
+                      <div className="flex min-h-8 flex-wrap items-center gap-2">
+                        <label className="text-xs font-semibold text-gray-600">Discount</label>
+                        <div className="flex w-fit gap-1 rounded-lg border border-gray-200 bg-white p-1">
+                          {(["percentage", "fixed"] as DiscountKind[]).map((k) => (
+                            <button
+                              key={k}
+                              type="button"
+                              onClick={() => setDiscountKind(k)}
+                              className={`rounded-md px-3 py-1 text-xs font-semibold transition ${
+                                discountKind === k ? "bg-primary text-primary-foreground" : "text-gray-500 hover:bg-gray-50"
+                              }`}
+                            >
+                              {k === "percentage" ? "Percentage" : "Fixed Amount"}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                      {discountKind === "percentage" ? (
+                        <div className="relative">
+                          <input
+                            type="text"
+                            inputMode="decimal"
+                            value={percentageRate}
+                            onChange={(e) => setPercentageRate(e.target.value.replace(/[^\d.]/g, ""))}
+                            placeholder="5"
+                            className={`${inputCls} pr-8`}
+                          />
+                          <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-sm text-gray-500">%</span>
+                        </div>
+                      ) : (
+                        <div className="relative">
+                          <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-gray-500">₱</span>
+                          <input
+                            type="text"
+                            inputMode="numeric"
+                            value={fixedAmount}
+                            onFocus={(e) => moveCaretBeforeDecimals(e.currentTarget)}
+                            onKeyDown={(e) => handlePesoKeyDown(e, fixedAmount, setFixedAmount)}
+                            onChange={(e) => setFixedAmount(formatPesoInputFromDigits(e.target.value))}
+                            placeholder="15,000.00"
+                            className={`${inputCls} pl-7`}
+                          />
+                        </div>
+                      )}
+                      {touched && !discountValid && (
+                        <p className="text-xs text-red-500">{discountKind === "percentage" ? "Enter a percentage between 0 and 100." : "Enter a positive amount."}</p>
+                      )}
+                    </div>
                   )}
                 </div>
-              )}
+              ) : null}
 
               {ruleType === "Preferred Supplier" && (
                 <p className="rounded-lg border border-gray-100 bg-gray-50/60 px-3 py-2 text-xs text-gray-500">
