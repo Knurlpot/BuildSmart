@@ -119,9 +119,7 @@ export function useMaterialRules() {
     isLoading,
     error,
     refetch,
-    save: actions.save,
-    update: actions.update,
-    supersede: actions.supersede,
+    ...actions,
   };
 }
 
