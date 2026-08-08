@@ -55,6 +55,7 @@ export function ScopeTemplatesForm({ focusRuleId, onFocusHandled }: ScopeTemplat
   const [categories, setCategories] = useState<CategoryType[]>([]);
   const [othersDescription, setOthersDescription] = useState("");
   const [touched, setTouched] = useState(false);
+  const [nameFocused, setNameFocused] = useState(false);
   const [savedMessage, setSavedMessage] = useState(false);
 
   // Runs once on mount only — this consumes the jump, it isn't meant to react to later
@@ -194,15 +195,24 @@ export function ScopeTemplatesForm({ focusRuleId, onFocusHandled }: ScopeTemplat
               )}
 
               <div className="flex flex-col gap-1.5">
-                <label className="text-xs font-semibold text-gray-600">
-                  Template Name <span className="text-red-500">*</span>
-                </label>
-                <input
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  placeholder="e.g. Standard Roof Retrofit"
-                  className={inputCls}
-                />
+                <div className="relative">
+                  <label
+                    className={`pointer-events-none absolute left-3 font-semibold transition-all ${
+                      nameFocused || name
+                        ? "top-1.5 text-[10px] text-gray-500"
+                        : "top-1/2 -translate-y-1/2 text-sm text-gray-400"
+                    }`}
+                  >
+                    Template Name <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    onFocus={() => setNameFocused(true)}
+                    onBlur={() => setNameFocused(false)}
+                    className={`${inputCls} pt-5`}
+                  />
+                </div>
                 {touched && !nameValid && <p className="text-xs text-red-500">Template name is required.</p>}
               </div>
 

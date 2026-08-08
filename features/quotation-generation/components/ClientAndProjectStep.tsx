@@ -339,7 +339,7 @@ export function ClientAndProjectStep({ onContinue }: ClientAndProjectStepProps) 
             onChange={(e) => setProjectName(e.target.value)}
             onFocus={() => setProjectNameFocused(true)}
             onBlur={() => setProjectNameFocused(false)}
-            placeholder="e.g. Rivercrest Residence Roof Waterproofing"
+            placeholder="Name of Project"
             className={inputCls}
           />
         </div>
@@ -357,7 +357,7 @@ export function ClientAndProjectStep({ onContinue }: ClientAndProjectStepProps) 
               onChange={(e) => setProjectLocation(e.target.value)}
               onFocus={() => setProjectLocationFocused(true)}
               onBlur={() => setProjectLocationFocused(false)}
-              placeholder="e.g. Quezon City"
+              placeholder="Location"
               className={inputCls}
             />
           </div>

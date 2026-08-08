@@ -21,6 +21,9 @@ import type { Items } from "@/types/entities/items";
 const inputCls =
   "w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm outline-none transition focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/20";
 
+const compactInputCls =
+  "rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm outline-none transition focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/20";
+
 const MATERIAL_PRIORITY_SOURCES: PriceSource[] = ["Supplier", "DPWH"];
 
 interface ItemConfig {
@@ -282,14 +285,14 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
                   <input
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
-                    placeholder="Search the catalog…"
+                    placeholder="Search materials..."
                     className={`${inputCls} pl-9`}
                   />
                 </div>
                 <select
                   value={categoryFilter}
                   onChange={(e) => setCategoryFilter(e.target.value as CategoryType | "")}
-                  className={`${inputCls} w-44 shrink-0`}
+                  className={`${compactInputCls} w-56 shrink-0`}
                 >
                   <option value="">All categories</option>
                   {CATEGORY_TYPES.map((c) => (

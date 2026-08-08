@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type InputHTMLAttributes, type ReactNode } from "react";
 import { AlertTriangle, CheckCircle2, Pencil, X } from "lucide-react";
 import { RuleListDetailPanel } from "./RuleListDetailPanel";
 import {
@@ -16,6 +16,48 @@ import { PH_REGIONS, type PhRegion } from "@/types/entities/common";
 
 const inputCls =
   "w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm outline-none transition focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/20";
+
+interface FloatingInputProps extends Omit<InputHTMLAttributes<HTMLInputElement>, "className" | "value"> {
+  label: ReactNode;
+  value: string | number;
+  inputClassName?: string;
+  rightAdornment?: ReactNode;
+}
+
+function FloatingInput({ label, value, inputClassName = "", rightAdornment, onFocus, onBlur, ...props }: FloatingInputProps) {
+  const [focused, setFocused] = useState(false);
+  const floated = focused || value !== "";
+
+  return (
+    <div className="relative">
+      <label
+        className={`pointer-events-none absolute left-3 font-semibold transition-all ${
+          floated ? "top-1.5 text-[10px] text-gray-500" : "top-1/2 -translate-y-1/2 text-sm text-gray-400"
+        }`}
+      >
+        {label}
+      </label>
+      <input
+        {...props}
+        value={value}
+        onFocus={(e) => {
+          setFocused(true);
+          onFocus?.(e);
+        }}
+        onBlur={(e) => {
+          setFocused(false);
+          onBlur?.(e);
+        }}
+        className={`${inputCls} pt-5 ${rightAdornment ? "pr-8" : ""} ${inputClassName}`}
+      />
+      {rightAdornment && (
+        <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400">
+          {rightAdornment}
+        </span>
+      )}
+    </div>
+  );
+}
 
 function fmt(n: number) {
   return "₱" + n.toLocaleString("en-PH", { minimumFractionDigits: 2 });
@@ -258,14 +300,14 @@ export function LaborRulesForm({ focusRuleId, onFocusHandled }: LaborRulesFormPr
 
               {scope === "Treatment" && (
                 <div className="flex flex-col gap-1.5">
-                  <label className="text-xs font-semibold text-gray-600">
-                    Treatment Type <span className="text-red-500">*</span>
-                  </label>
-                  <input
+                  <FloatingInput
+                    label={
+                      <>
+                        Treatment Type <span className="text-red-500">*</span>
+                      </>
+                    }
                     value={treatmentType}
                     onChange={(e) => setTreatmentType(e.target.value)}
-                    placeholder="e.g. Cementitious Waterproofing"
-                    className={inputCls}
                   />
                   {touched && !treatmentValid && <p className="text-xs text-red-500">Treatment type is required.</p>}
                 </div>
@@ -301,50 +343,52 @@ export function LaborRulesForm({ focusRuleId, onFocusHandled }: LaborRulesFormPr
 
               <div className="grid grid-cols-2 gap-4">
                 <div className="flex flex-col gap-1.5">
-                  <label className="text-xs font-semibold text-gray-600">
-                    Labor Rate (₱{rateUnit(scope) || " — unit depends on how you bill"}) <span className="text-red-500">*</span>
-                  </label>
-                  <input
+                  <FloatingInput
+                    label={
+                      <>
+                        Labor Rate <span className="text-red-500">*</span>
+                      </>
+                    }
                     type="number"
                     min={0}
                     value={rate}
                     onChange={(e) => setRate(e.target.value === "" ? "" : Number(e.target.value))}
-                    className={inputCls}
                   />
                   {touched && !rateValid && <p className="text-xs text-red-500">Must be greater than 0.</p>}
                 </div>
                 <div className="flex flex-col gap-1.5">
-                  <label className="text-xs font-semibold text-gray-600">
-                    Productivity Index <span className="font-normal normal-case text-gray-400">(optional)</span>
-                  </label>
-                  <input
+                  <FloatingInput
+                    label={
+                      <>
+                        Productivity Index{" "}
+                        <span className="font-normal normal-case text-gray-400">(optional)</span>
+                      </>
+                    }
                     type="number"
                     step="0.01"
                     min={0}
                     value={productivity}
                     onChange={(e) => setProductivity(e.target.value === "" ? "" : Number(e.target.value))}
-                    className={inputCls}
                   />
                   {touched && !productivityValid && <p className="text-xs text-red-500">Must be greater than 0.</p>}
                 </div>
               </div>
 
               <div className="flex flex-col gap-1.5">
-                <label className="text-xs font-semibold text-gray-600">
-                  Rush Multiplier <span className="font-normal normal-case text-gray-400">(optional)</span>
-                </label>
-                <div className="relative">
-                  <input
-                    type="number"
-                    min={0}
-                    max={100}
-                    step="0.1"
-                    value={rushMultiplier}
-                    onChange={(e) => setRushMultiplier(e.target.value === "" ? "" : Number(e.target.value))}
-                    className={`${inputCls} pr-8`}
-                  />
-                  <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400">%</span>
-                </div>
+                <FloatingInput
+                  label={
+                    <>
+                      Rush Multiplier <span className="font-normal normal-case text-gray-400">(optional)</span>
+                    </>
+                  }
+                  type="number"
+                  min={0}
+                  max={100}
+                  step="0.1"
+                  value={rushMultiplier}
+                  onChange={(e) => setRushMultiplier(e.target.value === "" ? "" : Number(e.target.value))}
+                  rightAdornment="%"
+                />
                 {touched && !rushValid && <p className="text-xs text-red-500">Enter a value between 0 and 100.</p>}
                 <p className="text-[11px] text-gray-400">{rushPreview}</p>
               </div>
