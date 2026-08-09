@@ -128,8 +128,7 @@ export function UnitRulesForm({ focusRuleId, onFocusHandled }: UnitRulesFormProp
       <div>
         <h2 className="text-base font-bold text-gray-900">Unit Rules</h2>
         <p className="text-xs text-gray-500">
-          Define unit conversion factors and wastage allowances — per material category, or
-          for one specific catalog item.
+          Set unit conversions and wastage allowances.
         </p>
       </div>
 
@@ -168,8 +167,7 @@ export function UnitRulesForm({ focusRuleId, onFocusHandled }: UnitRulesFormProp
                 <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
                   <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
                   <span>
-                    If this rule is used by existing quotations, saving will create a new
-                    version — existing quotations keep their original values.
+                    Saving creates a new version for rules already in use.
                   </span>
                 </div>
               )}
@@ -202,7 +200,7 @@ export function UnitRulesForm({ focusRuleId, onFocusHandled }: UnitRulesFormProp
                 </div>
                 <p className="text-[11px] text-gray-400">
                   An item-level rule overrides its category&apos;s rule. Example: a 10% wastage
-                  rule on all Finishing materials, with one high-end finish set to 5% — that
+                  rule on all Finishing materials, with one high-end finish set to 5%. That
                   item uses 5%, everything else in the category still uses 10%.
                 </p>
               </div>
@@ -236,7 +234,7 @@ export function UnitRulesForm({ focusRuleId, onFocusHandled }: UnitRulesFormProp
                   {itemsLoading ? (
                     <p className="text-xs text-gray-400">Loading catalog…</p>
                   ) : items.length === 0 ? (
-                    <p className="text-xs text-amber-600">No items in your catalog yet — upload a pricelist first.</p>
+                    <p className="text-xs text-amber-600">No items in your catalog yet. Upload a pricelist first.</p>
                   ) : (
                     <>
                       <input
@@ -319,7 +317,7 @@ export function UnitRulesForm({ focusRuleId, onFocusHandled }: UnitRulesFormProp
                 <div className="flex items-center gap-2 rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-xs text-green-700">
                   <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
                   {editable.supersededNotice
-                    ? "A new version of this rule was created — the previous version is preserved for existing quotations."
+                    ? "A new version of this rule was created. The previous version is preserved for existing quotations."
                     : "Company preferences updated successfully."}
                 </div>
               )}

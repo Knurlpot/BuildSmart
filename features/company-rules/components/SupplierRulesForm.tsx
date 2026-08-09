@@ -112,7 +112,7 @@ function ruleSummary(r: SupplierRuleEntry): string {
     if (r.fixed_discount_amount !== null) return `${fmtPeso(r.fixed_discount_amount)} negotiated discount`;
     return "Negotiated price";
   }
-  return "Preferred supplier — no discount terms";
+  return "Preferred supplier with no discount terms";
 }
 
 function supplierRuleRecordKey(r: SupplierRuleEntry): string {
@@ -317,11 +317,10 @@ export function SupplierRulesForm({ focusRuleId, onFocusHandled }: SupplierRules
   const header = (
     <div>
       <h2 className="text-base font-bold text-gray-900">Supplier Rules</h2>
-      <p className="text-xs text-gray-500">Capture each supplier&apos;s negotiated commercial terms — minimum orders, discounts, and preferred status.</p>
+      <p className="text-xs text-gray-500">Set supplier discounts, minimum orders, and preferred status.</p>
       <p className="mt-1.5 flex items-start gap-1.5 text-[11px] text-gray-400">
         <Info className="mt-0.5 h-3 w-3 shrink-0" />
-        This only captures the negotiated terms. Whether a rule automatically applies to a quote (e.g. a bulk
-        discount triggering once an order crosses ₱2M) is backend derivation logic — not built here.
+        Automatic application to quotations is not yet supported.
       </p>
     </div>
   );
@@ -335,7 +334,7 @@ export function SupplierRulesForm({ focusRuleId, onFocusHandled }: SupplierRules
         <div className="flex flex-col items-center justify-center gap-2 rounded-2xl border border-gray-200 bg-white p-16 text-center">
           <p className="text-sm font-bold text-gray-700">Add suppliers first</p>
           <p className="max-w-sm text-sm text-gray-400">
-            Supplier Rules captures negotiated terms per supplier — there are no suppliers on file yet to attach a rule to.
+            Add a supplier before creating rules.
           </p>
         </div>
       </div>
@@ -493,7 +492,7 @@ export function SupplierRulesForm({ focusRuleId, onFocusHandled }: SupplierRules
 
               {ruleType === "Preferred Supplier" && (
                 <p className="rounded-lg border border-gray-100 bg-gray-50/60 px-3 py-2 text-xs text-gray-500">
-                  Preferred Supplier has no amount fields — it designates the supplier as preferred with no discount terms attached.
+                  Marks this supplier as preferred without a discount.
                 </p>
               )}
 

@@ -151,15 +151,14 @@ export function LaborRulesForm({ focusRuleId, onFocusHandled }: LaborRulesFormPr
       ? `e.g. a ₱${Number(rate).toLocaleString()}${rateUnit(scope)} base becomes ₱${Math.round(
           Number(rate) * (1 + Number(rushMultiplier) / 100)
         ).toLocaleString()}${rateUnit(scope)} when the job is rushed.`
-      : "Extra charged when a job is rushed — e.g. 25% means a ₱500/sqm base becomes ₱625/sqm.";
+      : "Extra charged when a job is rushed. For example, 25% means a ₱500/sqm base becomes ₱625/sqm.";
 
   return (
     <div className="flex flex-col gap-4">
       <div>
         <h2 className="text-base font-bold text-gray-900">Labor Rules</h2>
         <p className="text-xs text-gray-500">
-          Set a base labor rate — by treatment type (specialty subcontractor) or by trade
-          (general contractor) — plus an optional rush uplift.
+          Set labor rates and an optional rush charge.
         </p>
       </div>
 
@@ -211,8 +210,7 @@ export function LaborRulesForm({ focusRuleId, onFocusHandled }: LaborRulesFormPr
                 <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
                   <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
                   <span>
-                    If this rule is used by existing quotations, saving will create a new
-                    version — those quotations keep their original rate.
+                    Saving creates a new version for rules already in use.
                   </span>
                 </div>
               )}
@@ -256,11 +254,11 @@ export function LaborRulesForm({ focusRuleId, onFocusHandled }: LaborRulesFormPr
                 </div>
                 <p className="text-[11px] text-gray-400">
                   {scope === "Treatment" &&
-                    "For a specialty subcontractor — the rate varies by which system you're applying (e.g. cementitious vs elastomeric), not by region or trade."}
+                    "Set rates by treatment system."}
                   {scope === "Trade" &&
-                    "For a general contractor — the rate varies by trade, optionally by region."}
+                    "Set rates by trade and optional region."}
                   {scope === "General" &&
-                    "Applies to everything else. A treatment or trade rule always takes precedence over this when one matches."}
+                    "Fallback rate when no treatment or trade rule matches."}
                 </p>
               </div>
 
@@ -310,7 +308,7 @@ export function LaborRulesForm({ focusRuleId, onFocusHandled }: LaborRulesFormPr
               <div className="grid grid-cols-2 gap-4">
                 <div className="flex flex-col gap-1.5">
                   <label className="text-xs font-semibold text-gray-600">
-                    Labor Rate (₱{rateUnit(scope) || " — unit depends on how you bill"}) <span className="text-red-500">*</span>
+                    Labor Rate (₱{rateUnit(scope) || ", unit depends on how you bill"}) <span className="text-red-500">*</span>
                   </label>
                   <input
                     type="number"
@@ -379,7 +377,7 @@ export function LaborRulesForm({ focusRuleId, onFocusHandled }: LaborRulesFormPr
                 <div className="flex items-center gap-2 rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-xs text-green-700">
                   <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
                   {editable.supersededNotice
-                    ? "A new version of this rule was created — the previous version is preserved for existing quotations."
+                    ? "A new version of this rule was created. The previous version is preserved for existing quotations."
                     : "Company preferences updated successfully."}
                 </div>
               )}

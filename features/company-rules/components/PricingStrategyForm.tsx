@@ -195,7 +195,7 @@ export function PricingStrategyForm({ focusRuleId, onFocusHandled }: PricingStra
       <div>
         <h2 className="text-base font-bold text-gray-900">Pricing Strategy</h2>
         <p className="text-xs text-gray-500">
-          Configure markup, contingency, overhead, profit margin, and VAT rate per quotation tier.
+          Set pricing percentages for each quotation tier.
         </p>
       </div>
 
@@ -235,8 +235,7 @@ export function PricingStrategyForm({ focusRuleId, onFocusHandled }: PricingStra
                 <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
                   <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
                   <span>
-                    If this strategy is used by existing quotations, saving will create a
-                    new version — those quotations keep their original pricing.
+                    Saving creates a new version for strategies already in use.
                   </span>
                 </div>
               )}
@@ -309,10 +308,7 @@ export function PricingStrategyForm({ focusRuleId, onFocusHandled }: PricingStra
                   <SliderPercentField label="VAT Rate" value={vatPercentage} onChange={setVatPercentage} touched={touched} warn={warnVat} />
                 )}
                 <p className="text-[11px] text-gray-400">
-                  VAT is added as a separate line at the bottom of the quotation — it is
-                  never folded into the per-sqm price. Whether VAT is actually applied to a
-                  given quote is a separate, per-quotation decision — some clients decline
-                  VAT because they don&apos;t require an official receipt.
+                  VAT appears as a separate quotation line and is applied per quote.
                 </p>
               </div>
 
@@ -338,7 +334,7 @@ export function PricingStrategyForm({ focusRuleId, onFocusHandled }: PricingStra
                 <div className="flex items-center gap-2 rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-xs text-green-700">
                   <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
                   {editable.supersededNotice
-                    ? "A new version of this strategy was created — the previous version is preserved for existing quotations."
+                    ? "A new version of this strategy was created. The previous version is preserved for existing quotations."
                     : "Company preferences updated successfully."}
                 </div>
               )}

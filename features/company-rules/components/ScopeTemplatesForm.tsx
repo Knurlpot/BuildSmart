@@ -146,9 +146,7 @@ export function ScopeTemplatesForm({ focusRuleId, onFocusHandled }: ScopeTemplat
           </span>
         </div>
         <p className="text-xs text-gray-500">
-          A saved reference of the material categories you&apos;d typically expect for a kind
-          of job — a memory aid, not an enforced package. Every job still starts from its
-          own site assessment; nothing here locks in materials or blocks any other tab.
+          Save typical material categories as an optional reference.
         </p>
       </div>
 
@@ -165,7 +163,7 @@ export function ScopeTemplatesForm({ focusRuleId, onFocusHandled }: ScopeTemplat
           setMode("idle");
         }}
         onAdd={startAdd}
-        emptyHint="Optional — add one only if it's useful as a reference. Skip it entirely if every job you take is different."
+        emptyHint="Add an optional reference template."
         renderListItem={(t) => (
           <div className="flex flex-col gap-0.5">
             <span className="text-sm font-semibold text-gray-800">{t.template_name}</span>
@@ -189,8 +187,7 @@ export function ScopeTemplatesForm({ focusRuleId, onFocusHandled }: ScopeTemplat
                 <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
                   <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
                   <span>
-                    If this rule is used by existing quotations, saving will create a new
-                    version — those quotations keep their original values.
+                    Saving creates a new version for rules already in use.
                   </span>
                 </div>
               )}
@@ -220,7 +217,7 @@ export function ScopeTemplatesForm({ focusRuleId, onFocusHandled }: ScopeTemplat
                 </select>
                 {specializationOptions.length === 0 && (
                   <p className="text-xs text-gray-400">
-                    No specializations found on your company profile yet — add one under Account &amp; Company Profile.
+                    No specializations found on your company profile yet. Add one under Account &amp; Company Profile.
                   </p>
                 )}
                 {touched && !specializationValid && <p className="text-xs text-red-500">Select a specialization.</p>}
@@ -289,7 +286,7 @@ export function ScopeTemplatesForm({ focusRuleId, onFocusHandled }: ScopeTemplat
                 <div className="flex items-center gap-2 rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-xs text-green-700">
                   <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
                   {editable.supersededNotice
-                    ? "A new version of this rule was created — the previous version is preserved for existing quotations."
+                    ? "A new version of this rule was created. The previous version is preserved for existing quotations."
                     : "Company preferences updated successfully."}
                 </div>
               )}

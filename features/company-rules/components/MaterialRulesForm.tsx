@@ -253,9 +253,7 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
       <div>
         <h2 className="text-base font-bold text-gray-900">Material Rules</h2>
         <p className="text-xs text-gray-500">
-          Preferred materials picked straight from your catalog, each with a priority rank
-          and a fallback for when the supplier runs out. Category is just a filter here —
-          a real job usually needs several materials together, not one per category.
+          Set each material&apos;s source priority and fallback.
         </p>
       </div>
 
@@ -319,7 +317,7 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
               ) : itemsError ? (
                 <p className="text-xs text-red-500">Couldn&apos;t load your catalog: {itemsError.message}</p>
               ) : items.length === 0 ? (
-                <p className="text-xs text-amber-600">No items in your catalog yet — upload a pricelist first.</p>
+                <p className="text-xs text-amber-600">No items in your catalog yet. Upload a pricelist first.</p>
               ) : filteredItems.length === 0 ? (
                 <p className="text-xs text-gray-400">No catalog items match that search.</p>
               ) : (
@@ -471,8 +469,7 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
               <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
                 <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
                 <span>
-                  If this rule is used by existing quotations, saving will create a new
-                  version — those quotations keep their original values.
+                  Saving creates a new version for rules already in use.
                 </span>
               </div>
 
@@ -541,7 +538,7 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
                 <div className="flex items-center gap-2 rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-xs text-green-700">
                   <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
                   {editable.supersededNotice
-                    ? "A new version of this rule was created — the previous version is preserved for existing quotations."
+                    ? "A new version of this rule was created. The previous version is preserved for existing quotations."
                     : "Company preferences updated successfully."}
                 </div>
               )}
