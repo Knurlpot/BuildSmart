@@ -269,7 +269,7 @@ export function ClientInsightCard({ client, quote }: ClientInsightCardProps) {
                   ) : (
                     <div className="flex items-start gap-2.5 rounded-xl border border-dashed border-white/20 bg-white/5 px-3.5 py-3">
                       <History className="mt-0.5 h-4 w-4 shrink-0 text-white/50" />
-                      <p className="text-sm text-white/75">First-time client — no history on file yet.</p>
+                      <p className="text-sm text-white/75">First-time client. No history on file yet.</p>
                     </div>
                   )}
                 </div>

@@ -60,7 +60,7 @@ function PricingReferenceBox({ line }: { line: ProvisionalItemLine }) {
       <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-gray-500">
         <span>Region: {ref.region ?? "—"}</span>
         <span>Recorded: {dateLabel}</span>
-        <span className="italic text-gray-400">Confidence: — (not yet computed)</span>
+        <span className="italic text-gray-400">Confidence: not yet computed</span>
       </div>
     </div>
   );
@@ -111,7 +111,7 @@ function SegmentCostDeck({ segLines, defaultOpen, hovered, onHoverChange }: { se
               </div>
               <p className="text-xs text-gray-500">
                 {line.unit_price === null ? (
-                  <span className="font-semibold text-amber-600">No rate on file — resolve in Minor Revision</span>
+                  <span className="font-semibold text-amber-600">No rate on file. Resolve it in Minor Revision.</span>
                 ) : line.category === "Material" ? (
                   <>
                     {line.derived_area_sqm?.toFixed(1)} sqm × {line.derived_coverage_per_sqm?.toFixed(2)} coverage ×{" "}
@@ -206,7 +206,7 @@ function BoqTab({ items }: { items: ProvisionalItemLine[] }) {
   return (
     <div className="flex flex-col gap-3">
       <p className="text-xs text-gray-500">
-        Item-level Bill of Quantities — read-only. Every line is derived from a segment&apos;s treatment (Part C: this
+        Read-only item-level Bill of Quantities. Every line is derived from a segment&apos;s treatment (Part C: this
         shows specific materials, not just service types, once <code className="rounded bg-gray-100 px-1">treatment_type</code> and
         material rules exist on the backend). To edit a quantity, price, or supplier, use Validate &amp; Edit →
         Minor Revision.
@@ -270,7 +270,7 @@ function CostSummaryTab({ result }: { result: ProvisionalQuotationTierResult }) 
       {unresolvedCount > 0 && (
         <div className="flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-700">
           <AlertTriangle className="h-4 w-4 shrink-0" />
-          {unresolvedCount} line{unresolvedCount === 1 ? "" : "s"} still missing a rate — excluded from every total below
+          {unresolvedCount} line{unresolvedCount === 1 ? "" : "s"} still missing a rate and excluded from every total below
           until resolved in Minor Revision.
         </div>
       )}
@@ -287,7 +287,7 @@ function CostSummaryTab({ result }: { result: ProvisionalQuotationTierResult }) 
         </div>
         <div className="flex items-center justify-between border-b border-gray-100 py-2.5">
           <span className="text-sm text-gray-500">
-            VAT ({result.vat.rate_percentage}%) — {result.vat_inclusive ? "applied" : "waived for this client"}
+            VAT ({result.vat.rate_percentage}%): {result.vat_inclusive ? "applied" : "waived for this client"}
           </span>
           <span className="text-sm font-semibold text-gray-800">{fmtPeso(result.vat.amount)}</span>
         </div>
@@ -385,7 +385,7 @@ export function QuotationBreakdownModal({ tier, result, pricelistBasis, onBasisC
         <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-gray-200 bg-gray-50 px-6 py-4">
           <div>
             <h2 className="text-base font-bold text-gray-900">
-              Detailed Breakdown — <span className={TIER_ACCENT[tier]}>{tier}</span>
+              Detailed Breakdown: <span className={TIER_ACCENT[tier]}>{tier}</span>
               <span className="ml-2 rounded-full bg-gray-200 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-gray-500">View only</span>
             </h2>
             <p className="text-xs text-gray-500">Full cost transparency · all prices in Philippine Pesos (₱) · mock fixture values</p>
@@ -395,7 +395,7 @@ export function QuotationBreakdownModal({ tier, result, pricelistBasis, onBasisC
               <span className="text-xs font-semibold text-gray-500">Pricelist Basis:</span>
               {!onBasisChange ? (
                 <span
-                  title="Frozen at finalize — a saved quote's basis can't be switched after the fact"
+                  title="Frozen at finalize. A saved quote's basis cannot be changed."
                   className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-gray-100 px-3 py-1.5 text-xs font-semibold text-gray-500"
                 >
                   {pricelistBasis === "Uploaded" ? <FileText className="h-3 w-3" /> : <Database className="h-3 w-3" />}

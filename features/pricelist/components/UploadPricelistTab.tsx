@@ -390,7 +390,7 @@ export function UploadPricelistTab({
               <div className="text-center">
                 <p className="text-sm font-semibold text-gray-700">Drag &amp; drop your pricelist here</p>
                 <p className="text-xs text-gray-400">
-                  or click to browse — select multiple files at once (e.g. an item pricelist + a supplier info file)
+                  or click to browse. You can select multiple files.
                 </p>
               </div>
               <div className="flex gap-1.5">

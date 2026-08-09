@@ -159,7 +159,7 @@ function LoadErrorBanner({
   if (error) {
     return (
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-        <span>Couldn&apos;t load current values — showing empty fields. {error.message}</span>
+        <span>Couldn&apos;t load current values. Showing empty fields. {error.message}</span>
         <button
           type="button"
           onClick={onRetry}
@@ -581,7 +581,7 @@ function PasswordSection() {
         <div>
           <p className="font-bold text-gray-900">Password</p>
           <p className="text-xs text-gray-400">
-            Handled entirely by the auth backend — never stored, forwarded, or logged here.
+            Handled by the authentication backend. It is never stored, forwarded, or logged here.
           </p>
         </div>
         {!open && (

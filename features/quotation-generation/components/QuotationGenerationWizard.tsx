@@ -155,7 +155,7 @@ export function QuotationGenerationWizard() {
     // Unreachable in practice: every branch above that needs `quotation` is only ever
     // entered right after ClientAndProjectStep sets it. Kept as an honest fallback rather
     // than a silent blank screen if that invariant is ever broken by a future edit.
-    body = <p className="text-sm text-gray-400">Something went wrong with this quotation — start again.</p>;
+    body = <p className="text-sm text-gray-400">Something went wrong. Start the quotation again.</p>;
   }
 
   return (
@@ -168,7 +168,7 @@ export function QuotationGenerationWizard() {
           <h1 className="text-lg font-extrabold tracking-tight text-gray-900">New Quotation</h1>
           {client && quotation ? (
             <p className="text-sm text-gray-500">
-              Quoting for <span className="font-semibold text-gray-700">{client.client_name}</span> — {quotation.project_name}
+              Quoting for <span className="font-semibold text-gray-700">{client.client_name}</span>: {quotation.project_name}
             </p>
           ) : (
             <p className="text-sm text-gray-500">Select a client and the basics of the project.</p>

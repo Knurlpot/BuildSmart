@@ -362,7 +362,7 @@ export function SegmentEditorList({
 
       {segments.length === 0 ? (
         <div className="flex flex-col items-center gap-2 px-6 py-10 text-center">
-          <p className="text-sm text-gray-400">No segments yet — add one to get started.</p>
+          <p className="text-sm text-gray-400">No segments yet. Add one to get started.</p>
         </div>
       ) : (
         <div className="flex max-h-130 flex-col divide-y divide-gray-100 overflow-y-auto">
@@ -395,7 +395,7 @@ export function SegmentEditorList({
                   <button
                     type="button"
                     onClick={() => toggleConfirmed(seg.draft_id)}
-                    title={seg.confirmed ? "Confirmed — click to unconfirm" : "Click to confirm this segment"}
+                    title={seg.confirmed ? "Confirmed. Click to unconfirm" : "Click to confirm this segment"}
                     className="shrink-0"
                   >
                     {seg.confirmed ? (
@@ -418,7 +418,7 @@ export function SegmentEditorList({
                   <button
                     type="button"
                     onClick={() => toggleIncluded(seg.draft_id)}
-                    title={seg.included_in_quote ? "In scope for this quote — click to exclude" : "Excluded from this quote — click to include"}
+                    title={seg.included_in_quote ? "In scope. Click to exclude" : "Excluded. Click to include"}
                     className={`shrink-0 rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide transition ${
                       seg.included_in_quote
                         ? "bg-green-100 text-green-700 hover:bg-green-200"

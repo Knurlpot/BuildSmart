@@ -169,7 +169,7 @@ function ClientPicker({
               </button>
             )}
             {filtered.length === 0 && !query.trim() && (
-              <p className="px-3.5 py-3 text-xs text-gray-400">No clients yet — type a name to create one.</p>
+              <p className="px-3.5 py-3 text-xs text-gray-400">No clients yet. Type a name to create one.</p>
             )}
           </QueryState>
         </div>
@@ -437,7 +437,7 @@ export function ClientAndProjectStep({ onContinue }: ClientAndProjectStepProps) 
             <DialogTitle>Discard this quotation?</DialogTitle>
             <DialogDescription>
               You&apos;ve entered client and project details that haven&apos;t been saved.
-              Leaving now discards them — nothing has been created yet.
+              Leaving now discards them. Nothing has been created yet.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

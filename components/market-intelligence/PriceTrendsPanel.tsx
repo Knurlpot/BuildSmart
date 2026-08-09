@@ -414,7 +414,7 @@ export function PriceTrendsPanel({ compact = false }: PriceTrendsPanelProps) {
         </div>
         <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
           <div>
-            <p className="font-bold text-gray-900">Category Variance Over Time — {region}</p>
+            <p className="font-bold text-gray-900">Category Variance Over Time: {region}</p>
             <p className="text-xs text-gray-400">Average % difference between Supplier/Internal prices and DPWH rates</p>
           </div>
           {selectedVariance && (
@@ -604,7 +604,7 @@ export function PriceTrendsPanel({ compact = false }: PriceTrendsPanelProps) {
         <div className="flex items-center gap-2">
           <Landmark className="h-4 w-4 text-indigo-500" />
           <p className="text-xs font-bold uppercase tracking-wider text-indigo-500">
-            Market Index (PSA) — Not Item-Specific
+            Market Index (PSA): Not Item-Specific
           </p>
         </div>
         <p className="text-xs text-indigo-400">
@@ -731,7 +731,7 @@ export function PriceTrendsPanel({ compact = false }: PriceTrendsPanelProps) {
             isEmpty={!insight.data?.insight}
             onRetry={insight.refetch}
             emptyTitle="No insight available yet"
-            emptyHint="This panel renders Gemini-generated interpretive text from the backend — nothing is generated in the browser."
+            emptyHint="This panel displays Gemini-generated text from the backend."
             minHeight={80}
           >
             <p className="text-sm leading-relaxed text-gray-600">{insight.data?.insight}</p>

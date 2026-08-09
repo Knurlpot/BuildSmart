@@ -149,7 +149,7 @@ export function UnitRulesForm({ focusRuleId, onFocusHandled }: UnitRulesFormProp
         renderListItem={(r) => (
           <div className="flex flex-col gap-0.5">
             <span className="text-sm font-semibold text-gray-800">{r.item_name ?? r.category}</span>
-            <span className="text-xs text-gray-400">{r.item_name ? `Item override — ${r.category ?? ""}` : "Category default"}</span>
+            <span className="text-xs text-gray-400">{r.item_name ? `Item override: ${r.category ?? ""}` : "Category default"}</span>
             <span className="text-[10px] text-gray-400">{r.wastage_allowance_percentage}% wastage</span>
           </div>
         )}

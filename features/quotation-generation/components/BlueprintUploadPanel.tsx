@@ -9,6 +9,7 @@ import { createSegmentFromExtraction, isSegmentIncluded, type DraftSegment } fro
 import type { BlueprintFloor } from "@/lib/dev/provisional/quotationGenerationTypes";
 
 const ACCEPTED_EXTENSIONS = [".pdf", ".dwg", ".dxf"];
+const MAX_FILE_BYTES = 25 * 1024 * 1024;
 
 function hasAcceptedExtension(name: string): boolean {
   const lower = name.toLowerCase();
@@ -74,6 +75,10 @@ export function BlueprintUploadPanel({
       setFileTypeError(`"${file.name}" isn't a .PDF, .DWG, or .DXF file.`);
       return;
     }
+    if (file.size === 0 || file.size > MAX_FILE_BYTES) {
+      setFileTypeError(`"${file.name}" must be between 1 byte and 25 MB.`);
+      return;
+    }
     resetExtract();
     setSelectedFile(file);
   };
@@ -137,7 +142,7 @@ export function BlueprintUploadPanel({
           <div>
             <h2 className="text-base font-bold text-gray-900">Upload Blueprint</h2>
             <p className="text-xs text-gray-500">
-              The blueprint is segmented and measured on our end — you&apos;ll review and
+              The blueprint is segmented and measured automatically. You&apos;ll review and
               validate every detected area before continuing.
             </p>
           </div>
@@ -166,7 +171,7 @@ export function BlueprintUploadPanel({
               <UploadIcon className="h-8 w-8 text-gray-400" />
               <div className="text-center">
                 <p className="text-sm font-semibold text-gray-700">Drag &amp; drop your blueprint here</p>
-                <p className="text-xs text-gray-400">or click to browse</p>
+                <p className="text-xs text-gray-400">or click to browse (max 25 MB)</p>
               </div>
               <div className="flex gap-1.5">
                 {["PDF", "DWG", "DXF"].map((f) => (
@@ -341,7 +346,7 @@ export function BlueprintUploadPanel({
       {manualAdds.length > 0 && (
         <p className="text-xs text-gray-400">
           {manualAdds.length} segment{manualAdds.length === 1 ? " was" : "s were"} added manually on top of the detected
-          ones — this quotation is marked <span className="font-semibold text-gray-600">Hybrid</span>.
+          ones. This quotation is marked <span className="font-semibold text-gray-600">Hybrid</span>.
         </p>
       )}
 

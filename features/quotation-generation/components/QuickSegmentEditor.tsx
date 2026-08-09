@@ -312,7 +312,7 @@ export function QuickSegmentEditor({ draft, onSave, onCancel }: QuickSegmentEdit
           {entryMode === "running_meter" && (
             <div className="flex flex-col gap-1.5">
               <label className={qLabelCls}>
-                Length (m) <span className={qHintCls}>— parapets, edges, linear runs</span>
+                Length (m) <span className={qHintCls}>(parapets, edges, linear runs)</span>
               </label>
               <div className="relative">
                 <input
@@ -328,7 +328,7 @@ export function QuickSegmentEditor({ draft, onSave, onCancel }: QuickSegmentEdit
                   m
                 </span>
               </div>
-              <p className={qHintCls}>Counted directly into the running total below — no area conversion.</p>
+              <p className={qHintCls}>Added directly to the total without area conversion.</p>
               {touched && !runningValid && <p className="text-sm font-semibold text-red-600">Enter the length.</p>}
             </div>
           )}

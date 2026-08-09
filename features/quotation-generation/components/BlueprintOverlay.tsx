@@ -273,8 +273,8 @@ export function BlueprintOverlay({ imageUrl, imageWidth, imageHeight, segments, 
               <AlertTriangle className="h-4 w-4 shrink-0 text-amber-500" /> Rescan this blueprint?
             </DialogTitle>
             <DialogDescription>
-              This restarts the review. Every edit you&apos;ve made — renamed or resized
-              segments, groupings, deletions, and anything added manually — is discarded,
+              This restarts the review. Renamed or resized segments, groupings, deletions,
+              and anything added manually will be discarded,
               and the view returns to the system&apos;s original detected findings.
             </DialogDescription>
           </DialogHeader>

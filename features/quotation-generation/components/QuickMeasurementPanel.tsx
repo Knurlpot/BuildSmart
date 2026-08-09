@@ -85,7 +85,7 @@ export function QuickMeasurementPanel({ segments, onChange, onContinue, onBack }
             <h2 className="text-base font-bold text-gray-900">Quick Measurement</h2>
             <p className="text-sm text-gray-600">
               Add each area you measured on-site. Most waterproofing jobs are a single total
-              area — enter that and you&apos;re done.
+              area. Enter that value to continue.
             </p>
           </div>
         </div>
@@ -104,7 +104,7 @@ export function QuickMeasurementPanel({ segments, onChange, onContinue, onBack }
 
           {segments.length === 0 ? (
             <div className="flex flex-col items-center gap-2 px-6 py-12 text-center">
-              <p className="text-base text-gray-500">No segments yet — add one to get started.</p>
+              <p className="text-base text-gray-500">No segments yet. Add one to get started.</p>
             </div>
           ) : (
             <div className="flex flex-col divide-y-2 divide-gray-100">

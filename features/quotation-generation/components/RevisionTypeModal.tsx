@@ -39,10 +39,10 @@ export function RevisionTypeModal({ onClose, onStructural, onMinor }: RevisionTy
             </div>
             <div className="mt-3 flex items-start gap-2 rounded-xl bg-red-100/60 p-2.5 text-xs text-red-700">
               <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-              <p>This returns you to segmentation — rooms/areas can be re-confirmed, excluded, or added.</p>
+              <p>Return to segmentation to confirm, exclude, or add areas.</p>
             </div>
             <p className="mt-3 text-xs text-gray-600">
-              Use when the scope has fundamentally changed — rooms added or removed, floor corrections, or area
+              Use when the scope has changed, such as added rooms, removed rooms, floor corrections, or area
               reclassifications.
             </p>
             <div className="mt-4 flex items-center gap-1.5 text-xs font-semibold text-red-600 transition-all group-hover:gap-2.5">

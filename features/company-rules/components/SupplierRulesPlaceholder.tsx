@@ -7,7 +7,7 @@ export function SupplierRulesPlaceholder() {
         <Truck className="h-6 w-6 text-gray-400" />
       </div>
       <p className="text-sm font-bold text-gray-700">Supplier Rules</p>
-      <p className="max-w-sm text-sm text-gray-400">deferred — schema-backed, wiring later</p>
+      <p className="max-w-sm text-sm text-gray-400">Deferred. Backend wiring is pending.</p>
     </div>
   );
 }
