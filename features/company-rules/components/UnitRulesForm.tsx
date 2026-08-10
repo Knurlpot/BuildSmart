@@ -261,36 +261,47 @@ export function UnitRulesForm({ focusRuleId, onFocusHandled }: UnitRulesFormProp
               )}
 
               <div className="flex flex-col gap-1.5">
-                <label className="text-xs font-semibold text-gray-600">
-                  Conversion Factor <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="number"
-                  min={0}
-                  step="0.01"
-                  value={conversionFactor}
-                  onChange={(e) => setConversionFactor(e.target.value === "" ? "" : Number(e.target.value))}
-                  placeholder="Factor value"
-                  className={inputCls}
-                />
+                <div className="relative">
+                  <input
+                    id="unit-conversion-factor"
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    value={conversionFactor}
+                    onChange={(e) => setConversionFactor(e.target.value === "" ? "" : Number(e.target.value))}
+                    placeholder=" "
+                    className="peer w-full rounded-lg border border-gray-200 bg-gray-50 px-3 pb-2 pt-5 text-sm outline-none transition focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/20"
+                  />
+                  <label
+                    htmlFor="unit-conversion-factor"
+                    className="pointer-events-none absolute left-3 top-1.5 text-[10px] font-semibold text-gray-500 transition-all peer-placeholder-shown:top-1/2 peer-placeholder-shown:-translate-y-1/2 peer-placeholder-shown:text-sm peer-placeholder-shown:font-medium peer-focus:top-1.5 peer-focus:translate-y-0 peer-focus:text-[10px] peer-focus:font-semibold peer-focus:text-primary"
+                  >
+                    Conversion Factor <span className="text-red-500">*</span>
+                  </label>
+                </div>
                 {touched && !factorValid && <p className="text-xs text-red-500">Must be greater than 0.</p>}
               </div>
 
               <div className="flex flex-col gap-1.5">
-                <label className="text-xs font-semibold text-gray-600">
-                  Wastage Allowance <span className="text-red-500">*</span>
-                </label>
                 <div className="relative">
                   <input
+                    id="unit-wastage-allowance"
                     type="number"
                     min={0}
                     max={100}
                     step="0.1"
                     value={wastage}
                     onChange={(e) => setWastage(e.target.value === "" ? "" : Number(e.target.value))}
-                    className={`${inputCls} pr-8`}
+                    placeholder=" "
+                    className="peer w-full rounded-lg border border-gray-200 bg-gray-50 px-3 pb-2 pr-8 pt-5 text-sm outline-none transition focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/20"
                   />
-                  <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400">%</span>
+                  <label
+                    htmlFor="unit-wastage-allowance"
+                    className="pointer-events-none absolute left-3 top-1.5 text-[10px] font-semibold text-gray-500 transition-all peer-placeholder-shown:top-1/2 peer-placeholder-shown:-translate-y-1/2 peer-placeholder-shown:text-sm peer-placeholder-shown:font-medium peer-focus:top-1.5 peer-focus:translate-y-0 peer-focus:text-[10px] peer-focus:font-semibold peer-focus:text-primary"
+                  >
+                    Wastage Allowance <span className="text-red-500">*</span>
+                  </label>
+                  <span className="pointer-events-none absolute right-3 top-[1.9rem] -translate-y-1/2 text-xs text-gray-400">%</span>
                 </div>
                 {touched && !wastageValid && <p className="text-xs text-red-500">Enter a value between 0 and 100.</p>}
               </div>

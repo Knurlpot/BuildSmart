@@ -120,7 +120,6 @@ export function PriceCatalogTab() {
   // Bulk selection/delete 
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [isBulkDeleting, setIsBulkDeleting] = useState(false);
-  const [confirmingBulkDelete, setConfirmingBulkDelete] = useState(false);
 
   // 
   const [isEditingAll, setIsEditingAll] = useState(false);
@@ -136,7 +135,6 @@ export function PriceCatalogTab() {
   useEffect(() => {
     setDeleteError(null);
     setSelectedIds(new Set());
-    setConfirmingBulkDelete(false);
     setIsEditingAll(false);
     setEditDrafts({});
     setSaveError(null);
@@ -224,11 +222,6 @@ export function PriceCatalogTab() {
   // disabled until the user checks at least one record.
   const handleDeleteToolbar = () => {
     if (selectedIds.size === 0) return;
-    if (!confirmingBulkDelete) {
-      setConfirmingBulkDelete(true);
-      return;
-    }
-    setConfirmingBulkDelete(false);
     deleteRecords(Array.from(selectedIds)).catch(() => {});
   };
 
@@ -587,15 +580,6 @@ export function PriceCatalogTab() {
                     <Pencil className="h-3.5 w-3.5" />
                   </button>
                 )}
-                {confirmingBulkDelete && (
-                  <button
-                    type="button"
-                    onClick={() => setConfirmingBulkDelete(false)}
-                    className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-600 transition hover:bg-gray-50"
-                  >
-                    Cancel
-                  </button>
-                )}
                 <button
                   type="button"
                   onClick={handleDeleteToolbar}
@@ -603,26 +587,18 @@ export function PriceCatalogTab() {
                   aria-label={
                     isBulkDeleting
                       ? "Deleting…"
-                      : confirmingBulkDelete
-                        ? `Confirm delete ${selectedIds.size}`
-                        : selectedIds.size > 0
-                          ? `Delete selected (${selectedIds.size})`
-                          : "Select records to delete"
+                      : selectedIds.size > 0
+                        ? `Delete selected (${selectedIds.size})`
+                        : "Select records to delete"
                   }
                   title={
                     isBulkDeleting
                       ? "Deleting…"
-                      : confirmingBulkDelete
-                        ? `Confirm delete ${selectedIds.size}`
-                        : selectedIds.size > 0
-                          ? `Delete selected (${selectedIds.size})`
-                          : "Select records to delete"
+                      : selectedIds.size > 0
+                        ? `Delete selected (${selectedIds.size})`
+                        : "Select records to delete"
                   }
-                  className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-50 ${
-                    confirmingBulkDelete
-                      ? "border-red-200 bg-red-50 text-red-600 hover:bg-red-100"
-                      : "border-gray-200 bg-white text-gray-600 hover:bg-gray-50"
-                  }`}
+                  className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-600 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {isBulkDeleting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
                 </button>

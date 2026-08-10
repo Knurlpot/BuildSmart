@@ -193,15 +193,21 @@ export function ScopeTemplatesForm({ focusRuleId, onFocusHandled }: ScopeTemplat
               )}
 
               <div className="flex flex-col gap-1.5">
-                <label className="text-xs font-semibold text-gray-600">
-                  Template Name <span className="text-red-500">*</span>
-                </label>
-                <input
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  placeholder="e.g. Standard Roof Retrofit"
-                  className={inputCls}
-                />
+                <div className="group relative">
+                  <input
+                    id="scope-template-name"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    placeholder=" "
+                    className="peer w-full rounded-lg border border-gray-200 bg-gray-50 px-3 pb-2 pt-5 text-sm outline-none transition focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/20"
+                  />
+                  <label
+                    htmlFor="scope-template-name"
+                    className="pointer-events-none absolute left-3 top-1.5 text-[10px] font-semibold text-gray-500 transition-all peer-placeholder-shown:top-1/2 peer-placeholder-shown:-translate-y-1/2 peer-placeholder-shown:text-sm peer-placeholder-shown:font-medium peer-focus:top-1.5 peer-focus:translate-y-0 peer-focus:text-[10px] peer-focus:font-semibold peer-focus:text-primary"
+                  >
+                    Template Name <span className="text-red-500">*</span>
+                  </label>
+                </div>
                 {touched && !nameValid && <p className="text-xs text-red-500">Template name is required.</p>}
               </div>
 
