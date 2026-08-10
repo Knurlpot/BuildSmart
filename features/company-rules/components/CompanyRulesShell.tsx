@@ -29,17 +29,7 @@ import {
 import { useAuth } from "@/providers/AuthProvider";
 import { advanceOnboardingStep, hasCompletedCompanyRulesStep } from "@/lib/onboarding";
 
-// Mirrors the CPRM activity diagram's "Rule Action?" fork: six Configure-X branches plus
-// the separate Manage Existing Rules branch. Supplier Rules is schema-backed
-// (supplier_discount_rule, a REAL confirmed table) and now fully wired — see
-// SupplierRulesForm.tsx. The other five have no confirmed schema yet; their forms are
-// presentation-only against PROVISIONAL local shapes (lib/dev/provisional/).
-//
-// v6 Correction 2: there is no guided wizard here anymore. Scope Templates is an
-// optional, advisory feature (client: "no packages as no two areas are the same") — saving
-// one does not drive, gate, or pre-populate Material/Unit Rules. Each tab is fully
-// independent; the only cross-tab behavior left is Manage Existing Rules jumping to a
-// rule's owning tab, which is a navigation convenience, not a forced flow.
+// 
 const TABS = [
   { id: "scope-templates", label: "Scope Templates", icon: ClipboardList },
   { id: "material-rules", label: "Material Rules", icon: ListChecks },

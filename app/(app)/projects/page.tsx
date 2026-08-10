@@ -1,11 +1,6 @@
 "use client";
 
-// Part C — "each row = a project," grouping the two saved tier snapshots (Practical/
-// Premium) that came out of one Finalize (see lib/dev/provisional/savedProjectsStore.ts).
-// The real /api/quotations endpoint returns flat, per-tier quotation rows with no
-// quote_group_id/tier concept to group them by (that's exactly what's provisional —
-// part2_schema_addendum.sql) — so this page reads the mock project store instead of that
-// real endpoint until backend applies it. Nothing about /api/quotations itself changes.
+// 
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import type { ColumnDef } from "@tanstack/react-table";
@@ -32,9 +27,7 @@ function StatusBadge({ status }: { status: SavedProjectRecord["status"] }) {
   );
 }
 
-// The tier the CONTRACTOR marked accepted once the client chose (Part C's toggle, set from
-// the project detail page) — reads is_selected off whichever snapshot has it true. Neither
-// tier is selected immediately after Finalize (Part B); this shows that honestly too.
+// 
 function AcceptedBadge({ project }: { project: SavedProjectRecord }) {
   if (project.quotes.Practical.is_selected) {
     return <span className="rounded-full bg-orange-50 px-2.5 py-0.5 text-[11px] font-bold text-primary">Practical accepted</span>;
@@ -144,9 +137,7 @@ function OpenProjectsContent() {
   );
 }
 
-// PART B (Task 6) — Open Projects restructured into two tabs: the existing quote/project
-// list (unchanged, now tab 1) and the new My Clients tab (tab 2). Project detail navigation
-// and the read-only breakdown reuse are untouched by this split.
+// 
 function OpenProjectsTabs() {
   return (
     <Tabs defaultValue="projects" className="flex flex-col gap-5">

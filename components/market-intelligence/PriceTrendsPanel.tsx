@@ -1,9 +1,6 @@
 "use client";
 
-// Shared trends UI — used by both the Market Intelligence page and the Pricelist
-// "Price Trends" tab, per the instruction not to build a second, divergent trends UI.
-// Owns its own region/material filter state and data fetching (useMarketIntelligence),
-// so it can be dropped into either page with no external wiring beyond rendering it.
+// 
 import { useMemo, useState } from "react";
 import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { Filter, Globe2, Info, Landmark, Minus, Sparkles, Truck, TrendingDown, TrendingUp } from "lucide-react";

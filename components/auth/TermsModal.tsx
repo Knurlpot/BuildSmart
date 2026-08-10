@@ -4,9 +4,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { X } from "lucide-react";
 import { TERMS_AND_CONDITIONS } from "@/lib/legal/termsContent";
 
-// Each wheel tick moves this many times further than the browser default, so
-// users can move through the document quickly. Scrollbar drag / keyboard
-// scrolling are untouched — only the wheel handler is intercepted.
+//
 const SCROLL_SPEED_MULTIPLIER = 2.5;
 const BOTTOM_THRESHOLD_PX = 4;
 
@@ -26,9 +24,7 @@ function parseInline(text: string): ReactNode {
   );
 }
 
-// Minimal markdown-to-JSX renderer scoped to exactly the constructs used in
-// termsContent.ts (#/##/### headers, ---, "- " bullets, "1. " numbered
-// lists, inline **bold**). Not a general-purpose markdown parser.
+// 
 function renderTermsContent(markdown: string): ReactNode[] {
   const rawLines = markdown.replace(/\r\n/g, "\n").split("\n");
   const nodes: ReactNode[] = [];
@@ -141,9 +137,7 @@ function renderTermsContent(markdown: string): ReactNode[] {
 
 const TERMS_NODES = renderTermsContent(TERMS_AND_CONDITIONS);
 
-// Parent mounts this component only while the modal should be visible, so
-// each open is a fresh mount — state (like reachedBottom) starts clean
-// without needing to be reset imperatively inside an effect.
+// 
 export function TermsModal({ onClose, onAgree }: TermsModalProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [reachedBottom, setReachedBottom] = useState(false);

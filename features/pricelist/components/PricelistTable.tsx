@@ -48,10 +48,7 @@ function EditableCell({
 }
 
 export default function PricelistTable({ rows, onUpdateRow, onRemoveRow }: PricelistTableProps) {
-  // Optional fields (color, description) aren't shown as
-  // columns here — this compact view surfaces the required item + price fields only, matching
-  // what actually gates approval. No Supplier column: supplier attribution is batch-level (one
-  // supplier per upload), not per-row — see hooks/usePricelistUpload.ts.
+  // Optional fields (color, description) aren't shown as columns
   const columns = useMemo<ColumnDef<ExtractedItemRow>[]>(
     () => [
       {

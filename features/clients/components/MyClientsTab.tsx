@@ -1,9 +1,6 @@
 "use client";
 
-// PART B (Task 6) — Open Projects' "My Clients" tab. List view reads the REAL `client` table
-// via useClients() (types/entities/client.ts) — nothing here is a new provisional store, the
-// entity was already real before this task. Only the spreadsheet import (ImportClientsPanel)
-// is new, and its own endpoints are the provisional/assumed ones (see useClientImport.ts).
+// 
 import { useMemo, useState } from "react";
 import type { ColumnDef } from "@tanstack/react-table";
 import { Search, Upload } from "lucide-react";

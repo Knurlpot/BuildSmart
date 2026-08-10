@@ -57,12 +57,12 @@ export default function LoginPage() {
             <span className="text-lg font-bold text-gray-900">BuildSmart</span>
           </div>
 
-          <div className="mb-8">
+          <div className="mb-4">
             <h2 className="text-2xl font-extrabold tracking-tight text-gray-900">
               Welcome back
             </h2>
             <p className="mt-1 text-sm text-gray-500">
-              Sign in to your BuildSmart account
+              Login to your BuildSmart account!
             </p>
           </div>
 

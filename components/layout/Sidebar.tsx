@@ -43,11 +43,7 @@ function NavRow({ item, onboardingStep, active }: { item: NavItem; onboardingSte
 export default function Sidebar() {
   const { currentUser } = useAuth();
   const pathname = usePathname();
-  const onboardingStep = currentUser?.onboardingStep ?? 0;
-  // Part A — when a workflow is active (e.g. Quotation Generation), the orange header mode
-  // extends into this top-left logo cell too, so the whole bar reads as one continuous
-  // strip edge to edge instead of leaving a white gap in the corner. Same brightness-0
-  // invert trick Header.tsx uses on its own copy of the logo — no separate asset needed.
+  const onboardingStep = currentUser?.onboardingStep ?? 0; 
   const workflow = useWorkflowHeaderValue();
 
   return (

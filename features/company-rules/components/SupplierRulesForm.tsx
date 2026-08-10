@@ -314,10 +314,7 @@ export function SupplierRulesForm({ focusRuleId, onFocusHandled }: SupplierRules
   const expirationValid = expirationDate === "" || expirationDate >= effectiveDate;
   const formValid = supplierValid && ruleTypeValid && minimumOrderValid && discountValid && effectiveValid && expirationValid;
 
-  // The currently-selected supplier stays in the dropdown even if it's since gone
-  // Inactive (editing an old rule shouldn't render a blank/invalid picker) — new rules
-  // otherwise only offer Active suppliers, since negotiating fresh terms with an inactive
-  // one doesn't make sense.
+  // 
   const supplierOptions = [
     ...suppliers.filter((s) => s.status === "Active"),
     ...suppliers.filter((s) => s.status !== "Active" && s.supplier_id === supplierId),

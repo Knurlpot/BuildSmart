@@ -127,11 +127,7 @@ const STEPS = [
   { n: 3, label: "Map & Confirm" },
 ] as const;
 
-// Purely a progress indicator derived from queue/review state (see
-// `currentStep` below) — it doesn't gate which sections render. Pending
-// Review in particular is a persistent queue that can hold rows from many
-// past uploads, not a one-shot wizard screen, so it stays visible regardless
-// of which step is "current".
+// 
 function Stepper({ step }: { step: 1 | 2 | 3 }) {
   return (
     <div className="flex items-center gap-2">

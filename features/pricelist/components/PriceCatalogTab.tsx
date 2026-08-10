@@ -98,12 +98,7 @@ function EditableTextCell({
   );
 }
 
-// Canonical catalog view — historical_price_record filtered by price_source.
-// The post-upload "Saved Catalog" summary and the Published Sources post-resolution recap
-// both link here instead of rendering their own full catalog table; this is the one place
-// that does. Records can be removed from the toolbar after selection. Supplier rows can
-// also be bulk-edited (see isEditingAll below); DPWH/PSA stay read-only since that data is
-// externally published.
+// 
 export function PriceCatalogTab() {
   const [subTab, setSubTab] = useState<"dpwh" | "supplier">("dpwh");
   const [search, setSearch] = useState("");
@@ -122,32 +117,19 @@ export function PriceCatalogTab() {
 
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
-  // Bulk selection/delete — the toolbar delete button targets only explicitly
-  // selected records. No "Approve" here: unlike Pending Review, a Price Catalog
-  // row is already a saved, committed record.
+  // Bulk selection/delete 
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [isBulkDeleting, setIsBulkDeleting] = useState(false);
   const [confirmingBulkDelete, setConfirmingBulkDelete] = useState(false);
 
-  // Global edit mode — Supplier only (see the PATCH route's own comment on
-  // why DPWH/PSA never get this). Every row with a saved price record edits
-  // at once, committed with one "Save All Changes" click, mirroring Pending
-  // Review's global edit.
+  // 
   const [isEditingAll, setIsEditingAll] = useState(false);
   const [editDrafts, setEditDrafts] = useState<Record<number, SupplierRowDraft>>({});
   const [isSavingAll, setIsSavingAll] = useState(false);
   const [savingId, setSavingId] = useState<number | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
 
-  // Cell renderers read this instead of `editDrafts` directly. Every
-  // keystroke updates editDrafts, and if that were a dep of the
-  // `supplierColumns` useMemo below, the whole columns array (and every cell
-  // render function inside it) would get a new identity on every keystroke —
-  // tanstack-table's flexRender then treats each cell as a brand-new
-  // component type and remounts it, which drops input focus after exactly
-  // one character. Keeping editDrafts out of that memo and reading the
-  // latest value from a ref (updated synchronously during render, not in an
-  // effect, so it's never a render behind) avoids the remount entirely.
+  // 
   const editDraftsRef = useRef(editDrafts);
   editDraftsRef.current = editDrafts;
 
@@ -577,101 +559,6 @@ export function PriceCatalogTab() {
         </span>
       </div>
 
-      <div className="flex flex-wrap items-center justify-end gap-2">
-        {!isEditingAll && (
-          <>
-            <button
-              type="button"
-              onClick={toggleSelectAll}
-              disabled={selectableIds.length === 0 || isBulkDeleting}
-              className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-600 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {allSelected ? "Deselect All" : "Select All"}
-            </button>
-            {subTab === "supplier" && (
-              <button
-                type="button"
-                onClick={startEditingAll}
-                disabled={supplierRows.length === 0 || isBulkDeleting || isSavingAll}
-                aria-label="Edit"
-                title="Edit"
-                className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-600 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                <Pencil className="h-3.5 w-3.5" />
-              </button>
-            )}
-            {confirmingBulkDelete && (
-              <button
-                type="button"
-                onClick={() => setConfirmingBulkDelete(false)}
-                className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-600 transition hover:bg-gray-50"
-              >
-                Cancel
-              </button>
-            )}
-            <button
-              type="button"
-              onClick={handleDeleteToolbar}
-              disabled={selectedIds.size === 0 || isBulkDeleting}
-              aria-label={
-                isBulkDeleting
-                  ? "Deleting…"
-                  : confirmingBulkDelete
-                    ? `Confirm delete ${selectedIds.size}`
-                    : selectedIds.size > 0
-                      ? `Delete selected (${selectedIds.size})`
-                      : "Select records to delete"
-              }
-              title={
-                isBulkDeleting
-                  ? "Deleting…"
-                  : confirmingBulkDelete
-                    ? `Confirm delete ${selectedIds.size}`
-                    : selectedIds.size > 0
-                      ? `Delete selected (${selectedIds.size})`
-                      : "Select records to delete"
-              }
-              className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-50 ${
-                confirmingBulkDelete
-                  ? "border-red-200 bg-red-50 text-red-600 hover:bg-red-100"
-                  : "border-gray-200 bg-white text-gray-600 hover:bg-gray-50"
-              }`}
-            >
-              {isBulkDeleting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
-            </button>
-          </>
-        )}
-        {isEditingAll && (
-          <>
-            <button
-              type="button"
-              onClick={cancelEditingAll}
-              disabled={isSavingAll}
-              className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-600 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              Cancel Editing
-            </button>
-            <button
-              type="button"
-              onClick={saveAllSupplierEdits}
-              disabled={isSavingAll}
-              className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-bold text-primary-foreground shadow-sm transition hover:bg-(--primary-hover) disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {isSavingAll ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
-              {isSavingAll ? "Saving…" : "Save All Changes"}
-            </button>
-          </>
-        )}
-        <button
-          type="button"
-          onClick={active.refetch}
-          aria-label="Refresh"
-          title="Refresh"
-          className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-600 transition hover:bg-gray-50"
-        >
-          <RefreshCw className="h-3.5 w-3.5" />
-        </button>
-      </div>
       {saveError && (
         <p className="rounded-xl border border-red-200 bg-red-50 px-4 py-2.5 text-xs text-red-600">
           {saveError}
@@ -679,6 +566,101 @@ export function PriceCatalogTab() {
       )}
 
       <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
+        <div className="flex flex-wrap items-center justify-end gap-2 border-b border-gray-100 px-4 py-3">
+          {!isEditingAll && (
+            <>
+              <button
+                type="button"
+                onClick={toggleSelectAll}
+                disabled={selectableIds.length === 0 || isBulkDeleting}
+                className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-600 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {allSelected ? "Deselect All" : "Select All"}
+              </button>
+              {subTab === "supplier" && (
+                <button
+                  type="button"
+                  onClick={startEditingAll}
+                  disabled={supplierRows.length === 0 || isBulkDeleting || isSavingAll}
+                  aria-label="Edit"
+                  title="Edit"
+                  className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-600 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <Pencil className="h-3.5 w-3.5" />
+                </button>
+              )}
+              {confirmingBulkDelete && (
+                <button
+                  type="button"
+                  onClick={() => setConfirmingBulkDelete(false)}
+                  className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-600 transition hover:bg-gray-50"
+                >
+                  Cancel
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={handleDeleteToolbar}
+                disabled={selectedIds.size === 0 || isBulkDeleting}
+                aria-label={
+                  isBulkDeleting
+                    ? "Deleting…"
+                    : confirmingBulkDelete
+                      ? `Confirm delete ${selectedIds.size}`
+                      : selectedIds.size > 0
+                        ? `Delete selected (${selectedIds.size})`
+                        : "Select records to delete"
+                }
+                title={
+                  isBulkDeleting
+                    ? "Deleting…"
+                    : confirmingBulkDelete
+                      ? `Confirm delete ${selectedIds.size}`
+                      : selectedIds.size > 0
+                        ? `Delete selected (${selectedIds.size})`
+                        : "Select records to delete"
+                }
+                className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-50 ${
+                  confirmingBulkDelete
+                    ? "border-red-200 bg-red-50 text-red-600 hover:bg-red-100"
+                    : "border-gray-200 bg-white text-gray-600 hover:bg-gray-50"
+                }`}
+              >
+                {isBulkDeleting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+              </button>
+            </>
+          )}
+          {isEditingAll && (
+            <>
+              <button
+                type="button"
+                onClick={cancelEditingAll}
+                disabled={isSavingAll}
+                className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-600 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Cancel Editing
+              </button>
+              <button
+                type="button"
+                onClick={saveAllSupplierEdits}
+                disabled={isSavingAll}
+                className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-bold text-primary-foreground shadow-sm transition hover:bg-(--primary-hover) disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {isSavingAll ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+                {isSavingAll ? "Saving…" : "Save All Changes"}
+              </button>
+            </>
+          )}
+          <button
+            type="button"
+            onClick={active.refetch}
+            aria-label="Refresh"
+            title="Refresh"
+            className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-600 transition hover:bg-gray-50"
+          >
+            <RefreshCw className="h-3.5 w-3.5" />
+          </button>
+        </div>
         <QueryState
           isLoading={active.isLoading}
           error={active.error}

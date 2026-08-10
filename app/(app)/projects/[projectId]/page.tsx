@@ -10,16 +10,8 @@ import { refreshQuotePrices, setAcceptedTier, useSavedProjects } from "@/lib/dev
 import type { SavedProjectRecord, SavedQuoteVersion } from "@/lib/dev/provisional/savedProjectsTypes";
 import type { ProvisionalTier } from "@/lib/dev/provisional/quotationBreakdownTypes";
 
-// PART D — PDF EXPORT ROADMAP (NOT BUILT — post-defense scope, depends on the real
-// derivation engine landing first). Two variants are planned once that's real:
-//   - INTERNAL: full transparency — markups, base prices, and the whole cost buildup
-//     visible, for the contractor's own records.
-//   - EXTERNAL: client-facing — markups and base prices hidden, totals only, suitable to
-//     actually hand to a client.
-// The natural seam is right here, next to "View Breakdown" on each tier card below — an
-// "Export PDF" action per tier, branching into those two variants. Do not build against
-// mock fixture data; a PDF implies "this is the real number," which these aren't yet.
 
+// 
 const TIER_META: Record<ProvisionalTier, { accent: string; headerBg: string; accentBg: string; badge: string }> = {
   Practical: { accent: "text-primary", headerBg: "bg-primary", accentBg: "bg-orange-50", badge: "Recommended" },
   Premium: { accent: "text-indigo-600", headerBg: "bg-indigo-600", accentBg: "bg-indigo-50", badge: "Best Quality" },
@@ -47,16 +39,12 @@ function QuoteSummaryCard({
   onToggleAccepted: () => void;
 }) {
   const meta = TIER_META[tier];
-  // Snapshot integrity — snapshot.result (== versions[0].result) is the ORIGINAL and is
-  // NEVER recomputed. "Refresh Prices" (Task 6, Part C) only ever appends a new entry to
-  // `versions`; nothing here calls computeTierResult/deriveMockItemLines directly.
   const snapshot = project.quotes[tier];
   const accepted = snapshot.is_selected === true;
   const versions = snapshot.versions;
   const latest = versions[versions.length - 1];
-  // Which version this card is currently DISPLAYING — defaults to the latest, but the
-  // contractor can browse older ones (including the original) via the picker below without
-  // that changing what's stored.
+
+  // 
   const [viewingVersionId, setViewingVersionId] = useState<string | null>(null);
   const displayed = versions.find((v) => v.version_id === viewingVersionId) ?? latest;
   const { result } = displayed;
@@ -107,7 +95,7 @@ function QuoteSummaryCard({
           Finalized {formatDateTime(snapshot.finalized_at)} · priced from {snapshot.pricelist_basis_at_finalize === "Uploaded" ? "Uploaded Pricelist" : "DPWH CMPD"}
         </p>
 
-        {/* Task 6, Part C — price-reference date + version history. The ORIGINAL is always
+        {/* Price-reference date + version history. The ORIGINAL is always
             reachable here; refreshing never removes it, only adds beside it. */}
         <div className="flex flex-col gap-2 rounded-xl border border-gray-100 bg-gray-50/60 p-3">
           <div className="flex items-center justify-between gap-2">
@@ -160,8 +148,7 @@ function QuoteSummaryCard({
             <RefreshCw className="h-3.5 w-3.5" /> Refresh Prices
           </button>
         </div>
-        {/* Part C — a flag the CONTRACTOR sets once the client has actually chosen; not a
-            workflow, no notifications, nothing client-facing. */}
+
         <button
           type="button"
           onClick={onToggleAccepted}
@@ -249,10 +236,8 @@ function ProjectDetailContent({ projectId }: { projectId: string }) {
 
       {breakdown &&
         (() => {
-          // Task 6, Part C — shows whichever VERSION the card had selected when "View
-          // Breakdown" was clicked (original or a refresh), not always versions[0]. Falls
-          // back to the latest if that version somehow no longer exists (defensive only —
-          // versions are append-only, so this shouldn't happen in practice).
+
+          // 
           const snapshot = project.quotes[breakdown.tier];
           const version = snapshot.versions.find((v) => v.version_id === breakdown.versionId) ?? snapshot.versions[snapshot.versions.length - 1];
           return (
@@ -265,7 +250,7 @@ function ProjectDetailContent({ projectId }: { projectId: string }) {
               result={version.result}
               pricelistBasis={snapshot.pricelist_basis_at_finalize}
               onClose={() => setBreakdown(null)}
-              // Task 7, Part B — same split-view Segment Breakdown preview the live wizard
+              // Same split-view Segment Breakdown preview the live wizard
               // shows, sourced from what was frozen at Finalize. null blueprintFloors
               // degrades gracefully to the segment list (see SegmentBreakdownTab).
               blueprintFloors={project.blueprintFloors}

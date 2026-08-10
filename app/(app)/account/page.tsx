@@ -304,9 +304,7 @@ function UserProfileSection() {
       <section className="flex flex-col gap-8">
         <LoadErrorBanner isLoading={isLoading} error={error} onRetry={refetch} />
 
-        {/* Header panel — soft gradient backdrop behind the avatar + name, the one
-            "considered" surface on the page; everything else sits on the plain
-            page background per the airier reference design. */}
+        {/* Header panel */}
         <div className="flex flex-col gap-6 rounded-3xl bg-gradient-to-br from-primary/5 via-white to-gray-50 p-8 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-5">
             {getLogoCandidates(companyForm.company_logo).length > 0 ? (
@@ -328,8 +326,7 @@ function UserProfileSection() {
           <EditButton onClick={() => setEditing(true)} />
         </div>
 
-        {/* Details grid — no bordered card, generous row spacing, label directly
-            above value. */}
+        {/* Details grid */}
         <dl className="grid grid-cols-1 gap-x-8 gap-y-8 px-2 sm:grid-cols-3">
           <ReadOnlyRow label="User Name" value={fullName || undefined} />
           <ReadOnlyRow label="User Email" value={userForm.email} />
@@ -758,8 +755,7 @@ function DeactivateAccountDialog({ open, onOpenChange }: { open: boolean; onOpen
   );
 }
 
-// Deliberately separated from the Save/Cancel controls above (own section, muted-red
-// "danger zone" styling) so it can't be clicked by accident while editing a profile.
+// Delete Account Section
 function DeactivateAccountSection() {
   const [dialogOpen, setDialogOpen] = useState(false);
 

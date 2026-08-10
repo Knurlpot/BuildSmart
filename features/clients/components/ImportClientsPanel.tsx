@@ -1,10 +1,5 @@
 "use client";
 
-// PART B (Task 6) — "My Clients" spreadsheet import. Same upload -> map -> review/confirm
-// discipline as features/pricelist/components/UploadPricelistTab.tsx (+ ColumnMappingStep +
-// RowReviewStep), collapsed into one file since a client row has far fewer fields than an
-// item/supplier pair. NO FABRICATION: a blank/unmapped cell stays `null` all the way through
-// to commit — see useClientImport.ts's header comment.
 import { useRef, useState } from "react";
 import { AlertTriangle, CheckCircle2, ChevronLeft, ChevronRight, File as FileIcon, Upload as UploadIcon, Users, X } from "lucide-react";
 import {

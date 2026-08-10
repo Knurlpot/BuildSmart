@@ -75,12 +75,12 @@ function normalizePhDigits(raw: string): string {
   return d.slice(0, PH_NATIONAL_NUMBER_LENGTH);
 }
 
-// "9171234567" -> "917 123 4567". Grouping is capped at 10 digits by normalizePhDigits
+// PH number format
 function formatPhNationalNumber(digits: string): string {
   return [digits.slice(0, 3), digits.slice(3, 6), digits.slice(6, 10)].filter(Boolean).join(" ");
 }
 
-// "9171234567" -> "+63 917 123 4567", for the submitted payload.
+// Added "+63" in PH format
 function formatPhDisplayNumber(digits: string): string {
   const national = formatPhNationalNumber(digits);
   return national ? `+63 ${national}` : "";
@@ -262,9 +262,7 @@ export default function SignUpPage() {
     const digits = normalizePhDigits(raw);
     const formatted = formatPhNationalNumber(digits);
 
-    // Walk the reformatted string to find where the same count of digits lands, so the
-    // cursor stays anchored to the digit the user was editing rather than snapping to
-    // the end (see the useLayoutEffect above for why this needs restoring at all).
+    // 
     let seen = 0;
     let newPos = formatted.length;
     if (digitsBeforeCursor === 0) {

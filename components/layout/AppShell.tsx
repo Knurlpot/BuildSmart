@@ -17,10 +17,7 @@ function AppShellBody({ children }: { children: React.ReactNode }) {
   );
 }
 
-// Bridges a deeply-nested workflow's registered step state (see
-// providers/WorkflowHeaderProvider.tsx) up to the layout-level Header, without every page in
-// between needing to know this exists. Pages that never call useWorkflowHeader() render
-// exactly as before — `workflow` just stays null and Header falls back to its normal props.
+// 
 export default function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <WorkflowHeaderProvider>
