@@ -1,6 +1,6 @@
 from datetime import date, datetime
 
-from sqlalchemy import Boolean, Date, TIMESTAMP, ForeignKey, Numeric, SmallInteger, String, Text, UniqueConstraint, func
+from sqlalchemy import Boolean, CheckConstraint, Date, TIMESTAMP, ForeignKey, Numeric, SmallInteger, String, Text, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
@@ -67,13 +67,39 @@ class HistoricalPriceRecord(Base):
     )
 
 
+class Client(Base):
+    __tablename__ = "client"
+
+    client_id: Mapped[int] = mapped_column(primary_key=True)
+    company_id: Mapped[int]
+    client_name: Mapped[str] = mapped_column(String(100))
+    contact_person: Mapped[str | None] = mapped_column(String(100))
+    contact_email: Mapped[str | None] = mapped_column(String(100))
+    contact_number: Mapped[str | None] = mapped_column(String(20))
+    client_address: Mapped[str | None] = mapped_column(String(255))
+    client_type: Mapped[str] = mapped_column(String(20), server_default="New")
+    default_downpayment_percentage: Mapped[float | None] = mapped_column(Numeric(5, 2))
+    notes: Mapped[str | None] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(20), server_default="Active")
+    created_at: Mapped[datetime] = mapped_column(TIMESTAMP, server_default=func.now())
+
+    __table_args__ = (
+        CheckConstraint("client_type IN ('New', 'Returning')", name="client_client_type_check"),
+        CheckConstraint(
+            "default_downpayment_percentage BETWEEN 0 AND 100",
+            name="client_default_downpayment_percentage_check",
+        ),
+        CheckConstraint("status IN ('Active', 'Inactive')", name="client_status_check"),
+    )
+
+
 class Quotation(Base):
     __tablename__ = "quotation"
 
     quote_id: Mapped[int] = mapped_column(primary_key=True)
     company_id: Mapped[int]
     user_id: Mapped[int]
-    client_id: Mapped[int | None]
+    client_id: Mapped[int | None] = mapped_column(ForeignKey("client.client_id"))
     project_name: Mapped[str] = mapped_column(String(150))
     project_location: Mapped[str] = mapped_column(String(255))
     project_region: Mapped[str] = mapped_column(String(30))

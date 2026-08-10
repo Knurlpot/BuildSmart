@@ -184,17 +184,17 @@ function QueueItemRow({ item }: { item: QueueItem }) {
             </p>
           ) : (
             <p className="text-xs text-green-700">
-              Processed {item.result.processed} — {item.result.needs_review} ready for review.
+              Processed {item.result.processed}. {item.result.needs_review} ready for review.
             </p>
           )
         )}
         {item.status === "needs_mapping" && (
           <p className="text-xs text-amber-600">
-            Couldn&apos;t auto-detect its columns — map them above to continue.
+            Couldn&apos;t detect the columns. Map them above to continue.
           </p>
         )}
         {item.status === "failed" && (
-          <p className="text-xs text-red-600">{item.failureReason || "Failed — check the backend logs."}</p>
+          <p className="text-xs text-red-600">{item.failureReason || "Failed. Check the backend logs."}</p>
         )}
       </div>
       <div className="mt-0.5 shrink-0">
@@ -514,7 +514,7 @@ export function AiNormalizationPanel({ companyId, onCatalogChanged }: AiNormaliz
     }
 
     if (rejected.length > 0) {
-      setFileTypeError(`Skipped unsupported file(s): ${rejected.join(", ")} — accepts CSV, XLSX, or PDF.`);
+      setFileTypeError(`Skipped unsupported file(s): ${rejected.join(", ")}. Accepted formats: CSV, XLSX, or PDF.`);
     } else {
       setFileTypeError(null);
     }
@@ -809,7 +809,7 @@ export function AiNormalizationPanel({ companyId, onCatalogChanged }: AiNormaliz
             )}
             <ColumnMappingStep
               title="Map Columns"
-              description={`"${mappingItem.file.name}" doesn't use column headers we recognize automatically — match each field to the right column using the preview above.`}
+              description={`"${mappingItem.file.name}" uses unrecognized headers. Match each field using the preview above.`}
               columns={mappingColumns}
               sections={[
                 {
@@ -1018,7 +1018,7 @@ export function AiNormalizationPanel({ companyId, onCatalogChanged }: AiNormaliz
               <div className="text-center">
                 <p className="text-sm font-semibold text-gray-700">Drag &amp; drop your pricelist here</p>
                 <p className="text-xs text-gray-400">
-                  or click to browse — select multiple files at once, queued and processed one at a time
+                  or click to browse. Files are queued and processed one at a time.
                 </p>
               </div>
               <div className="flex gap-1.5">

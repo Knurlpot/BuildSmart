@@ -86,7 +86,7 @@ function QuoteCard({ tier, result, onViewBreakdown }: { tier: ProvisionalTier; r
           <p className="text-2xl font-extrabold">{fmtPeso(result.grand_total)}</p>
           {unresolvedCount > 0 && (
             <p className="mt-1 text-[10px] font-semibold text-amber-200">
-              {unresolvedCount} line{unresolvedCount === 1 ? "" : "s"} missing a rate — resolve in Minor Revision
+              {unresolvedCount} line{unresolvedCount === 1 ? "" : "s"} missing a rate. Resolve in Minor Revision.
             </p>
           )}
         </div>
@@ -182,7 +182,7 @@ export function QuotationResultsStep({ client, quotation, segments, blueprintFlo
         <div>
           <h2 className="text-lg font-bold text-gray-900">Generated Quotations</h2>
           <p className="mt-0.5 text-sm text-gray-500">
-            Based on <span className="font-semibold text-gray-700">{includedSegments.length} segments · {totalArea.toFixed(1)} sqm · {floors} floor{floors === 1 ? "" : "s"}</span> —
+            Based on <span className="font-semibold text-gray-700">{includedSegments.length} segments · {totalArea.toFixed(1)} sqm · {floors} floor{floors === 1 ? "" : "s"}</span>.
             choose the plan that fits your budget.
           </p>
         </div>
@@ -257,7 +257,7 @@ export function QuotationResultsStep({ client, quotation, segments, blueprintFlo
           <DialogHeader>
             <DialogTitle>Return to segmentation?</DialogTitle>
             <DialogDescription>
-              This returns you to reviewing/confirming segments — for a blueprint quote, the SAME already-scanned
+              This returns you to reviewing and confirming segments. For a blueprint quote, the same already-scanned
               areas (no re-upload), for Quick Measurement your existing entries. Both quotation options generated
               here are discarded and regenerated once you continue.
             </DialogDescription>
@@ -289,7 +289,7 @@ export function QuotationResultsStep({ client, quotation, segments, blueprintFlo
           <DialogHeader>
             <DialogTitle>Finalize this quotation?</DialogTitle>
             <DialogDescription>
-              Both Practical and Premium are saved as a linked pair for this project — neither is marked as the
+              Practical and Premium are saved as a linked pair. Neither is marked as the
               client&apos;s choice yet (that happens later, from Open Projects). This is a mock save (Part 2 shell):
               no real pricing engine or backend persistence is wired yet.
             </DialogDescription>

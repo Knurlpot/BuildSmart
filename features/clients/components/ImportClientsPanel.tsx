@@ -85,7 +85,7 @@ function UploadStep({
         <UploadIcon className="h-8 w-8 text-gray-400" />
         <div className="text-center">
           <p className="text-sm font-semibold text-gray-700">Drag &amp; drop your client list here</p>
-          <p className="text-xs text-gray-400">or click to browse — CSV or XLSX</p>
+          <p className="text-xs text-gray-400">or click to browse (CSV or XLSX)</p>
         </div>
         <div className="flex gap-1.5">
           {["CSV", "XLSX"].map((f) => (
@@ -248,7 +248,7 @@ function ReviewStep({
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h3 className="text-base font-bold text-gray-900">Map &amp; Confirm</h3>
-          <p className="text-xs text-gray-500">Review each row before importing. Blank cells stay blank — nothing here is guessed.</p>
+          <p className="text-xs text-gray-500">Review each row before importing. Blank cells stay blank.</p>
         </div>
         <button
           type="button"
@@ -262,7 +262,7 @@ function ReviewStep({
       {overCap && (
         <div className="flex items-center gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
           <AlertTriangle className="h-4 w-4 shrink-0" />
-          This upload implies more than {CLIENT_IMPORT_SOFT_ROW_CAP.toLocaleString()} rows — large uploads should be chunked server-side.
+          This upload has more than {CLIENT_IMPORT_SOFT_ROW_CAP.toLocaleString()} rows. Large uploads should be split into smaller files.
         </div>
       )}
 

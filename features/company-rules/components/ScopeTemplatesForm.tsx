@@ -55,7 +55,6 @@ export function ScopeTemplatesForm({ focusRuleId, onFocusHandled }: ScopeTemplat
   const [categories, setCategories] = useState<CategoryType[]>([]);
   const [othersDescription, setOthersDescription] = useState("");
   const [touched, setTouched] = useState(false);
-  const [nameFocused, setNameFocused] = useState(false);
   const [savedMessage, setSavedMessage] = useState(false);
 
   // Runs once on mount only — this consumes the jump, it isn't meant to react to later
@@ -147,7 +146,7 @@ export function ScopeTemplatesForm({ focusRuleId, onFocusHandled }: ScopeTemplat
           </span>
         </div>
         <p className="text-xs text-gray-500">
-          *insert simple and short descripton
+          Save typical material categories as an optional reference.
         </p>
       </div>
 
@@ -164,7 +163,7 @@ export function ScopeTemplatesForm({ focusRuleId, onFocusHandled }: ScopeTemplat
           setMode("idle");
         }}
         onAdd={startAdd}
-        emptyHint="Optional — add one only if it's useful as a reference. Skip it entirely if every job you take is different."
+        emptyHint="Add an optional reference template."
         renderListItem={(t) => (
           <div className="flex flex-col gap-0.5">
             <span className="text-sm font-semibold text-gray-800">{t.template_name}</span>
@@ -188,31 +187,21 @@ export function ScopeTemplatesForm({ focusRuleId, onFocusHandled }: ScopeTemplat
                 <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
                   <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
                   <span>
-                    If this rule is used by existing quotations, saving will create a new
-                    version — those quotations keep their original values.
+                    Saving creates a new version for rules already in use.
                   </span>
                 </div>
               )}
 
               <div className="flex flex-col gap-1.5">
-                <div className="relative">
-                  <label
-                    className={`pointer-events-none absolute left-3 font-semibold transition-all ${
-                      nameFocused || name
-                        ? "top-1.5 text-[10px] text-gray-500"
-                        : "top-1/2 -translate-y-1/2 text-sm text-gray-400"
-                    }`}
-                  >
-                    Template Name <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    onFocus={() => setNameFocused(true)}
-                    onBlur={() => setNameFocused(false)}
-                    className={`${inputCls} pt-5`}
-                  />
-                </div>
+                <label className="text-xs font-semibold text-gray-600">
+                  Template Name <span className="text-red-500">*</span>
+                </label>
+                <input
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="e.g. Standard Roof Retrofit"
+                  className={inputCls}
+                />
                 {touched && !nameValid && <p className="text-xs text-red-500">Template name is required.</p>}
               </div>
 
@@ -228,7 +217,7 @@ export function ScopeTemplatesForm({ focusRuleId, onFocusHandled }: ScopeTemplat
                 </select>
                 {specializationOptions.length === 0 && (
                   <p className="text-xs text-gray-400">
-                    No specializations found on your company profile yet — add one under Account &amp; Company Profile.
+                    No specializations found on your company profile yet. Add one under Account &amp; Company Profile.
                   </p>
                 )}
                 {touched && !specializationValid && <p className="text-xs text-red-500">Select a specialization.</p>}
@@ -297,7 +286,7 @@ export function ScopeTemplatesForm({ focusRuleId, onFocusHandled }: ScopeTemplat
                 <div className="flex items-center gap-2 rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-xs text-green-700">
                   <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
                   {editable.supersededNotice
-                    ? "A new version of this rule was created — the previous version is preserved for existing quotations."
+                    ? "A new version of this rule was created. The previous version is preserved for existing quotations."
                     : "Company preferences updated successfully."}
                 </div>
               )}

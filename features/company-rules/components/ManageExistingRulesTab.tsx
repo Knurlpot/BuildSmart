@@ -21,7 +21,9 @@ function StatusBadge({ status }: { status: ExistingRuleSummary["status"] }) {
 }
 
 interface ManageExistingRulesTabProps {
- onOpenRule: (rule: ExistingRuleSummary) => void;
+  /** Part C — clicking a row (anywhere but the Disable button) jumps to that rule's
+   * owning tab with the rule pre-selected, instead of leaving the user to hunt for it. */
+  onOpenRule: (rule: ExistingRuleSummary) => void;
 }
 
 export function ManageExistingRulesTab({ onOpenRule }: ManageExistingRulesTabProps) {
@@ -108,7 +110,7 @@ export function ManageExistingRulesTab({ onOpenRule }: ManageExistingRulesTabPro
       <div>
         <h2 className="text-base font-bold text-gray-900">Manage Existing Rules</h2>
         <p className="text-xs text-gray-500">
-          *insert short and simple desc
+          Open, edit, or disable saved rules.
         </p>
       </div>
 

@@ -21,7 +21,7 @@ function EditableCell({
   return (
     <input
       value={value}
-      placeholder={placeholder ?? "Missing — fill in"}
+      placeholder={placeholder ?? "Missing. Fill in"}
       onChange={(e) => onChange(e.target.value)}
       className={cellInputCls}
     />
@@ -127,7 +127,7 @@ export function SupplierReviewTable({ rows, onUpdateRow }: SupplierReviewTablePr
                       onChange={(e) => onUpdateRow(row.row_key, { supplier_type: e.target.value as ExtractedSupplierRow["supplier_type"] })}
                       className="rounded-md border border-amber-300 bg-amber-50 px-1.5 py-0.5 text-xs outline-none"
                     >
-                      <option value="">Missing — select</option>
+                      <option value="">Missing. Select a value</option>
                       {SUPPLIER_TYPES.map((t) => (
                         <option key={t} value={t}>
                           {t}

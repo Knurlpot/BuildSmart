@@ -355,7 +355,7 @@ export function PublishedSourceTab({
               </select>
             ) : (
               <div className="flex items-center rounded-xl border border-dashed border-gray-200 bg-gray-50 px-3 py-2.5 text-sm text-gray-400">
-                NCR only — PSA publishes no other region
+                NCR only. PSA publishes no other region.
               </div>
             )}
           </div>
@@ -412,7 +412,7 @@ export function PublishedSourceTab({
               status={dpwhVersionResult.status}
               releaseLabel={dpwhVersionResult.release_label}
               upToDateNote="You have the latest DPWH-CMPD release ({release})."
-              newAvailableNote="A new DPWH-CMPD report has been published ({release}) — review and assess the significant deviations below."
+              newAvailableNote="A new DPWH-CMPD report is available ({release}). Review the significant deviations below."
             />
           )}
 
@@ -593,7 +593,7 @@ export function PublishedSourceTab({
               status={psaVersionResult.status}
               releaseLabel={psaVersionResult.release_label}
               upToDateNote="You have the latest PSA indices ({release})."
-              newAvailableNote="A new PSA index has been published ({release}) — the market view below reflects it."
+              newAvailableNote="A new PSA index is available ({release}). The market view below reflects it."
             />
           )}
 
@@ -602,11 +602,11 @@ export function PublishedSourceTab({
               <div className="flex items-center gap-2">
                 <Landmark className="h-4 w-4 text-indigo-500" />
                 <p className="text-xs font-bold uppercase tracking-wider text-indigo-500">
-                  PSA Market Index (NCR) — Analytics Only
+                  PSA Market Index (NCR): Analytics Only
                 </p>
               </div>
               <p className="text-xs text-indigo-400">
-                Index numbers, base-year referenced — not peso prices. This is market context
+                Base-year index numbers, not peso prices. This is market context
                 to read, not something to approve: nothing here is written to your catalog.
               </p>
               <QueryState

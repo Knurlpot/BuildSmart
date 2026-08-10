@@ -125,7 +125,7 @@ function SegmentConfigForm({ segment, onSave }: SegmentConfigFormProps) {
           className={`${inputCls} resize-none`}
         />
         <p className="text-[11px] text-gray-400">
-          Descriptive only — nothing here derives a surcharge. Pricing adjustments for site
+          Descriptive only. Nothing here derives a surcharge. Pricing adjustments for site
           conditions happen later, when the estimator sets the rate.
         </p>
       </div>
@@ -201,7 +201,7 @@ function ApplyToAllPanel({ segmentCount, onApply }: ApplyToAllPanelProps) {
         </button>
       </div>
       <p className="text-xs text-gray-500">
-        Set a value once and apply it everywhere — handy when a job has many similar areas.
+        Set a value once and apply it to every segment.
         You can still open any segment afterward and change just that one.
       </p>
 
@@ -343,7 +343,7 @@ export function ConfigureSegmentsStep({ quoteId, segments, onChange, onSaved, on
         <div>
           <h2 className="text-base font-bold text-gray-900">Configure Each Segment</h2>
           <p className="text-xs text-gray-500">
-            {configuredCount} of {includedSegments.length} included segments configured — a
+            {configuredCount} of {includedSegments.length} included segments configured. A
             treatment type is required on every INCLUDED segment before you can continue.
             Excluded segments are shown but never block this.
           </p>

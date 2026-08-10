@@ -9,13 +9,19 @@ export default function DashboardPage() {
       <div className="flex items-center gap-4 rounded-2xl bg-linear-to-r from-primary to-(--primary-hover) p-6 text-white shadow-md">
         <Zap className="h-10 w-10 shrink-0 opacity-90" />
         <div className="flex-1">
-          <p className="text-lg font-bold">Setup complete!</p>
-          <p className="text-sm opacity-80">Generate your project quotation!</p>
+          <p className="text-lg font-bold">Setup complete. All features are now unlocked.</p>
+          <p className="text-sm opacity-80">Ready to generate your first quotation? Upload a blueprint or use quick measurement to get started.</p>
         </div>
+        <Link
+          href="/quotations"
+          className="flex items-center gap-2 rounded-xl bg-white px-5 py-2.5 text-sm font-bold text-primary hover:bg-orange-50"
+        >
+          Start Now <ChevronRight className="h-4 w-4" />
+        </Link>
       </div>
 
       <p className="mb-3 mt-6 text-xs font-bold uppercase tracking-wider text-gray-400">
-        Select Function
+        Select Main Function
       </p>
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {NAV_ITEMS.map((item) => {

@@ -57,7 +57,7 @@ export function RowReviewStep({
           <h2 className="text-base font-bold text-gray-900">Map &amp; Confirm</h2>
           <p className="text-xs text-gray-500">
             Review each row, fill in anything missing, then approve. Already-filled cells are
-            read-only — you&apos;re confirming, not re-editing.
+            read-only. Confirm the values before continuing.
           </p>
         </div>
         <button
@@ -72,7 +72,7 @@ export function RowReviewStep({
       {overCap && (
         <div className="flex items-center gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
           <AlertTriangle className="h-4 w-4 shrink-0" />
-          This upload implies more than {SOFT_ROW_CAP.toLocaleString()} rows — large uploads
+          This upload has more than {SOFT_ROW_CAP.toLocaleString()} rows. Large uploads
           should be chunked server-side. Review the sample below before approving.
         </div>
       )}

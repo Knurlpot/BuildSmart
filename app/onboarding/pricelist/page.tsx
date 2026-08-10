@@ -33,7 +33,7 @@ export default function OnboardingPricelistPage() {
         </div>
         <p className="text-sm text-gray-600">
           Every quotation BuildSmart generates is priced against your pricelist. Upload or
-          configure your regional pricelist baseline now — this is required before you can
+          configure your regional pricelist baseline now. This is required before you can
           generate quotations.
         </p>
         <Link

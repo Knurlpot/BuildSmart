@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, type InputHTMLAttributes, type ReactNode } from "react";
+import { useEffect, useState } from "react";
 import { AlertTriangle, CheckCircle2, Pencil, X } from "lucide-react";
 import { RuleListDetailPanel } from "./RuleListDetailPanel";
 import { useUnitRules, useCheckRuleUsage, stagingId } from "@/lib/dev/provisional/useCompanyRulesProvisional";
@@ -12,48 +12,6 @@ import { CATEGORY_TYPES, type CategoryType } from "@/types/entities/category";
 
 const inputCls =
   "w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm outline-none transition focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/20";
-
-interface FloatingInputProps extends Omit<InputHTMLAttributes<HTMLInputElement>, "className" | "value"> {
-  label: ReactNode;
-  value: string | number;
-  inputClassName?: string;
-  rightAdornment?: ReactNode;
-}
-
-function FloatingInput({ label, value, inputClassName = "", rightAdornment, onFocus, onBlur, ...props }: FloatingInputProps) {
-  const [focused, setFocused] = useState(false);
-  const floated = focused || value !== "";
-
-  return (
-    <div className="relative">
-      <label
-        className={`pointer-events-none absolute left-3 font-semibold transition-all ${
-          floated ? "top-1.5 text-[10px] text-gray-500" : "top-1/2 -translate-y-1/2 text-sm text-gray-400"
-        }`}
-      >
-        {label}
-      </label>
-      <input
-        {...props}
-        value={value}
-        onFocus={(e) => {
-          setFocused(true);
-          onFocus?.(e);
-        }}
-        onBlur={(e) => {
-          setFocused(false);
-          onBlur?.(e);
-        }}
-        className={`${inputCls} pt-5 ${rightAdornment ? "pr-8" : ""} ${inputClassName}`}
-      />
-      {rightAdornment && (
-        <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400">
-          {rightAdornment}
-        </span>
-      )}
-    </div>
-  );
-}
 
 interface UnitRulesFormProps {
   focusRuleId?: string | null;
@@ -67,6 +25,8 @@ export function UnitRulesForm({ focusRuleId, onFocusHandled }: UnitRulesFormProp
   const { items, isLoading: itemsLoading, itemsInCategory } = useItemsCatalog();
   const allRules = editable.applyOverrides([...editable.localExtra, ...rules]);
 
+  // Part C — seeded from the prop at construction, not synced via effect: a jump always
+  // remounts this component fresh (see ScopeTemplatesForm for the full reasoning).
   const [selectedId, setSelectedId] = useState<string | null>(focusRuleId ?? null);
   const [mode, setMode] = useState<"idle" | "add" | "edit">("idle");
   const [targetKind, setTargetKind] = useState<UnitRuleTargetKind>("category");
@@ -168,7 +128,7 @@ export function UnitRulesForm({ focusRuleId, onFocusHandled }: UnitRulesFormProp
       <div>
         <h2 className="text-base font-bold text-gray-900">Unit Rules</h2>
         <p className="text-xs text-gray-500">
-          *insert short and simple desc
+          Set unit conversions and wastage allowances.
         </p>
       </div>
 
@@ -189,7 +149,7 @@ export function UnitRulesForm({ focusRuleId, onFocusHandled }: UnitRulesFormProp
         renderListItem={(r) => (
           <div className="flex flex-col gap-0.5">
             <span className="text-sm font-semibold text-gray-800">{r.item_name ?? r.category}</span>
-            <span className="text-xs text-gray-400">{r.item_name ? `Item override — ${r.category ?? ""}` : "Category default"}</span>
+            <span className="text-xs text-gray-400">{r.item_name ? `Item override: ${r.category ?? ""}` : "Category default"}</span>
             <span className="text-[10px] text-gray-400">{r.wastage_allowance_percentage}% wastage</span>
           </div>
         )}
@@ -207,8 +167,7 @@ export function UnitRulesForm({ focusRuleId, onFocusHandled }: UnitRulesFormProp
                 <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
                   <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
                   <span>
-                    If this rule is used by existing quotations, saving will create a new
-                    version — existing quotations keep their original values.
+                    Saving creates a new version for rules already in use.
                   </span>
                 </div>
               )}
@@ -241,7 +200,7 @@ export function UnitRulesForm({ focusRuleId, onFocusHandled }: UnitRulesFormProp
                 </div>
                 <p className="text-[11px] text-gray-400">
                   An item-level rule overrides its category&apos;s rule. Example: a 10% wastage
-                  rule on all Finishing materials, with one high-end finish set to 5% — that
+                  rule on all Finishing materials, with one high-end finish set to 5%. That
                   item uses 5%, everything else in the category still uses 10%.
                 </p>
               </div>
@@ -275,7 +234,7 @@ export function UnitRulesForm({ focusRuleId, onFocusHandled }: UnitRulesFormProp
                   {itemsLoading ? (
                     <p className="text-xs text-gray-400">Loading catalog…</p>
                   ) : items.length === 0 ? (
-                    <p className="text-xs text-amber-600">No items in your catalog yet — upload a pricelist first.</p>
+                    <p className="text-xs text-amber-600">No items in your catalog yet. Upload a pricelist first.</p>
                   ) : (
                     <>
                       <input
@@ -302,36 +261,37 @@ export function UnitRulesForm({ focusRuleId, onFocusHandled }: UnitRulesFormProp
               )}
 
               <div className="flex flex-col gap-1.5">
-                <FloatingInput
-                  label={
-                    <>
-                      Conversion Factor <span className="text-red-500">*</span>
-                    </>
-                  }
+                <label className="text-xs font-semibold text-gray-600">
+                  Conversion Factor <span className="text-red-500">*</span>
+                </label>
+                <input
                   type="number"
                   min={0}
                   step="0.01"
                   value={conversionFactor}
                   onChange={(e) => setConversionFactor(e.target.value === "" ? "" : Number(e.target.value))}
+                  placeholder="Factor value"
+                  className={inputCls}
                 />
                 {touched && !factorValid && <p className="text-xs text-red-500">Must be greater than 0.</p>}
               </div>
 
               <div className="flex flex-col gap-1.5">
-                <FloatingInput
-                  label={
-                    <>
-                      Wastage Allowance <span className="text-red-500">*</span>
-                    </>
-                  }
-                  type="number"
-                  min={0}
-                  max={100}
-                  step="0.1"
-                  value={wastage}
-                  onChange={(e) => setWastage(e.target.value === "" ? "" : Number(e.target.value))}
-                  rightAdornment="%"
-                />
+                <label className="text-xs font-semibold text-gray-600">
+                  Wastage Allowance <span className="text-red-500">*</span>
+                </label>
+                <div className="relative">
+                  <input
+                    type="number"
+                    min={0}
+                    max={100}
+                    step="0.1"
+                    value={wastage}
+                    onChange={(e) => setWastage(e.target.value === "" ? "" : Number(e.target.value))}
+                    className={`${inputCls} pr-8`}
+                  />
+                  <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400">%</span>
+                </div>
                 {touched && !wastageValid && <p className="text-xs text-red-500">Enter a value between 0 and 100.</p>}
               </div>
 
@@ -357,7 +317,7 @@ export function UnitRulesForm({ focusRuleId, onFocusHandled }: UnitRulesFormProp
                 <div className="flex items-center gap-2 rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-xs text-green-700">
                   <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
                   {editable.supersededNotice
-                    ? "A new version of this rule was created — the previous version is preserved for existing quotations."
+                    ? "A new version of this rule was created. The previous version is preserved for existing quotations."
                     : "Company preferences updated successfully."}
                 </div>
               )}

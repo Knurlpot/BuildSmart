@@ -23,6 +23,8 @@ interface SliderPercentFieldProps {
   warn?: (n: number) => string | null;
 }
 
+// Part F: slider + numeric input (spinners are terrible for percentages), plus a soft
+// warning (never blocking) against Philippine norms where a range was actually given.
 function SliderPercentField({ label, value, onChange, touched, warn }: SliderPercentFieldProps) {
   const valid = value !== "" && isPercent(Number(value));
   const warning = valid && warn ? warn(Number(value)) : null;
@@ -76,6 +78,8 @@ export function PricingStrategyForm({ focusRuleId, onFocusHandled }: PricingStra
   const editable = useEditableRuleList<PricingStrategyRule>({ checkUsage, update, supersede, idPrefix: "ps" });
   const allStrategies = editable.applyOverrides([...editable.localExtra, ...strategies]);
 
+  // Part C — seeded from the prop at construction, not synced via effect: a jump always
+  // remounts this component fresh (see ScopeTemplatesForm for the full reasoning).
   const [selectedId, setSelectedId] = useState<string | null>(focusRuleId ?? null);
   const [mode, setMode] = useState<"idle" | "add" | "edit">("idle");
   const [tier, setTier] = useState<QuotationTier | "">("");
@@ -83,6 +87,9 @@ export function PricingStrategyForm({ focusRuleId, onFocusHandled }: PricingStra
   const [contingency, setContingency] = useState<number | "">("");
   const [overhead, setOverhead] = useState<number | "">("");
   const [profitMargin, setProfitMargin] = useState<number | "">("");
+  // Part F: VAT toggle + revealed field — same progressive-disclosure pattern as the
+  // SignUp specialization fields. OFF submits 0 (no on/off column exists in the schema —
+  // see companyRulesTypes.ts).
   const [vatEnabled, setVatEnabled] = useState(false);
   const [vatPercentage, setVatPercentage] = useState<number | "">(12);
   const [touched, setTouched] = useState(false);
@@ -101,6 +108,9 @@ export function PricingStrategyForm({ focusRuleId, onFocusHandled }: PricingStra
   const vatValid = !vatEnabled || (vatPercentage !== "" && isPercent(Number(vatPercentage)));
   const formValid = tierValid && markupValid && contingencyValid && overheadValid && profitValid && vatValid;
 
+  // Part F: one ACTIVE strategy per tier — not a hard tier-count cap. Excludes the rule
+  // currently being edited so re-saving the same strategy under its own tier isn't a
+  // false conflict.
   const conflictingActive =
     tier !== ""
       ? allStrategies.find((s) => s.quotation_tier === tier && s.is_active && s.rule_id !== (mode === "edit" ? selectedId : null))
@@ -185,7 +195,7 @@ export function PricingStrategyForm({ focusRuleId, onFocusHandled }: PricingStra
       <div>
         <h2 className="text-base font-bold text-gray-900">Pricing Strategy</h2>
         <p className="text-xs text-gray-500">
-          *insert short and simple desc
+          Set pricing percentages for each quotation tier.
         </p>
       </div>
 
@@ -225,8 +235,7 @@ export function PricingStrategyForm({ focusRuleId, onFocusHandled }: PricingStra
                 <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
                   <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
                   <span>
-                    If this strategy is used by existing quotations, saving will create a
-                    new version — those quotations keep their original pricing.
+                    Saving creates a new version for strategies already in use.
                   </span>
                 </div>
               )}
@@ -299,10 +308,7 @@ export function PricingStrategyForm({ focusRuleId, onFocusHandled }: PricingStra
                   <SliderPercentField label="VAT Rate" value={vatPercentage} onChange={setVatPercentage} touched={touched} warn={warnVat} />
                 )}
                 <p className="text-[11px] text-gray-400">
-                  VAT is added as a separate line at the bottom of the quotation — it is
-                  never folded into the per-sqm price. Whether VAT is actually applied to a
-                  given quote is a separate, per-quotation decision — some clients decline
-                  VAT because they don&apos;t require an official receipt.
+                  VAT appears as a separate quotation line and is applied per quote.
                 </p>
               </div>
 
@@ -328,7 +334,7 @@ export function PricingStrategyForm({ focusRuleId, onFocusHandled }: PricingStra
                 <div className="flex items-center gap-2 rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-xs text-green-700">
                   <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
                   {editable.supersededNotice
-                    ? "A new version of this strategy was created — the previous version is preserved for existing quotations."
+                    ? "A new version of this strategy was created. The previous version is preserved for existing quotations."
                     : "Company preferences updated successfully."}
                 </div>
               )}

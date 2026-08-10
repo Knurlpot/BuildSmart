@@ -110,7 +110,7 @@ function SupplierPicker({ line, onSelect }: { line: ProvisionalItemLine; onSelec
       {open && (
         <div className="absolute left-0 top-full z-50 mt-1 w-72 rounded-xl border border-gray-200 bg-white shadow-xl">
           <div className="border-b border-gray-100 px-3 py-2">
-            <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Compare by price — {line.quantity.toFixed(1)} {line.unit} needed</p>
+            <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Compare prices for {line.quantity.toFixed(1)} {line.unit}</p>
           </div>
           {line.supplier_options.map((sup) => {
             const isSel = sup.supplier_id === line.selected_supplier_id;
@@ -144,7 +144,7 @@ function MissingRuleRow({ line, onResolve }: { line: ProvisionalItemLine; onReso
     <div className="flex flex-col gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3">
       <p className="flex items-start gap-1.5 text-xs font-semibold text-amber-700">
         <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-        No rate on file for &quot;{line.item_name}&quot; ({line.segment_name}) — enter a unit price to continue.
+        No rate on file for &quot;{line.item_name}&quot; ({line.segment_name}). Enter a unit price to continue.
         Nothing is guessed on your behalf.
       </p>
       <div className="flex flex-wrap items-center gap-2">
@@ -175,7 +175,7 @@ function MissingRuleRow({ line, onResolve }: { line: ProvisionalItemLine; onReso
       </div>
       {saveAsRule && (
         <p className="text-[11px] text-amber-600">
-          Mock only — no company_rule row is actually created yet. This previews the pattern the real save flow
+          Mock only. No company_rule row is created yet. This previews the pattern the real save flow
           will use once rule creation is wired.
         </p>
       )}
@@ -205,7 +205,7 @@ export function MinorRevisionPanel({ tier, originalItems, items, onItemsChange, 
       <DialogContent className="flex h-[92vh] w-[97vw] max-w-400 sm:max-w-400 flex-col p-0" showCloseButton={false}>
         <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-gray-200 bg-gray-50 px-6 py-4">
           <div>
-            <h2 className="text-base font-bold text-gray-900">Minor Revision — {tier}</h2>
+            <h2 className="text-base font-bold text-gray-900">Minor Revision: {tier}</h2>
             <p className="text-xs text-gray-500">Edit materials, quantities, prices, and suppliers without restarting the process.</p>
           </div>
           <div className="flex items-center gap-3">

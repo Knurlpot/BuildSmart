@@ -36,7 +36,7 @@ export function QuickUploadGuide() {
         </div>
         <p className="text-xs leading-relaxed text-gray-500">
           Each file is queued and processed on its own. The backend auto-detects the material
-          name, unit, and price columns — if it can&apos;t, you&apos;ll be asked to map them by
+          name, unit, and price columns. If it cannot, you&apos;ll be asked to map them by
           hand. Every row is then matched against your existing catalog: confident matches save
           immediately, and anything uncertain lands in Pending Review below for you to confirm,
           correct, or reject.

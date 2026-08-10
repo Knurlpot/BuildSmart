@@ -32,8 +32,7 @@ export default function OnboardingPreferencesPage() {
           <SlidersHorizontal className="h-7 w-7 text-[#4f46e5]" />
         </div>
         <p className="text-sm text-gray-600">
-          Configure your company&apos;s rules and pricing standards — material preferences,
-          labor rates, and pricing strategies — so every quotation applies your markups and
+          Configure material preferences, labor rates, and pricing strategies so every quotation applies your markups and
           supplier preferences correctly.
         </p>
         <Link

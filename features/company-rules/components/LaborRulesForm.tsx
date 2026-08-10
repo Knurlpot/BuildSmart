@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, type InputHTMLAttributes, type ReactNode } from "react";
+import { useEffect, useState } from "react";
 import { AlertTriangle, CheckCircle2, Pencil, X } from "lucide-react";
 import { RuleListDetailPanel } from "./RuleListDetailPanel";
 import {
@@ -16,48 +16,6 @@ import { PH_REGIONS, type PhRegion } from "@/types/entities/common";
 
 const inputCls =
   "w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm outline-none transition focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/20";
-
-interface FloatingInputProps extends Omit<InputHTMLAttributes<HTMLInputElement>, "className" | "value"> {
-  label: ReactNode;
-  value: string | number;
-  inputClassName?: string;
-  rightAdornment?: ReactNode;
-}
-
-function FloatingInput({ label, value, inputClassName = "", rightAdornment, onFocus, onBlur, ...props }: FloatingInputProps) {
-  const [focused, setFocused] = useState(false);
-  const floated = focused || value !== "";
-
-  return (
-    <div className="relative">
-      <label
-        className={`pointer-events-none absolute left-3 font-semibold transition-all ${
-          floated ? "top-1.5 text-[10px] text-gray-500" : "top-1/2 -translate-y-1/2 text-sm text-gray-400"
-        }`}
-      >
-        {label}
-      </label>
-      <input
-        {...props}
-        value={value}
-        onFocus={(e) => {
-          setFocused(true);
-          onFocus?.(e);
-        }}
-        onBlur={(e) => {
-          setFocused(false);
-          onBlur?.(e);
-        }}
-        className={`${inputCls} pt-5 ${rightAdornment ? "pr-8" : ""} ${inputClassName}`}
-      />
-      {rightAdornment && (
-        <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400">
-          {rightAdornment}
-        </span>
-      )}
-    </div>
-  );
-}
 
 function fmt(n: number) {
   return "₱" + n.toLocaleString("en-PH", { minimumFractionDigits: 2 });
@@ -84,8 +42,14 @@ export function LaborRulesForm({ focusRuleId, onFocusHandled }: LaborRulesFormPr
   const { options: laborTradeOptions } = useLaborTradeOptions();
   const allRules = editable.applyOverrides([...editable.localExtra, ...rules]);
 
+  // seeded from the prop at construction, not synced via effect: a jump always remounts
+  // this component fresh (see ScopeTemplatesForm for the full reasoning).
   const [selectedId, setSelectedId] = useState<string | null>(focusRuleId ?? null);
   const [mode, setMode] = useState<"idle" | "add" | "edit">("idle");
+  // v6 Correction 1: THREE scopes, not two — a specialty subcontractor keys on the
+  // TREATMENT they're applying (one crew, one region); a general contractor keys on TRADE
+  // (+ optional region). Exactly one of the three is ever set (matches the schema's
+  // chk_rule_labor_scope CHECK).
   const [scope, setScope] = useState<LaborRuleScope>("Treatment");
   const [treatmentType, setTreatmentType] = useState("");
   const [region, setRegion] = useState<PhRegion | "">("");
@@ -98,6 +62,7 @@ export function LaborRulesForm({ focusRuleId, onFocusHandled }: LaborRulesFormPr
 
   useEffect(() => {
     if (focusRuleId) onFocusHandled?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const treatmentValid = scope !== "Treatment" || isNonEmpty(treatmentType);
@@ -186,14 +151,14 @@ export function LaborRulesForm({ focusRuleId, onFocusHandled }: LaborRulesFormPr
       ? `e.g. a ₱${Number(rate).toLocaleString()}${rateUnit(scope)} base becomes ₱${Math.round(
           Number(rate) * (1 + Number(rushMultiplier) / 100)
         ).toLocaleString()}${rateUnit(scope)} when the job is rushed.`
-      : "Extra charged when a job is rushed — e.g. 25% means a ₱500/sqm base becomes ₱625/sqm.";
+      : "Extra charged when a job is rushed. For example, 25% means a ₱500/sqm base becomes ₱625/sqm.";
 
   return (
     <div className="flex flex-col gap-4">
       <div>
         <h2 className="text-base font-bold text-gray-900">Labor Rules</h2>
         <p className="text-xs text-gray-500">
-          *insert short and simple desc
+          Set labor rates and an optional rush charge.
         </p>
       </div>
 
@@ -245,8 +210,7 @@ export function LaborRulesForm({ focusRuleId, onFocusHandled }: LaborRulesFormPr
                 <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
                   <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
                   <span>
-                    If this rule is used by existing quotations, saving will create a new
-                    version — those quotations keep their original rate.
+                    Saving creates a new version for rules already in use.
                   </span>
                 </div>
               )}
@@ -290,24 +254,24 @@ export function LaborRulesForm({ focusRuleId, onFocusHandled }: LaborRulesFormPr
                 </div>
                 <p className="text-[11px] text-gray-400">
                   {scope === "Treatment" &&
-                    "For a specialty subcontractor — the rate varies by which system you're applying (e.g. cementitious vs elastomeric), not by region or trade."}
+                    "Set rates by treatment system."}
                   {scope === "Trade" &&
-                    "For a general contractor — the rate varies by trade, optionally by region."}
+                    "Set rates by trade and optional region."}
                   {scope === "General" &&
-                    "Applies to everything else. A treatment or trade rule always takes precedence over this when one matches."}
+                    "Fallback rate when no treatment or trade rule matches."}
                 </p>
               </div>
 
               {scope === "Treatment" && (
                 <div className="flex flex-col gap-1.5">
-                  <FloatingInput
-                    label={
-                      <>
-                        Treatment Type <span className="text-red-500">*</span>
-                      </>
-                    }
+                  <label className="text-xs font-semibold text-gray-600">
+                    Treatment Type <span className="text-red-500">*</span>
+                  </label>
+                  <input
                     value={treatmentType}
                     onChange={(e) => setTreatmentType(e.target.value)}
+                    placeholder="e.g. Cementitious Waterproofing"
+                    className={inputCls}
                   />
                   {touched && !treatmentValid && <p className="text-xs text-red-500">Treatment type is required.</p>}
                 </div>
@@ -343,52 +307,50 @@ export function LaborRulesForm({ focusRuleId, onFocusHandled }: LaborRulesFormPr
 
               <div className="grid grid-cols-2 gap-4">
                 <div className="flex flex-col gap-1.5">
-                  <FloatingInput
-                    label={
-                      <>
-                        Labor Rate <span className="text-red-500">*</span>
-                      </>
-                    }
+                  <label className="text-xs font-semibold text-gray-600">
+                    Labor Rate (₱{rateUnit(scope) || ", unit depends on how you bill"}) <span className="text-red-500">*</span>
+                  </label>
+                  <input
                     type="number"
                     min={0}
                     value={rate}
                     onChange={(e) => setRate(e.target.value === "" ? "" : Number(e.target.value))}
+                    className={inputCls}
                   />
                   {touched && !rateValid && <p className="text-xs text-red-500">Must be greater than 0.</p>}
                 </div>
                 <div className="flex flex-col gap-1.5">
-                  <FloatingInput
-                    label={
-                      <>
-                        Productivity Index{" "}
-                        <span className="font-normal normal-case text-gray-400">(optional)</span>
-                      </>
-                    }
+                  <label className="text-xs font-semibold text-gray-600">
+                    Productivity Index <span className="font-normal normal-case text-gray-400">(optional)</span>
+                  </label>
+                  <input
                     type="number"
                     step="0.01"
                     min={0}
                     value={productivity}
                     onChange={(e) => setProductivity(e.target.value === "" ? "" : Number(e.target.value))}
+                    className={inputCls}
                   />
                   {touched && !productivityValid && <p className="text-xs text-red-500">Must be greater than 0.</p>}
                 </div>
               </div>
 
               <div className="flex flex-col gap-1.5">
-                <FloatingInput
-                  label={
-                    <>
-                      Rush Multiplier <span className="font-normal normal-case text-gray-400">(optional)</span>
-                    </>
-                  }
-                  type="number"
-                  min={0}
-                  max={100}
-                  step="0.1"
-                  value={rushMultiplier}
-                  onChange={(e) => setRushMultiplier(e.target.value === "" ? "" : Number(e.target.value))}
-                  rightAdornment="%"
-                />
+                <label className="text-xs font-semibold text-gray-600">
+                  Rush Multiplier <span className="font-normal normal-case text-gray-400">(optional)</span>
+                </label>
+                <div className="relative">
+                  <input
+                    type="number"
+                    min={0}
+                    max={100}
+                    step="0.1"
+                    value={rushMultiplier}
+                    onChange={(e) => setRushMultiplier(e.target.value === "" ? "" : Number(e.target.value))}
+                    className={`${inputCls} pr-8`}
+                  />
+                  <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400">%</span>
+                </div>
                 {touched && !rushValid && <p className="text-xs text-red-500">Enter a value between 0 and 100.</p>}
                 <p className="text-[11px] text-gray-400">{rushPreview}</p>
               </div>
@@ -415,7 +377,7 @@ export function LaborRulesForm({ focusRuleId, onFocusHandled }: LaborRulesFormPr
                 <div className="flex items-center gap-2 rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-xs text-green-700">
                   <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
                   {editable.supersededNotice
-                    ? "A new version of this rule was created — the previous version is preserved for existing quotations."
+                    ? "A new version of this rule was created. The previous version is preserved for existing quotations."
                     : "Company preferences updated successfully."}
                 </div>
               )}

@@ -13,6 +13,10 @@ export interface BlueprintFloor {
   segments: ExtractedSegment[];
 }
 
+export interface BlueprintExtractionResult {
+  floors: BlueprintFloor[];
+}
+
 export const TREATMENT_TYPES = [
   'Waterproofing',
   'Plastering',

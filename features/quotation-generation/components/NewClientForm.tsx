@@ -91,7 +91,7 @@ export function NewClientForm({ draft, onChange, onCreate, onCancel, isCreating,
             className="w-full truncate bg-transparent text-sm font-bold text-white outline-none placeholder:font-normal placeholder:text-white/45"
             autoFocus
           />
-          <p className="mt-0.5 text-[10px] text-white/50">First-time client — no history on file yet.</p>
+          <p className="mt-0.5 text-[10px] text-white/50">First-time client. No history on file yet.</p>
         </div>
       </div>
 

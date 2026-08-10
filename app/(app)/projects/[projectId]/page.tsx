@@ -70,7 +70,7 @@ function QuoteSummaryCard({
           </div>
         </div>
         <div className="mt-3 border-t border-white/20 pt-3">
-          <p className="text-[10px] uppercase tracking-widest opacity-70">Total (incl. VAT) — {isOriginal ? "as finalized" : `${versionLabel(displayed)}`}</p>
+          <p className="text-[10px] uppercase tracking-widest opacity-70">Total (incl. VAT): {isOriginal ? "as finalized" : `${versionLabel(displayed)}`}</p>
           <p className="text-2xl font-extrabold">{fmtPeso(result.grand_total)}</p>
         </div>
       </div>
@@ -124,7 +124,7 @@ function QuoteSummaryCard({
           )}
           {!isOriginal && (
             <p className="text-[10px] text-gray-400">
-              Original as finalized on {formatDateTime(snapshot.finalized_at)} is preserved and always viewable above — refreshing never overwrites it.
+              The version finalized on {formatDateTime(snapshot.finalized_at)} is preserved. Refreshing never overwrites it.
             </p>
           )}
         </div>
@@ -142,7 +142,7 @@ function QuoteSummaryCard({
           <button
             type="button"
             onClick={handleRefresh}
-            title={isViewingLatest ? "Create a new re-priced version — the original stays untouched" : "Refresh from the latest version"}
+            title={isViewingLatest ? "Create a new re-priced version. The original stays untouched." : "Refresh from the latest version"}
             className="flex shrink-0 items-center justify-center gap-1.5 rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-xs font-bold text-gray-600 transition hover:border-primary hover:text-primary"
           >
             <RefreshCw className="h-3.5 w-3.5" /> Refresh Prices
@@ -156,7 +156,7 @@ function QuoteSummaryCard({
             accepted ? "border-green-300 bg-green-50 text-green-700 hover:bg-green-100" : "border-gray-200 bg-white text-gray-500 hover:border-primary hover:text-primary"
           }`}
         >
-          <CheckCircle2 className="h-3.5 w-3.5" /> {accepted ? "Accepted — click to unmark" : "Mark as Accepted"}
+          <CheckCircle2 className="h-3.5 w-3.5" /> {accepted ? "Accepted. Click to unmark" : "Mark as Accepted"}
         </button>
       </div>
     </div>

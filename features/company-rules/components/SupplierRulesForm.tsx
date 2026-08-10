@@ -6,15 +6,7 @@
 // doesn't reuse useEditableRuleList/RuleEnvelope the way the other five CPRM forms do (no
 // superseded_by_rule_id column on the real table). Reuses RuleListDetailPanel (fully
 // generic, no changes needed) for the shared list+detail layout.
-import {
-  type Dispatch,
-  type InputHTMLAttributes,
-  type KeyboardEvent,
-  type ReactNode,
-  type SetStateAction,
-  useEffect,
-  useState,
-} from "react";
+import { type Dispatch, type KeyboardEvent, type SetStateAction, useEffect, useState } from "react";
 import { AlertTriangle, CheckCircle2, Info, Pencil, X, XCircle } from "lucide-react";
 import { RuleListDetailPanel } from "./RuleListDetailPanel";
 import { useSupplierRules } from "@/lib/dev/provisional/useCompanyRulesProvisional";
@@ -24,63 +16,6 @@ import { SUPPLIER_RULE_TYPES, type SupplierRuleEntry, type SupplierRuleType } fr
 
 const inputCls =
   "w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm outline-none transition focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/20";
-
-interface FloatingInputProps extends Omit<InputHTMLAttributes<HTMLInputElement>, "className" | "value"> {
-  label: ReactNode;
-  value: string | number;
-  inputClassName?: string;
-  leftAdornment?: ReactNode;
-  rightAdornment?: ReactNode;
-}
-
-function FloatingInput({
-  label,
-  value,
-  inputClassName = "",
-  leftAdornment,
-  rightAdornment,
-  onFocus,
-  onBlur,
-  ...props
-}: FloatingInputProps) {
-  const [focused, setFocused] = useState(false);
-  const floated = focused || value !== "";
-
-  return (
-    <div className="relative">
-      <label
-        className={`pointer-events-none absolute font-semibold transition-all ${
-          leftAdornment ? "left-7" : "left-3"
-        } ${floated ? "top-1.5 text-[10px] text-gray-500" : "top-1/2 -translate-y-1/2 text-sm text-gray-400"}`}
-      >
-        {label}
-      </label>
-      {leftAdornment && (
-        <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-gray-500">
-          {leftAdornment}
-        </span>
-      )}
-      <input
-        {...props}
-        value={value}
-        onFocus={(e) => {
-          setFocused(true);
-          onFocus?.(e);
-        }}
-        onBlur={(e) => {
-          setFocused(false);
-          onBlur?.(e);
-        }}
-        className={`${inputCls} pt-5 ${leftAdornment ? "pl-7" : ""} ${rightAdornment ? "pr-8" : ""} ${inputClassName}`}
-      />
-      {rightAdornment && (
-        <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-sm text-gray-500">
-          {rightAdornment}
-        </span>
-      )}
-    </div>
-  );
-}
 
 // Local formatter, same convention LaborRulesForm.tsx already uses — feature-local rather
 // than importing quotation-generation's fmtPeso, keeping the two features decoupled.
@@ -177,7 +112,7 @@ function ruleSummary(r: SupplierRuleEntry): string {
     if (r.fixed_discount_amount !== null) return `${fmtPeso(r.fixed_discount_amount)} negotiated discount`;
     return "Negotiated price";
   }
-  return "Preferred supplier — no discount terms";
+  return "Preferred supplier with no discount terms";
 }
 
 function supplierRuleRecordKey(r: SupplierRuleEntry): string {
@@ -249,8 +184,6 @@ export function SupplierRulesForm({ focusRuleId, onFocusHandled }: SupplierRules
   const [fixedAmount, setFixedAmount] = useState("");
   const [effectiveDate, setEffectiveDate] = useState(todayIso());
   const [expirationDate, setExpirationDate] = useState("");
-  const [effectiveDateFocused, setEffectiveDateFocused] = useState(false);
-  const [expirationDateFocused, setExpirationDateFocused] = useState(false);
   const [isActive, setIsActive] = useState(true);
   const [touched, setTouched] = useState(false);
   const [savedMessage, setSavedMessage] = useState(false);
@@ -314,7 +247,10 @@ export function SupplierRulesForm({ focusRuleId, onFocusHandled }: SupplierRules
   const expirationValid = expirationDate === "" || expirationDate >= effectiveDate;
   const formValid = supplierValid && ruleTypeValid && minimumOrderValid && discountValid && effectiveValid && expirationValid;
 
-  // 
+  // The currently-selected supplier stays in the dropdown even if it's since gone
+  // Inactive (editing an old rule shouldn't render a blank/invalid picker) — new rules
+  // otherwise only offer Active suppliers, since negotiating fresh terms with an inactive
+  // one doesn't make sense.
   const supplierOptions = [
     ...suppliers.filter((s) => s.status === "Active"),
     ...suppliers.filter((s) => s.status !== "Active" && s.supplier_id === supplierId),
@@ -381,10 +317,10 @@ export function SupplierRulesForm({ focusRuleId, onFocusHandled }: SupplierRules
   const header = (
     <div>
       <h2 className="text-base font-bold text-gray-900">Supplier Rules</h2>
-      <p className="text-xs text-gray-500">*insert short and simple desc</p>
+      <p className="text-xs text-gray-500">Set supplier discounts, minimum orders, and preferred status.</p>
       <p className="mt-1.5 flex items-start gap-1.5 text-[11px] text-gray-400">
         <Info className="mt-0.5 h-3 w-3 shrink-0" />
-        *insert short and simple desc
+        Automatic application to quotations is not yet supported.
       </p>
     </div>
   );
@@ -398,7 +334,7 @@ export function SupplierRulesForm({ focusRuleId, onFocusHandled }: SupplierRules
         <div className="flex flex-col items-center justify-center gap-2 rounded-2xl border border-gray-200 bg-white p-16 text-center">
           <p className="text-sm font-bold text-gray-700">Add suppliers first</p>
           <p className="max-w-sm text-sm text-gray-400">
-            Supplier Rules captures negotiated terms per supplier — there are no suppliers on file yet to attach a rule to.
+            Add a supplier before creating rules.
           </p>
         </div>
       </div>
@@ -476,6 +412,30 @@ export function SupplierRulesForm({ focusRuleId, onFocusHandled }: SupplierRules
 
               {(ruleType !== "" && usesMinimumOrder(ruleType)) || (ruleType !== "" && usesDiscountFields(ruleType)) ? (
                 <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-2">
+                  {ruleType !== "" && usesMinimumOrder(ruleType) && (
+                    <div className="flex flex-col gap-2">
+                      <div className="flex min-h-8 items-center">
+                        <label className="text-xs font-semibold text-gray-600">
+                          {ruleType === "Minimum Order" ? "Minimum Order Amount" : "Order Threshold"} (₱) <span className="text-red-500">*</span>
+                        </label>
+                      </div>
+                      <div className="relative">
+                        <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-gray-500">₱</span>
+                        <input
+                          type="text"
+                          inputMode="numeric"
+                          value={minimumOrder}
+                          onFocus={(e) => moveCaretBeforeDecimals(e.currentTarget)}
+                          onKeyDown={(e) => handlePesoKeyDown(e, minimumOrder, setMinimumOrder)}
+                          onChange={(e) => setMinimumOrder(formatPesoInputFromDigits(e.target.value))}
+                          placeholder="500,000.00"
+                          className={`${inputCls} pl-7`}
+                        />
+                      </div>
+                      {touched && !minimumOrderValid && <p className="text-xs text-red-500">Enter a positive amount.</p>}
+                    </div>
+                  )}
+
                   {ruleType !== "" && usesDiscountFields(ruleType) && (
                     <div className="flex flex-col gap-2">
                       <div className="flex min-h-8 flex-wrap items-center gap-2">
@@ -496,51 +456,35 @@ export function SupplierRulesForm({ focusRuleId, onFocusHandled }: SupplierRules
                         </div>
                       </div>
                       {discountKind === "percentage" ? (
-                        <FloatingInput
-                          label="Discount"
-                          type="text"
-                          inputMode="decimal"
-                          value={percentageRate}
-                          onChange={(e) => setPercentageRate(e.target.value.replace(/[^\d.]/g, ""))}
-                          rightAdornment="%"
-                        />
+                        <div className="relative">
+                          <input
+                            type="text"
+                            inputMode="decimal"
+                            value={percentageRate}
+                            onChange={(e) => setPercentageRate(e.target.value.replace(/[^\d.]/g, ""))}
+                            placeholder="5"
+                            className={`${inputCls} pr-8`}
+                          />
+                          <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-sm text-gray-500">%</span>
+                        </div>
                       ) : (
-                        <FloatingInput
-                          label="Discount"
-                          type="text"
-                          inputMode="numeric"
-                          value={fixedAmount}
-                          onFocus={(e) => moveCaretBeforeDecimals(e.currentTarget)}
-                          onKeyDown={(e) => handlePesoKeyDown(e, fixedAmount, setFixedAmount)}
-                          onChange={(e) => setFixedAmount(formatPesoInputFromDigits(e.target.value))}
-                          leftAdornment="₱"
-                        />
+                        <div className="relative">
+                          <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-gray-500">₱</span>
+                          <input
+                            type="text"
+                            inputMode="numeric"
+                            value={fixedAmount}
+                            onFocus={(e) => moveCaretBeforeDecimals(e.currentTarget)}
+                            onKeyDown={(e) => handlePesoKeyDown(e, fixedAmount, setFixedAmount)}
+                            onChange={(e) => setFixedAmount(formatPesoInputFromDigits(e.target.value))}
+                            placeholder="15,000.00"
+                            className={`${inputCls} pl-7`}
+                          />
+                        </div>
                       )}
                       {touched && !discountValid && (
                         <p className="text-xs text-red-500">{discountKind === "percentage" ? "Enter a percentage between 0 and 100." : "Enter a positive amount."}</p>
                       )}
-                    </div>
-                  )}
-
-                  {ruleType !== "" && usesMinimumOrder(ruleType) && (
-                    <div className="flex flex-col gap-2">
-                      <div className="h-[34px]" />
-                      <FloatingInput
-                        label={
-                          <>
-                            {ruleType === "Minimum Order" ? "Minimum Order Amount" : "Order Threshold"}{" "}
-                            <span className="text-red-500">*</span>
-                          </>
-                        }
-                        type="text"
-                        inputMode="numeric"
-                        value={minimumOrder}
-                        onFocus={(e) => moveCaretBeforeDecimals(e.currentTarget)}
-                        onKeyDown={(e) => handlePesoKeyDown(e, minimumOrder, setMinimumOrder)}
-                        onChange={(e) => setMinimumOrder(formatPesoInputFromDigits(e.target.value))}
-                        leftAdornment="₱"
-                      />
-                      {touched && !minimumOrderValid && <p className="text-xs text-red-500">Enter a positive amount.</p>}
                     </div>
                   )}
                 </div>
@@ -548,38 +492,22 @@ export function SupplierRulesForm({ focusRuleId, onFocusHandled }: SupplierRules
 
               {ruleType === "Preferred Supplier" && (
                 <p className="rounded-lg border border-gray-100 bg-gray-50/60 px-3 py-2 text-xs text-gray-500">
-                  Preferred Supplier has no amount fields — it designates the supplier as preferred with no discount terms attached.
+                  Marks this supplier as preferred without a discount.
                 </p>
               )}
 
               <div className="grid grid-cols-2 gap-4">
                 <div className="flex flex-col gap-1.5">
-                  <FloatingInput
-                    label={
-                      <>
-                        Effective Date <span className="text-red-500">*</span>
-                      </>
-                    }
-                    type={effectiveDateFocused || effectiveDate ? "date" : "text"}
-                    value={effectiveDate}
-                    onFocus={() => setEffectiveDateFocused(true)}
-                    onBlur={() => setEffectiveDateFocused(false)}
-                    onChange={(e) => setEffectiveDate(e.target.value)}
-                  />
+                  <label className="text-xs font-semibold text-gray-600">
+                    Effective Date <span className="text-red-500">*</span>
+                  </label>
+                  <input type="date" value={effectiveDate} onChange={(e) => setEffectiveDate(e.target.value)} className={inputCls} />
                 </div>
                 <div className="flex flex-col gap-1.5">
-                  <FloatingInput
-                    label={
-                      <>
-                        Expiration Date <span className="text-[10px] font-medium text-gray-400">(optional)</span>
-                      </>
-                    }
-                    type={expirationDateFocused || expirationDate ? "date" : "text"}
-                    value={expirationDate}
-                    onFocus={() => setExpirationDateFocused(true)}
-                    onBlur={() => setExpirationDateFocused(false)}
-                    onChange={(e) => setExpirationDate(e.target.value)}
-                  />
+                  <label className="text-xs font-semibold text-gray-600">
+                    Expiration Date <span className="text-[10px] font-medium text-gray-400">(optional)</span>
+                  </label>
+                  <input type="date" value={expirationDate} onChange={(e) => setExpirationDate(e.target.value)} className={inputCls} />
                   {touched && !expirationValid && <p className="text-xs text-red-500">Expiration can&apos;t be before the effective date.</p>}
                 </div>
               </div>

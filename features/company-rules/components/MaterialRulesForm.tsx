@@ -21,9 +21,6 @@ import type { Items } from "@/types/entities/items";
 const inputCls =
   "w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm outline-none transition focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/20";
 
-const compactInputCls =
-  "rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm outline-none transition focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/20";
-
 const MATERIAL_PRIORITY_SOURCES: PriceSource[] = ["Supplier", "DPWH"];
 
 interface ItemConfig {
@@ -44,11 +41,22 @@ interface MaterialRulesFormProps {
 // organizing structure of the list itself (see RuleListDetailPanel below, same
 // select+detail pattern every other rule type already uses).
 export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRulesFormProps) {
-  const { rules, isLoading, error, refetch, save, update, supersede } = useMaterialRules();
+  const {
+    rules,
+    isLoading,
+    error,
+    refetch,
+    save,
+    update,
+    supersede,
+    isSaving: isCreating,
+    saveError: createError,
+    resetSave: resetCreate,
+  } = useMaterialRules();
   const { checkUsage } = useCheckRuleUsage();
   const editable = useEditableRuleList<MaterialRuleEntry>({ checkUsage, update, supersede, idPrefix: "mr" });
   const { items, isLoading: itemsLoading, error: itemsError } = useItemsCatalog();
-  const { categories } = useCategories();
+  const { categories, isLoading: categoriesLoading, error: categoriesError } = useCategories();
   const { currentUser } = useAuth();
   const companyId =
     typeof currentUser?.companyId === "number"
@@ -144,6 +152,7 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
   };
 
   const startAdd = () => {
+    resetCreate();
     setMode("browse");
     setSelectedId(null);
     setSearch("");
@@ -179,7 +188,9 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
     const cfg = perItemConfig[code];
     return !!cfg && cfg.priority !== null && cfg.fallback !== "";
   };
-  const allConfigValid = checkedItems.length > 0 && checkedItems.every((i) => configValid(String(i.item_code)));
+  const allConfigValid =
+    checkedItems.length > 0 &&
+    checkedItems.every((i) => categoryTypeOf(i) !== undefined && configValid(String(i.item_code)));
 
   const handleSaveAll = async () => {
     setTouched(true);
@@ -188,7 +199,7 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
       for (const item of checkedItems) {
         const code = String(item.item_code);
         const category = categoryTypeOf(item);
-        if (!category) continue; // shouldn't happen — every catalog item has a resolvable category
+        if (!category) throw new Error(`Could not resolve the category for ${item.item_name}.`);
         const cfg = perItemConfig[code];
         if (!cfg.priority) continue;
         const payload = {
@@ -242,7 +253,7 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
       <div>
         <h2 className="text-base font-bold text-gray-900">Material Rules</h2>
         <p className="text-xs text-gray-500">
-          *insert simple and short descripton
+          Set each material&apos;s source priority and fallback.
         </p>
       </div>
 
@@ -285,14 +296,14 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
                   <input
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
-                    placeholder="Search materials..."
+                    placeholder="Search the catalog…"
                     className={`${inputCls} pl-9`}
                   />
                 </div>
                 <select
                   value={categoryFilter}
                   onChange={(e) => setCategoryFilter(e.target.value as CategoryType | "")}
-                  className={`${compactInputCls} w-56 shrink-0`}
+                  className={`${inputCls} w-44 shrink-0`}
                 >
                   <option value="">All categories</option>
                   {CATEGORY_TYPES.map((c) => (
@@ -306,7 +317,7 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
               ) : itemsError ? (
                 <p className="text-xs text-red-500">Couldn&apos;t load your catalog: {itemsError.message}</p>
               ) : items.length === 0 ? (
-                <p className="text-xs text-amber-600">No items in your catalog yet — upload a pricelist first.</p>
+                <p className="text-xs text-amber-600">No items in your catalog yet. Upload a pricelist first.</p>
               ) : filteredItems.length === 0 ? (
                 <p className="text-xs text-gray-400">No catalog items match that search.</p>
               ) : (
@@ -336,12 +347,19 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
 
               <button
                 type="button"
-                disabled={checkedItems.length === 0 || !sourcePriorityReady}
+                disabled={checkedItems.length === 0 || categoriesLoading || !!categoriesError || !sourcePriorityReady}
                 onClick={goToConfigure}
                 className="w-fit rounded-xl bg-primary px-5 py-2.5 text-sm font-bold text-primary-foreground shadow-sm transition hover:bg-(--primary-hover) disabled:opacity-60"
               >
-                {!sourcePriorityReady ? "Loading source priority..." : `Continue with ${checkedItems.length} selected`}
+                {categoriesLoading
+                  ? "Loading categories..."
+                  : !sourcePriorityReady
+                    ? "Loading source priority..."
+                    : `Continue with ${checkedItems.length} selected`}
               </button>
+              {categoriesError && (
+                <p className="text-xs text-red-500">Couldn&apos;t load material categories: {categoriesError.message}</p>
+              )}
             </div>
           ) : mode === "configure" ? (
             <div className="flex flex-col gap-3">
@@ -415,9 +433,9 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
                 })}
               </div>
 
-              {editable.saveError && (
+              {createError && (
                 <div className="flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
-                  <AlertTriangle className="h-3.5 w-3.5 shrink-0" /> Couldn&apos;t save: {editable.saveError.message}
+                  <AlertTriangle className="h-3.5 w-3.5 shrink-0" /> Couldn&apos;t save: {createError.message}
                 </div>
               )}
 
@@ -432,10 +450,10 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
                 <button
                   type="button"
                   onClick={handleSaveAll}
-                  disabled={editable.isSaving}
+                  disabled={isCreating}
                   className="flex flex-2 items-center justify-center rounded-xl bg-primary px-5 py-2.5 text-sm font-bold text-primary-foreground shadow-sm transition hover:bg-(--primary-hover) disabled:opacity-60"
                 >
-                  {editable.isSaving ? "Saving…" : `Save ${checkedItems.length} Material Rule${checkedItems.length === 1 ? "" : "s"}`}
+                  {isCreating ? "Saving…" : `Save ${checkedItems.length} Material Rule${checkedItems.length === 1 ? "" : "s"}`}
                 </button>
               </div>
             </div>
@@ -451,8 +469,7 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
               <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
                 <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
                 <span>
-                  If this rule is used by existing quotations, saving will create a new
-                  version — those quotations keep their original values.
+                  Saving creates a new version for rules already in use.
                 </span>
               </div>
 
@@ -521,7 +538,7 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
                 <div className="flex items-center gap-2 rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-xs text-green-700">
                   <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
                   {editable.supersededNotice
-                    ? "A new version of this rule was created — the previous version is preserved for existing quotations."
+                    ? "A new version of this rule was created. The previous version is preserved for existing quotations."
                     : "Company preferences updated successfully."}
                 </div>
               )}

@@ -65,6 +65,16 @@ function sourceToCompanyRuleSource(source: PriceSource) {
   return "Government";
 }
 
+function materialFallbackToCompanyRuleFallback(fallback: unknown) {
+  if (fallback === "Use next priority material") return "Nearest";
+  if (fallback === "Use cheapest available") return "Lowest Equivalent";
+  return "Manual";
+}
+
+function quotationTierToStrategyType(tier: unknown) {
+  return tier === "Premium" ? "Premium" : "Practical";
+}
+
 async function categoryId(client: PoolClient, category: CategoryType | null) {
   if (!category) return null;
   const result = await client.query<{ category_id: number }>(
@@ -322,7 +332,7 @@ export async function createRule(companyId: number, kind: RuleKindParam, body: R
           body.category,
           JSON.stringify({ preferred_item_code: body.preferred_item_code, priority_source: source }),
           sourceToCompanyRuleSource(source),
-          body.fallback_rule,
+          materialFallbackToCompanyRuleFallback(body.fallback_rule),
         ]
       );
       await client.query(
@@ -364,7 +374,7 @@ export async function createRule(companyId: number, kind: RuleKindParam, body: R
           companyId,
           `${body.quotation_tier} Pricing Strategy`,
           JSON.stringify({ vat_percentage: body.vat_percentage }),
-          body.quotation_tier,
+          quotationTierToStrategyType(body.quotation_tier),
         ]
       );
       await client.query(

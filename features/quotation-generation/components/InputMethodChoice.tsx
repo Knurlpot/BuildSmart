@@ -19,7 +19,7 @@ export function InputMethodChoice({ onChoose, onBack }: InputMethodChoiceProps) 
       <DialogContent className="sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>How do you want to add areas?</DialogTitle>
-          <DialogDescription>Both paths end up in the same place — validated, configured segments.</DialogDescription>
+          <DialogDescription>Both paths produce validated, configured segments.</DialogDescription>
         </DialogHeader>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <button
@@ -42,7 +42,7 @@ export function InputMethodChoice({ onChoose, onBack }: InputMethodChoiceProps) 
             <div>
               <p className="text-sm font-bold text-gray-900">Quick Measurement</p>
               <p className="text-xs text-gray-500">
-                Fast and simple — you type in the areas you already measured on-site yourself.
+                Enter areas you already measured on-site.
               </p>
             </div>
           </button>

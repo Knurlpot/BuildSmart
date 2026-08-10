@@ -39,7 +39,7 @@ function EditableCell({
   return (
     <input
       type={type}
-      placeholder={placeholder ?? "Missing — fill in"}
+      placeholder={placeholder ?? "Missing. Fill in"}
       value={value}
       onChange={(e) => onChange(e.target.value)}
       className={cellInputCls}
