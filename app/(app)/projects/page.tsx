@@ -7,11 +7,30 @@ import type { ColumnDef } from "@tanstack/react-table";
 import { Plus, Search } from "lucide-react";
 import { RequireOnboardingStep } from "@/components/auth/RequireOnboardingStep";
 import { DataTable } from "@/components/data-table/DataTable";
+import { QueryState } from "@/components/feedback/QueryState";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useRouter } from "next/navigation";
+import { useFetch } from "@/hooks/useFetch";
 import { useSavedProjects } from "@/lib/dev/provisional/savedProjectsStore";
 import type { SavedProjectRecord } from "@/lib/dev/provisional/savedProjectsTypes";
 import { MyClientsTab } from "@/features/clients/components/MyClientsTab";
+import type { Quotation } from "@/types/entities";
+
+interface ProjectListQuotation extends Quotation {
+  client_name: string | null;
+}
+
+interface OpenProjectRow {
+  id: string;
+  quote_id: number;
+  client_name: string;
+  project_name: string;
+  project_location: string;
+  project_region: string;
+  status: Quotation["status"];
+  created_at: string;
+  savedProject: SavedProjectRecord | null;
+}
 
 function formatDate(iso: string) {
   const d = new Date(iso);
@@ -19,7 +38,7 @@ function formatDate(iso: string) {
   return d.toLocaleDateString("en-PH", { month: "short", day: "numeric", year: "numeric" });
 }
 
-function StatusBadge({ status }: { status: SavedProjectRecord["status"] }) {
+function StatusBadge({ status }: { status: OpenProjectRow["status"] }) {
   return (
     <span className={`rounded-full px-2.5 py-0.5 text-[11px] font-bold ${status === "Final" ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-600"}`}>
       {status}
@@ -28,7 +47,8 @@ function StatusBadge({ status }: { status: SavedProjectRecord["status"] }) {
 }
 
 // 
-function AcceptedBadge({ project }: { project: SavedProjectRecord }) {
+function AcceptedBadge({ project }: { project: SavedProjectRecord | null }) {
+  if (!project) return <span className="text-xs text-gray-400">Not yet chosen</span>;
   if (project.quotes.Practical.is_selected) {
     return <span className="rounded-full bg-orange-50 px-2.5 py-0.5 text-[11px] font-bold text-primary">Practical accepted</span>;
   }
@@ -40,16 +60,62 @@ function AcceptedBadge({ project }: { project: SavedProjectRecord }) {
 
 function OpenProjectsContent() {
   const router = useRouter();
-  const projects = useSavedProjects();
+  const savedProjects = useSavedProjects();
+  const { data: quotations, isLoading, error, refetch } = useFetch<ProjectListQuotation[]>("/api/quotations");
   const [search, setSearch] = useState("");
+
+  const rows = useMemo<OpenProjectRow[]>(() => {
+    const savedByProject = new Map(
+      savedProjects.map((project) => [
+        [
+          project.client_id,
+          project.project_name,
+          project.project_location,
+          project.project_region,
+        ].join("\u0000"),
+        project,
+      ])
+    );
+
+    return (quotations ?? []).map((quote) => {
+      const clientName = quote.client_name ?? "No client";
+      const savedProject =
+        quote.client_id == null
+          ? null
+          : savedByProject.get(
+              [
+                quote.client_id,
+                quote.project_name,
+                quote.project_location,
+                quote.project_region,
+              ].join("\u0000")
+            ) ?? null;
+
+      return {
+        id: `quote-${quote.quote_id}`,
+        quote_id: quote.quote_id,
+        client_name: clientName,
+        project_name: quote.project_name,
+        project_location: quote.project_location,
+        project_region: quote.project_region,
+        status: quote.status,
+        created_at: quote.created_at,
+        savedProject,
+      };
+    });
+  }, [quotations, savedProjects]);
 
   const filteredRows = useMemo(() => {
     const q = search.trim().toLowerCase();
-    if (!q) return projects;
-    return projects.filter((p) => p.project_name.toLowerCase().includes(q) || p.client_name.toLowerCase().includes(q) || p.project_location.toLowerCase().includes(q));
-  }, [projects, search]);
+    if (!q) return rows;
+    return rows.filter((p) => p.project_name.toLowerCase().includes(q) || p.client_name.toLowerCase().includes(q) || p.project_location.toLowerCase().includes(q));
+  }, [rows, search]);
 
-  const columns = useMemo<ColumnDef<SavedProjectRecord>[]>(
+  const openRow = (row: OpenProjectRow) => {
+    router.push(row.savedProject ? `/projects/${row.savedProject.project_id}` : `/quotations/${row.quote_id}`);
+  };
+
+  const columns = useMemo<ColumnDef<OpenProjectRow>[]>(
     () => [
       { accessorKey: "client_name", header: "Client" },
       { accessorKey: "project_name", header: "Project Name" },
@@ -64,7 +130,7 @@ function OpenProjectsContent() {
         id: "accepted",
         header: "Accepted Tier",
         enableGlobalFilter: false,
-        cell: ({ row }) => <AcceptedBadge project={row.original} />,
+        cell: ({ row }) => <AcceptedBadge project={row.original.savedProject} />,
       },
       {
         accessorKey: "created_at",
@@ -78,7 +144,7 @@ function OpenProjectsContent() {
         enableGlobalFilter: false,
         cell: ({ row }) => (
           <Link
-            href={`/projects/${row.original.project_id}`}
+            href={row.original.savedProject ? `/projects/${row.original.savedProject.project_id}` : `/quotations/${row.original.quote_id}`}
             onClick={(e) => e.stopPropagation()}
             className="rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-xs font-medium text-gray-600 transition hover:border-primary hover:text-primary"
           >
@@ -94,7 +160,7 @@ function OpenProjectsContent() {
     <div className="flex flex-col gap-5">
       <div className="flex shrink-0 flex-wrap items-center justify-between gap-3">
         <p className="text-sm text-gray-500">
-          {filteredRows.length} of {projects.length} saved project{projects.length !== 1 ? "s" : ""}
+          {filteredRows.length} of {rows.length} project{rows.length !== 1 ? "s" : ""}
         </p>
         <button
           type="button"
@@ -118,20 +184,15 @@ function OpenProjectsContent() {
       </div>
 
       <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
-        {projects.length === 0 ? (
-          <div className="flex flex-col items-center gap-2 px-6 py-16 text-center">
-            <p className="text-sm font-semibold text-gray-500">No saved projects yet</p>
-            <p className="text-xs text-gray-400">Projects appear automatically once a quotation is generated and finalized.</p>
-          </div>
-        ) : (
+        <QueryState isLoading={isLoading} error={error} isEmpty={rows.length === 0} onRetry={refetch} emptyTitle="No projects yet" minHeight={180}>
           <DataTable
             columns={columns}
             data={filteredRows}
             globalFilter={search}
             initialSorting={[{ id: "created_at", desc: true }]}
-            onRowClick={(row) => router.push(`/projects/${row.project_id}`)}
+            onRowClick={openRow}
           />
-        )}
+        </QueryState>
       </div>
     </div>
   );
