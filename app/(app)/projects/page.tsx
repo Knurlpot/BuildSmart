@@ -2,9 +2,9 @@
 
 // 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { ColumnDef } from "@tanstack/react-table";
-import { Plus, Search } from "lucide-react";
+import { Eye, Plus, Search } from "lucide-react";
 import { RequireOnboardingStep } from "@/components/auth/RequireOnboardingStep";
 import { DataTable } from "@/components/data-table/DataTable";
 import { QueryState } from "@/components/feedback/QueryState";
@@ -15,6 +15,7 @@ import { useSavedProjects } from "@/lib/dev/provisional/savedProjectsStore";
 import type { SavedProjectRecord } from "@/lib/dev/provisional/savedProjectsTypes";
 import { MyClientsTab } from "@/features/clients/components/MyClientsTab";
 import type { Quotation } from "@/types/entities";
+import { PH_REGIONS } from "@/types/entities/common";
 
 interface ProjectListQuotation extends Quotation {
   client_name: string | null;
@@ -58,11 +59,16 @@ function AcceptedBadge({ project }: { project: SavedProjectRecord | null }) {
   return <span className="text-xs text-gray-400">Not yet chosen</span>;
 }
 
-function OpenProjectsContent() {
+interface OpenProjectsContentProps {
+  onMetaChange: (meta: { filteredCount: number; totalCount: number; onCreateNew: () => void }) => void;
+}
+
+function OpenProjectsContent({ onMetaChange }: OpenProjectsContentProps) {
   const router = useRouter();
   const savedProjects = useSavedProjects();
   const { data: quotations, isLoading, error, refetch } = useFetch<ProjectListQuotation[]>("/api/quotations");
   const [search, setSearch] = useState("");
+  const [region, setRegion] = useState("All");
 
   const rows = useMemo<OpenProjectRow[]>(() => {
     const savedByProject = new Map(
@@ -107,13 +113,21 @@ function OpenProjectsContent() {
 
   const filteredRows = useMemo(() => {
     const q = search.trim().toLowerCase();
-    if (!q) return rows;
-    return rows.filter((p) => p.project_name.toLowerCase().includes(q) || p.client_name.toLowerCase().includes(q) || p.project_location.toLowerCase().includes(q));
-  }, [rows, search]);
+    return rows.filter((p) => {
+      const matchesRegion = region === "All" || p.project_region === region;
+      const matchesSearch = !q || p.project_name.toLowerCase().includes(q);
+      return matchesRegion && matchesSearch;
+    });
+  }, [region, rows, search]);
 
   const openRow = (row: OpenProjectRow) => {
     router.push(row.savedProject ? `/projects/${row.savedProject.project_id}` : `/quotations/${row.quote_id}`);
   };
+  const createNew = useCallback(() => router.push("/quotations/new"), [router]);
+
+  useEffect(() => {
+    onMetaChange({ filteredCount: filteredRows.length, totalCount: rows.length, onCreateNew: createNew });
+  }, [createNew, filteredRows.length, onMetaChange, rows.length]);
 
   const columns = useMemo<ColumnDef<OpenProjectRow>[]>(
     () => [
@@ -146,9 +160,11 @@ function OpenProjectsContent() {
           <Link
             href={row.original.savedProject ? `/projects/${row.original.savedProject.project_id}` : `/quotations/${row.original.quote_id}`}
             onClick={(e) => e.stopPropagation()}
-            className="rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-xs font-medium text-gray-600 transition hover:border-primary hover:text-primary"
+            title="View"
+            aria-label={`View ${row.original.project_name}`}
+            className="flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-500 transition hover:border-primary hover:text-primary"
           >
-            Open
+            <Eye className="h-3.5 w-3.5" />
           </Link>
         ),
       },
@@ -158,29 +174,28 @@ function OpenProjectsContent() {
 
   return (
     <div className="flex flex-col gap-5">
-      <div className="flex shrink-0 flex-wrap items-center justify-between gap-3">
-        <p className="text-sm text-gray-500">
-          {filteredRows.length} of {rows.length} project{rows.length !== 1 ? "s" : ""}
-        </p>
-        <button
-          type="button"
-          onClick={() => router.push("/quotations/new")}
-          className="flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-bold text-primary-foreground shadow-sm transition hover:bg-(--primary-hover)"
-        >
-          <Plus className="h-4 w-4" /> Create New
-        </button>
-      </div>
-
       <div className="flex shrink-0 items-center gap-3 rounded-2xl border border-gray-200 bg-white p-4">
-        <div className="relative flex-1 min-w-50">
+        <div className="relative min-w-50 flex-1">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search by client, project name, or location…"
+            placeholder="Search by project name…"
             className="w-full rounded-lg border border-gray-200 bg-gray-50 py-2 pl-9 pr-3 text-sm outline-none transition focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/20"
           />
         </div>
+        <select
+          value={region}
+          onChange={(e) => setRegion(e.target.value)}
+          className="h-10 w-44 rounded-lg border border-gray-200 bg-gray-50 px-3 text-sm font-medium text-gray-600 outline-none transition focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/20"
+        >
+          <option value="All">All regions</option>
+          {PH_REGIONS.map((r) => (
+            <option key={r} value={r}>
+              {r}
+            </option>
+          ))}
+        </select>
       </div>
 
       <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
@@ -200,24 +215,46 @@ function OpenProjectsContent() {
 
 // 
 function OpenProjectsTabs() {
+  const [projectsMeta, setProjectsMeta] = useState<{
+    filteredCount: number;
+    totalCount: number;
+    onCreateNew: () => void;
+  } | null>(null);
+
   return (
     <Tabs defaultValue="projects" className="flex flex-col gap-5">
-      <TabsList className="flex w-fit gap-1 rounded-lg border border-gray-200 bg-white p-1">
-        <TabsTrigger
-          value="projects"
-          className="h-auto flex-none rounded-md px-5 py-2 text-sm font-semibold text-gray-500 transition hover:bg-gray-50 data-active:bg-primary data-active:text-primary-foreground"
+      <div className="flex shrink-0 flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center gap-3">
+          <TabsList className="flex h-10 w-fit gap-0 overflow-hidden rounded-lg border border-gray-200 bg-white p-0">
+            <TabsTrigger
+              value="projects"
+              className="!h-full w-36 flex-none rounded-none px-4 py-2 text-sm font-semibold text-gray-500 transition hover:bg-gray-50 data-active:bg-primary data-active:text-primary-foreground"
+            >
+              Quotations / Projects
+            </TabsTrigger>
+            <TabsTrigger
+              value="clients"
+              className="!h-full w-36 flex-none rounded-none px-4 py-2 text-sm font-semibold text-gray-500 transition hover:bg-gray-50 data-active:bg-primary data-active:text-primary-foreground"
+            >
+              My Clients
+            </TabsTrigger>
+          </TabsList>
+          {projectsMeta && (
+            <p className="text-sm text-gray-500">
+              {projectsMeta.filteredCount} of {projectsMeta.totalCount} project{projectsMeta.totalCount !== 1 ? "s" : ""}
+            </p>
+          )}
+        </div>
+        <button
+          type="button"
+          onClick={projectsMeta?.onCreateNew}
+          className="flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-bold text-primary-foreground shadow-sm transition hover:bg-(--primary-hover)"
         >
-          Quotations / Projects
-        </TabsTrigger>
-        <TabsTrigger
-          value="clients"
-          className="h-auto flex-none rounded-md px-5 py-2 text-sm font-semibold text-gray-500 transition hover:bg-gray-50 data-active:bg-primary data-active:text-primary-foreground"
-        >
-          My Clients
-        </TabsTrigger>
-      </TabsList>
+          <Plus className="h-4 w-4" /> Create New
+        </button>
+      </div>
       <TabsContent value="projects">
-        <OpenProjectsContent />
+        <OpenProjectsContent onMetaChange={setProjectsMeta} />
       </TabsContent>
       <TabsContent value="clients">
         <MyClientsTab />
