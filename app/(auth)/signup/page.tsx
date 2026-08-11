@@ -164,6 +164,7 @@ export default function SignUpPage() {
   const [apiError, setApiError] = useState("");
   const [termsAccepted, setTermsAccepted] = useState(false);
   const [termsModalOpen, setTermsModalOpen] = useState(false);
+  const [phoneFocused, setPhoneFocused] = useState(false);
   const phoneInputRef = useRef<HTMLInputElement>(null);
   const pendingPhoneCursorRef = useRef<number | null>(null);
   useLayoutEffect(() => {
@@ -348,6 +349,13 @@ export default function SignUpPage() {
     `w-full rounded-xl border ${
       errors[field] ? "border-red-400 bg-red-50" : "border-gray-200 bg-gray-50"
     } px-4 py-2.5 text-sm outline-none transition focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/20`;
+  const floatingInputCls = (field: string, extra = "") =>
+    `peer w-full rounded-xl border ${
+      errors[field] ? "border-red-400 bg-red-50" : "border-gray-200 bg-gray-50"
+    } px-4 pb-2.5 pt-5 text-sm outline-none transition focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/20 ${extra}`;
+  const floatingLabelCls =
+    "pointer-events-none absolute left-4 top-2 text-[10px] font-semibold text-gray-500 transition-all peer-placeholder-shown:top-1/2 peer-placeholder-shown:-translate-y-1/2 peer-placeholder-shown:text-sm peer-placeholder-shown:font-medium peer-focus:top-2 peer-focus:translate-y-0 peer-focus:text-[10px] peer-focus:font-semibold peer-focus:text-primary";
+  const phoneActive = phoneFocused || form.companyContactNumber.length > 0;
 
   return (
     <div className="flex h-screen w-full overflow-hidden">
@@ -401,44 +409,53 @@ export default function SignUpPage() {
 
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
                   <div className="flex flex-col gap-1.5">
-                    <label className="text-xs font-semibold uppercase tracking-wide text-gray-600">
-                      First Name *
-                    </label>
-                    <input
-                      value={form.firstName}
-                      onChange={(e) => set("firstName", e.target.value)}
-                      maxLength={MAX.firstName}
-                      placeholder="Juan"
-                      className={inputCls("firstName")}
-                      autoFocus
-                    />
+                    <div className="relative">
+                      <input
+                        id="signup-first-name"
+                        value={form.firstName}
+                        onChange={(e) => set("firstName", e.target.value)}
+                        maxLength={MAX.firstName}
+                        placeholder=" "
+                        className={floatingInputCls("firstName")}
+                        autoFocus
+                      />
+                      <label htmlFor="signup-first-name" className={floatingLabelCls}>
+                        First Name <span className="text-red-500">*</span>
+                      </label>
+                    </div>
                     {errors.firstName && <p className="text-xs text-red-500">{errors.firstName}</p>}
                   </div>
 
                   <div className="flex flex-col gap-1.5">
-                    <label className="text-xs font-semibold uppercase tracking-wide text-gray-600">
-                      Middle Name <span className="font-normal normal-case text-gray-400">(optional)</span>
-                    </label>
-                    <input
-                      value={form.middleName}
-                      onChange={(e) => set("middleName", e.target.value)}
-                      maxLength={MAX.middleName}
-                      placeholder="Santos"
-                      className={inputCls("middleName")}
-                    />
+                    <div className="relative">
+                      <input
+                        id="signup-middle-name"
+                        value={form.middleName}
+                        onChange={(e) => set("middleName", e.target.value)}
+                        maxLength={MAX.middleName}
+                        placeholder=" "
+                        className={floatingInputCls("middleName")}
+                      />
+                      <label htmlFor="signup-middle-name" className={floatingLabelCls}>
+                        Middle Name
+                      </label>
+                    </div>
                   </div>
 
                   <div className="flex flex-col gap-1.5">
-                    <label className="text-xs font-semibold uppercase tracking-wide text-gray-600">
-                      Last Name *
-                    </label>
-                    <input
-                      value={form.lastName}
-                      onChange={(e) => set("lastName", e.target.value)}
-                      maxLength={MAX.lastName}
-                      placeholder="Dela Cruz"
-                      className={inputCls("lastName")}
-                    />
+                    <div className="relative">
+                      <input
+                        id="signup-last-name"
+                        value={form.lastName}
+                        onChange={(e) => set("lastName", e.target.value)}
+                        maxLength={MAX.lastName}
+                        placeholder=" "
+                        className={floatingInputCls("lastName")}
+                      />
+                      <label htmlFor="signup-last-name" className={floatingLabelCls}>
+                        Last Name <span className="text-red-500">*</span>
+                      </label>
+                    </div>
                     {errors.lastName && <p className="text-xs text-red-500">{errors.lastName}</p>}
                   </div>
                 </div>
@@ -465,36 +482,40 @@ export default function SignUpPage() {
                 </div>
 
                 <div className="flex flex-col gap-1.5">
-                  <label className="text-xs font-semibold uppercase tracking-wide text-gray-600">
-                    Login Email *
-                  </label>
                   <p className="text-[11px] text-gray-400">
                     Use this email to sign in. It can differ from the company&apos;s
                     contact email, which comes next.
                   </p>
-                  <input
-                    type="email"
-                    value={form.email}
-                    onChange={(e) => set("email", e.target.value)}
-                    maxLength={MAX.email}
-                    placeholder="you@company.com"
-                    className={inputCls("email")}
-                  />
+                  <div className="relative">
+                    <input
+                      id="signup-login-email"
+                      type="email"
+                      value={form.email}
+                      onChange={(e) => set("email", e.target.value)}
+                      maxLength={MAX.email}
+                      placeholder=" "
+                      className={floatingInputCls("email")}
+                    />
+                    <label htmlFor="signup-login-email" className={floatingLabelCls}>
+                      Login Email <span className="text-red-500">*</span>
+                    </label>
+                  </div>
                   {errors.email && <p className="text-xs text-red-500">{errors.email}</p>}
                 </div>
 
                 <div className="flex flex-col gap-1.5">
-                  <label className="text-xs font-semibold uppercase tracking-wide text-gray-600">
-                    Password *
-                  </label>
                   <div className="relative">
                     <input
+                      id="signup-password"
                       type={showPw ? "text" : "password"}
                       value={form.password}
                       onChange={(e) => set("password", e.target.value)}
-                      placeholder={`At least ${PASSWORD_MIN_LENGTH} characters`}
-                      className={`${inputCls("password")} pr-11`}
+                      placeholder=" "
+                      className={floatingInputCls("password", "pr-11")}
                     />
+                    <label htmlFor="signup-password" className={floatingLabelCls}>
+                      Password <span className="text-red-500">*</span>
+                    </label>
                     <button
                       type="button"
                       onClick={() => setShowPw((v) => !v)}
@@ -578,64 +599,81 @@ export default function SignUpPage() {
                 </div>
 
                 <div className="flex flex-col gap-1.5">
-                  <label className="text-xs font-semibold uppercase tracking-wide text-gray-600">
-                    Company Name *
-                  </label>
-                  <input
-                    value={form.companyName}
-                    onChange={(e) => set("companyName", e.target.value)}
-                    maxLength={MAX.companyName}
-                    placeholder="e.g. JC Waterproofing Inc."
-                    className={inputCls("companyName")}
-                    autoFocus
-                  />
+                  <div className="relative">
+                    <input
+                      id="signup-company-name"
+                      value={form.companyName}
+                      onChange={(e) => set("companyName", e.target.value)}
+                      maxLength={MAX.companyName}
+                      placeholder=" "
+                      className={floatingInputCls("companyName")}
+                      autoFocus
+                    />
+                    <label htmlFor="signup-company-name" className={floatingLabelCls}>
+                      Company Name <span className="text-red-500">*</span>
+                    </label>
+                  </div>
                   {errors.companyName && <p className="text-xs text-red-500">{errors.companyName}</p>}
                 </div>
 
                 <div className="flex flex-col gap-1.5">
-                  <label className="text-xs font-semibold uppercase tracking-wide text-gray-600">
-                    Company Address *
-                  </label>
-                  <input
-                    value={form.companyAddress}
-                    onChange={(e) => set("companyAddress", e.target.value)}
-                    maxLength={MAX.companyAddress}
-                    placeholder="Unit/Floor, Building, Street, City"
-                    className={inputCls("companyAddress")}
-                  />
+                  <div className="relative">
+                    <input
+                      id="signup-company-address"
+                      value={form.companyAddress}
+                      onChange={(e) => set("companyAddress", e.target.value)}
+                      maxLength={MAX.companyAddress}
+                      placeholder=" "
+                      className={floatingInputCls("companyAddress")}
+                    />
+                    <label htmlFor="signup-company-address" className={floatingLabelCls}>
+                      Company Address <span className="text-red-500">*</span>
+                    </label>
+                  </div>
                   {errors.companyAddress && <p className="text-xs text-red-500">{errors.companyAddress}</p>}
                 </div>
 
                 <div className="flex flex-col gap-1.5">
                   <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                     <div className="flex flex-col gap-1.5">
-                      <label className="text-xs font-semibold uppercase tracking-wide text-gray-600">
-                        Company Contact Email *
-                      </label>
-                      <input
-                        type="email"
-                        value={form.companyContactEmail}
-                        onChange={(e) => set("companyContactEmail", e.target.value)}
-                        maxLength={MAX.companyContactEmail}
-                        placeholder="info@company.com"
-                        className={inputCls("companyContactEmail")}
-                      />
+                      <div className="relative">
+                        <input
+                          id="signup-company-contact-email"
+                          type="email"
+                          value={form.companyContactEmail}
+                          onChange={(e) => set("companyContactEmail", e.target.value)}
+                          maxLength={MAX.companyContactEmail}
+                          placeholder=" "
+                          className={floatingInputCls("companyContactEmail")}
+                        />
+                        <label htmlFor="signup-company-contact-email" className={floatingLabelCls}>
+                          Company Contact Email <span className="text-red-500">*</span>
+                        </label>
+                      </div>
                       {errors.companyContactEmail && (
                         <p className="text-xs text-red-500">{errors.companyContactEmail}</p>
                       )}
                     </div>
 
                     <div className="flex flex-col gap-1.5">
-                      <label className="text-xs font-semibold uppercase tracking-wide text-gray-600">
-                        Company Contact Number *
-                      </label>
                       <div
-                        className={`flex items-center rounded-xl border text-sm transition ${
+                        className={`group relative flex items-center rounded-xl border text-sm transition ${
                           errors.companyContactNumber ? "border-red-400 bg-red-50" : "border-gray-200 bg-gray-50"
                         } focus-within:border-primary focus-within:bg-white focus-within:ring-2 focus-within:ring-primary/20`}
                       >
-                        <span className="pl-4 text-gray-500 select-none">+63</span>
+                        <label
+                          htmlFor="signup-company-contact-number"
+                          className={`pointer-events-none absolute left-4 text-gray-500 transition-all ${
+                            phoneActive
+                              ? "top-2 translate-y-0 text-[10px] font-semibold text-primary"
+                              : "top-1/2 -translate-y-1/2 text-sm font-medium text-gray-500"
+                          }`}
+                        >
+                          Company Contact Number <span className="text-red-500">*</span>
+                        </label>
+                        <span className={`pl-4 pt-3 text-gray-500 transition-opacity select-none ${phoneActive ? "opacity-100" : "opacity-0"}`}>+63</span>
                         <input
+                          id="signup-company-contact-number"
                           ref={phoneInputRef}
                           type="tel"
                           inputMode="numeric"
@@ -643,6 +681,7 @@ export default function SignUpPage() {
                           value={formatPhNationalNumber(form.companyContactNumber)}
                           onChange={handlePhoneChange}
                           onFocus={(e) => {
+                            setPhoneFocused(true);
                             // Regaining focus (tab, programmatic, or a click past the end of
                             // the visible digits) doesn't reliably leave the caret where it
                             // was — pin it to the end so resumed typing always appends
@@ -650,8 +689,9 @@ export default function SignUpPage() {
                             const len = e.target.value.length;
                             e.target.setSelectionRange(len, len);
                           }}
-                          placeholder="917 123 4567"
-                          className="w-full bg-transparent px-2 py-2.5 outline-none"
+                          onBlur={() => setPhoneFocused(false)}
+                          placeholder=""
+                          className="w-full bg-transparent px-2 pb-2.5 pt-5 outline-none"
                         />
                       </div>
                       {errors.companyContactNumber && (

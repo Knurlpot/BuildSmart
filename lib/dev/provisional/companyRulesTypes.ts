@@ -198,15 +198,12 @@ export interface SupplierRuleEntry {
 // Scope Template and shown there instead — that grouping is gone as of Correction 3, so
 // Material Rules are now a standalone list like every other rule type and belong here too.
 //
-// Supplier Rule is DELIBERATELY excluded — SupplierRuleEntry isn't a RuleEnvelope (no
-// superseded_by_rule_id) and doesn't share the check-usage/disable pair this cross-type
-// table's "Disable" action calls (that endpoint is keyed to the OTHER five types' staging
-// ids in the mock). Supplier Rules stays a fully self-contained list+detail+deactivate UI
-// on its own tab instead (SupplierRulesForm.tsx) rather than forcing it into a shape it
-// doesn't structurally match.
+// Supplier Rule is included here as a summary/filterable row, even though the owning form
+// still handles supplier-specific edit/deactivate details.
 export const RULE_KINDS = [
   'scope-template',
   'material-rule',
+  'supplier-rule',
   'labor-rule',
   'pricing-strategy',
   'unit-rule',
@@ -218,6 +215,7 @@ export type RuleKind = (typeof RULE_KINDS)[number];
 export const RULE_KIND_TAB: Record<RuleKind, string> = {
   'scope-template': 'scope-templates',
   'material-rule': 'material-rules',
+  'supplier-rule': 'supplier-rules',
   'labor-rule': 'labor-rules',
   'pricing-strategy': 'pricing-strategy',
   'unit-rule': 'unit-rules',
@@ -226,6 +224,7 @@ export const RULE_KIND_TAB: Record<RuleKind, string> = {
 export const RULE_KIND_LABEL: Record<RuleKind, string> = {
   'scope-template': 'Scope Template',
   'material-rule': 'Material Rule',
+  'supplier-rule': 'Supplier Rule',
   'labor-rule': 'Labor Rule',
   'pricing-strategy': 'Pricing Strategy',
   'unit-rule': 'Unit Rule',

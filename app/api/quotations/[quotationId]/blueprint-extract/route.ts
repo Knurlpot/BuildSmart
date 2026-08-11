@@ -4,7 +4,7 @@ import { pool } from "@/lib/server/db";
 
 const API_BASE = process.env.NEXT_PUBLIC_NORMALIZATION_API_BASE_URL || "http://localhost:8000";
 const MAX_FILE_BYTES = 25 * 1024 * 1024;
-const ALLOWED_EXTENSIONS = new Set(["pdf", "dxf", "dwg"]);
+const ALLOWED_EXTENSIONS = new Set(["pdf", "dxf"]);
 
 type Params = { params: Promise<{ quotationId: string }> };
 
@@ -28,7 +28,7 @@ export async function POST(request: NextRequest, { params }: Params) {
 
   const extension = file.name.toLowerCase().split(".").pop() ?? "";
   if (!ALLOWED_EXTENSIONS.has(extension)) {
-    return NextResponse.json({ error: "Upload a PDF, DXF, or DWG blueprint." }, { status: 400 });
+    return NextResponse.json({ error: "Upload a PDF or DXF blueprint." }, { status: 400 });
   }
   if (file.size === 0 || file.size > MAX_FILE_BYTES) {
     return NextResponse.json({ error: "Blueprint files must be between 1 byte and 25 MB." }, { status: 400 });

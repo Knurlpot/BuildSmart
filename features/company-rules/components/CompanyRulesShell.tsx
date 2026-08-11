@@ -165,7 +165,7 @@ export default function CompanyRulesShell() {
       {activeTab === "unit-rules" && (
         <UnitRulesForm focusRuleId={focusRuleId} onFocusHandled={() => setFocusRuleId(null)} />
       )}
-      {activeTab === "manage-existing" && <ManageExistingRulesTab onOpenRule={openExistingRule} />}
+      {activeTab === "manage-existing" && <ManageExistingRulesTab onViewRule={openExistingRule} />}
     </div>
   );
 }

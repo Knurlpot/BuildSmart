@@ -202,9 +202,19 @@ function OpenProjectsContent() {
 function OpenProjectsTabs() {
   return (
     <Tabs defaultValue="projects" className="flex flex-col gap-5">
-      <TabsList className="w-fit">
-        <TabsTrigger value="projects">Quotations / Projects</TabsTrigger>
-        <TabsTrigger value="clients">My Clients</TabsTrigger>
+      <TabsList className="flex w-fit gap-1 rounded-lg border border-gray-200 bg-white p-1">
+        <TabsTrigger
+          value="projects"
+          className="h-auto flex-none rounded-md px-5 py-2 text-sm font-semibold text-gray-500 transition hover:bg-gray-50 data-active:bg-primary data-active:text-primary-foreground"
+        >
+          Quotations / Projects
+        </TabsTrigger>
+        <TabsTrigger
+          value="clients"
+          className="h-auto flex-none rounded-md px-5 py-2 text-sm font-semibold text-gray-500 transition hover:bg-gray-50 data-active:bg-primary data-active:text-primary-foreground"
+        >
+          My Clients
+        </TabsTrigger>
       </TabsList>
       <TabsContent value="projects">
         <OpenProjectsContent />

@@ -202,6 +202,4 @@ def extract_blueprint(filename: str, content: bytes) -> BlueprintExtractionResul
         return _extract_pdf(content)
     if extension == ".dxf":
         return _extract_dxf(content)
-    if extension == ".dwg":
-        raise ValueError("DWG files must be exported as DXF or PDF before scanning.")
     raise ValueError("Upload a PDF or DXF blueprint.")

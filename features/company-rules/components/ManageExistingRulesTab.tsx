@@ -1,12 +1,12 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import type { ColumnDef } from "@tanstack/react-table";
-import { AlertTriangle, Ban, CheckCircle2 } from "lucide-react";
+import { AlertTriangle, Ban, CheckCircle2, Eye, Pencil, Search } from "lucide-react";
 import { QueryState } from "@/components/feedback/QueryState";
 import { DataTable } from "@/components/data-table/DataTable";
 import { useExistingRules } from "@/lib/dev/provisional/useCompanyRulesProvisional";
-import { RULE_KIND_LABEL, type ExistingRuleSummary } from "@/lib/dev/provisional/companyRulesTypes";
+import { RULE_KIND_LABEL, RULE_KINDS, type ExistingRuleSummary, type RuleKind } from "@/lib/dev/provisional/companyRulesTypes";
 
 function StatusBadge({ status }: { status: ExistingRuleSummary["status"] }) {
   return (
@@ -21,12 +21,13 @@ function StatusBadge({ status }: { status: ExistingRuleSummary["status"] }) {
 }
 
 interface ManageExistingRulesTabProps {
-  /** Part C — clicking a row (anywhere but the Disable button) jumps to that rule's
-   * owning tab with the rule pre-selected, instead of leaving the user to hunt for it. */
-  onOpenRule: (rule: ExistingRuleSummary) => void;
+  /** Opens the rule's owning tab with this rule pre-selected so its detail panel is visible. */
+  onViewRule: (rule: ExistingRuleSummary) => void;
 }
 
-export function ManageExistingRulesTab({ onOpenRule }: ManageExistingRulesTabProps) {
+type RuleFilter = "all" | RuleKind;
+
+export function ManageExistingRulesTab({ onViewRule }: ManageExistingRulesTabProps) {
   const { rules, isLoading, error, refetch, checkUsage, isCheckingUsage, disable, isDisabling, disableError } =
     useExistingRules();
 
@@ -35,13 +36,33 @@ export function ManageExistingRulesTab({ onOpenRule }: ManageExistingRulesTabPro
   const [disabledIds, setDisabledIds] = useState<Set<string>>(new Set());
   const [warningFor, setWarningFor] = useState<ExistingRuleSummary | null>(null);
   const [activeRuleId, setActiveRuleId] = useState<string | null>(null);
+  const [ruleFilter, setRuleFilter] = useState<RuleFilter>("all");
+  const [search, setSearch] = useState("");
 
   const displayRules = useMemo(
     () => rules.map((r) => (disabledIds.has(r.rule_id) ? { ...r, status: "Disabled" as const } : r)),
     [rules, disabledIds]
   );
+  const filteredRules = useMemo(() => {
+    const query = search.trim().toLowerCase();
+    return displayRules.filter((rule) => {
+      const matchesKind = ruleFilter === "all" || rule.rule_kind === ruleFilter;
+      if (!matchesKind) return false;
+      if (!query) return true;
+      return [
+        RULE_KIND_LABEL[rule.rule_kind],
+        rule.label,
+        rule.detail,
+        rule.effective_date,
+        rule.status,
+      ]
+        .join(" ")
+        .toLowerCase()
+        .includes(query);
+    });
+  }, [displayRules, ruleFilter, search]);
 
-  const handleDisable = async (rule: ExistingRuleSummary) => {
+  const handleDisable = useCallback(async (rule: ExistingRuleSummary) => {
     setActiveRuleId(rule.rule_id);
     setWarningFor(null);
     try {
@@ -57,7 +78,7 @@ export function ManageExistingRulesTab({ onOpenRule }: ManageExistingRulesTabPro
     } finally {
       setActiveRuleId(null);
     }
-  };
+  }, [checkUsage, disable]);
 
   const columns = useMemo<ColumnDef<ExistingRuleSummary>[]>(
     () => [
@@ -78,31 +99,58 @@ export function ManageExistingRulesTab({ onOpenRule }: ManageExistingRulesTabPro
       },
       {
         id: "actions",
-        header: "",
+        header: () => <span className="flex justify-end">Action</span>,
         enableGlobalFilter: false,
         cell: ({ row }) => {
           const rule = row.original;
           const busy = activeRuleId === rule.rule_id && (isCheckingUsage || isDisabling);
           if (rule.status === "Disabled") return null;
           return (
-            <button
-              type="button"
-              disabled={busy}
-              onClick={(e) => {
-                // Don't also trigger the row's own "open in owning tab" click.
-                e.stopPropagation();
-                handleDisable(rule);
-              }}
-              className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-xs font-medium text-gray-500 transition hover:border-red-300 hover:text-red-600 disabled:opacity-50"
-            >
-              <Ban className="h-3.5 w-3.5" /> {busy ? "Checking…" : "Disable"}
-            </button>
+            <div className="flex items-center justify-end gap-1.5">
+              <button
+                type="button"
+                title="View rule"
+                aria-label={`View ${rule.label}`}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onViewRule(rule);
+                }}
+                className="flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-500 transition hover:border-primary/40 hover:text-primary"
+              >
+                <Eye className="h-3.5 w-3.5" />
+              </button>
+              <button
+                type="button"
+                title="Edit rule"
+                aria-label={`Edit ${rule.label}`}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onViewRule(rule);
+                }}
+                className="flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-500 transition hover:border-primary/40 hover:text-primary"
+              >
+                <Pencil className="h-3.5 w-3.5" />
+              </button>
+              <button
+                type="button"
+                disabled={busy}
+                title="Disable rule"
+                aria-label={`Disable ${rule.label}`}
+                onClick={(e) => {
+                  // Don't also trigger the row's own "open in owning tab" click.
+                  e.stopPropagation();
+                  handleDisable(rule);
+                }}
+                className="flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-500 transition hover:border-red-300 hover:text-red-600 disabled:opacity-50"
+              >
+                <Ban className="h-3.5 w-3.5" />
+              </button>
+            </div>
           );
         },
       },
     ],
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [activeRuleId, isCheckingUsage, isDisabling]
+    [activeRuleId, handleDisable, isCheckingUsage, isDisabling, onViewRule]
   );
 
   return (
@@ -131,16 +179,61 @@ export function ManageExistingRulesTab({ onOpenRule }: ManageExistingRulesTabPro
       )}
 
       <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
+        <div className="flex flex-wrap items-center gap-3 border-b border-gray-100 bg-white px-4 py-3">
+          <div className="relative w-full sm:w-56 sm:flex-none lg:w-64">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+            <input
+              type="search"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search rules..."
+              className="w-full rounded-full border border-gray-200 bg-white py-1.5 pl-9 pr-3 text-xs font-medium text-gray-700 outline-none transition placeholder:text-gray-400 focus:border-primary focus:ring-2 focus:ring-primary/15"
+            />
+          </div>
+          <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setRuleFilter("all")}
+              className={`w-fit whitespace-nowrap rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
+                ruleFilter === "all"
+                  ? "border-primary bg-primary text-primary-foreground"
+                  : "border-gray-200 bg-white text-gray-500 hover:border-primary/40 hover:text-primary"
+              }`}
+            >
+              All
+            </button>
+            {RULE_KINDS.map((kind) => (
+              <button
+                key={kind}
+                type="button"
+                onClick={() => setRuleFilter(kind)}
+                className={`w-fit whitespace-nowrap rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
+                  ruleFilter === kind
+                    ? "border-primary bg-primary text-primary-foreground"
+                    : "border-gray-200 bg-white text-gray-500 hover:border-primary/40 hover:text-primary"
+                }`}
+              >
+                {RULE_KIND_LABEL[kind]}
+              </button>
+            ))}
+          </div>
+        </div>
         <QueryState
           isLoading={isLoading}
           error={error}
-          isEmpty={displayRules.length === 0}
+          isEmpty={filteredRules.length === 0}
           onRetry={refetch}
-          emptyTitle="No rules configured yet"
-          emptyHint="Configured rules across all categories will appear here once saved."
+          emptyTitle={search.trim() ? "No matching rules" : ruleFilter === "all" ? "No rules configured yet" : `No ${RULE_KIND_LABEL[ruleFilter]} rules`}
+          emptyHint={
+            search.trim()
+              ? "Try a different search or clear the filter."
+              : ruleFilter === "all"
+                ? "Configured rules across all categories will appear here once saved."
+                : "Choose another rule type or add a new rule."
+          }
           minHeight={220}
         >
-          <DataTable columns={columns} data={displayRules} enablePagination pageSize={50} onRowClick={onOpenRule} />
+          <DataTable columns={columns} data={filteredRules} enablePagination pageSize={50} />
         </QueryState>
       </div>
 

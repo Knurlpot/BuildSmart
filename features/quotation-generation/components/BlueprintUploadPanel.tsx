@@ -8,7 +8,7 @@ import { SegmentEditorList } from "./SegmentEditorList";
 import { createSegmentFromExtraction, isSegmentIncluded, type DraftSegment } from "../lib/draftSegment";
 import type { BlueprintFloor } from "@/lib/dev/provisional/quotationGenerationTypes";
 
-const ACCEPTED_EXTENSIONS = [".pdf", ".dwg", ".dxf"];
+const ACCEPTED_EXTENSIONS = [".pdf", ".dxf"];
 const MAX_FILE_BYTES = 25 * 1024 * 1024;
 
 function hasAcceptedExtension(name: string): boolean {
@@ -72,7 +72,7 @@ export function BlueprintUploadPanel({
   const handleFileSelected = (file: File) => {
     setFileTypeError(null);
     if (!hasAcceptedExtension(file.name)) {
-      setFileTypeError(`"${file.name}" isn't a .PDF, .DWG, or .DXF file.`);
+      setFileTypeError(`"${file.name}" isn't a .PDF or .DXF file.`);
       return;
     }
     if (file.size === 0 || file.size > MAX_FILE_BYTES) {
@@ -174,7 +174,7 @@ export function BlueprintUploadPanel({
                 <p className="text-xs text-gray-400">or click to browse (max 25 MB)</p>
               </div>
               <div className="flex gap-1.5">
-                {["PDF", "DWG", "DXF"].map((f) => (
+                {["PDF", "DXF"].map((f) => (
                   <span key={f} className="rounded-full border border-gray-200 bg-white px-2.5 py-0.5 text-[10px] font-bold text-gray-500">
                     {f}
                   </span>

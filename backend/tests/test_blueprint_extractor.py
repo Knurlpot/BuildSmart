@@ -63,11 +63,6 @@ def test_pdf_page_is_rendered_and_returned_with_detected_segments(monkeypatch):
     assert result.floors[0].segments[0].segment_name == "Living Room"
 
 
-def test_dwg_has_actionable_conversion_message():
-    with pytest.raises(ValueError, match="exported as DXF or PDF"):
-        extract_blueprint("floor-plan.dwg", b"not-empty")
-
-
 def test_rejects_unknown_file_type():
     with pytest.raises(ValueError, match="PDF or DXF"):
         extract_blueprint("floor-plan.txt", b"not-empty")

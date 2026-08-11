@@ -226,11 +226,13 @@ export function useExistingRules() {
           ? "scope-templates"
           : kind === "material-rule"
             ? "material-rules"
-            : kind === "labor-rule"
-              ? "labor-rules"
-              : kind === "pricing-strategy"
-                ? "pricing-strategy"
-            : "unit-rules";
+            : kind === "supplier-rule"
+              ? "supplier-rules"
+              : kind === "labor-rule"
+                ? "labor-rules"
+                : kind === "pricing-strategy"
+                  ? "pricing-strategy"
+                  : "unit-rules";
       await disableMutation.mutate(`/api/company-rules/${routeKind}/${ruleId}`, undefined, "DELETE");
       window.dispatchEvent(new CustomEvent("buildsmart:company-rules-changed", { detail: { kind: routeKind } }));
       refetch();

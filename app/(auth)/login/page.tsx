@@ -73,26 +73,27 @@ export default function LoginPage() {
               </div>
             )}
 
-            <div className="flex flex-col gap-1.5">
-              <label className="text-xs font-semibold uppercase tracking-wide text-gray-600">
-                Email
-              </label>
+            <div className="group relative">
               <input
+                id="login-email"
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="you@company.com"
+                placeholder=" "
                 required
                 autoFocus
-                className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm outline-none transition focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/20"
+                className="peer w-full rounded-xl border border-gray-200 bg-gray-50 px-4 pb-2.5 pt-5 text-sm outline-none transition focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/20"
               />
+              <label
+                htmlFor="login-email"
+                className="pointer-events-none absolute left-4 top-2 text-[10px] font-semibold text-gray-500 transition-all peer-placeholder-shown:top-1/2 peer-placeholder-shown:-translate-y-1/2 peer-placeholder-shown:text-sm peer-placeholder-shown:font-medium peer-focus:top-2 peer-focus:translate-y-0 peer-focus:text-[10px] peer-focus:font-semibold peer-focus:text-primary"
+              >
+                Email
+              </label>
             </div>
 
             <div className="flex flex-col gap-1.5">
-              <div className="flex items-center justify-between">
-                <label className="text-xs font-semibold uppercase tracking-wide text-gray-600">
-                  Password
-                </label>
+              <div className="flex items-center justify-end">
                 <button
                   type="button"
                   className="text-xs font-medium text-primary hover:underline"
@@ -102,13 +103,20 @@ export default function LoginPage() {
               </div>
               <div className="relative">
                 <input
+                  id="login-password"
                   type={showPw ? "text" : "password"}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  placeholder="••••••••"
+                  placeholder=" "
                   required
-                  className="w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 pr-11 text-sm outline-none transition focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/20"
+                  className="peer w-full rounded-xl border border-gray-200 bg-gray-50 px-4 pb-2.5 pt-5 pr-11 text-sm outline-none transition focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/20"
                 />
+                <label
+                  htmlFor="login-password"
+                  className="pointer-events-none absolute left-4 top-2 text-[10px] font-semibold text-gray-500 transition-all peer-placeholder-shown:top-1/2 peer-placeholder-shown:-translate-y-1/2 peer-placeholder-shown:text-sm peer-placeholder-shown:font-medium peer-focus:top-2 peer-focus:translate-y-0 peer-focus:text-[10px] peer-focus:font-semibold peer-focus:text-primary"
+                >
+                  Password
+                </label>
                 <button
                   type="button"
                   onClick={() => setShowPw((v) => !v)}

@@ -263,6 +263,23 @@ export async function fetchCompanyRules(companyId: number): Promise<CompanyRules
         effective_date: rule.effective_date,
         status: rule.is_active ? "Active" as const : "Disabled" as const,
       })),
+      ...supplierRules.map((rule) => ({
+        rule_id: rule.rule_id,
+        rule_kind: "supplier-rule" as const,
+        label: rule.supplier_name,
+        detail:
+          rule.rule_type === "Bulk Discount"
+            ? `${rule.discount_percentage_rate ?? 0}% off${rule.minimum_order_amount !== null ? ` above ₱${rule.minimum_order_amount}` : ""}`
+            : rule.rule_type === "Negotiated Price"
+              ? rule.fixed_discount_amount !== null
+                ? `Negotiated discount ₱${rule.fixed_discount_amount}`
+                : `${rule.discount_percentage_rate ?? 0}% negotiated discount`
+              : rule.rule_type === "Minimum Order"
+                ? `Minimum order ₱${rule.minimum_order_amount ?? 0}`
+                : "Preferred supplier",
+        effective_date: rule.effective_date,
+        status: rule.is_active ? "Active" as const : "Disabled" as const,
+      })),
       ...laborRules.map((rule) => ({
         rule_id: rule.rule_id,
         rule_kind: "labor-rule" as const,
