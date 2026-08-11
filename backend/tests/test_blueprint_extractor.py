@@ -63,11 +63,35 @@ def test_pdf_page_is_rendered_and_returned_with_detected_segments(monkeypatch):
     assert result.floors[0].segments[0].segment_name == "Living Room"
 
 
-def test_dwg_has_actionable_conversion_message():
-    with pytest.raises(ValueError, match="exported as DXF or PDF"):
+def test_dwg_requires_oda_when_converter_is_not_installed(monkeypatch):
+    from ezdxf.addons import odafc
+
+    monkeypatch.delenv("ODA_FILE_CONVERTER_PATH", raising=False)
+    monkeypatch.setattr(odafc, "is_installed", lambda: False)
+    with pytest.raises(RuntimeError, match="ODA File Converter"):
         extract_blueprint("floor-plan.dwg", b"not-empty")
 
 
+def test_dwg_uses_oda_document_then_shared_geometry_extraction(monkeypatch):
+    from ezdxf.addons import odafc
+
+    monkeypatch.setenv("ODA_FILE_CONVERTER_PATH", "C:/Program Files/ODA/ODAFileConverter.exe")
+    monkeypatch.setattr(blueprint_extractor.Path, "is_file", lambda _path: True)
+    monkeypatch.setattr(odafc, "is_installed", lambda: True)
+
+    document = ezdxf.new("R2010")
+    document.header["$INSUNITS"] = 6
+    modelspace = document.modelspace()
+    modelspace.add_lwpolyline([(0, 0), (3, 0), (3, 2), (0, 2)], close=True)
+    modelspace.add_text("Office", dxfattribs={"insert": (1.5, 1)})
+    monkeypatch.setattr(odafc, "readfile", lambda _path, audit: document)
+
+    result = extract_blueprint("office.dwg", b"dwg-content")
+
+    assert result.floors[0].segments[0].segment_name == "Office"
+    assert result.floors[0].segments[0].area_sqm == 6
+
+
 def test_rejects_unknown_file_type():
-    with pytest.raises(ValueError, match="PDF or DXF"):
+    with pytest.raises(ValueError, match="PDF, DXF, or DWG"):
         extract_blueprint("floor-plan.txt", b"not-empty")

@@ -11,6 +11,11 @@ DATABASE_URL="postgresql://postgres:<your local postgres password>@localhost:543
 REDIS_URL="redis://localhost:6379/0"
 FRONTEND_ORIGIN="http://localhost:3000"
 NEXT_PUBLIC_NORMALIZATION_API_BASE_URL="http://localhost:8000"
+ODA_FILE_CONVERTER_PATH="C:\Program Files\ODA\ODAFileConverter\ODAFileConverter.exe"
+
+`ODA_FILE_CONVERTER_PATH` is required only for DWG blueprint scanning. Install ODA File
+Converter first, then point this value to its executable. PDF and DXF scanning do not
+require ODA.
 
 DATABASE_URL's credentials should match your own local Postgres user — "password" above is just a placeholder.
 

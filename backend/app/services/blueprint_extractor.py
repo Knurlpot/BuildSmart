@@ -122,20 +122,11 @@ def _unit_to_metres(insunits: int) -> float:
     }.get(insunits, 1.0)
 
 
-def _extract_dxf(content: bytes) -> BlueprintExtractionResult:
+def _extract_cad_document(document: Any) -> BlueprintExtractionResult:
     try:
-        import ezdxf
         from shapely.geometry import Point, Polygon
     except ImportError as exc:
-        raise RuntimeError("DXF support requires ezdxf and Shapely.") from exc
-
-    with tempfile.NamedTemporaryFile(suffix=".dxf", delete=False) as temp:
-        temp.write(content)
-        temp_path = Path(temp.name)
-    try:
-        document = ezdxf.readfile(temp_path)
-    finally:
-        temp_path.unlink(missing_ok=True)
+        raise RuntimeError("CAD geometry support requires Shapely.") from exc
 
     modelspace = document.modelspace()
     polygons: list[Any] = []
@@ -191,6 +182,54 @@ def _extract_dxf(content: bytes) -> BlueprintExtractionResult:
     )
 
 
+def _extract_dxf(content: bytes) -> BlueprintExtractionResult:
+    try:
+        import ezdxf
+    except ImportError as exc:
+        raise RuntimeError("DXF support requires ezdxf and Shapely.") from exc
+
+    with tempfile.NamedTemporaryFile(suffix=".dxf", delete=False) as temp:
+        temp.write(content)
+        temp_path = Path(temp.name)
+    try:
+        return _extract_cad_document(ezdxf.readfile(temp_path))
+    finally:
+        temp_path.unlink(missing_ok=True)
+
+
+def _extract_dwg(content: bytes) -> BlueprintExtractionResult:
+    try:
+        import ezdxf
+        from ezdxf.addons import odafc
+    except ImportError as exc:
+        raise RuntimeError("DWG support requires ezdxf and ODA File Converter.") from exc
+
+    configured_path = os.environ.get("ODA_FILE_CONVERTER_PATH", "").strip()
+    if configured_path:
+        executable = Path(configured_path).expanduser().resolve()
+        if not executable.is_file():
+            raise RuntimeError("ODA_FILE_CONVERTER_PATH does not point to an installed executable.")
+        option_name = "win_exec_path" if os.name == "nt" else "unix_exec_path"
+        ezdxf.options.set("odafc-addon", option_name, str(executable))
+
+    if not odafc.is_installed():
+        raise RuntimeError(
+            "DWG scanning requires ODA File Converter. Install it and set ODA_FILE_CONVERTER_PATH."
+        )
+
+    with tempfile.NamedTemporaryFile(suffix=".dwg", delete=False) as temp:
+        temp.write(content)
+        temp_path = Path(temp.name)
+    try:
+        try:
+            document = odafc.readfile(temp_path, audit=True)
+        except Exception as exc:
+            raise RuntimeError("ODA File Converter could not convert this DWG file.") from exc
+        return _extract_cad_document(document)
+    finally:
+        temp_path.unlink(missing_ok=True)
+
+
 def extract_blueprint(filename: str, content: bytes) -> BlueprintExtractionResult:
     if not content:
         raise ValueError("The uploaded blueprint is empty.")
@@ -203,5 +242,5 @@ def extract_blueprint(filename: str, content: bytes) -> BlueprintExtractionResul
     if extension == ".dxf":
         return _extract_dxf(content)
     if extension == ".dwg":
-        raise ValueError("DWG files must be exported as DXF or PDF before scanning.")
-    raise ValueError("Upload a PDF or DXF blueprint.")
+        return _extract_dwg(content)
+    raise ValueError("Upload a PDF, DXF, or DWG blueprint.")
