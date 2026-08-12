@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Award, CheckCircle2, Clock, PenLine, Shield, Star, TrendingDown } from "lucide-react";
+import { Award, CheckCircle2, Clock, Database, FileText, PenLine, Shield, SlidersHorizontal, Star, TrendingDown } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -13,7 +13,7 @@ import {
 import { QuotationBreakdownModal } from "./QuotationBreakdownModal";
 import { RevisionTypeModal } from "./RevisionTypeModal";
 import { MinorRevisionPanel } from "./MinorRevisionPanel";
-import { computeTierResult, deriveMockItemLines, fmtPeso, retargetItemLinesBasis } from "@/lib/dev/provisional/quotationBreakdownFixtures";
+import { computeTierResult, deriveMockItemLines, fmtPeso, recomputeItemLine, retargetItemLinesBasis } from "@/lib/dev/provisional/quotationBreakdownFixtures";
 import { PROVISIONAL_TIERS, type PricelistBasis, type ProvisionalItemLine, type ProvisionalQuotationTierResult, type ProvisionalTier } from "@/lib/dev/provisional/quotationBreakdownTypes";
 import { saveFinalizedQuotation } from "@/lib/dev/provisional/savedProjectsStore";
 import { isSegmentIncluded, type DraftSegment } from "../lib/draftSegment";
@@ -53,12 +53,50 @@ const TIER_META: Record<ProvisionalTier, { tagline: string; badge: string; accen
 };
 
 const DEFAULT_BASIS: PricelistBasis = "Uploaded";
+type QuotationPrioritySource = "Uploaded" | "DPWH";
+type QuotationFallbackRule = "Use next available source" | "Use lowest uploaded rate" | "Flag for manual review";
+
+const SOURCE_OPTIONS: { value: QuotationPrioritySource; label: string; icon: typeof FileText }[] = [
+  { value: "Uploaded", label: "Uploaded Pricelist", icon: FileText },
+  { value: "DPWH", label: "DPWH CMPD", icon: Database },
+];
+
+const FALLBACK_OPTIONS: { value: QuotationFallbackRule; label: string; helper: string }[] = [
+  { value: "Use next available source", label: "Use next available source", helper: "Try the selected source first, then use the other source when a line is missing a rate." },
+  { value: "Use lowest uploaded rate", label: "Use lowest uploaded rate", helper: "Use the lowest matching rate from the uploaded pricelist entries for each material." },
+  { value: "Flag for manual review", label: "Flag for manual review", helper: "Keep missing prices visible for Minor Revision instead of auto-substituting." },
+];
 
 function initTierItems(segments: DraftSegment[], basis: PricelistBasis): Record<ProvisionalTier, ProvisionalItemLine[]> {
   return {
     Practical: deriveMockItemLines(segments, "Practical", basis),
     Premium: deriveMockItemLines(segments, "Premium", basis),
   };
+}
+
+function applyQuotationRuleToLines(
+  lines: ProvisionalItemLine[],
+  prioritySource: QuotationPrioritySource,
+  fallbackRule: QuotationFallbackRule
+): ProvisionalItemLine[] {
+  return lines.map((line) => {
+    const cheapestSupplier = line.supplier_options.length > 0
+      ? [...line.supplier_options].sort((a, b) => a.unit_price - b.unit_price)[0]
+      : null;
+    const shouldUseSupplier =
+      prioritySource === "Uploaded" ||
+      fallbackRule === "Use lowest uploaded rate" ||
+      (fallbackRule === "Use next available source" && line.unit_price === null);
+
+    if (shouldUseSupplier && cheapestSupplier) {
+      return recomputeItemLine(line, {
+        selected_supplier_id: cheapestSupplier.supplier_id,
+        unit_price: cheapestSupplier.unit_price,
+      });
+    }
+
+    return line;
+  });
 }
 
 function QuoteCard({ tier, result, onViewBreakdown }: { tier: ProvisionalTier; result: ProvisionalQuotationTierResult; onViewBreakdown: () => void }) {
@@ -151,6 +189,9 @@ export function QuotationResultsStep({ client, quotation, segments, blueprintFlo
   const [originalTierItems] = useState(() => initTierItems(segments, DEFAULT_BASIS));
   const [tierItems, setTierItems] = useState(() => initTierItems(segments, DEFAULT_BASIS));
   const [breakdownTier, setBreakdownTier] = useState<ProvisionalTier | null>(null);
+  const [ruleDialogOpen, setRuleDialogOpen] = useState(false);
+  const [prioritySource, setPrioritySource] = useState<QuotationPrioritySource>("Uploaded");
+  const [fallbackRule, setFallbackRule] = useState<QuotationFallbackRule>("Use next available source");
   const [revisionTypeOpen, setRevisionTypeOpen] = useState(false);
   const [minorRevisionTier, setMinorRevisionTier] = useState<ProvisionalTier | null>(null);
   const [structuralConfirmOpen, setStructuralConfirmOpen] = useState(false);
@@ -171,6 +212,23 @@ export function QuotationResultsStep({ client, quotation, segments, blueprintFlo
     }));
   };
 
+  const handleApplyQuotationRules = () => {
+    handleBasisChange(prioritySource);
+    setTierItems((prev) => ({
+      Practical: applyQuotationRuleToLines(
+        retargetItemLinesBasis(segments, prev.Practical, "Practical", prioritySource),
+        prioritySource,
+        fallbackRule
+      ),
+      Premium: applyQuotationRuleToLines(
+        retargetItemLinesBasis(segments, prev.Premium, "Premium", prioritySource),
+        prioritySource,
+        fallbackRule
+      ),
+    }));
+    setRuleDialogOpen(false);
+  };
+
   const tierResults: Record<ProvisionalTier, ProvisionalQuotationTierResult> = {
     Practical: computeTierResult("Practical", tierItems.Practical),
     Premium: computeTierResult("Premium", tierItems.Premium),
@@ -186,13 +244,32 @@ export function QuotationResultsStep({ client, quotation, segments, blueprintFlo
             choose the plan that fits your budget.
           </p>
         </div>
-        <button
-          type="button"
-          onClick={() => setRevisionTypeOpen(true)}
-          className="flex items-center gap-2 rounded-lg border border-primary/30 bg-orange-50/60 px-4 py-2 text-sm font-semibold text-primary transition hover:bg-orange-50"
-        >
-          <PenLine className="h-4 w-4" /> Validate &amp; Edit
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setRuleDialogOpen(true)}
+            className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-semibold text-gray-700 shadow-sm transition hover:bg-gray-50"
+          >
+            <SlidersHorizontal className="h-4 w-4" /> Source &amp; Fallback
+          </button>
+          <button
+            type="button"
+            onClick={() => setRevisionTypeOpen(true)}
+            className="flex items-center gap-2 rounded-lg border border-primary/30 bg-orange-50/60 px-4 py-2 text-sm font-semibold text-primary transition hover:bg-orange-50"
+          >
+            <PenLine className="h-4 w-4" /> Validate &amp; Edit
+          </button>
+        </div>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2 rounded-xl border border-gray-100 bg-white px-4 py-3 text-xs text-gray-500 shadow-sm">
+        <span className="font-bold uppercase tracking-wide text-gray-400">Active material rule</span>
+        <span className="rounded-full bg-orange-50 px-2 py-1 font-semibold text-primary">
+          Priority: {SOURCE_OPTIONS.find((o) => o.value === prioritySource)?.label}
+        </span>
+        <span className="rounded-full bg-gray-100 px-2 py-1 font-semibold text-gray-600">
+          Fallback: {fallbackRule}
+        </span>
       </div>
 
       <div className="flex flex-col gap-5 lg:flex-row">
@@ -224,6 +301,72 @@ export function QuotationResultsStep({ client, quotation, segments, blueprintFlo
           blueprintFloors={blueprintFloors}
         />
       )}
+
+      <Dialog open={ruleDialogOpen} onOpenChange={setRuleDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Material Source &amp; Fallback</DialogTitle>
+            <DialogDescription>
+              Apply one source rule to all materials in this quotation. Individual exceptions can still be changed in
+              Minor Revision.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col gap-5">
+            <div>
+              <p className="mb-2 text-xs font-bold uppercase tracking-wide text-gray-500">Priority Source</p>
+              <div className="grid gap-2 sm:grid-cols-2">
+                {SOURCE_OPTIONS.map(({ value, label, icon: Icon }) => (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => setPrioritySource(value)}
+                    className={`flex min-h-20 flex-col items-start justify-between rounded-xl border p-3 text-left transition ${
+                      prioritySource === value ? "border-primary bg-orange-50 text-primary" : "border-gray-200 bg-white text-gray-600 hover:bg-gray-50"
+                    }`}
+                  >
+                    <Icon className="h-4 w-4" />
+                    <span className="text-sm font-bold">{label}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div>
+              <p className="mb-2 text-xs font-bold uppercase tracking-wide text-gray-500">Fallback Rule</p>
+              <div className="flex flex-col gap-2">
+                {FALLBACK_OPTIONS.map((option) => (
+                  <button
+                    key={option.value}
+                    type="button"
+                    onClick={() => setFallbackRule(option.value)}
+                    className={`rounded-xl border p-3 text-left transition ${
+                      fallbackRule === option.value ? "border-primary bg-orange-50" : "border-gray-200 bg-white hover:bg-gray-50"
+                    }`}
+                  >
+                    <span className={`text-sm font-bold ${fallbackRule === option.value ? "text-primary" : "text-gray-800"}`}>{option.label}</span>
+                    <span className="mt-0.5 block text-xs text-gray-500">{option.helper}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <button
+              type="button"
+              onClick={() => setRuleDialogOpen(false)}
+              className="rounded-xl border border-gray-200 px-4 py-2 text-sm font-semibold text-gray-600 transition hover:bg-gray-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={handleApplyQuotationRules}
+              className="rounded-xl bg-primary px-4 py-2 text-sm font-bold text-primary-foreground transition hover:bg-(--primary-hover)"
+            >
+              Apply to Quotation
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {revisionTypeOpen && (
         <RevisionTypeModal

@@ -26,7 +26,6 @@ export function hasCompletedPricelistStep(state: PricelistCompletionState): bool
 
 export interface CompanyRulesCompletionState {
   scopeTemplateCount: number;
-  materialRuleCount: number;
   laborRuleCount: number;
   pricingStrategyCount: number;
   unitRuleCount: number;
@@ -35,7 +34,6 @@ export interface CompanyRulesCompletionState {
 export function hasCompletedCompanyRulesStep(state: CompanyRulesCompletionState): boolean {
   return (
     state.scopeTemplateCount > 0 &&
-    state.materialRuleCount > 0 &&
     state.laborRuleCount > 0 &&
     state.pricingStrategyCount > 0 &&
     state.unitRuleCount > 0

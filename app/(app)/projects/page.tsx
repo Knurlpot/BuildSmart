@@ -215,14 +215,16 @@ function OpenProjectsContent({ onMetaChange }: OpenProjectsContentProps) {
 
 // 
 function OpenProjectsTabs() {
+  const [activeTab, setActiveTab] = useState("projects");
   const [projectsMeta, setProjectsMeta] = useState<{
     filteredCount: number;
     totalCount: number;
     onCreateNew: () => void;
   } | null>(null);
+  const [clientCount, setClientCount] = useState(0);
 
   return (
-    <Tabs defaultValue="projects" className="flex flex-col gap-5">
+    <Tabs value={activeTab} onValueChange={setActiveTab} className="flex flex-col gap-5">
       <div className="flex shrink-0 flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-3">
           <TabsList className="flex h-10 w-fit gap-0 overflow-hidden rounded-lg border border-gray-200 bg-white p-0">
@@ -239,9 +241,14 @@ function OpenProjectsTabs() {
               My Clients
             </TabsTrigger>
           </TabsList>
-          {projectsMeta && (
+          {activeTab === "projects" && projectsMeta && (
             <p className="text-sm text-gray-500">
               {projectsMeta.filteredCount} of {projectsMeta.totalCount} project{projectsMeta.totalCount !== 1 ? "s" : ""}
+            </p>
+          )}
+          {activeTab === "clients" && (
+            <p className="text-sm text-gray-500">
+              {clientCount} client{clientCount !== 1 ? "s" : ""}
             </p>
           )}
         </div>
@@ -257,7 +264,7 @@ function OpenProjectsTabs() {
         <OpenProjectsContent onMetaChange={setProjectsMeta} />
       </TabsContent>
       <TabsContent value="clients">
-        <MyClientsTab />
+        <MyClientsTab onClientCountChange={setClientCount} />
       </TabsContent>
     </Tabs>
   );

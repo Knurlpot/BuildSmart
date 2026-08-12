@@ -1,7 +1,7 @@
 "use client";
 
 // 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { ColumnDef } from "@tanstack/react-table";
 import { Search, Upload } from "lucide-react";
 import { DataTable } from "@/components/data-table/DataTable";
@@ -17,7 +17,11 @@ function StatusBadge({ status }: { status: Client["status"] }) {
   );
 }
 
-export function MyClientsTab() {
+interface MyClientsTabProps {
+  onClientCountChange?: (count: number) => void;
+}
+
+export function MyClientsTab({ onClientCountChange }: MyClientsTabProps) {
   const { clients, isLoading, error, refetch } = useClients();
   const [search, setSearch] = useState("");
   const [showImport, setShowImport] = useState(false);
@@ -32,6 +36,10 @@ export function MyClientsTab() {
         (c.contact_email ?? "").toLowerCase().includes(q)
     );
   }, [clients, search]);
+
+  useEffect(() => {
+    onClientCountChange?.(clients.length);
+  }, [clients.length, onClientCountChange]);
 
   const columns = useMemo<ColumnDef<Client>[]>(
     () => [
@@ -71,10 +79,7 @@ export function MyClientsTab() {
 
   return (
     <div className="flex flex-col gap-5">
-      <div className="flex shrink-0 flex-wrap items-center justify-between gap-3">
-        <p className="text-sm text-gray-500">
-          {filtered.length} of {clients.length} client{clients.length !== 1 ? "s" : ""}
-        </p>
+      <div className="flex shrink-0 flex-wrap items-center justify-end gap-3">
         <button
           type="button"
           onClick={() => setShowImport((v) => !v)}
