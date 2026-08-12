@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class ExtractedSegment(BaseModel):
@@ -14,6 +14,17 @@ class BlueprintFloor(BaseModel):
     image_width: int = Field(gt=0)
     image_height: int = Field(gt=0)
     segments: list[ExtractedSegment]
+
+    @field_validator("segments", mode="before")
+    @classmethod
+    def remove_non_measurable_segments(cls, segments: object) -> object:
+        if not isinstance(segments, list):
+            return segments
+        return [
+            segment
+            for segment in segments
+            if float(segment.get("area_sqm", 0) if isinstance(segment, dict) else getattr(segment, "area_sqm", 0)) > 0
+        ]
 
 
 class BlueprintExtractionResult(BaseModel):
