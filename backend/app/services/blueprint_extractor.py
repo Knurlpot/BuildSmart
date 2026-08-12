@@ -3,10 +3,11 @@ import html
 import io
 import math
 import os
+import re
 import statistics
 import tempfile
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterable
 from urllib.parse import quote
 
 from tenacity import retry, stop_after_attempt, wait_exponential
@@ -20,6 +21,43 @@ from app.schemas.blueprint import (
 
 MAX_BLUEPRINT_BYTES = 25 * 1024 * 1024
 GEMINI_MODEL = os.environ.get("GEMINI_VISION_MODEL", os.environ.get("GEMINI_MODEL", "gemini-flash-latest"))
+MIN_PDF_CONFIDENCE = 75
+DIMENSION_RE = re.compile(
+    r"(?P<length_ft>\d+(?:\.\d+)?)\s*(?:['’`/]\s*(?P<length_in>\d+(?:\.\d+)?))?\s*"
+    r"[xX×]\s*"
+    r"(?P<width_ft>\d+(?:\.\d+)?)\s*(?:['’`/]\s*(?P<width_in>\d+(?:\.\d+)?))?"
+)
+ROOM_NAME_STOPWORDS = {
+    "CLG",
+    "CEILING",
+    "COVERED",
+    "PORCH",
+    "BENCH",
+    "SHLVS",
+    "B.I.O",
+    "REF",
+    "VAULT",
+    "VAULTED",
+    "WIC",
+    "WC",
+}
+MAX_REGION_TRACE_POINTS = 120
+ROOM_WALL_CLOSE_FILTERS = (11, 17, 25, 35, 45)
+
+
+def _safe_error_detail(exc: Exception) -> str:
+    detail = str(exc).replace(os.environ.get("GEMINI_API_KEY", ""), "[redacted]")
+    detail = re.sub(r"\s+", " ", detail).strip()
+    if len(detail) > 220:
+        detail = f"{detail[:217]}..."
+    return f"{exc.__class__.__name__}: {detail}" if detail else exc.__class__.__name__
+
+
+def _gemini_api_key() -> str:
+    api_key = os.environ.get("GEMINI_API_KEY", "").strip()
+    if not api_key:
+        raise RuntimeError("GEMINI_API_KEY is required to scan PDF blueprints.")
+    return api_key
 
 
 def _data_url(content: bytes, mime_type: str) -> str:
@@ -33,22 +71,436 @@ def _png_bytes(image: Any) -> bytes:
     return output.getvalue()
 
 
+def _dimension_area_sqm(value: str) -> float | None:
+    match = DIMENSION_RE.search(value)
+    if not match:
+        return None
+    length_feet = float(match.group("length_ft")) + float(match.group("length_in") or 0) / 12
+    width_feet = float(match.group("width_ft")) + float(match.group("width_in") or 0) / 12
+    area_sqm = length_feet * width_feet * 0.09290304
+    return round(area_sqm, 2) if area_sqm > 0 else None
+
+
+def _clean_room_name(value: str) -> str:
+    value = DIMENSION_RE.sub("", value)
+    value = re.sub(r"\([^)]*\)", "", value)
+    value = re.sub(r"[/'+\\-×x]+", " ", value)
+    value = re.sub(r"\s+", " ", value).strip(" .:-")
+    words = [word for word in value.split() if word.upper() not in ROOM_NAME_STOPWORDS]
+    return " ".join(words).strip()[:150]
+
+
+def _horizontally_overlaps(first: dict[str, Any], second: dict[str, Any]) -> bool:
+    overlap = min(float(first["x1"]), float(second["x1"])) - max(float(first["x0"]), float(second["x0"]))
+    return overlap > 0
+
+
+def _segments_from_positioned_words(
+    words: list[dict[str, Any]],
+    page_width: float,
+    page_height: float,
+    image_width: int,
+    image_height: int,
+) -> list[ExtractedSegment]:
+    if not words:
+        return []
+
+    lines: list[dict[str, Any]] = []
+    for word in sorted(words, key=lambda item: (float(item["top"]), float(item["x0"]))):
+        word_top = float(word["top"])
+        previous_words = lines[-1]["words"] if lines else []
+        previous_right = max((float(item["x1"]) for item in previous_words), default=0)
+        starts_new_cluster = previous_words and float(word["x0"]) - previous_right > 35
+        if not lines or abs(float(lines[-1]["top"]) - word_top) > 5 or starts_new_cluster:
+            lines.append({"top": word_top, "words": [word]})
+        else:
+            lines[-1]["words"].append(word)
+
+    parsed_lines: list[dict[str, Any]] = []
+    for line in lines:
+        line_words = line["words"]
+        text = " ".join(str(word["text"]) for word in line_words)
+        parsed_lines.append(
+            {
+                "text": text,
+                "x0": min(float(word["x0"]) for word in line_words),
+                "top": min(float(word["top"]) for word in line_words),
+                "x1": max(float(word["x1"]) for word in line_words),
+                "bottom": max(float(word["bottom"]) for word in line_words),
+            }
+        )
+
+    segments: list[ExtractedSegment] = []
+    seen: set[tuple[str, float]] = set()
+    for index, line in enumerate(parsed_lines):
+        area_sqm = _dimension_area_sqm(line["text"])
+        if area_sqm is None:
+            continue
+
+        name = _clean_room_name(line["text"])
+        context_lines = [line]
+        lookback = index - 1
+        while lookback >= 0 and line["top"] - parsed_lines[lookback]["bottom"] <= 28:
+            candidate = _clean_room_name(parsed_lines[lookback]["text"])
+            if candidate and _horizontally_overlaps(line, parsed_lines[lookback]):
+                context_lines.insert(0, parsed_lines[lookback])
+                name = f"{candidate} {name}".strip()
+            lookback -= 1
+        if not name:
+            continue
+
+        key = (name.upper(), area_sqm)
+        if key in seen:
+            continue
+        seen.add(key)
+
+        min_x = min(float(item["x0"]) for item in context_lines)
+        min_y = min(float(item["top"]) for item in context_lines)
+        max_x = max(float(item["x1"]) for item in context_lines)
+        max_y = max(float(item["bottom"]) for item in context_lines)
+        center_x = ((min_x + max_x) / 2) * image_width / page_width
+        center_y = ((min_y + max_y) / 2) * image_height / page_height
+        box_width = max((max_x - min_x) * image_width / page_width * 2.8, 90)
+        box_height = max((max_y - min_y) * image_height / page_height * 3.0, 60)
+        left = max(center_x - box_width / 2, 0)
+        top = max(center_y - box_height / 2, 0)
+        right = min(center_x + box_width / 2, image_width)
+        bottom = min(center_y + box_height / 2, image_height)
+
+        segments.append(
+            ExtractedSegment(
+                segment_name=name,
+                area_sqm=area_sqm,
+                polygon_coords=[(left, top), (right, top), (right, bottom), (left, bottom)],
+                confidence_score=72,
+            )
+        )
+
+    return segments
+
+
+def _extract_pdf_text_segments(content: bytes, page_number: int, image_width: int, image_height: int) -> list[ExtractedSegment]:
+    try:
+        import pdfplumber
+    except ImportError:
+        return []
+
+    try:
+        with pdfplumber.open(io.BytesIO(content)) as document:
+            if page_number > len(document.pages):
+                return []
+            page = document.pages[page_number - 1]
+            words = page.extract_words(x_tolerance=3, y_tolerance=4, keep_blank_chars=False)
+            page_width = float(page.width or image_width)
+            page_height = float(page.height or image_height)
+    except Exception:
+        return []
+
+    return _segments_from_positioned_words(words, page_width, page_height, image_width, image_height)
+
+
+def _extract_ocr_segments(image: Any) -> list[ExtractedSegment]:
+    try:
+        import pytesseract
+        from pytesseract import Output
+    except ImportError:
+        return []
+
+    width, height = image.size
+    grayscale = image.convert("L")
+    best_segments: list[ExtractedSegment] = []
+    seen_words: set[tuple[str, int, int]] = set()
+    merged_words: list[dict[str, Any]] = []
+    for page_segmentation_mode in (6, 11, 12):
+        try:
+            data = pytesseract.image_to_data(
+                grayscale,
+                output_type=Output.DICT,
+                config=f"--psm {page_segmentation_mode}",
+            )
+        except Exception:
+            continue
+
+        words: list[dict[str, Any]] = []
+        for index, text in enumerate(data.get("text", [])):
+            value = str(text).strip()
+            if not value:
+                continue
+            try:
+                confidence = float(data["conf"][index])
+            except (TypeError, ValueError):
+                confidence = -1
+            if confidence >= 0 and confidence < 20:
+                continue
+            left = float(data["left"][index])
+            top = float(data["top"][index])
+            word_width = float(data["width"][index])
+            word_height = float(data["height"][index])
+            word = {"text": value, "x0": left, "x1": left + word_width, "top": top, "bottom": top + word_height}
+            words.append(word)
+            key = (value.upper(), round(left / 8), round(top / 8))
+            if key not in seen_words:
+                seen_words.add(key)
+                merged_words.append(word)
+        segments = _segments_from_positioned_words(words, width, height, width, height)
+        if len(segments) > len(best_segments):
+            best_segments = segments
+
+    merged_segments = _segments_from_positioned_words(merged_words, width, height, width, height)
+    return merged_segments if len(merged_segments) > len(best_segments) else best_segments
+
+
+def _nearest_open_pixel(passable: Any, start_x: int, start_y: int) -> tuple[int, int] | None:
+    height, width = passable.shape
+    if 0 <= start_x < width and 0 <= start_y < height and bool(passable[start_y, start_x]):
+        return start_x, start_y
+    for radius in range(1, 30):
+        min_x = max(start_x - radius, 0)
+        max_x = min(start_x + radius, width - 1)
+        min_y = max(start_y - radius, 0)
+        max_y = min(start_y + radius, height - 1)
+        for x in range(min_x, max_x + 1):
+            for y in (min_y, max_y):
+                if bool(passable[y, x]):
+                    return x, y
+        for y in range(min_y, max_y + 1):
+            for x in (min_x, max_x):
+                if bool(passable[y, x]):
+                    return x, y
+    return None
+
+
+def _flood_region(passable: Any, start: tuple[int, int]) -> list[tuple[int, int]]:
+    from collections import deque
+
+    height, width = passable.shape
+    visited = set()
+    queue = deque([start])
+    visited.add(start)
+    while queue:
+        x, y = queue.popleft()
+        for next_x, next_y in ((x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1)):
+            if not (0 <= next_x < width and 0 <= next_y < height):
+                continue
+            point = (next_x, next_y)
+            if point in visited or not bool(passable[next_y, next_x]):
+                continue
+            visited.add(point)
+            queue.append(point)
+            if len(visited) > width * height * 0.4:
+                return []
+    return list(visited)
+
+
+def _simplify_orthogonal_polygon(points: Iterable[tuple[float, float]]) -> list[tuple[float, float]]:
+    simplified: list[tuple[float, float]] = []
+    for point in points:
+        if simplified and point == simplified[-1]:
+            continue
+        simplified.append(point)
+
+    changed = True
+    while changed and len(simplified) > 3:
+        changed = False
+        next_points: list[tuple[float, float]] = []
+        for index, point in enumerate(simplified):
+            previous = simplified[index - 1]
+            following = simplified[(index + 1) % len(simplified)]
+            same_x = previous[0] == point[0] == following[0]
+            same_y = previous[1] == point[1] == following[1]
+            if same_x or same_y:
+                changed = True
+                continue
+            next_points.append(point)
+        simplified = next_points
+    return simplified[:MAX_REGION_TRACE_POINTS]
+
+
+def _region_to_orthogonal_polygon(
+    region: list[tuple[int, int]],
+    source_width: int,
+    source_height: int,
+    scale_x: float,
+    scale_y: float,
+) -> list[tuple[float, float]] | None:
+    if len(region) < 20:
+        return None
+
+    rows: dict[int, list[int]] = {}
+    for x, y in region:
+        rows.setdefault(y, []).append(x)
+    if len(rows) < 4:
+        return None
+
+    ordered_rows = sorted(rows.items())
+    row_step = max(1, len(ordered_rows) // (MAX_REGION_TRACE_POINTS // 2))
+    sampled_rows = ordered_rows[::row_step]
+    if sampled_rows[-1][0] != ordered_rows[-1][0]:
+        sampled_rows.append(ordered_rows[-1])
+
+    left_edge = [(min(xs), y) for y, xs in sampled_rows]
+    right_edge = [(max(xs), y) for y, xs in reversed(sampled_rows)]
+    polygon = []
+    for x, y in [*left_edge, *right_edge]:
+        source_x = min(max(x * scale_x, 0), source_width)
+        source_y = min(max(y * scale_y, 0), source_height)
+        polygon.append((round(source_x, 2), round(source_y, 2)))
+
+    simplified = _simplify_orthogonal_polygon(polygon)
+    return simplified if len(simplified) >= 3 else None
+
+
+def _room_passable_masks(image: Any) -> list[Any]:
+    try:
+        import numpy as np
+        from PIL import Image, ImageFilter
+    except ImportError:
+        return []
+
+    source_width, source_height = image.size
+    max_side = 900
+    scale = min(max_side / max(source_width, source_height), 1)
+    working = image.convert("L")
+    if scale < 1:
+        working = working.resize((max(1, round(source_width * scale)), max(1, round(source_height * scale))))
+
+    wall_mask = np.array(working) < 135
+    masks = []
+    for filter_size in ROOM_WALL_CLOSE_FILTERS:
+        wall_image = Image.fromarray((wall_mask * 255).astype("uint8")).filter(ImageFilter.MaxFilter(filter_size))
+        masks.append(np.array(wall_image) == 0)
+    return masks
+
+
+def _refine_segments_with_room_regions(image: Any, segments: list[ExtractedSegment]) -> list[ExtractedSegment]:
+    if not segments:
+        return []
+    try:
+        import numpy as np
+    except ImportError:
+        return segments
+
+    source_width, source_height = image.size
+    passable_masks = _room_passable_masks(image)
+    if not passable_masks:
+        return segments
+
+    refined: list[ExtractedSegment] = []
+    used_regions: set[tuple[int, int, int, int]] = set()
+    for segment in segments:
+        if not segment.polygon_coords:
+            refined.append(segment)
+            continue
+        xs = [point[0] for point in segment.polygon_coords]
+        ys = [point[1] for point in segment.polygon_coords]
+        best_polygon: list[tuple[float, float]] | None = None
+        best_region_key: tuple[int, int, int, int] | None = None
+        best_region_size = 0
+        for passable in passable_masks:
+            scale_x = source_width / passable.shape[1]
+            scale_y = source_height / passable.shape[0]
+            anchor_x = round((min(xs) + max(xs)) / 2 / scale_x)
+            anchor_y = round((min(ys) + max(ys)) / 2 / scale_y)
+            start = _nearest_open_pixel(passable, anchor_x, anchor_y)
+            if start is None:
+                continue
+            region = _flood_region(passable, start)
+            if not region:
+                continue
+            region_xs = [point[0] for point in region]
+            region_ys = [point[1] for point in region]
+            width = max(region_xs) - min(region_xs)
+            height = max(region_ys) - min(region_ys)
+            if width < 8 or height < 8:
+                continue
+            region_key = (min(region_xs) // 4, min(region_ys) // 4, max(region_xs) // 4, max(region_ys) // 4)
+            polygon = _region_to_orthogonal_polygon(region, source_width, source_height, scale_x, scale_y)
+            if polygon is None:
+                continue
+            if best_polygon is None or len(region) > best_region_size:
+                best_polygon = polygon
+                best_region_key = region_key
+                best_region_size = len(region)
+
+        if best_polygon is None or best_region_key is None:
+            refined.append(
+                ExtractedSegment(
+                    segment_name=segment.segment_name,
+                    area_sqm=segment.area_sqm,
+                    polygon_coords=segment.polygon_coords,
+                    confidence_score=min(segment.confidence_score or 70, 74),
+                )
+            )
+            continue
+
+        confidence = max(segment.confidence_score or 0, 82 if best_region_key not in used_regions else 76)
+        used_regions.add(best_region_key)
+        refined.append(
+            ExtractedSegment(
+                segment_name=segment.segment_name,
+                area_sqm=segment.area_sqm,
+                polygon_coords=best_polygon,
+                confidence_score=min(confidence, 90),
+            )
+        )
+    return refined
+
+
+def _fallback_pdf_floor(image: Any, image_bytes: bytes, page_number: int) -> BlueprintFloor:
+    grayscale = image.convert("L")
+    width, height = grayscale.size
+    pixels = grayscale.load()
+    min_x, min_y, max_x, max_y = width, height, 0, 0
+
+    for y in range(height):
+        for x in range(width):
+            if pixels[x, y] < 245:
+                min_x = min(min_x, x)
+                min_y = min(min_y, y)
+                max_x = max(max_x, x)
+                max_y = max(max_y, y)
+
+    segments: list[ExtractedSegment] = []
+    if min_x < max_x and min_y < max_y:
+        padding = 8
+        min_x = max(min_x - padding, 0)
+        min_y = max(min_y - padding, 0)
+        max_x = min(max_x + padding, width)
+        max_y = min(max_y + padding, height)
+        segments.append(
+            ExtractedSegment(
+                segment_name=f"Blueprint Area {page_number}",
+                area_sqm=1,
+                polygon_coords=[(min_x, min_y), (max_x, min_y), (max_x, max_y), (min_x, max_y)],
+                confidence_score=35,
+            )
+        )
+
+    return BlueprintFloor(
+        floor_level=f"Page {page_number}",
+        image_url=_data_url(image_bytes, "image/png"),
+        image_width=width,
+        image_height=height,
+        segments=segments,
+    )
+
+
 @retry(stop=stop_after_attempt(4), wait=wait_exponential(multiplier=1, min=2, max=10))
 def _extract_pdf_page_with_gemini(image_bytes: bytes, page_number: int) -> GeminiFloorExtraction:
-    api_key = os.environ.get("GEMINI_API_KEY")
-    if not api_key:
-        raise RuntimeError("GEMINI_API_KEY is required to scan PDF blueprints.")
-
     from google import genai
     from google.genai import types
 
-    client = genai.Client(api_key=api_key)
+    client = genai.Client(api_key=_gemini_api_key())
     prompt = (
-        "Analyze this architectural blueprint page. Identify enclosed rooms or measurable construction areas. "
-        "Return each segment's printed room name, area in square metres, polygon boundary in the image's pixel "
-        "coordinates, and a 0-100 confidence score. Use a short floor label such as Ground Floor or Floor 2. "
-        "Do not invent an area when neither dimensions nor scale support it. Exclude legends, title blocks, "
-        "dimension labels, furniture, and symbols. Polygon points must follow the visible room boundary."
+        "Analyze this architectural floor-plan blueprint page as a construction takeoff reviewer. "
+        "Identify every real room or measurable area visible on the plan, including bedrooms, master, dining, "
+        "living/great room, garages, closets, bathrooms, porches, balconies, and outdoor living areas when labeled. "
+        "Trace each room's actual wall/space boundary in image pixel coordinates. Polygons may be rectangles, "
+        "L-shapes, or irregular orthogonal shapes. Do not draw boxes around text labels, dimension text, furniture, "
+        "fixtures, symbols, title blocks, or legends. The polygon must cover the room floor area itself. "
+        "Use the printed room name when present. Compute area in square metres from printed dimensions when visible; "
+        "otherwise estimate from scale only when the plan provides enough evidence. Return a 0-100 confidence score. "
+        "Only return rooms or areas you can identify with at least 75 confidence."
     )
     response = client.models.generate_content(
         model=GEMINI_MODEL,
@@ -73,7 +525,7 @@ def _extract_pdf(content: bytes) -> BlueprintExtractionResult:
     try:
         if convert_from_bytes is None:
             raise RuntimeError("pdf2image is unavailable")
-        images = convert_from_bytes(content, dpi=150, fmt="png")
+        images = convert_from_bytes(content, dpi=300, fmt="png")
     except Exception:
         # pdf2image uses Poppler in production. pdfplumber provides a local fallback for
         # development environments where Poppler is not installed (notably Windows).
@@ -81,7 +533,7 @@ def _extract_pdf(content: bytes) -> BlueprintExtractionResult:
             import pdfplumber
 
             with pdfplumber.open(io.BytesIO(content)) as document:
-                images = [page.to_image(resolution=150).original for page in document.pages]
+                images = [page.to_image(resolution=300).original for page in document.pages]
         except Exception as exc:
             raise RuntimeError("Could not render this PDF blueprint.") from exc
 
@@ -91,20 +543,35 @@ def _extract_pdf(content: bytes) -> BlueprintExtractionResult:
     floors: list[BlueprintFloor] = []
     for index, image in enumerate(images):
         image_bytes = _png_bytes(image)
-        detected = _extract_pdf_page_with_gemini(image_bytes, index + 1)
+        _gemini_api_key()
+        try:
+            detected = _extract_pdf_page_with_gemini(image_bytes, index + 1)
+        except RuntimeError:
+            raise
+        except Exception as exc:
+            raise RuntimeError(
+                "AI blueprint scanning failed. "
+                f"{_safe_error_detail(exc)}. "
+                "Check GEMINI_API_KEY, GEMINI_MODEL, quota, then try again."
+            ) from exc
         segments: list[ExtractedSegment] = []
         for position, segment in enumerate(detected.segments):
             rounded_area = round(segment.area_sqm, 2)
             if rounded_area <= 0 or len(segment.polygon_coords) < 3:
+                continue
+            confidence = segment.confidence_score
+            if confidence < MIN_PDF_CONFIDENCE:
                 continue
             segments.append(
                 ExtractedSegment(
                     segment_name=segment.segment_name.strip() or f"Segment {position + 1}",
                     area_sqm=rounded_area,
                     polygon_coords=segment.polygon_coords,
-                    confidence_score=segment.confidence_score,
+                    confidence_score=confidence,
                 )
             )
+        if not segments:
+            raise RuntimeError("AI blueprint scanning found no rooms above 75% confidence. Upload a clearer PDF or a DXF/DWG file.")
         floors.append(
             BlueprintFloor(
                 floor_level=detected.floor_level.strip() or f"Page {index + 1}",

@@ -130,6 +130,7 @@ def test_response_schema_discards_zero_area_segments_before_validation():
 def test_pdf_page_is_rendered_and_returned_with_detected_segments(monkeypatch):
     pdf = io.BytesIO()
     Image.new("RGB", (200, 100), "white").save(pdf, format="PDF")
+    monkeypatch.setenv("GEMINI_API_KEY", "AIza-test-key")
     monkeypatch.setattr(
         blueprint_extractor,
         "_extract_pdf_page_with_gemini",
@@ -151,6 +152,43 @@ def test_pdf_page_is_rendered_and_returned_with_detected_segments(monkeypatch):
     assert result.floors[0].floor_level == "Ground Floor"
     assert result.floors[0].image_url.startswith("data:image/png;base64,")
     assert result.floors[0].segments[0].segment_name == "Living Room"
+
+
+def test_pdf_requires_ai_vision_when_gemini_is_unavailable(monkeypatch):
+    pdf = io.BytesIO()
+    Image.new("RGB", (200, 120), "white").save(pdf, format="PDF")
+    monkeypatch.setattr(
+        blueprint_extractor,
+        "_extract_pdf_page_with_gemini",
+        lambda _content, _page: (_ for _ in ()).throw(RuntimeError("GEMINI_API_KEY is required")),
+    )
+
+    with pytest.raises(RuntimeError, match="GEMINI_API_KEY"):
+        extract_blueprint("floor-plan.pdf", pdf.getvalue())
+
+
+def test_pdf_discards_low_confidence_ai_segments(monkeypatch):
+    pdf = io.BytesIO()
+    Image.new("RGB", (200, 120), "white").save(pdf, format="PDF")
+    monkeypatch.setenv("GEMINI_API_KEY", "AIza-test-key")
+    monkeypatch.setattr(
+        blueprint_extractor,
+        "_extract_pdf_page_with_gemini",
+        lambda _content, _page: GeminiFloorExtraction(
+            floor_level="Ground Floor",
+            segments=[
+                GeminiSegment(
+                    segment_name="Text Box",
+                    area_sqm=1,
+                    polygon_coords=[(10, 10), (60, 10), (60, 30), (10, 30)],
+                    confidence_score=72,
+                )
+            ],
+        ),
+    )
+
+    with pytest.raises(RuntimeError, match="above 75% confidence"):
+        extract_blueprint("floor-plan.pdf", pdf.getvalue())
 
 
 def test_dwg_requires_oda_when_converter_is_not_installed(monkeypatch):

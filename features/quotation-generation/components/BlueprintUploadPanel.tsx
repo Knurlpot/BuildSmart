@@ -118,7 +118,21 @@ export function BlueprintUploadPanel({
 
   // Part E — the actual restart: every edit/grouping/deletion/manual-add since the first
   // scan is discarded, replaced with a fresh reconstruction of the original detection.
-  const handleRescanConfirmed = () => {
+  const handleRescanConfirmed = async () => {
+    if (selectedFile) {
+      try {
+        const result = await extractBlueprint(quoteId, selectedFile);
+        const fresh = result.floors.flatMap((floor) => floor.segments.map((seg) => createSegmentFromExtraction(seg, floor.floor_level)));
+        onChange(fresh);
+        onFloorsChange(result.floors);
+        onOriginalFloorsChange(result.floors);
+        setSelectedFloor(result.floors[0]?.floor_level ?? null);
+        setHoveredId(null);
+        return;
+      } catch {
+        // surfaced via extractError below — keep the current reviewed data on screen
+      }
+    }
     if (!originalFloors) return;
     const fresh = originalFloors.flatMap((floor) => floor.segments.map((seg) => createSegmentFromExtraction(seg, floor.floor_level)));
     onChange(fresh);
