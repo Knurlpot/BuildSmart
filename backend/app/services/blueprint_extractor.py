@@ -1,6 +1,7 @@
 import base64
 import html
 import io
+import json
 import math
 import os
 import re
@@ -10,18 +11,18 @@ from pathlib import Path
 from typing import Any, Iterable
 from urllib.parse import quote
 
-from tenacity import retry, stop_after_attempt, wait_exponential
+from tenacity import retry, retry_if_not_exception_type, stop_after_attempt, wait_exponential
 
 from app.schemas.blueprint import (
     BlueprintExtractionResult,
     BlueprintFloor,
     ExtractedSegment,
     GeminiFloorExtraction,
+    GeminiSegment,
 )
 
 MAX_BLUEPRINT_BYTES = 25 * 1024 * 1024
 GEMINI_MODEL = os.environ.get("GEMINI_VISION_MODEL", os.environ.get("GEMINI_MODEL", "gemini-flash-latest"))
-MIN_PDF_CONFIDENCE = 75
 DIMENSION_RE = re.compile(
     r"(?P<length_ft>\d+(?:\.\d+)?)\s*(?:['’`/]\s*(?P<length_in>\d+(?:\.\d+)?))?\s*"
     r"[xX×]\s*"
@@ -53,6 +54,107 @@ def _safe_error_detail(exc: Exception) -> str:
     return f"{exc.__class__.__name__}: {detail}" if detail else exc.__class__.__name__
 
 
+def _json_from_gemini_response(response: Any) -> Any:
+    parsed = getattr(response, "parsed", None)
+    if parsed is not None:
+        if isinstance(parsed, GeminiFloorExtraction):
+            return parsed.model_dump()
+        return parsed
+
+    text = (getattr(response, "text", "") or "").strip()
+    if text.startswith("```"):
+        text = re.sub(r"^```(?:json)?\s*", "", text)
+        text = re.sub(r"\s*```$", "", text)
+    if not text:
+        raise ValueError("Gemini returned an empty response.")
+    return json.loads(text)
+
+
+def _field(data: dict[str, Any], *names: str) -> Any:
+    for name in names:
+        if name in data:
+            return data[name]
+    lowered = {key.lower(): value for key, value in data.items()}
+    for name in names:
+        if name.lower() in lowered:
+            return lowered[name.lower()]
+    return None
+
+
+def _coerce_polygon(value: Any) -> list[tuple[float, float]]:
+    points = value
+    if isinstance(value, dict):
+        points = _field(value, "points", "coordinates", "vertices")
+    if not isinstance(points, list):
+        return []
+
+    polygon: list[tuple[float, float]] = []
+    for point in points:
+        if isinstance(point, dict):
+            x = _field(point, "x", "left")
+            y = _field(point, "y", "top")
+        elif isinstance(point, (list, tuple)) and len(point) >= 2:
+            x, y = point[0], point[1]
+        else:
+            continue
+        try:
+            polygon.append((float(x), float(y)))
+        except (TypeError, ValueError):
+            continue
+    return polygon
+
+
+def _coerce_float(value: Any, default: float = 0) -> float:
+    if isinstance(value, str):
+        match = re.search(r"-?\d+(?:\.\d+)?", value.replace(",", ""))
+        value = match.group(0) if match else value
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _parse_gemini_floor_response(response: Any, page_number: int) -> GeminiFloorExtraction:
+    data = _json_from_gemini_response(response)
+    if isinstance(data, list):
+        data = {"segments": data}
+    if not isinstance(data, dict):
+        raise ValueError("Gemini response was not a JSON object.")
+
+    floors = _field(data, "floors", "pages")
+    if isinstance(floors, list) and floors:
+        first_floor = floors[0]
+        if isinstance(first_floor, dict):
+            data = first_floor
+
+    raw_segments = _field(data, "segments", "rooms", "areas", "spaces")
+    if not isinstance(raw_segments, list):
+        raise ValueError("Gemini response did not include a segments/rooms list.")
+
+    segments: list[GeminiSegment] = []
+    for index, raw_segment in enumerate(raw_segments):
+        if not isinstance(raw_segment, dict):
+            continue
+        name = str(_field(raw_segment, "segment_name", "room_name", "name", "label", "space_name") or f"Room {index + 1}").strip()
+        area = _coerce_float(_field(raw_segment, "area_sqm", "area_square_meters", "area_m2", "area"))
+        polygon = _coerce_polygon(_field(raw_segment, "polygon_coords", "polygon", "boundary", "coordinates", "points"))
+        confidence = _coerce_float(_field(raw_segment, "confidence_score", "confidence", "score"), 0)
+        if name and area > 0 and len(polygon) >= 3:
+            segments.append(
+                GeminiSegment(
+                    segment_name=name,
+                    area_sqm=area,
+                    polygon_coords=polygon,
+                    confidence_score=confidence,
+                )
+            )
+
+    if not segments:
+        raise ValueError("Gemini response did not contain usable room polygons.")
+    floor_level = str(_field(data, "floor_level", "floor", "page_label", "level") or f"Page {page_number}").strip()
+    return GeminiFloorExtraction(floor_level=floor_level, segments=segments)
+
+
 def _gemini_api_key() -> str:
     api_key = os.environ.get("GEMINI_API_KEY", "").strip()
     if not api_key:
@@ -69,6 +171,88 @@ def _png_bytes(image: Any) -> bytes:
     output = io.BytesIO()
     image.save(output, format="PNG")
     return output.getvalue()
+
+
+def _image_ink_bounds(image: Any) -> tuple[float, float, float, float] | None:
+    grayscale = image.convert("L")
+    width, height = grayscale.size
+    pixels = grayscale.load()
+    min_x, min_y, max_x, max_y = width, height, 0, 0
+    for y in range(height):
+        for x in range(width):
+            if pixels[x, y] < 120:
+                min_x = min(min_x, x)
+                min_y = min(min_y, y)
+                max_x = max(max_x, x)
+                max_y = max(max_y, y)
+    if min_x >= max_x or min_y >= max_y:
+        return None
+    return float(min_x), float(min_y), float(max_x), float(max_y)
+
+
+def _polygon_bounds(segments: list[ExtractedSegment]) -> tuple[float, float, float, float] | None:
+    points = [point for segment in segments for point in (segment.polygon_coords or [])]
+    if not points:
+        return None
+    xs = [point[0] for point in points]
+    ys = [point[1] for point in points]
+    return min(xs), min(ys), max(xs), max(ys)
+
+
+def _bounds_iou(first: tuple[float, float, float, float], second: tuple[float, float, float, float]) -> float:
+    left = max(first[0], second[0])
+    top = max(first[1], second[1])
+    right = min(first[2], second[2])
+    bottom = min(first[3], second[3])
+    intersection = max(0, right - left) * max(0, bottom - top)
+    first_area = max(0, first[2] - first[0]) * max(0, first[3] - first[1])
+    second_area = max(0, second[2] - second[0]) * max(0, second[3] - second[1])
+    union = first_area + second_area - intersection
+    return intersection / union if union > 0 else 0
+
+
+def _align_segments_to_drawing(image: Any, segments: list[ExtractedSegment]) -> list[ExtractedSegment]:
+    drawing_bounds = _image_ink_bounds(image)
+    segment_bounds = _polygon_bounds(segments)
+    if drawing_bounds is None or segment_bounds is None:
+        return segments
+
+    source_width = max(segment_bounds[2] - segment_bounds[0], 1)
+    source_height = max(segment_bounds[3] - segment_bounds[1], 1)
+    target_width = max(drawing_bounds[2] - drawing_bounds[0], 1)
+    target_height = max(drawing_bounds[3] - drawing_bounds[1], 1)
+    image_width, image_height = image.size
+
+    margin_x = image_width * 0.08
+    margin_y = image_height * 0.08
+    needs_alignment = (
+        segment_bounds[0] < -margin_x
+        or segment_bounds[1] < -margin_y
+        or segment_bounds[2] > image_width + margin_x
+        or segment_bounds[3] > image_height + margin_y
+    )
+    if not needs_alignment:
+        return segments
+
+    aligned: list[ExtractedSegment] = []
+    for segment in segments:
+        if not segment.polygon_coords:
+            aligned.append(segment)
+            continue
+        polygon = []
+        for x, y in segment.polygon_coords:
+            mapped_x = drawing_bounds[0] + ((x - segment_bounds[0]) / source_width) * target_width
+            mapped_y = drawing_bounds[1] + ((y - segment_bounds[1]) / source_height) * target_height
+            polygon.append((round(min(max(mapped_x, 0), image_width), 2), round(min(max(mapped_y, 0), image_height), 2)))
+        aligned.append(
+            ExtractedSegment(
+                segment_name=segment.segment_name,
+                area_sqm=segment.area_sqm,
+                polygon_coords=polygon,
+                confidence_score=segment.confidence_score,
+            )
+        )
+    return aligned
 
 
 def _dimension_area_sqm(value: str) -> float | None:
@@ -485,7 +669,11 @@ def _fallback_pdf_floor(image: Any, image_bytes: bytes, page_number: int) -> Blu
     )
 
 
-@retry(stop=stop_after_attempt(4), wait=wait_exponential(multiplier=1, min=2, max=10))
+@retry(
+    retry=retry_if_not_exception_type(ValueError),
+    stop=stop_after_attempt(4),
+    wait=wait_exponential(multiplier=1, min=2, max=10),
+)
 def _extract_pdf_page_with_gemini(image_bytes: bytes, page_number: int) -> GeminiFloorExtraction:
     from google import genai
     from google.genai import types
@@ -499,21 +687,18 @@ def _extract_pdf_page_with_gemini(image_bytes: bytes, page_number: int) -> Gemin
         "L-shapes, or irregular orthogonal shapes. Do not draw boxes around text labels, dimension text, furniture, "
         "fixtures, symbols, title blocks, or legends. The polygon must cover the room floor area itself. "
         "Use the printed room name when present. Compute area in square metres from printed dimensions when visible; "
-        "otherwise estimate from scale only when the plan provides enough evidence. Return a 0-100 confidence score. "
-        "Only return rooms or areas you can identify with at least 75 confidence."
+        "otherwise estimate from scale only when the plan provides enough evidence. Return every possible room with "
+        "a 0-100 confidence score, including low-confidence rooms. Low confidence is acceptable when uncertain; "
+        "missing a room is worse than marking it low confidence."
     )
     response = client.models.generate_content(
         model=GEMINI_MODEL,
         contents=[prompt, types.Part.from_bytes(data=image_bytes, mime_type="image/png")],
         config=types.GenerateContentConfig(
             response_mime_type="application/json",
-            response_schema=GeminiFloorExtraction,
         ),
     )
-    parsed = response.parsed
-    if isinstance(parsed, GeminiFloorExtraction):
-        return parsed
-    return GeminiFloorExtraction.model_validate(parsed)
+    return _parse_gemini_floor_response(response, page_number)
 
 
 def _extract_pdf(content: bytes) -> BlueprintExtractionResult:
@@ -559,9 +744,7 @@ def _extract_pdf(content: bytes) -> BlueprintExtractionResult:
             rounded_area = round(segment.area_sqm, 2)
             if rounded_area <= 0 or len(segment.polygon_coords) < 3:
                 continue
-            confidence = segment.confidence_score
-            if confidence < MIN_PDF_CONFIDENCE:
-                continue
+            confidence = max(0, min(segment.confidence_score, 100))
             segments.append(
                 ExtractedSegment(
                     segment_name=segment.segment_name.strip() or f"Segment {position + 1}",
@@ -571,7 +754,8 @@ def _extract_pdf(content: bytes) -> BlueprintExtractionResult:
                 )
             )
         if not segments:
-            raise RuntimeError("AI blueprint scanning found no rooms above 75% confidence. Upload a clearer PDF or a DXF/DWG file.")
+            raise RuntimeError("AI blueprint scanning found no usable room polygons. Upload a clearer PDF or a DXF/DWG file.")
+        segments = _align_segments_to_drawing(image, segments)
         floors.append(
             BlueprintFloor(
                 floor_level=detected.floor_level.strip() or f"Page {index + 1}",

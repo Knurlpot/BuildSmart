@@ -167,7 +167,7 @@ def test_pdf_requires_ai_vision_when_gemini_is_unavailable(monkeypatch):
         extract_blueprint("floor-plan.pdf", pdf.getvalue())
 
 
-def test_pdf_discards_low_confidence_ai_segments(monkeypatch):
+def test_pdf_keeps_low_confidence_ai_segments(monkeypatch):
     pdf = io.BytesIO()
     Image.new("RGB", (200, 120), "white").save(pdf, format="PDF")
     monkeypatch.setenv("GEMINI_API_KEY", "AIza-test-key")
@@ -187,8 +187,97 @@ def test_pdf_discards_low_confidence_ai_segments(monkeypatch):
         ),
     )
 
-    with pytest.raises(RuntimeError, match="above 75% confidence"):
-        extract_blueprint("floor-plan.pdf", pdf.getvalue())
+    result = extract_blueprint("floor-plan.pdf", pdf.getvalue())
+
+    assert result.floors[0].segments[0].segment_name == "Text Box"
+    assert result.floors[0].segments[0].confidence_score == 72
+
+
+def test_pdf_accepts_flexible_gemini_room_json(monkeypatch):
+    pdf = io.BytesIO()
+    Image.new("RGB", (200, 120), "white").save(pdf, format="PDF")
+    monkeypatch.setenv("GEMINI_API_KEY", "AIza-test-key")
+
+    class FakeResponse:
+        parsed = {
+            "floor": "Ground Floor",
+            "rooms": [
+                {
+                    "room_name": "Dining",
+                    "area_square_meters": "15.7 sqm",
+                    "polygon": {"points": [{"x": 10, "y": 10}, {"x": 90, "y": 10}, {"x": 90, "y": 70}, {"x": 10, "y": 70}]},
+                    "confidence": "88%",
+                }
+            ],
+        }
+
+    monkeypatch.setattr(
+        blueprint_extractor,
+        "_extract_pdf_page_with_gemini",
+        lambda _content, _page: blueprint_extractor._parse_gemini_floor_response(FakeResponse(), _page),
+    )
+
+    result = extract_blueprint("floor-plan.pdf", pdf.getvalue())
+
+    assert result.floors[0].floor_level == "Ground Floor"
+    assert result.floors[0].segments[0].segment_name == "Dining"
+    assert result.floors[0].segments[0].area_sqm == 15.7
+    assert result.floors[0].segments[0].confidence_score == 88
+
+
+def test_pdf_aligns_gemini_polygons_to_rendered_drawing(monkeypatch):
+    image = Image.new("RGB", (240, 180), "white")
+    for x in range(80, 201):
+        image.putpixel((x, 60), (0, 0, 0))
+        image.putpixel((x, 140), (0, 0, 0))
+    for y in range(60, 141):
+        image.putpixel((80, y), (0, 0, 0))
+        image.putpixel((200, y), (0, 0, 0))
+
+    aligned = blueprint_extractor._align_segments_to_drawing(
+        image,
+        [
+            blueprint_extractor.ExtractedSegment(
+                segment_name="Room",
+                area_sqm=10,
+                polygon_coords=[(-50, -50), (70, -50), (70, 30), (-50, 30)],
+                confidence_score=95,
+            )
+        ],
+    )
+    xs = [point[0] for point in aligned[0].polygon_coords or []]
+    ys = [point[1] for point in aligned[0].polygon_coords or []]
+
+    assert min(xs) >= 80
+    assert max(xs) <= 200
+    assert min(ys) >= 60
+    assert max(ys) <= 140
+
+
+def test_pdf_does_not_warp_in_bounds_gemini_polygons(monkeypatch):
+    pdf = io.BytesIO()
+    Image.new("RGB", (240, 180), "white").save(pdf, format="PDF")
+    monkeypatch.setenv("GEMINI_API_KEY", "AIza-test-key")
+    polygon = [(80, 60), (200, 60), (200, 140), (80, 140)]
+    monkeypatch.setattr(
+        blueprint_extractor,
+        "_extract_pdf_page_with_gemini",
+        lambda _content, _page: GeminiFloorExtraction(
+            floor_level="Ground Floor",
+            segments=[
+                GeminiSegment(
+                    segment_name="Room",
+                    area_sqm=10,
+                    polygon_coords=polygon,
+                    confidence_score=95,
+                )
+            ],
+        ),
+    )
+
+    result = extract_blueprint("in-bounds.pdf", pdf.getvalue())
+
+    assert result.floors[0].segments[0].polygon_coords == polygon
 
 
 def test_dwg_requires_oda_when_converter_is_not_installed(monkeypatch):
