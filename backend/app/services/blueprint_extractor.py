@@ -11,8 +11,6 @@ from pathlib import Path
 from typing import Any, Iterable
 from urllib.parse import quote
 
-from tenacity import retry, retry_if_not_exception_type, stop_after_attempt, wait_exponential
-
 from app.schemas.blueprint import (
     BlueprintExtractionResult,
     BlueprintFloor,
@@ -23,6 +21,7 @@ from app.schemas.blueprint import (
 
 MAX_BLUEPRINT_BYTES = 25 * 1024 * 1024
 GEMINI_MODEL = os.environ.get("GEMINI_VISION_MODEL", os.environ.get("GEMINI_MODEL", "gemini-flash-latest"))
+PDF_RENDER_DPI = int(os.environ.get("BLUEPRINT_PDF_DPI", "200"))
 DIMENSION_RE = re.compile(
     r"(?P<length_ft>\d+(?:\.\d+)?)\s*(?:['’`/]\s*(?P<length_in>\d+(?:\.\d+)?))?\s*"
     r"[xX×]\s*"
@@ -52,6 +51,22 @@ def _safe_error_detail(exc: Exception) -> str:
     if len(detail) > 220:
         detail = f"{detail[:217]}..."
     return f"{exc.__class__.__name__}: {detail}" if detail else exc.__class__.__name__
+
+
+def _gemini_failure_message(exc: Exception) -> str:
+    detail = _safe_error_detail(exc)
+    lowered = detail.lower()
+    if "429" in lowered or "too many requests" in lowered or "quota" in lowered or "rate" in lowered:
+        return (
+            "Gemini rate limit or quota was reached. Wait for the free-tier quota to reset, "
+            "enable billing/increase quota in Google AI Studio, or try a smaller/clearer PDF."
+        )
+    if "500" in lowered or "servererror" in lowered or "internal" in lowered:
+        return (
+            "Gemini returned a server error while scanning this PDF. Try again later, or reduce BLUEPRINT_PDF_DPI "
+            "to 150 and restart the backend."
+        )
+    return f"AI blueprint scanning failed. {detail}. Check GEMINI_API_KEY, GEMINI_MODEL, quota, then try again."
 
 
 def _json_from_gemini_response(response: Any) -> Any:
@@ -669,11 +684,6 @@ def _fallback_pdf_floor(image: Any, image_bytes: bytes, page_number: int) -> Blu
     )
 
 
-@retry(
-    retry=retry_if_not_exception_type(ValueError),
-    stop=stop_after_attempt(4),
-    wait=wait_exponential(multiplier=1, min=2, max=10),
-)
 def _extract_pdf_page_with_gemini(image_bytes: bytes, page_number: int) -> GeminiFloorExtraction:
     from google import genai
     from google.genai import types
@@ -710,7 +720,7 @@ def _extract_pdf(content: bytes) -> BlueprintExtractionResult:
     try:
         if convert_from_bytes is None:
             raise RuntimeError("pdf2image is unavailable")
-        images = convert_from_bytes(content, dpi=300, fmt="png")
+        images = convert_from_bytes(content, dpi=PDF_RENDER_DPI, fmt="png")
     except Exception:
         # pdf2image uses Poppler in production. pdfplumber provides a local fallback for
         # development environments where Poppler is not installed (notably Windows).
@@ -718,7 +728,7 @@ def _extract_pdf(content: bytes) -> BlueprintExtractionResult:
             import pdfplumber
 
             with pdfplumber.open(io.BytesIO(content)) as document:
-                images = [page.to_image(resolution=300).original for page in document.pages]
+                images = [page.to_image(resolution=PDF_RENDER_DPI).original for page in document.pages]
         except Exception as exc:
             raise RuntimeError("Could not render this PDF blueprint.") from exc
 
@@ -734,11 +744,7 @@ def _extract_pdf(content: bytes) -> BlueprintExtractionResult:
         except RuntimeError:
             raise
         except Exception as exc:
-            raise RuntimeError(
-                "AI blueprint scanning failed. "
-                f"{_safe_error_detail(exc)}. "
-                "Check GEMINI_API_KEY, GEMINI_MODEL, quota, then try again."
-            ) from exc
+            raise RuntimeError(_gemini_failure_message(exc)) from exc
         segments: list[ExtractedSegment] = []
         for position, segment in enumerate(detected.segments):
             rounded_area = round(segment.area_sqm, 2)

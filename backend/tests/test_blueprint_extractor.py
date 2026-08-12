@@ -225,6 +225,34 @@ def test_pdf_accepts_flexible_gemini_room_json(monkeypatch):
     assert result.floors[0].segments[0].confidence_score == 88
 
 
+def test_pdf_reports_gemini_rate_limit(monkeypatch):
+    pdf = io.BytesIO()
+    Image.new("RGB", (200, 120), "white").save(pdf, format="PDF")
+    monkeypatch.setenv("GEMINI_API_KEY", "AIza-test-key")
+    monkeypatch.setattr(
+        blueprint_extractor,
+        "_extract_pdf_page_with_gemini",
+        lambda _content, _page: (_ for _ in ()).throw(Exception("429 TooManyRequests")),
+    )
+
+    with pytest.raises(RuntimeError, match="rate limit or quota"):
+        extract_blueprint("floor-plan.pdf", pdf.getvalue())
+
+
+def test_pdf_reports_gemini_server_error(monkeypatch):
+    pdf = io.BytesIO()
+    Image.new("RGB", (200, 120), "white").save(pdf, format="PDF")
+    monkeypatch.setenv("GEMINI_API_KEY", "AIza-test-key")
+    monkeypatch.setattr(
+        blueprint_extractor,
+        "_extract_pdf_page_with_gemini",
+        lambda _content, _page: (_ for _ in ()).throw(Exception("ServerError")),
+    )
+
+    with pytest.raises(RuntimeError, match="server error"):
+        extract_blueprint("floor-plan.pdf", pdf.getvalue())
+
+
 def test_pdf_aligns_gemini_polygons_to_rendered_drawing(monkeypatch):
     image = Image.new("RGB", (240, 180), "white")
     for x in range(80, 201):
