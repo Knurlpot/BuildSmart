@@ -23,6 +23,14 @@ import type { Client, Quotation } from "@/types/entities";
 const inputCls =
   "w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-2.5 text-sm outline-none transition focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/20";
 const labelCls = "text-xs font-semibold uppercase tracking-wide text-gray-600";
+const floatingInputCls =
+  "peer pb-2 pt-5 placeholder:text-transparent";
+const floatingLabelBaseCls =
+  "pointer-events-none absolute left-4 top-1.5 text-[10px] font-semibold text-gray-500 transition-all peer-placeholder-shown:top-1/2 peer-placeholder-shown:-translate-y-1/2 peer-placeholder-shown:text-sm peer-placeholder-shown:font-medium peer-focus:top-1.5 peer-focus:translate-y-0 peer-focus:text-[10px] peer-focus:font-semibold peer-focus:text-primary";
+const floatingSelectLabelCls =
+  "pointer-events-none absolute left-4 text-gray-500 transition-all";
+const floatingSelectLabelRestCls = "top-1/2 -translate-y-1/2 text-sm font-medium";
+const floatingSelectLabelActiveCls = "top-1.5 translate-y-0 text-[10px] font-semibold";
 
 function joinWithAnd(items: string[]): string {
   if (items.length === 0) return "";
@@ -194,6 +202,7 @@ export function ClientAndProjectStep({ onContinue }: ClientAndProjectStepProps) 
   const [projectRegion, setProjectRegion] = useState<PhRegion | "">("");
   const [projectNameFocused, setProjectNameFocused] = useState(false);
   const [projectLocationFocused, setProjectLocationFocused] = useState(false);
+  const [projectRegionFocused, setProjectRegionFocused] = useState(false);
   const [cancelConfirmOpen, setCancelConfirmOpen] = useState(false);
 
   const clientValid = client !== null;
@@ -205,6 +214,7 @@ export function ClientAndProjectStep({ onContinue }: ClientAndProjectStepProps) 
     client !== null || draft !== null || projectName.trim().length > 0 || projectLocation.trim().length > 0 || projectRegion !== "";
 
   const continueHint = buildContinueHint({ clientValid, nameValid, locationValid, regionValid });
+  const projectRegionFloated = projectRegionFocused || projectRegion !== "";
 
   const handleStartCreate = (name: string) => {
     resetCreate();
@@ -330,51 +340,60 @@ export function ClientAndProjectStep({ onContinue }: ClientAndProjectStepProps) 
           />
         </div>
 
-        <div className="flex flex-col gap-1.5">
-          <label className={labelCls}>
-            Project Name <span className="text-red-500">*</span>
-          </label>
+        <div className="relative">
           <input
+            id="quotation-project-name"
             value={projectName}
             onChange={(e) => setProjectName(e.target.value)}
             onFocus={() => setProjectNameFocused(true)}
             onBlur={() => setProjectNameFocused(false)}
-            placeholder="Name of Project"
-            className={inputCls}
+            placeholder=" "
+            className={`${inputCls} ${floatingInputCls}`}
           />
+          <label htmlFor="quotation-project-name" className={floatingLabelBaseCls}>
+            Project Name <span className="text-red-500">*</span>
+          </label>
         </div>
 
         <div className="grid grid-cols-2 gap-4">
-          <div className="flex flex-col gap-1.5">
-            <label className={labelCls}>
-              Project Location <span className="text-red-500">*</span>
-            </label>
+          <div className="relative">
             {/* Part E — plain free text (quotation.project_location, VARCHAR): the user
                 types a city/location, no suggestion dropdown. Region below is the real
                 enum and keeps its <select>; location is not the same thing as region. */}
             <input
+              id="quotation-project-location"
               value={projectLocation}
               onChange={(e) => setProjectLocation(e.target.value)}
               onFocus={() => setProjectLocationFocused(true)}
               onBlur={() => setProjectLocationFocused(false)}
-              placeholder="Location"
-              className={inputCls}
+              placeholder=" "
+              className={`${inputCls} ${floatingInputCls}`}
             />
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <label className={labelCls}>
-              Region <span className="text-red-500">*</span>
+            <label htmlFor="quotation-project-location" className={floatingLabelBaseCls}>
+              Project Location <span className="text-red-500">*</span>
             </label>
+          </div>
+          <div className="relative">
             <select
+              id="quotation-project-region"
               value={projectRegion}
               onChange={(e) => setProjectRegion(e.target.value as PhRegion)}
-              className={inputCls}
+              onFocus={() => setProjectRegionFocused(true)}
+              onBlur={() => setProjectRegionFocused(false)}
+              aria-label="Region"
+              className={`${inputCls} ${floatingInputCls}`}
             >
-              <option value="">Select…</option>
+              <option value=""></option>
               {PH_REGIONS.map((r) => (
                 <option key={r}>{r}</option>
               ))}
             </select>
+            <label
+              htmlFor="quotation-project-region"
+              className={`${floatingSelectLabelCls} ${projectRegionFloated ? floatingSelectLabelActiveCls : floatingSelectLabelRestCls} ${projectRegionFocused ? "text-primary" : ""}`}
+            >
+              Region <span className="text-red-500">*</span>
+            </label>
           </div>
         </div>
 

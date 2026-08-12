@@ -2,9 +2,9 @@
 
 // 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ColumnDef } from "@tanstack/react-table";
-import { Eye, Plus, Search } from "lucide-react";
+import { Ellipsis, Eye, Plus, Search, Upload } from "lucide-react";
 import { RequireOnboardingStep } from "@/components/auth/RequireOnboardingStep";
 import { DataTable } from "@/components/data-table/DataTable";
 import { QueryState } from "@/components/feedback/QueryState";
@@ -174,31 +174,30 @@ function OpenProjectsContent({ onMetaChange }: OpenProjectsContentProps) {
 
   return (
     <div className="flex flex-col gap-5">
-      <div className="flex shrink-0 items-center gap-3 rounded-2xl border border-gray-200 bg-white p-4">
-        <div className="relative min-w-50 flex-1">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-          <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search by project name…"
-            className="w-full rounded-lg border border-gray-200 bg-gray-50 py-2 pl-9 pr-3 text-sm outline-none transition focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/20"
-          />
-        </div>
-        <select
-          value={region}
-          onChange={(e) => setRegion(e.target.value)}
-          className="h-10 w-44 rounded-lg border border-gray-200 bg-gray-50 px-3 text-sm font-medium text-gray-600 outline-none transition focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/20"
-        >
-          <option value="All">All regions</option>
-          {PH_REGIONS.map((r) => (
-            <option key={r} value={r}>
-              {r}
-            </option>
-          ))}
-        </select>
-      </div>
-
       <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
+        <div className="flex shrink-0 items-center gap-3 border-b border-gray-100 p-4">
+          <div className="relative min-w-50 flex-1">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search by project name…"
+              className="w-full rounded-lg border border-gray-200 bg-gray-50 py-2 pl-9 pr-3 text-sm outline-none transition focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/20"
+            />
+          </div>
+          <select
+            value={region}
+            onChange={(e) => setRegion(e.target.value)}
+            className="h-10 w-44 rounded-lg border border-gray-200 bg-gray-50 px-3 text-sm font-medium text-gray-600 outline-none transition focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/20"
+          >
+            <option value="All">All regions</option>
+            {PH_REGIONS.map((r) => (
+              <option key={r} value={r}>
+                {r}
+              </option>
+            ))}
+          </select>
+        </div>
         <QueryState isLoading={isLoading} error={error} isEmpty={rows.length === 0} onRetry={refetch} emptyTitle="No projects yet" minHeight={180}>
           <DataTable
             columns={columns}
@@ -222,6 +221,23 @@ function OpenProjectsTabs() {
     onCreateNew: () => void;
   } | null>(null);
   const [clientCount, setClientCount] = useState(0);
+  const [showClientImport, setShowClientImport] = useState(false);
+  const [actionsMenuOpen, setActionsMenuOpen] = useState(false);
+  const [clientImportFiles, setClientImportFiles] = useState<File[]>([]);
+  const [clientImportKey, setClientImportKey] = useState(0);
+  const actionsMenuRef = useRef<HTMLDivElement>(null);
+  const clientImportInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (!actionsMenuOpen) return;
+    const handleClickOutside = (event: MouseEvent) => {
+      if (actionsMenuRef.current && !actionsMenuRef.current.contains(event.target as Node)) {
+        setActionsMenuOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [actionsMenuOpen]);
 
   return (
     <Tabs value={activeTab} onValueChange={setActiveTab} className="flex flex-col gap-5">
@@ -252,19 +268,64 @@ function OpenProjectsTabs() {
             </p>
           )}
         </div>
-        <button
-          type="button"
-          onClick={projectsMeta?.onCreateNew}
-          className="flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-bold text-primary-foreground shadow-sm transition hover:bg-(--primary-hover)"
-        >
-          <Plus className="h-4 w-4" /> Create New
-        </button>
+        <div className="flex items-center gap-2">
+          <input
+            ref={clientImportInputRef}
+            type="file"
+            multiple
+            accept=".csv,.xlsx"
+            className="hidden"
+            onChange={(event) => {
+              const files = event.target.files ? Array.from(event.target.files) : [];
+              if (files.length > 0) {
+                setClientImportFiles(files);
+                setClientImportKey((key) => key + 1);
+                setShowClientImport(true);
+              }
+              event.target.value = "";
+            }}
+          />
+          <button
+            type="button"
+            onClick={projectsMeta?.onCreateNew}
+            className="flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-bold text-primary-foreground shadow-sm transition hover:bg-(--primary-hover)"
+          >
+            <Plus className="h-4 w-4" /> Create New
+          </button>
+          {activeTab === "clients" && (
+            <div ref={actionsMenuRef} className="relative">
+              <button
+                type="button"
+                onClick={() => setActionsMenuOpen((open) => !open)}
+                aria-label="Client actions"
+                className="flex h-10 w-10 items-center justify-center rounded-xl border border-gray-200 bg-white text-gray-500 shadow-sm transition hover:border-gray-300 hover:text-gray-700"
+              >
+                <Ellipsis className="h-5 w-5" />
+              </button>
+              {actionsMenuOpen && (
+                <div className="absolute right-0 top-full z-20 mt-2 w-64 overflow-hidden rounded-xl border border-gray-200 bg-white py-1 shadow-lg">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setActionsMenuOpen(false);
+                      clientImportInputRef.current?.click();
+                    }}
+                    className="flex w-full items-center gap-2 px-3.5 py-2.5 text-left text-sm font-semibold text-gray-600 transition hover:bg-gray-50 hover:text-primary"
+                  >
+                    <Upload className="h-4 w-4" />
+                    Import Client
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
       </div>
       <TabsContent value="projects">
         <OpenProjectsContent onMetaChange={setProjectsMeta} />
       </TabsContent>
       <TabsContent value="clients">
-        <MyClientsTab onClientCountChange={setClientCount} />
+        <MyClientsTab onClientCountChange={setClientCount} showImport={showClientImport} importFiles={clientImportFiles} importKey={clientImportKey} />
       </TabsContent>
     </Tabs>
   );

@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { AlertTriangle, CheckCircle2, ChevronLeft, ChevronRight, File as FileIcon, Upload as UploadIcon, Users, X } from "lucide-react";
 import {
   CLIENT_IMPORT_OPTIONAL_FIELDS,
@@ -359,12 +359,23 @@ function ReviewStep({
   );
 }
 
-export function ImportClientsPanel({ onImported }: { onImported?: () => void }) {
+export function ImportClientsPanel({
+  onImported,
+  initialFiles,
+  importKey,
+}: {
+  onImported?: () => void;
+  initialFiles?: File[];
+  importKey?: number;
+}) {
   const { rows, updateRow, removeRow, columns, updateColumnMapping, uploadFiles, isUploading, uploadError, approve, isCommitting, commitError, commitResult, reset } =
     useClientImport();
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [files, setFiles] = useState<File[]>([]);
   const [dragging, setDragging] = useState(false);
+  const processedImportKeyRef = useRef<number | null>(null);
+  const hasPickerFiles = Boolean(importKey && initialFiles && initialFiles.length > 0);
+  const selectedFiles = files.length > 0 ? files : initialFiles ?? [];
 
   const addFiles = (incoming: FileList | File[]) => {
     const list = Array.from(incoming);
@@ -381,6 +392,14 @@ export function ImportClientsPanel({ onImported }: { onImported?: () => void }) 
       .then(() => setStep(2))
       .catch(() => {});
   };
+
+  useEffect(() => {
+    if (!hasPickerFiles || importKey === processedImportKeyRef.current || !initialFiles) return;
+    processedImportKeyRef.current = importKey ?? null;
+    uploadFiles(initialFiles)
+      .then(() => setStep(2))
+      .catch(() => {});
+  }, [hasPickerFiles, importKey, initialFiles, uploadFiles]);
 
   const handleUploadAnother = () => {
     reset();
@@ -424,16 +443,35 @@ export function ImportClientsPanel({ onImported }: { onImported?: () => void }) 
         <h2 className="text-sm font-bold text-gray-900">Import Clients from Spreadsheet</h2>
       </div>
       {step === 1 && (
-        <UploadStep
-          files={files}
-          addFiles={addFiles}
-          removeFile={removeFile}
-          dragging={dragging}
-          setDragging={setDragging}
-          onConfirm={handleConfirmUpload}
-          isUploading={isUploading}
-          uploadError={uploadError}
-        />
+        hasPickerFiles ? (
+          <div className="flex flex-col gap-3 rounded-2xl border border-gray-200 bg-gray-50 p-5">
+            <div className="flex items-center gap-3">
+              <FileIcon className="h-4 w-4 shrink-0 text-gray-400" />
+              <div className="min-w-0">
+                <p className="text-sm font-semibold text-gray-700">
+                  {isUploading ? "Processing spreadsheet..." : "Spreadsheet selected"}
+                </p>
+                <p className="truncate text-xs text-gray-400">{selectedFiles.map((file) => file.name).join(", ")}</p>
+              </div>
+            </div>
+            {uploadError && (
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                <span>Couldn&apos;t process these files: {uploadError.message}</span>
+              </div>
+            )}
+          </div>
+        ) : (
+          <UploadStep
+            files={files}
+            addFiles={addFiles}
+            removeFile={removeFile}
+            dragging={dragging}
+            setDragging={setDragging}
+            onConfirm={handleConfirmUpload}
+            isUploading={isUploading}
+            uploadError={uploadError}
+          />
+        )
       )}
       {step === 2 && <MappingStep columns={columns} rowCount={rows.length} onUpdateMapping={updateColumnMapping} onBack={() => setStep(1)} onContinue={() => setStep(3)} />}
       {step === 3 && (

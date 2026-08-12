@@ -3,7 +3,7 @@
 // 
 import { useEffect, useMemo, useState } from "react";
 import type { ColumnDef } from "@tanstack/react-table";
-import { Search, Upload } from "lucide-react";
+import { Search } from "lucide-react";
 import { DataTable } from "@/components/data-table/DataTable";
 import { useClients } from "@/hooks/useClients";
 import { ImportClientsPanel } from "./ImportClientsPanel";
@@ -19,12 +19,14 @@ function StatusBadge({ status }: { status: Client["status"] }) {
 
 interface MyClientsTabProps {
   onClientCountChange?: (count: number) => void;
+  showImport?: boolean;
+  importFiles?: File[];
+  importKey?: number;
 }
 
-export function MyClientsTab({ onClientCountChange }: MyClientsTabProps) {
+export function MyClientsTab({ onClientCountChange, showImport = false, importFiles, importKey }: MyClientsTabProps) {
   const { clients, isLoading, error, refetch } = useClients();
   const [search, setSearch] = useState("");
-  const [showImport, setShowImport] = useState(false);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -79,37 +81,29 @@ export function MyClientsTab({ onClientCountChange }: MyClientsTabProps) {
 
   return (
     <div className="flex flex-col gap-5">
-      <div className="flex shrink-0 flex-wrap items-center justify-end gap-3">
-        <button
-          type="button"
-          onClick={() => setShowImport((v) => !v)}
-          className="flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-bold text-primary-foreground shadow-sm transition hover:bg-(--primary-hover)"
-        >
-          <Upload className="h-4 w-4" /> {showImport ? "Hide Import" : "Import from Spreadsheet"}
-        </button>
-      </div>
-
       {showImport && (
         <ImportClientsPanel
+          key={importKey}
+          initialFiles={importFiles}
+          importKey={importKey}
           onImported={() => {
             refetch();
           }}
         />
       )}
 
-      <div className="flex shrink-0 items-center gap-3 rounded-2xl border border-gray-200 bg-white p-4">
-        <div className="relative flex-1 min-w-50">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-          <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search by client name, contact person, or email…"
-            className="w-full rounded-lg border border-gray-200 bg-gray-50 py-2 pl-9 pr-3 text-sm outline-none transition focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/20"
-          />
-        </div>
-      </div>
-
       <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
+        <div className="flex shrink-0 items-center gap-3 border-b border-gray-100 p-4">
+          <div className="relative min-w-50 flex-1">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search by client name, contact person, or email…"
+              className="w-full rounded-lg border border-gray-200 bg-gray-50 py-2 pl-9 pr-3 text-sm outline-none transition focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/20"
+            />
+          </div>
+        </div>
         {error ? (
           <div className="flex flex-col items-center gap-2 px-6 py-16 text-center">
             <p className="text-sm font-semibold text-red-500">Couldn&apos;t load clients</p>
