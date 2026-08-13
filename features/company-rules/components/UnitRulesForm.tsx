@@ -33,6 +33,7 @@ export function UnitRulesForm({ focusRuleId, onFocusHandled }: UnitRulesFormProp
   const [category, setCategory] = useState<CategoryType | "">("");
   const [itemSearch, setItemSearch] = useState("");
   const [itemCode, setItemCode] = useState("");
+  const [itemPickerOpen, setItemPickerOpen] = useState(false);
   const [conversionFactor, setConversionFactor] = useState<number | "">("");
   const [wastage, setWastage] = useState<number | "">("");
   const [touched, setTouched] = useState(false);
@@ -51,12 +52,23 @@ export function UnitRulesForm({ focusRuleId, onFocusHandled }: UnitRulesFormProp
   const formValid = categoryValid && itemValid && factorValid && wastageValid;
 
   const categoryItems = category !== "" ? itemsInCategory(category) : [];
+  const itemQuery = itemSearch.trim().toLowerCase();
+  const relatedItems = (itemQuery
+    ? categoryItems.filter((item) =>
+        [item.item_name, item.brand, item.unit, item.description ?? ""]
+          .join(" ")
+          .toLowerCase()
+          .includes(itemQuery)
+      )
+    : categoryItems
+  ).slice(0, 8);
 
   const resetForm = () => {
     setTargetKind("category");
     setCategory("");
     setItemSearch("");
     setItemCode("");
+    setItemPickerOpen(false);
     setConversionFactor("");
     setWastage("");
     setTouched(false);
@@ -215,6 +227,7 @@ export function UnitRulesForm({ focusRuleId, onFocusHandled }: UnitRulesFormProp
                     setCategory(e.target.value as CategoryType);
                     setItemCode("");
                     setItemSearch("");
+                    setItemPickerOpen(false);
                   }}
                   className={inputCls}
                 >
@@ -228,33 +241,60 @@ export function UnitRulesForm({ focusRuleId, onFocusHandled }: UnitRulesFormProp
 
               {targetKind === "item" && category !== "" && (
                 <div className="flex flex-col gap-1.5">
-                  <label className="text-xs font-semibold text-gray-600">
-                    Item <span className="text-red-500">*</span>
-                  </label>
                   {itemsLoading ? (
                     <p className="text-xs text-gray-400">Loading catalog…</p>
                   ) : items.length === 0 ? (
                     <p className="text-xs text-amber-600">No items in your catalog yet. Upload a pricelist first.</p>
                   ) : (
-                    <>
+                    <div className="relative">
                       <input
-                        list="unit-rule-items"
                         value={itemSearch}
+                        onFocus={() => setItemPickerOpen(true)}
+                        onBlur={() => window.setTimeout(() => setItemPickerOpen(false), 120)}
                         onChange={(e) => {
                           const typed = e.target.value;
                           setItemSearch(typed);
                           const match = categoryItems.find((i) => i.item_name === typed);
                           setItemCode(match ? String(match.item_code) : "");
+                          setItemPickerOpen(true);
                         }}
-                        placeholder="Search or select an item…"
-                        className={inputCls}
+                        placeholder=" "
+                        className="peer w-full rounded-lg border border-gray-200 bg-gray-50 px-3 pb-2 pt-5 text-sm outline-none transition focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/20"
                       />
-                      <datalist id="unit-rule-items">
-                        {categoryItems.map((i) => (
-                          <option key={i.item_code} value={i.item_name} />
-                        ))}
-                      </datalist>
-                    </>
+                      <label
+                        className="pointer-events-none absolute left-3 top-1.5 text-[10px] font-semibold text-gray-500 transition-all peer-placeholder-shown:top-1/2 peer-placeholder-shown:-translate-y-1/2 peer-placeholder-shown:text-sm peer-placeholder-shown:font-medium peer-focus:top-1.5 peer-focus:translate-y-0 peer-focus:text-[10px] peer-focus:font-semibold peer-focus:text-primary"
+                      >
+                        Item <span className="text-red-500">*</span>
+                      </label>
+                      {itemPickerOpen && (
+                        <div className="absolute z-20 mt-1 max-h-56 w-full overflow-auto rounded-lg border border-gray-200 bg-white py-1 shadow-lg">
+                          {relatedItems.length > 0 ? (
+                            relatedItems.map((item) => (
+                              <button
+                                key={item.item_code}
+                                type="button"
+                                onMouseDown={(e) => e.preventDefault()}
+                                onClick={() => {
+                                  setItemSearch(item.item_name);
+                                  setItemCode(String(item.item_code));
+                                  setItemPickerOpen(false);
+                                }}
+                                className="flex w-full items-center gap-3 px-3 py-2 text-left text-sm transition hover:bg-orange-50"
+                              >
+                                <span className="min-w-0">
+                                  <span className="block truncate font-medium text-gray-800">{item.item_name}</span>
+                                  <span className="block truncate text-xs text-gray-400">
+                                    {[item.brand, item.unit, item.item_source].filter(Boolean).join(" · ")}
+                                  </span>
+                                </span>
+                              </button>
+                            ))
+                          ) : (
+                            <p className="px-3 py-2 text-xs text-gray-400">No related items in this category.</p>
+                          )}
+                        </div>
+                      )}
+                    </div>
                   )}
                   {touched && !itemValid && <p className="text-xs text-red-500">Select an item.</p>}
                 </div>
@@ -264,11 +304,13 @@ export function UnitRulesForm({ focusRuleId, onFocusHandled }: UnitRulesFormProp
                 <div className="relative">
                   <input
                     id="unit-conversion-factor"
-                    type="number"
-                    min={0}
-                    step="0.01"
+                    type="text"
+                    inputMode="decimal"
                     value={conversionFactor}
-                    onChange={(e) => setConversionFactor(e.target.value === "" ? "" : Number(e.target.value))}
+                    onChange={(e) => {
+                      const next = e.target.value.replace(/[^\d.]/g, "");
+                      setConversionFactor(next === "" ? "" : Number(next));
+                    }}
                     placeholder=" "
                     className="peer w-full rounded-lg border border-gray-200 bg-gray-50 px-3 pb-2 pt-5 text-sm outline-none transition focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/20"
                   />
@@ -286,12 +328,13 @@ export function UnitRulesForm({ focusRuleId, onFocusHandled }: UnitRulesFormProp
                 <div className="relative">
                   <input
                     id="unit-wastage-allowance"
-                    type="number"
-                    min={0}
-                    max={100}
-                    step="0.1"
+                    type="text"
+                    inputMode="decimal"
                     value={wastage}
-                    onChange={(e) => setWastage(e.target.value === "" ? "" : Number(e.target.value))}
+                    onChange={(e) => {
+                      const next = e.target.value.replace(/[^\d.]/g, "");
+                      setWastage(next === "" ? "" : Number(next));
+                    }}
                     placeholder=" "
                     className="peer w-full rounded-lg border border-gray-200 bg-gray-50 px-3 pb-2 pr-8 pt-5 text-sm outline-none transition focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/20"
                   />

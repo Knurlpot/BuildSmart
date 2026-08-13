@@ -16,6 +16,11 @@ const SCAN_DURATION_MS = 4000;
 const ZOOM_MIN = 0.5;
 const ZOOM_MAX = 2;
 const ZOOM_STEP = 0.25;
+const DEFAULT_ZOOM = 1;
+const DEFAULT_CROP_SCALE = 1.18;
+const FLOOR_CROP_PADDING_RATIO = 0.5;
+const MIN_FLOOR_CROP_WIDTH_RATIO = 0.82;
+const MIN_FLOOR_CROP_HEIGHT_RATIO = 0.72;
 const TOOLTIP_WIDTH = 210;
 const TOOLTIP_HEIGHT = 96;
 
@@ -23,6 +28,7 @@ interface BlueprintOverlayProps {
   imageUrl: string;
   imageWidth: number;
   imageHeight: number;
+  focusBounds?: [number, number, number, number] | null;
   /** Already filtered to this floor's segments that still have a polygon (a merged/grouped
    * segment has none — see draftSegment.ts's mergeSegments). */
   segments: DraftSegment[];
@@ -33,7 +39,7 @@ interface BlueprintOverlayProps {
    * one holding the original extraction result. This component only owns the confirm
    * dialog + the visual scan-replay; once the user confirms, it calls this AND replays its
    * own local scan animation. Omitted when `readOnly` — see that prop's doc. */
-  onRescanConfirmed?: () => void;
+  onRescanConfirmed?: () => void | Promise<void>;
   onScanStateChange?: (scanning: boolean) => void;
   /** Task 7, Part B — Segment Breakdown reuses this exact component (not a rebuild) to
    * preview an already-generated/saved quote's blueprint. Rescan is a destructive EDIT
@@ -68,6 +74,7 @@ export function BlueprintOverlay({
   imageUrl,
   imageWidth,
   imageHeight,
+  focusBounds,
   segments,
   hoveredId,
   onHoverChange,
@@ -118,17 +125,17 @@ export function BlueprintOverlay({
     return () => cancelAnimationFrame(raf);
   }, [rescanToken, readOnly]);
 
-  const handleRescanConfirm = () => {
+  const handleRescanConfirm = async () => {
     setRescanConfirmOpen(false);
-    onRescanConfirmed?.();
+    await onRescanConfirmed?.();
     setRescanToken((t) => t + 1);
   };
 
   // ── Zoom ──
-  const [zoom, setZoom] = useState(1);
+  const [zoom, setZoom] = useState(DEFAULT_ZOOM);
   const zoomIn = () => setZoom((z) => Math.min(ZOOM_MAX, Math.round((z + ZOOM_STEP) * 100) / 100));
   const zoomOut = () => setZoom((z) => Math.max(ZOOM_MIN, Math.round((z - ZOOM_STEP) * 100) / 100));
-  const zoomReset = () => setZoom(1);
+  const zoomReset = () => setZoom(DEFAULT_ZOOM);
 
   // ── Cursor-following tooltip ──
   // Container width/height travel alongside the cursor position, captured together from
@@ -148,6 +155,45 @@ export function BlueprintOverlay({
   const tooltipTop = cursor && cursor.y + TOOLTIP_HEIGHT + 20 > cursor.containerHeight ? cursor.y - TOOLTIP_HEIGHT - 14 : (cursor?.y ?? 0) + 14;
 
   const scanLineY = (scanProgress / 100) * imageHeight;
+  const segmentPoints = segments.flatMap((seg) => seg.polygon_coords ?? []);
+  const segmentCropBounds =
+    segmentPoints.length > 0
+      ? segmentPoints.reduce(
+          (bounds, [x, y]) => ({
+            minX: Math.min(bounds.minX, x),
+            minY: Math.min(bounds.minY, y),
+            maxX: Math.max(bounds.maxX, x),
+            maxY: Math.max(bounds.maxY, y),
+          }),
+          { minX: imageWidth, minY: imageHeight, maxX: 0, maxY: 0 },
+        )
+      : null;
+  const floorCropBounds = focusBounds
+    ? { minX: focusBounds[0], minY: focusBounds[1], maxX: focusBounds[2], maxY: focusBounds[3] }
+    : segmentCropBounds;
+  const focusMinX = floorCropBounds?.minX ?? imageWidth / 4;
+  const focusMinY = floorCropBounds?.minY ?? imageHeight / 4;
+  const focusMaxX = floorCropBounds?.maxX ?? (imageWidth * 3) / 4;
+  const focusMaxY = floorCropBounds?.maxY ?? (imageHeight * 3) / 4;
+  const focusWidth = Math.max(focusMaxX - focusMinX, imageWidth / DEFAULT_CROP_SCALE);
+  const focusHeight = Math.max(focusMaxY - focusMinY, imageHeight / DEFAULT_CROP_SCALE);
+  const cropPadding = Math.max(focusWidth, focusHeight) * FLOOR_CROP_PADDING_RATIO;
+  const paddedWidth = Math.min(imageWidth, focusWidth + cropPadding * 2);
+  const paddedHeight = Math.min(imageHeight, focusHeight + cropPadding * 2);
+  const focusCenterX = (focusMinX + focusMaxX) / 2;
+  const focusCenterY = (focusMinY + focusMaxY) / 2;
+  const cropScale = Math.max(1, DEFAULT_CROP_SCALE * zoom);
+  const cropWidth = Math.min(
+    imageWidth,
+    Math.max(paddedWidth / zoom, imageWidth / cropScale, imageWidth * MIN_FLOOR_CROP_WIDTH_RATIO),
+  );
+  const cropHeight = Math.min(
+    imageHeight,
+    Math.max(paddedHeight / zoom, imageHeight / cropScale, imageHeight * MIN_FLOOR_CROP_HEIGHT_RATIO),
+  );
+  const cropX = Math.min(Math.max(focusCenterX - cropWidth / 2, 0), Math.max(imageWidth - cropWidth, 0));
+  const cropY = Math.min(Math.max(focusCenterY - cropHeight / 2, 0), Math.max(imageHeight - cropHeight, 0));
+  const croppedViewBox = `${cropX} ${cropY} ${cropWidth} ${cropHeight}`;
 
   return (
     <div className="flex flex-col gap-2">
@@ -193,7 +239,7 @@ export function BlueprintOverlay({
               <ZoomIn className="h-3.5 w-3.5" />
             </button>
           </div>
-          {zoom !== 1 && (
+          {zoom !== DEFAULT_ZOOM && (
             <button type="button" onClick={zoomReset} title="Reset" className="rounded-lg border border-gray-200 bg-white p-1.5 text-gray-400 transition hover:text-gray-600">
               <RotateCcw className="h-3.5 w-3.5" />
             </button>
@@ -210,11 +256,11 @@ export function BlueprintOverlay({
         style={{ maxHeight: 560 }}
       >
         <svg
-          viewBox={`0 0 ${imageWidth} ${imageHeight}`}
+          viewBox={croppedViewBox}
           className="block h-auto"
-          style={{ width: `${zoom * 100}%`, minWidth: "100%" }}
+          style={{ width: "100%", minWidth: "100%" }}
         >
-          <image href={imageUrl} x={0} y={0} width={imageWidth} height={imageHeight} />
+          <image href={imageUrl} x={0} y={0} width={imageWidth} height={imageHeight} preserveAspectRatio="none" />
           {segments.map((seg) => {
             if (!seg.polygon_coords) return null;
             const color = BAND_COLOR[confidenceBand(seg.confidence_score)];

@@ -31,6 +31,8 @@ CREATE TABLE users (
     user_role VARCHAR(20) NOT NULL CHECK (user_role IN ('Owner', 'Admin', 'Estimator', 'Viewer')),
     status VARCHAR(20) NOT NULL DEFAULT 'Active' CHECK (status IN ('Active', 'Inactive')),
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    failed_login_attempts INT NOT NULL DEFAULT 0,
+    locked_until TIMESTAMP,
     CONSTRAINT fk_users_company FOREIGN KEY (company_id) REFERENCES company(company_id) ON DELETE CASCADE
 );
 

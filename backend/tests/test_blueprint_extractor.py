@@ -96,6 +96,37 @@ def make_open_door_corridor_dxf() -> bytes:
     return output.getvalue().encode(document.encoding)
 
 
+def make_duplicate_container_dxf() -> bytes:
+    document = ezdxf.new("R2010")
+    document.header["$INSUNITS"] = 6
+    modelspace = document.modelspace()
+    modelspace.add_lwpolyline([(0, 0), (12, 0), (12, 6), (0, 6)], close=True, dxfattribs={"layer": "Tile 18x18"})
+    modelspace.add_lwpolyline([(0, 0), (6, 0), (6, 6), (0, 6)], close=True, dxfattribs={"layer": "A-ROOM"})
+    modelspace.add_lwpolyline([(0, 0), (6, 0), (6, 6), (0, 6)], close=True, dxfattribs={"layer": "HATCH"})
+    modelspace.add_lwpolyline([(6, 0), (12, 0), (12, 6), (6, 6)], close=True, dxfattribs={"layer": "A-ROOM"})
+    modelspace.add_text("BEDROOM", dxfattribs={"insert": (3, 3)})
+    modelspace.add_text("KITCHEN", dxfattribs={"insert": (9, 3)})
+    output = io.StringIO()
+    document.write(output)
+    return output.getvalue().encode(document.encoding)
+
+
+def make_l_shaped_room_with_offset_label_dxf() -> bytes:
+    document = ezdxf.new("R2010")
+    document.header["$INSUNITS"] = 6
+    modelspace = document.modelspace()
+    modelspace.add_lwpolyline(
+        [(0, 0), (6, 0), (6, 2), (3, 2), (3, 5), (0, 5)],
+        close=True,
+        dxfattribs={"layer": "A-ROOM"},
+    )
+    modelspace.add_text("KITCHEN", dxfattribs={"insert": (3.3, 2.3)})
+    modelspace.add_text("GROUND FLOOR PLAN", dxfattribs={"insert": (0, -1)})
+    output = io.StringIO()
+    document.write(output)
+    return output.getvalue().encode(document.encoding)
+
+
 def test_extracts_closed_dxf_room_with_label_and_area():
     result = extract_blueprint("floor-plan.dxf", make_dxf())
 
@@ -156,6 +187,25 @@ def test_open_doors_keep_bedrooms_and_corridor_as_spaces_without_furniture_segme
     assert "Unclassified Space" not in names
     assert all(segment.area_sqm > 0 for segment in result.floors[0].segments)
     assert all("Furniture" not in segment.segment_name for segment in result.floors[0].segments)
+
+
+def test_dedupes_duplicate_room_loops_and_rejects_floor_plate_container():
+    result = extract_blueprint("duplicate-container.dxf", make_duplicate_container_dxf())
+
+    segments = result.floors[0].segments
+    names = sorted(segment.segment_name for segment in segments)
+    assert names == ["Bedroom", "Kitchen"]
+    assert all(segment.area_sqm == 36 for segment in segments)
+
+
+def test_offset_label_keeps_l_shaped_room_polygon_instead_of_dimension_box():
+    result = extract_blueprint("l-shaped-offset-label.dxf", make_l_shaped_room_with_offset_label_dxf())
+
+    segment = result.floors[0].segments[0]
+
+    assert segment.segment_name == "Kitchen"
+    assert segment.area_sqm == 21
+    assert len(segment.polygon_coords or []) == 6
 
 
 def test_rejects_empty_file():

@@ -451,12 +451,14 @@ export function SupplierRulesForm({ focusRuleId, onFocusHandled }: SupplierRules
                   {ruleType !== "" && usesDiscountFields(ruleType) && (
                     <div className={`${usesMinimumOrder(ruleType) ? "xl:contents" : "xl:col-span-2"} flex flex-col gap-2`}>
                       <div
-                        className={`grid grid-cols-1 items-center gap-3 sm:grid-cols-[auto_minmax(240px,260px)_minmax(220px,1fr)] ${
-                          usesMinimumOrder(ruleType) ? "xl:contents" : ""
+                        className={`grid grid-cols-1 gap-3 ${
+                          usesMinimumOrder(ruleType)
+                            ? "items-center sm:grid-cols-[auto_minmax(240px,260px)_minmax(220px,1fr)] xl:contents"
+                            : "items-center sm:grid-cols-[auto_minmax(260px,1fr)_minmax(220px,1fr)]"
                         }`}
                       >
-                        <label className="whitespace-nowrap text-xs font-semibold text-gray-600 xl:col-span-1">Discount</label>
-                        <div className="grid grid-cols-2 gap-1 rounded-lg border border-gray-200 bg-white p-1 xl:col-span-3">
+                        <label className={`whitespace-nowrap text-xs font-semibold text-gray-600 ${usesMinimumOrder(ruleType) ? "xl:col-span-1" : ""}`}>Discount</label>
+                        <div className={`grid grid-cols-2 gap-1 rounded-lg border border-gray-200 bg-white p-1 ${usesMinimumOrder(ruleType) ? "xl:col-span-3" : ""}`}>
                           {(["percentage", "fixed"] as DiscountKind[]).map((k) => (
                             <button
                               key={k}
@@ -471,7 +473,7 @@ export function SupplierRulesForm({ focusRuleId, onFocusHandled }: SupplierRules
                           ))}
                         </div>
                         {discountKind === "percentage" ? (
-                          <div className="relative xl:col-span-3">
+                          <div className={`relative ${usesMinimumOrder(ruleType) ? "xl:col-span-3" : ""}`}>
                             <input
                               type="text"
                               inputMode="decimal"
@@ -483,7 +485,7 @@ export function SupplierRulesForm({ focusRuleId, onFocusHandled }: SupplierRules
                             <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-sm text-gray-500">%</span>
                           </div>
                         ) : (
-                          <div className="relative xl:col-span-3">
+                          <div className={`relative ${usesMinimumOrder(ruleType) ? "xl:col-span-3" : ""}`}>
                             <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-gray-500">₱</span>
                             <input
                               type="text"

@@ -130,7 +130,25 @@ export function BlueprintUploadPanel({
 
   // Part E — the actual restart: every edit/grouping/deletion/manual-add since the first
   // scan is discarded, replaced with a fresh reconstruction of the original detection.
-  const handleRescanConfirmed = () => {
+  const handleRescanConfirmed = async () => {
+    if (selectedFile) {
+      const nonBlueprintSegments = segments.filter((segment) => segment.source_method !== "Blueprint");
+      try {
+        setOverlayScanning(false);
+        const result = await extractBlueprint(quoteId, selectedFile);
+        onFloorsChange(result.floors);
+        onOriginalFloorsChange(result.floors);
+        setSelectedFloor(result.floors[0]?.floor_level ?? null);
+        onChange([
+          ...nonBlueprintSegments,
+          ...result.floors.flatMap((floor) => floor.segments.map((seg) => createSegmentFromExtraction(seg, floor.floor_level))),
+        ]);
+        setHoveredId(null);
+        return;
+      } catch {
+        // surfaced via extractError below; fall back to the saved extraction if present
+      }
+    }
     if (!originalFloors) return;
     const fresh = originalFloors.flatMap((floor) => floor.segments.map((seg) => createSegmentFromExtraction(seg, floor.floor_level)));
     onChange(fresh);
@@ -321,6 +339,7 @@ export function BlueprintUploadPanel({
           imageUrl={currentFloor.image_url}
           imageWidth={currentFloor.image_width}
           imageHeight={currentFloor.image_height}
+          focusBounds={currentFloor.focus_bounds}
           segments={floorSegments}
           hoveredId={hoveredId}
           onHoverChange={setHoveredId}

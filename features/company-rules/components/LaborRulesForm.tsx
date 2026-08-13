@@ -316,10 +316,13 @@ export function LaborRulesForm({ focusRuleId, onFocusHandled }: LaborRulesFormPr
                   <div className="relative">
                     <input
                       id="labor-rate"
-                      type="number"
-                      min={0}
+                      type="text"
+                      inputMode="decimal"
                       value={rate}
-                      onChange={(e) => setRate(e.target.value === "" ? "" : Number(e.target.value))}
+                      onChange={(e) => {
+                        const next = e.target.value.replace(/[^\d.]/g, "");
+                        setRate(next === "" ? "" : Number(next));
+                      }}
                       placeholder=" "
                       className="peer w-full rounded-lg border border-gray-200 bg-gray-50 px-3 pb-2 pt-5 text-sm outline-none transition focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/20"
                     />
@@ -336,11 +339,13 @@ export function LaborRulesForm({ focusRuleId, onFocusHandled }: LaborRulesFormPr
                   <div className="relative">
                     <input
                       id="labor-productivity-index"
-                      type="number"
-                      step="0.01"
-                      min={0}
+                      type="text"
+                      inputMode="decimal"
                       value={productivity}
-                      onChange={(e) => setProductivity(e.target.value === "" ? "" : Number(e.target.value))}
+                      onChange={(e) => {
+                        const next = e.target.value.replace(/[^\d.]/g, "");
+                        setProductivity(next === "" ? "" : Number(next));
+                      }}
                       placeholder=" "
                       className="peer w-full rounded-lg border border-gray-200 bg-gray-50 px-3 pb-2 pt-5 text-sm outline-none transition focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/20"
                     />
@@ -359,12 +364,13 @@ export function LaborRulesForm({ focusRuleId, onFocusHandled }: LaborRulesFormPr
                 <div className="relative">
                   <input
                     id="labor-rush-multiplier"
-                    type="number"
-                    min={0}
-                    max={100}
-                    step="0.1"
+                    type="text"
+                    inputMode="decimal"
                     value={rushMultiplier}
-                    onChange={(e) => setRushMultiplier(e.target.value === "" ? "" : Number(e.target.value))}
+                    onChange={(e) => {
+                      const next = e.target.value.replace(/[^\d.]/g, "");
+                      setRushMultiplier(next === "" ? "" : Number(next));
+                    }}
                     placeholder=" "
                     className="peer w-full rounded-lg border border-gray-200 bg-gray-50 px-3 pb-2 pr-8 pt-5 text-sm outline-none transition focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/20"
                   />

@@ -10,6 +10,7 @@ export interface BlueprintFloor {
   image_url: string;
   image_width: number;
   image_height: number;
+  focus_bounds?: [number, number, number, number] | null;
   segments: ExtractedSegment[];
 }
 

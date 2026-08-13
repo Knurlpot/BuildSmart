@@ -20,6 +20,13 @@ import {
   X,
 } from "lucide-react";
 import { QueryState } from "@/components/feedback/QueryState";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { ColumnMappingStep, type DetectedColumn } from "./ColumnMappingStep";
 import { QuickUploadGuide } from "./QuickUploadGuide";
 import { useFetch } from "@/hooks/useFetch";
@@ -405,10 +412,11 @@ function ReviewItemRow({
  */
 interface AiNormalizationPanelProps {
   companyId?: number | null;
+  defaultSupplierMode?: SupplierMode;
   onCatalogChanged?: () => void;
 }
 
-export function AiNormalizationPanel({ companyId, onCatalogChanged }: AiNormalizationPanelProps) {
+export function AiNormalizationPanel({ companyId, defaultSupplierMode = "existing", onCatalogChanged }: AiNormalizationPanelProps) {
   const {
     queue,
     enqueueFiles,
@@ -475,7 +483,8 @@ export function AiNormalizationPanel({ companyId, onCatalogChanged }: AiNormaliz
   const [fileTypeError, setFileTypeError] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
   const [source, setSource] = useState<(typeof SOURCES)[number]>("Supplier");
-  const [supplierMode, setSupplierMode] = useState<SupplierMode>("existing");
+  const [supplierMode, setSupplierMode] = useState<SupplierMode>(defaultSupplierMode);
+  const [supplierChoiceOpen, setSupplierChoiceOpen] = useState(defaultSupplierMode === "new");
   const [selectedSupplierId, setSelectedSupplierId] = useState<number | null>(null);
   const [supplierForm, setSupplierForm] = useState<SupplierForm>(() => emptySupplierForm());
   const [supplierFormErrors, setSupplierFormErrors] = useState<Partial<Record<keyof SupplierForm, string>>>({});
@@ -496,6 +505,20 @@ export function AiNormalizationPanel({ companyId, onCatalogChanged }: AiNormaliz
   const [isBulkDeleting, setIsBulkDeleting] = useState(false);
   const [reviewPagesBySource, setReviewPagesBySource] = useState<Record<string, number>>({});
   const fileRef = useRef<HTMLInputElement>(null);
+  const supplierModeChosenRef = useRef(false);
+
+  useEffect(() => {
+    if (!supplierModeChosenRef.current && defaultSupplierMode === "new") {
+      setSupplierMode("new");
+      setSupplierChoiceOpen(true);
+    }
+  }, [defaultSupplierMode]);
+
+  const chooseSupplierMode = (mode: SupplierMode) => {
+    supplierModeChosenRef.current = true;
+    setSupplierMode(mode);
+    setSupplierChoiceOpen(false);
+  };
 
   const acceptFiles = (candidates: FileList | File[]) => {
     const accepted: PendingFileEntry[] = [];
@@ -872,23 +895,72 @@ export function AiNormalizationPanel({ companyId, onCatalogChanged }: AiNormaliz
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div className="flex items-center gap-2">
                     <Building2 className="h-4 w-4 text-primary" />
-                    <p className="text-sm font-bold text-gray-900">Supplier</p>
+                    <div>
+                      <p className="text-sm font-bold text-gray-900">Supplier</p>
+                      <p className="text-xs text-gray-500">
+                        {supplierMode === "existing" ? "Using a saved supplier" : "Adding a new supplier"}
+                      </p>
+                    </div>
                   </div>
-                  <div className="grid grid-cols-2 rounded-xl border border-gray-200 bg-gray-50 p-1">
-                    {(["existing", "new"] as const).map((mode) => (
+                  <button
+                    type="button"
+                    onClick={() => setSupplierChoiceOpen(true)}
+                    className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-xs font-bold text-primary transition hover:border-primary/50 hover:bg-orange-50/40"
+                  >
+                    Choose supplier type
+                  </button>
+                </div>
+
+                <Dialog open={supplierChoiceOpen} onOpenChange={setSupplierChoiceOpen}>
+                  <DialogContent className="sm:max-w-xl">
+                    <DialogHeader>
+                      <DialogTitle>Choose supplier type</DialogTitle>
+                      <DialogDescription>
+                        Select whether this upload belongs to a saved supplier or a supplier you still need to add.
+                      </DialogDescription>
+                    </DialogHeader>
+                    <div className="grid gap-3 sm:grid-cols-2">
                       <button
-                        key={mode}
                         type="button"
-                        onClick={() => setSupplierMode(mode)}
-                        className={`rounded-lg px-3 py-1.5 text-xs font-bold transition ${
-                          supplierMode === mode ? "bg-white text-primary shadow-sm" : "text-gray-500 hover:text-gray-700"
+                        onClick={() => chooseSupplierMode("existing")}
+                        className={`flex min-h-32 flex-col items-start justify-between rounded-xl border p-4 text-left transition ${
+                          supplierMode === "existing"
+                            ? "border-primary bg-orange-50/50 ring-2 ring-primary/15"
+                            : "border-gray-200 bg-white hover:border-primary/50 hover:bg-gray-50"
                         }`}
                       >
-                        {mode === "existing" ? "Existing Supplier" : "New Supplier"}
+                        <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-gray-100 text-gray-600">
+                          <Building2 className="h-4 w-4" />
+                        </span>
+                        <span>
+                          <span className="block text-sm font-bold text-gray-900">Existing Supplier</span>
+                          <span className="mt-1 block text-xs leading-5 text-gray-500">
+                            Pick a supplier already saved in your company records.
+                          </span>
+                        </span>
                       </button>
-                    ))}
-                  </div>
-                </div>
+                      <button
+                        type="button"
+                        onClick={() => chooseSupplierMode("new")}
+                        className={`flex min-h-32 flex-col items-start justify-between rounded-xl border p-4 text-left transition ${
+                          supplierMode === "new"
+                            ? "border-primary bg-orange-50/50 ring-2 ring-primary/15"
+                            : "border-gray-200 bg-white hover:border-primary/50 hover:bg-gray-50"
+                        }`}
+                      >
+                        <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                          <Upload className="h-4 w-4" />
+                        </span>
+                        <span>
+                          <span className="block text-sm font-bold text-gray-900">New Supplier</span>
+                          <span className="mt-1 block text-xs leading-5 text-gray-500">
+                            Enter supplier details first, then upload this pricelist.
+                          </span>
+                        </span>
+                      </button>
+                    </div>
+                  </DialogContent>
+                </Dialog>
 
                 {supplierMode === "existing" ? (
                   <div className="flex flex-col gap-1.5">

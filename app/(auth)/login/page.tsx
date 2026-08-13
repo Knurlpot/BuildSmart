@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
-import { Eye, EyeOff } from "lucide-react";
+import { Eye, EyeOff, AlertCircle, Lock } from "lucide-react";
 import { AuthBrandPanel } from "@/components/auth/AuthBrandPanel";
 import { logoFrame } from "@/components/logo-frames";
 import { useAuth } from "@/providers/AuthProvider";
@@ -19,17 +19,35 @@ export default function LoginPage() {
   const [showPw, setShowPw] = useState(false);
   const [remember, setRemember] = useState(false);
   const [error, setError] = useState("");
+  const [isLocked, setIsLocked] = useState(false);
+  const [attemptsRemaining, setAttemptsRemaining] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
     setLoading(true);
+    setIsLocked(false);
+    setAttemptsRemaining(null);
+
     try {
       const user = await login(email, password);
       router.push(resolveOnboardingRoute(user.onboardingStep));
-    } catch {
-      setError("Unable to sign in. Please check your credentials or try again.");
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : "Unable to sign in. Please check your credentials or try again.";
+      setError(errorMessage);
+
+      // Check if this is a lock error
+      if (errorMessage.includes("Account is temporarily locked") || errorMessage.includes("Account is locked")) {
+        setIsLocked(true);
+      } else if (errorMessage.includes("attempt")) {
+        // Extract attempts remaining from error message if present
+        const match = errorMessage.match(/(\d+)\s+attempt/);
+        if (match) {
+          setAttemptsRemaining(parseInt(match[1]));
+        }
+      }
+
       setLoading(false);
     }
   };
@@ -68,8 +86,26 @@ export default function LoginPage() {
 
           <form onSubmit={handleSubmit} className="flex flex-col gap-5">
             {error && (
-              <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-                {error}
+              <div className={`flex gap-3 rounded-xl border px-4 py-3 text-sm ${
+                isLocked 
+                  ? "border-orange-200 bg-orange-50 text-orange-700" 
+                  : attemptsRemaining !== null
+                    ? "border-yellow-200 bg-yellow-50 text-yellow-700"
+                    : "border-red-200 bg-red-50 text-red-700"
+              }`}>
+                {isLocked ? (
+                  <Lock className="h-5 w-5 flex-shrink-0" />
+                ) : (
+                  <AlertCircle className="h-5 w-5 flex-shrink-0" />
+                )}
+                <div>
+                  {error}
+                  {attemptsRemaining !== null && attemptsRemaining > 0 && (
+                    <p className="mt-1 text-xs font-medium opacity-80">
+                      After all attempts are used, your account will be locked for 30 minutes.
+                    </p>
+                  )}
+                </div>
               </div>
             )}
 
@@ -82,7 +118,8 @@ export default function LoginPage() {
                 placeholder=" "
                 required
                 autoFocus
-                className="peer w-full rounded-xl border border-gray-200 bg-gray-50 px-4 pb-2.5 pt-5 text-sm outline-none transition focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/20"
+                disabled={isLocked}
+                className="peer w-full rounded-xl border border-gray-200 bg-gray-50 px-4 pb-2.5 pt-5 text-sm outline-none transition disabled:bg-gray-100 disabled:text-gray-400 focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/20"
               />
               <label
                 htmlFor="login-email"
@@ -109,7 +146,8 @@ export default function LoginPage() {
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder=" "
                   required
-                  className="peer w-full rounded-xl border border-gray-200 bg-gray-50 px-4 pb-2.5 pt-5 pr-11 text-sm outline-none transition focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/20"
+                  disabled={isLocked}
+                  className="peer w-full rounded-xl border border-gray-200 bg-gray-50 px-4 pb-2.5 pt-5 pr-11 text-sm outline-none transition disabled:bg-gray-100 disabled:text-gray-400 focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/20"
                 />
                 <label
                   htmlFor="login-password"
@@ -120,7 +158,8 @@ export default function LoginPage() {
                 <button
                   type="button"
                   onClick={() => setShowPw((v) => !v)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                  disabled={isLocked}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 disabled:text-gray-300"
                 >
                   {showPw ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                 </button>
@@ -133,11 +172,12 @@ export default function LoginPage() {
                 id="remember"
                 checked={remember}
                 onChange={(e) => setRemember(e.target.checked)}
-                className="h-4 w-4 rounded border-gray-300 accent-primary"
+                disabled={isLocked}
+                className="h-4 w-4 rounded border-gray-300 accent-primary disabled:bg-gray-100"
               />
               <label
                 htmlFor="remember"
-                className="cursor-pointer select-none text-sm text-gray-600"
+                className={`cursor-pointer select-none text-sm ${isLocked ? "text-gray-400" : "text-gray-600"}`}
               >
                 Remember Me
               </label>
@@ -145,13 +185,13 @@ export default function LoginPage() {
 
             <button
               type="submit"
-              disabled={loading}
+              disabled={loading || isLocked}
               className="mt-1 flex items-center justify-center gap-2 rounded-xl bg-primary px-6 py-3.5 text-sm font-bold text-primary-foreground shadow-sm transition hover:bg-(--primary-hover) disabled:opacity-60"
             >
               {loading && (
                 <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
               )}
-              {loading ? "Signing in…" : "Log In"}
+              {isLocked ? "Account Locked" : loading ? "Signing in…" : "Log In"}
             </button>
           </form>
 

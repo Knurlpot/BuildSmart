@@ -13,6 +13,7 @@ class BlueprintFloor(BaseModel):
     image_url: str
     image_width: int = Field(gt=0)
     image_height: int = Field(gt=0)
+    focus_bounds: tuple[float, float, float, float] | None = None
     segments: list[ExtractedSegment]
 
 

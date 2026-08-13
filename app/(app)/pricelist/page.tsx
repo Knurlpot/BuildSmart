@@ -58,7 +58,6 @@ export default function PricelistPage() {
 
   const needsAttention: Partial<Record<TabId, boolean>> = {
     upload: !pricelistDone,
-    published: !pricelistDone,
   };
 
   return (
@@ -91,6 +90,7 @@ export default function PricelistPage() {
         {activeTab === "upload" && (
           <AiNormalizationPanel
             companyId={companyId}
+            defaultSupplierMode={currentUser?.onboardingStep === 0 ? "new" : "existing"}
             onCatalogChanged={() => {
               supplierCatalog.refetch();
               goToCatalog();

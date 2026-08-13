@@ -23,6 +23,8 @@ export type UserRow = {
   user_role: "Owner" | "Admin" | "Estimator" | "Viewer";
   status: "Active" | "Inactive";
   created_at: string;
+  failed_login_attempts: number;
+  locked_until: string | null;
 };
 
 export type AuthUser = {

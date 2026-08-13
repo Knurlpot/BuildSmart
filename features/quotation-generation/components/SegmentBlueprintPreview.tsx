@@ -46,6 +46,7 @@ export function SegmentBlueprintPreview({ floors, segments, hoveredId, onHoverCh
         imageUrl={currentFloor.image_url}
         imageWidth={currentFloor.image_width}
         imageHeight={currentFloor.image_height}
+        focusBounds={currentFloor.focus_bounds}
         segments={floorSegments}
         hoveredId={hoveredId}
         onHoverChange={onHoverChange}
