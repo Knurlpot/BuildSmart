@@ -34,6 +34,7 @@ interface BlueprintOverlayProps {
    * dialog + the visual scan-replay; once the user confirms, it calls this AND replays its
    * own local scan animation. Omitted when `readOnly` — see that prop's doc. */
   onRescanConfirmed?: () => void;
+  onScanStateChange?: (scanning: boolean) => void;
   /** Task 7, Part B — Segment Breakdown reuses this exact component (not a rebuild) to
    * preview an already-generated/saved quote's blueprint. Rescan is a destructive EDIT
    * action that only makes sense during Review Segments (step 3) — hidden here, along with
@@ -63,7 +64,17 @@ interface BlueprintOverlayProps {
 // step doesn't feel like a hard data dump, not a claim that anything is being detected
 // client-side. Every polygon it reveals was already in `segments` the instant this
 // component mounted; the scan only staggers when each one fades in.
-export function BlueprintOverlay({ imageUrl, imageWidth, imageHeight, segments, hoveredId, onHoverChange, onRescanConfirmed, readOnly = false }: BlueprintOverlayProps) {
+export function BlueprintOverlay({
+  imageUrl,
+  imageWidth,
+  imageHeight,
+  segments,
+  hoveredId,
+  onHoverChange,
+  onRescanConfirmed,
+  onScanStateChange,
+  readOnly = false,
+}: BlueprintOverlayProps) {
   const containerRef = useRef<HTMLDivElement>(null);
 
   // ── Scan animation — RAF-driven, not setInterval, per the task's explicit ask. ──
@@ -74,6 +85,10 @@ export function BlueprintOverlay({ imageUrl, imageWidth, imageHeight, segments, 
   const [scanProgress, setScanProgress] = useState(readOnly ? 100 : 0);
   const [scanning, setScanning] = useState(!readOnly);
   const [rescanConfirmOpen, setRescanConfirmOpen] = useState(false);
+
+  useEffect(() => {
+    onScanStateChange?.(scanning);
+  }, [onScanStateChange, scanning]);
 
   // Adjusted during render (React's documented pattern for this — see e.g.
   // app/(app)/account/page.tsx's deactivate-dialog countdown) rather than a setState call

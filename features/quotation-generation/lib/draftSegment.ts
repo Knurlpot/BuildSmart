@@ -120,6 +120,7 @@ export function createManualSegment(defaultName = ''): DraftSegment {
 }
 
 export function createSegmentFromExtraction(extracted: ExtractedSegment, floorLevel: string): DraftSegment {
+  const safeArea = Number.isFinite(extracted.area_sqm) && extracted.area_sqm > 0 ? extracted.area_sqm : 0;
   return {
     draft_id: stagingId('seg'),
     segment_name: extracted.segment_name,
@@ -127,7 +128,7 @@ export function createSegmentFromExtraction(extracted: ExtractedSegment, floorLe
     source_method: 'Blueprint',
     entry_mode: 'total_sqm',
     ...SHAPE_FIELD_DEFAULTS,
-    area_sqm: extracted.area_sqm,
+    area_sqm: safeArea,
     polygon_coords: extracted.polygon_coords,
     confidence_score: extracted.confidence_score,
     confirmed: false,

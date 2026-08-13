@@ -15,6 +15,7 @@ export interface BlueprintFloor {
 
 export interface BlueprintExtractionResult {
   floors: BlueprintFloor[];
+  diagnostics?: Record<string, unknown> | null;
 }
 
 export const TREATMENT_TYPES = [

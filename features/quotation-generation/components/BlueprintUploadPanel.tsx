@@ -67,6 +67,7 @@ export function BlueprintUploadPanel({
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [selectedFloor, setSelectedFloor] = useState<string | null>(floors?.[0]?.floor_level ?? null);
   const [hoveredId, setHoveredId] = useState<string | null>(null);
+  const [overlayScanning, setOverlayScanning] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const handleFileSelected = (file: File) => {
@@ -80,12 +81,23 @@ export function BlueprintUploadPanel({
       return;
     }
     resetExtract();
+    onFloorsChange(null);
+    onOriginalFloorsChange(null);
+    onChange(segments.filter((segment) => segment.source_method !== "Blueprint"));
+    setSelectedFloor(null);
+    setHoveredId(null);
+    setOverlayScanning(false);
     setSelectedFile(file);
   };
 
   const handleScan = async () => {
     if (!selectedFile) return;
+    const nonBlueprintSegments = segments.filter((segment) => segment.source_method !== "Blueprint");
     try {
+      onFloorsChange(null);
+      onOriginalFloorsChange(null);
+      onChange(nonBlueprintSegments);
+      setOverlayScanning(false);
       const result = await extractBlueprint(quoteId, selectedFile);
       onFloorsChange(result.floors);
       onOriginalFloorsChange(result.floors);
@@ -94,7 +106,7 @@ export function BlueprintUploadPanel({
       // "MUST VALIDATE" (edit/delete/group/add) below is just further edits to it, not a
       // separate staging area. Nothing is sent to the backend until Step 3's final save.
       onChange([
-        ...segments,
+        ...nonBlueprintSegments,
         ...result.floors.flatMap((floor) => floor.segments.map((seg) => createSegmentFromExtraction(seg, floor.floor_level))),
       ]);
     } catch {
@@ -257,6 +269,7 @@ export function BlueprintUploadPanel({
   const includedSegments = segments.filter(isSegmentIncluded);
   const confirmedIncludedCount = includedSegments.filter((s) => s.confirmed).length;
   const allIncludedConfirmed = includedSegments.length > 0 && confirmedIncludedCount === includedSegments.length;
+  const confirmationDisabled = overlayScanning;
 
   return (
     <div className="flex flex-col gap-4">
@@ -312,6 +325,7 @@ export function BlueprintUploadPanel({
           hoveredId={hoveredId}
           onHoverChange={setHoveredId}
           onRescanConfirmed={handleRescanConfirmed}
+          onScanStateChange={setOverlayScanning}
         />
         <SegmentEditorList
           segments={floorSegments}
@@ -339,6 +353,7 @@ export function BlueprintUploadPanel({
             confirmedCount: confirmedIncludedCount,
             includedCount: includedSegments.length,
             onConfirmAll: () => onChange(segments.map((s) => (isSegmentIncluded(s) ? { ...s, confirmed: true } : s))),
+            disabled: confirmationDisabled,
           }}
         />
       </div>
@@ -353,10 +368,12 @@ export function BlueprintUploadPanel({
       <button
         type="button"
         onClick={onConfirm}
-        disabled={includedSegments.length === 0 || !allIncludedConfirmed}
+        disabled={confirmationDisabled || includedSegments.length === 0 || !allIncludedConfirmed}
         className="w-fit rounded-xl bg-primary px-6 py-3 text-sm font-bold text-primary-foreground shadow-sm transition hover:bg-(--primary-hover) disabled:opacity-60"
       >
-        {includedSegments.length === 0
+        {confirmationDisabled
+          ? "Scanning blueprint..."
+          : includedSegments.length === 0
           ? "Include at least one segment to continue"
           : allIncludedConfirmed
             ? `Confirm ${includedSegments.length} selected segment${includedSegments.length === 1 ? "" : "s"} to continue`

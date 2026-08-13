@@ -18,6 +18,7 @@ class BlueprintFloor(BaseModel):
 
 class BlueprintExtractionResult(BaseModel):
     floors: list[BlueprintFloor] = Field(min_length=1)
+    diagnostics: dict | None = None
 
 
 class GeminiSegment(BaseModel):

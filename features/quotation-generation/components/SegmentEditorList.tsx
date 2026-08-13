@@ -199,6 +199,7 @@ interface SegmentEditorListProps {
     confirmedCount: number;
     includedCount: number;
     onConfirmAll: () => void;
+    disabled?: boolean;
   } | null;
 }
 
@@ -300,7 +301,8 @@ export function SegmentEditorList({
             <button
               type="button"
               onClick={confirmSummary.onConfirmAll}
-              className="flex items-center gap-1 rounded-lg bg-gray-100 px-2.5 py-1 text-xs font-bold text-gray-600 transition hover:bg-gray-200"
+              disabled={confirmSummary.disabled}
+              className="flex items-center gap-1 rounded-lg bg-gray-100 px-2.5 py-1 text-xs font-bold text-gray-600 transition hover:bg-gray-200 disabled:cursor-not-allowed disabled:opacity-50"
             >
               <CheckCheck className="h-3.5 w-3.5" /> Confirm All Included
             </button>

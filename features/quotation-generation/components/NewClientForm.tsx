@@ -58,8 +58,9 @@ export function NewClientForm({ draft, onChange, onCreate, onCancel, isCreating,
   const fieldBorder = `hsla(${hue}, 42%, 72%, 0.18)`;
 
   const fieldCls =
-    "w-full rounded-lg border py-2.5 pl-9 pr-3 text-sm text-white placeholder:text-white/35 outline-none transition focus:ring-2";
-  const labelCls = "mb-1 block text-[10px] font-semibold uppercase tracking-wider text-white/55";
+    "peer w-full rounded-lg border pb-2 pt-5 text-sm text-white placeholder:text-transparent outline-none transition focus:ring-2";
+  const floatingLabelCls =
+    "pointer-events-none absolute top-1.5 text-[10px] font-semibold text-white/50 transition-all peer-placeholder-shown:top-1/2 peer-placeholder-shown:-translate-y-1/2 peer-placeholder-shown:text-sm peer-placeholder-shown:font-medium peer-focus:top-1.5 peer-focus:translate-y-0 peer-focus:text-[10px] peer-focus:font-semibold";
 
   return (
     <div
@@ -83,80 +84,76 @@ export function NewClientForm({ draft, onChange, onCreate, onCancel, isCreating,
         >
           {initials(draft.client_name)}
         </div>
-        <div className="min-w-0 flex-1">
+        <div className="relative min-w-0 flex-1">
           <input
             value={draft.client_name}
             onChange={(e) => set({ client_name: e.target.value })}
-            placeholder="Client name"
-            className="w-full truncate bg-transparent text-sm font-bold text-white outline-none placeholder:font-normal placeholder:text-white/45"
+            placeholder=" "
+            aria-label="Client name"
+            className="peer w-full truncate bg-transparent pb-0.5 pt-4 text-sm font-bold text-white outline-none placeholder:text-transparent"
             autoFocus
           />
+          <label className="pointer-events-none absolute left-0 top-0 text-[10px] font-semibold text-white/45 transition-all peer-placeholder-shown:top-1/2 peer-placeholder-shown:-translate-y-1/2 peer-placeholder-shown:text-sm peer-placeholder-shown:font-medium peer-focus:top-0 peer-focus:translate-y-0 peer-focus:text-[10px] peer-focus:font-semibold">
+            Client Name
+          </label>
           <p className="mt-0.5 text-[10px] text-white/50">First-time client. No history on file yet.</p>
         </div>
       </div>
 
       <div className="flex flex-col gap-3">
-        <div>
-          <label className={labelCls}>Contact Person</label>
-          <div className="relative flex items-center">
-            <User className="pointer-events-none absolute left-3 h-3.5 w-3.5 text-white/40" />
-            <input
-              value={draft.contact_person}
-              onChange={(e) => set({ contact_person: e.target.value })}
-              placeholder="e.g. Juan dela Cruz"
-              className={fieldCls}
-              style={{ background: fieldBg, borderColor: fieldBorder, "--tw-ring-color": accent } as React.CSSProperties}
-            />
-          </div>
+        <div className="relative">
+          <User className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-white/40" />
+          <input
+            value={draft.contact_person}
+            onChange={(e) => set({ contact_person: e.target.value })}
+            placeholder=" "
+            className={`${fieldCls} pl-9 pr-3`}
+            style={{ background: fieldBg, borderColor: fieldBorder, "--tw-ring-color": accent } as React.CSSProperties}
+          />
+          <label className={`${floatingLabelCls} left-9`}>Contact Person</label>
         </div>
 
         <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className={labelCls}>Contact Email</label>
-            <div className="relative flex items-center">
-              <Mail className="pointer-events-none absolute left-3 h-3.5 w-3.5 text-white/40" />
-              <input
-                type="email"
-                value={draft.contact_email}
-                onChange={(e) => set({ contact_email: e.target.value })}
-                placeholder="e.g. juan@company.com"
-                className={fieldCls}
-                style={{ background: fieldBg, borderColor: fieldBorder, "--tw-ring-color": accent } as React.CSSProperties}
-              />
-            </div>
+          <div className="relative">
+            <Mail className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-white/40" />
+            <input
+              type="email"
+              value={draft.contact_email}
+              onChange={(e) => set({ contact_email: e.target.value })}
+              placeholder=" "
+              className={`${fieldCls} pl-9 pr-3`}
+              style={{ background: fieldBg, borderColor: fieldBorder, "--tw-ring-color": accent } as React.CSSProperties}
+            />
+            <label className={floatingLabelCls + " left-9"}>Contact Email</label>
           </div>
-          <div>
-            <label className={labelCls}>Contact Number</label>
-            <div className="relative flex items-center">
-              <Phone className="pointer-events-none absolute left-3 h-3.5 w-3.5 text-white/40" />
-              <span className="pointer-events-none absolute left-9 text-sm font-semibold text-white/75">+63</span>
-              <input
-                inputMode="numeric"
-                value={formatPhMobileNationalNumber(contactDigits)}
-                onChange={(e) => set({ contact_number: normalizePhMobileDigits(e.target.value) })}
-                placeholder="917 123 4567"
-                maxLength={12}
-                className={`${fieldCls} pl-[4.45rem]`}
-                style={{ background: fieldBg, borderColor: fieldBorder, "--tw-ring-color": accent } as React.CSSProperties}
-              />
-            </div>
+          <div className="relative">
+            <Phone className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-white/40" />
+            <span className="pointer-events-none absolute left-9 top-1/2 -translate-y-1/2 text-sm font-semibold text-white/75">+63</span>
+            <input
+              inputMode="numeric"
+              value={formatPhMobileNationalNumber(contactDigits)}
+              onChange={(e) => set({ contact_number: normalizePhMobileDigits(e.target.value) })}
+              placeholder=" "
+              maxLength={12}
+              className={`${fieldCls} pl-[4.45rem] pr-3`}
+              style={{ background: fieldBg, borderColor: fieldBorder, "--tw-ring-color": accent } as React.CSSProperties}
+            />
+            <label className={floatingLabelCls + " left-[4.45rem]"}>Contact Number</label>
           </div>
         </div>
 
-        <div>
-          <label className={labelCls}>Client Address</label>
-          <div className="relative flex items-center">
-            <MapPin className="pointer-events-none absolute left-3 h-3.5 w-3.5 text-white/40" />
-            {/* Plain text — no city dropdown/datalist. A client's billing/site address isn't
-                confined to the region select's city list above it. */}
-            <input
-              value={draft.client_address}
-              onChange={(e) => set({ client_address: e.target.value })}
-              placeholder="e.g. Unit 4B, Eastwood, Quezon City"
-              className={fieldCls}
-              style={{ background: fieldBg, borderColor: fieldBorder, "--tw-ring-color": accent } as React.CSSProperties}
-            />
-          </div>
+        <div className="relative">
+          <MapPin className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-white/40" />
+          {/* Plain text — no city dropdown/datalist. A client's billing/site address isn't
+              confined to the region select's city list above it. */}
+          <input
+            value={draft.client_address}
+            onChange={(e) => set({ client_address: e.target.value })}
+            placeholder=" "
+            className={`${fieldCls} pl-9 pr-3`}
+            style={{ background: fieldBg, borderColor: fieldBorder, "--tw-ring-color": accent } as React.CSSProperties}
+          />
+          <label className={floatingLabelCls + " left-9"}>Client Address</label>
         </div>
 
         {/* Part B — Client Type is never a choice here: every client this form creates is
