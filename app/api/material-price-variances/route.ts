@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { pool } from "@/lib/server/db";
+import { fetchLatestPsaCmrpiVariances } from "@/lib/server/psa-cmrpi";
 import { readSession } from "@/lib/server/session";
 
 type MaterialPriceVarianceResponse = {
@@ -47,5 +48,14 @@ export async function GET(request: NextRequest) {
     [session.userId]
   );
 
-  return NextResponse.json(result.rows);
+  const nonPsaRows = result.rows.filter((row) => row.variance_source !== "PSA");
+  const storedPsaRows = result.rows.filter((row) => row.variance_source === "PSA");
+
+  try {
+    const latestPsaRows = await fetchLatestPsaCmrpiVariances();
+    return NextResponse.json([...latestPsaRows, ...nonPsaRows]);
+  } catch (error) {
+    console.error("Failed to fetch latest PSA CMRPI; using stored PSA variance rows", error);
+    return NextResponse.json([...storedPsaRows, ...nonPsaRows]);
+  }
 }

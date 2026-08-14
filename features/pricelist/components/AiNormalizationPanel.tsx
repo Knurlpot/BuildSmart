@@ -29,6 +29,7 @@ import {
 } from "@/components/ui/dialog";
 import { ColumnMappingStep, type DetectedColumn } from "./ColumnMappingStep";
 import { QuickUploadGuide } from "./QuickUploadGuide";
+import { SupplierSearchInput } from "./SupplierSearchInput";
 import { useFetch } from "@/hooks/useFetch";
 import { useMutation } from "@/hooks/useMutation";
 import {
@@ -965,19 +966,12 @@ export function AiNormalizationPanel({ companyId, defaultSupplierMode = "existin
                 {supplierMode === "existing" ? (
                   <div className="flex flex-col gap-1.5">
                     <label className="text-xs font-semibold uppercase tracking-wide text-gray-600">Supplier Name</label>
-                    <select
-                      value={selectedSupplierId ?? ""}
-                      onChange={(e) => setSelectedSupplierId(e.target.value ? Number(e.target.value) : null)}
-                      disabled={suppliers.isLoading}
-                      className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm outline-none focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/20 disabled:opacity-60"
-                    >
-                      <option value="">{suppliers.isLoading ? "Loading suppliers..." : "Select supplier"}</option>
-                      {(suppliers.data ?? []).map((supplier) => (
-                        <option key={supplier.supplier_id} value={supplier.supplier_id}>
-                          {supplier.supplier_name}
-                        </option>
-                      ))}
-                    </select>
+                    <SupplierSearchInput
+                      suppliers={suppliers.data ?? []}
+                      selectedSupplierId={selectedSupplierId}
+                      onSelectSupplier={setSelectedSupplierId}
+                      isLoading={suppliers.isLoading}
+                    />
                     {suppliers.error && <p className="text-xs text-red-500">Couldn&apos;t load suppliers: {suppliers.error.message}</p>}
                   </div>
                 ) : (

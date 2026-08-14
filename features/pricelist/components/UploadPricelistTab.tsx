@@ -6,6 +6,7 @@ import { QuickUploadGuide } from "./QuickUploadGuide";
 import { ColumnMappingStep } from "./ColumnMappingStep";
 import { RowReviewStep } from "./RowReviewStep";
 import { SavedCatalogView } from "./SavedCatalogView";
+import { SupplierSearchInput } from "./SupplierSearchInput";
 import { useFetch } from "@/hooks/useFetch";
 import { useMutation } from "@/hooks/useMutation";
 import {
@@ -306,20 +307,13 @@ export function UploadPricelistTab({
                     <label htmlFor="existing-supplier" className="text-xs font-semibold uppercase tracking-wide text-gray-600">
                       Supplier Name
                     </label>
-                    <select
+                    <SupplierSearchInput
                       id="existing-supplier"
-                      value={selectedSupplierId ?? ""}
-                      onChange={(e) => setSelectedSupplierId(e.target.value ? Number(e.target.value) : null)}
-                      disabled={suppliers.isLoading}
-                      className="h-10 w-full max-w-md rounded-xl border border-gray-200 bg-white px-3 text-sm font-semibold text-gray-700 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/15 disabled:opacity-60"
-                    >
-                      <option value="">{suppliers.isLoading ? "Loading suppliers..." : "Select supplier"}</option>
-                      {(suppliers.data ?? []).map((supplier) => (
-                        <option key={supplier.supplier_id} value={supplier.supplier_id}>
-                          {supplier.supplier_name}
-                        </option>
-                      ))}
-                    </select>
+                      suppliers={suppliers.data ?? []}
+                      selectedSupplierId={selectedSupplierId}
+                      onSelectSupplier={setSelectedSupplierId}
+                      isLoading={suppliers.isLoading}
+                    />
                     {suppliers.error && <p className="text-xs text-red-500">Couldn&apos;t load suppliers: {suppliers.error.message}</p>}
                   </div>
                 ) : (
