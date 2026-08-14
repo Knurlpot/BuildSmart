@@ -22,6 +22,115 @@ function formatFileSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+function boundsForPoints(points: [number, number][]): [number, number, number, number] | null {
+  if (points.length === 0) return null;
+  return points.reduce<[number, number, number, number]>(
+    ([minX, minY, maxX, maxY], [x, y]) => [Math.min(minX, x), Math.min(minY, y), Math.max(maxX, x), Math.max(maxY, y)],
+    [points[0][0], points[0][1], points[0][0], points[0][1]],
+  );
+}
+
+function paddedBounds(
+  bounds: [number, number, number, number],
+  imageWidth: number,
+  imageHeight: number,
+  clampBounds?: [number, number, number, number],
+): [number, number, number, number] {
+  const [minX, minY, maxX, maxY] = bounds;
+  const pad = Math.max(maxX - minX, maxY - minY) * 0.08;
+  const [clampMinX, clampMinY, clampMaxX, clampMaxY] = clampBounds ?? [0, 0, imageWidth, imageHeight];
+  return [
+    Math.max(clampMinX, minX - pad),
+    Math.max(clampMinY, minY - pad),
+    Math.min(clampMaxX, maxX + pad),
+    Math.min(clampMaxY, maxY + pad),
+  ];
+}
+
+function bestAxisSplit(values: number[], low: number, high: number): number | null {
+  const unique = Array.from(new Set(values.map((value) => Math.round(value * 100) / 100))).sort((a, b) => a - b);
+  if (unique.length < 8) return null;
+  const span = Math.max(high - low, 1);
+  const gaps = unique.slice(0, -1).map((value, index) => ({
+    gap: unique[index + 1] - value,
+    split: (unique[index + 1] + value) / 2,
+    lowerCount: index + 1,
+    upperCount: unique.length - index - 1,
+  }));
+  const balanced = gaps.filter(({ gap, lowerCount, upperCount }) => gap >= span * 0.06 && Math.min(lowerCount, upperCount) >= 3);
+  if (balanced.length === 0) return null;
+  return balanced.sort((a, b) => b.gap - a.gap)[0].split;
+}
+
+function medianAxisSplit(values: number[]): number | null {
+  const sorted = values.toSorted((a, b) => a - b);
+  if (sorted.length < 24) return null;
+  const middle = Math.floor(sorted.length / 2);
+  return (sorted[middle - 1] + sorted[middle]) / 2;
+}
+
+function splitSingleSheetFloorIntoTabs(floors: BlueprintFloor[]): BlueprintFloor[] {
+  if (floors.length !== 1) return floors;
+  const floor = floors[0];
+  const segmentCenters = floor.segments
+    .map((segment) => {
+      const bounds = segment.polygon_coords ? boundsForPoints(segment.polygon_coords) : null;
+      if (!bounds) return null;
+      return { segment, x: (bounds[0] + bounds[2]) / 2, y: (bounds[1] + bounds[3]) / 2 };
+    })
+    .filter((item): item is NonNullable<typeof item> => item !== null);
+  if (segmentCenters.length < 12) return floors;
+
+  const xValues = segmentCenters.map((item) => item.x);
+  const yValues = segmentCenters.map((item) => item.y);
+  const xSplit = bestAxisSplit(xValues, 0, floor.image_width) ?? (segmentCenters.length >= 80 ? medianAxisSplit(xValues) : null);
+  const ySplit = bestAxisSplit(yValues, 0, floor.image_height) ?? (segmentCenters.length >= 80 ? medianAxisSplit(yValues) : null);
+  if (xSplit === null || ySplit === null) return floors;
+
+  const groups = [
+    {
+      name: "Floor Plan 1",
+      bounds: [0, 0, xSplit, ySplit] as [number, number, number, number],
+      items: segmentCenters.filter((item) => item.x <= xSplit && item.y <= ySplit),
+    },
+    {
+      name: "Floor Plan 2",
+      bounds: [xSplit, 0, floor.image_width, ySplit] as [number, number, number, number],
+      items: segmentCenters.filter((item) => item.x > xSplit && item.y <= ySplit),
+    },
+    {
+      name: "Floor Plan 3",
+      bounds: [xSplit, ySplit, floor.image_width, floor.image_height] as [number, number, number, number],
+      items: segmentCenters.filter((item) => item.x > xSplit && item.y > ySplit),
+    },
+    {
+      name: "Ground Floor Plan",
+      bounds: [0, ySplit, xSplit, floor.image_height] as [number, number, number, number],
+      items: segmentCenters.filter((item) => item.x <= xSplit && item.y > ySplit),
+    },
+  ].filter((group) => group.items.length >= Math.max(3, Math.floor(segmentCenters.length * 0.08)));
+
+  if (groups.length < 2) return floors;
+
+  return groups.map((group, index) => {
+    const points = group.items.flatMap((item) => item.segment.polygon_coords ?? []);
+    const focusBounds = boundsForPoints(points);
+    const floorLevel = group.name;
+    return {
+      ...floor,
+      floor_id: index + 1,
+      floor_level: floorLevel,
+      floor_name: floorLevel,
+      focus_bounds: focusBounds ? paddedBounds(focusBounds, floor.image_width, floor.image_height, group.bounds) : floor.focus_bounds,
+      viewport_bbox: focusBounds ?? floor.viewport_bbox,
+      segments: group.items.map((item, segmentIndex) => ({
+        ...item.segment,
+        segment_id: `segment_f${index + 1}_${String(segmentIndex + 1).padStart(2, "0")}`,
+      })),
+    };
+  });
+}
+
 interface BlueprintUploadPanelProps {
   quoteId: number;
   /** Part G — the review header shows just this, not the client name/preamble too. */
@@ -99,15 +208,16 @@ export function BlueprintUploadPanel({
       onChange(nonBlueprintSegments);
       setOverlayScanning(false);
       const result = await extractBlueprint(quoteId, selectedFile);
-      onFloorsChange(result.floors);
-      onOriginalFloorsChange(result.floors);
-      setSelectedFloor(result.floors[0]?.floor_level ?? null);
+      const splitFloors = splitSingleSheetFloorIntoTabs(result.floors);
+      onFloorsChange(splitFloors);
+      onOriginalFloorsChange(splitFloors);
+      setSelectedFloor(splitFloors[0]?.floor_level ?? null);
       // Segments are seeded into the SAME wizard-level list Quick Measurement writes to —
       // "MUST VALIDATE" (edit/delete/group/add) below is just further edits to it, not a
       // separate staging area. Nothing is sent to the backend until Step 3's final save.
       onChange([
         ...nonBlueprintSegments,
-        ...result.floors.flatMap((floor) => floor.segments.map((seg) => createSegmentFromExtraction(seg, floor.floor_level))),
+        ...splitFloors.flatMap((floor) => floor.segments.map((seg) => createSegmentFromExtraction(seg, floor.floor_level))),
       ]);
     } catch {
       // surfaced via extractError below — no fabricated success
@@ -136,12 +246,13 @@ export function BlueprintUploadPanel({
       try {
         setOverlayScanning(false);
         const result = await extractBlueprint(quoteId, selectedFile);
-        onFloorsChange(result.floors);
-        onOriginalFloorsChange(result.floors);
-        setSelectedFloor(result.floors[0]?.floor_level ?? null);
+        const splitFloors = splitSingleSheetFloorIntoTabs(result.floors);
+        onFloorsChange(splitFloors);
+        onOriginalFloorsChange(splitFloors);
+        setSelectedFloor(splitFloors[0]?.floor_level ?? null);
         onChange([
           ...nonBlueprintSegments,
-          ...result.floors.flatMap((floor) => floor.segments.map((seg) => createSegmentFromExtraction(seg, floor.floor_level))),
+          ...splitFloors.flatMap((floor) => floor.segments.map((seg) => createSegmentFromExtraction(seg, floor.floor_level))),
         ]);
         setHoveredId(null);
         return;
@@ -276,11 +387,26 @@ export function BlueprintUploadPanel({
     );
   }
 
-  const currentFloor = floors.find((f) => f.floor_level === selectedFloor) ?? floors[0];
+  const reviewFloors = splitSingleSheetFloorIntoTabs(floors);
+  const currentFloor = reviewFloors.find((f) => f.floor_level === selectedFloor) ?? reviewFloors[0];
   // Includes segments added via "Add Missing Segment" while on this floor tab, not just
   // blueprint-detected ones — a floor's list is everything tagged with that floor level,
   // detected or added.
-  const floorSegments = segments.filter((s) => s.floor_level === currentFloor.floor_level);
+  const directlyTaggedFloorSegments = segments.filter((s) => s.floor_level === currentFloor.floor_level);
+  const filterBounds = currentFloor.viewport_bbox ?? currentFloor.focus_bounds;
+  const floorSegments =
+    directlyTaggedFloorSegments.length > 0 || !filterBounds
+      ? directlyTaggedFloorSegments
+      : segments.filter((segment) => {
+          const bounds = segment.polygon_coords ? boundsForPoints(segment.polygon_coords) : null;
+          if (!bounds) return false;
+          const [minX, minY, maxX, maxY] = filterBounds;
+          const centerX = (bounds[0] + bounds[2]) / 2;
+          const centerY = (bounds[1] + bounds[3]) / 2;
+          return centerX >= minX && centerX <= maxX && centerY >= minY && centerY <= maxY;
+        });
+  const floorIncludedSegments = floorSegments.filter(isSegmentIncluded);
+  const floorConfirmedIncludedCount = floorIncludedSegments.filter((s) => s.confirmed).length;
   const manualAdds = segments.filter((s) => s.source_method === "Manual");
   // Part F — only segments still in scope for this quote need to be confirmed. Excluding a
   // segment (still visible in the list, never deleted) removes it from this gate.
@@ -311,24 +437,33 @@ export function BlueprintUploadPanel({
         </div>
       </div>
 
-      {floors.length > 1 && (
+      {reviewFloors.length > 1 && (
         // Part D — pill/segmented floor tabs (copies Replit's active = solid-fill style,
         // instead of the earlier underline treatment).
-        <div className="flex w-fit gap-1 rounded-lg border border-gray-200 bg-white p-1">
-          {floors.map((f) => (
+        <div className="flex max-w-full gap-1 overflow-x-auto rounded-lg border border-gray-200 bg-white p-1">
+          {reviewFloors.map((f) => (
             <button
               key={f.floor_level}
               type="button"
               onClick={() => selectFloor(f.floor_level)}
-              className={`rounded-md px-4 py-1.5 text-xs font-semibold transition ${
+              className={`shrink-0 rounded-md px-4 py-1.5 text-xs font-semibold transition ${
                 f.floor_level === currentFloor.floor_level ? "bg-primary text-primary-foreground" : "text-gray-500 hover:bg-gray-50"
               }`}
+              title={`${f.floor_level} · ${f.segments.length} segment${f.segments.length === 1 ? "" : "s"}`}
             >
               {f.floor_level}
+              <span className="ml-2 opacity-75">{f.segments.length}</span>
             </button>
           ))}
         </div>
       )}
+
+      <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs text-gray-500">
+        <span className="font-semibold text-gray-700">{currentFloor.floor_level}</span>
+        <span>
+          {floorConfirmedIncludedCount}/{floorIncludedSegments.length} included confirmed on this floor · {floorSegments.length} total segment{floorSegments.length === 1 ? "" : "s"}
+        </span>
+      </div>
 
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-[1.3fr_1fr]">
         {/* Remounts on floor change — a clean slate for scan/zoom/tooltip state rather than

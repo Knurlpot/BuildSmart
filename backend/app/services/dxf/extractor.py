@@ -1,5 +1,7 @@
 import html
 import math
+import os
+import re
 import tempfile
 import time
 from collections import Counter
@@ -7,9 +9,11 @@ from pathlib import Path
 from urllib.parse import quote
 
 from shapely.geometry import LineString, MultiPolygon, Point, Polygon, box
-from shapely.ops import polygonize, unary_union
+from shapely.ops import polygonize, snap, unary_union
 
-from app.schemas.blueprint import BlueprintExtractionResult, BlueprintFloor, ExtractedSegment
+from pydantic import BaseModel, Field
+
+from app.schemas.blueprint import BlueprintExtractionResult, BlueprintFloor, BlueprintLegendItem, ExtractedSegment, RoomOverlay
 
 from .labels import (
     canonical_name,
@@ -229,11 +233,197 @@ FURNITURE_PATTERNS = ("furn", "fixture", "fixer", "equip", "furniture", "bed", "
 DIMENSION_PATTERNS = ("dim", "dimension")
 TEXT_PATTERNS = ("text", "anno")
 STAIR_PATTERNS = ("stair", "stairs")
+SYMBOL_BATH_PATTERNS = ("bath", "bathtub", "tub", "toilet", "wc", "shower", "lav", "lavatory", "sink", "cr")
+SYMBOL_KITCHEN_PATTERNS = ("kitchen", "pantry", "stove", "range", "cooktop", "fridge", "refrigerator", "ref", "cabinet")
+SYMBOL_BED_PATTERNS = ("bed", "bedroom", "mattress")
+SYMBOL_LIVING_PATTERNS = ("sofa", "couch", "dining", "chair", "table", "lounge", "living")
+SYMBOL_SERVICE_PATTERNS = ("washer", "dryer", "laundry", "water heater", "heater", "wh")
+
+CATEGORY_MATRIX: tuple[tuple[str, tuple[str, ...], str, float], ...] = (
+    ("Master Suite", ("master", "master bed", "master bath"), "#A8DADC", 0.35),
+    ("Living Areas", ("living", "dining", "family", "great room"), "#80B3FF", 0.35),
+    ("Bedrooms / Suites", ("bed", "br", "bedroom", "suite"), "#FFB3BA", 0.35),
+    ("Kitchen & Dining", ("kitchen", "pantry", "nook", "bar"), "#FFCC80", 0.35),
+    ("Bathrooms & Services", ("bath", "wc", "powder", "toilet", "utility", "laundry", "cr"), "#A8E6CF", 0.35),
+    ("Commercial & Storage", ("shop", "store", "commercial", "storage"), "#4ECDC4", 0.35),
+    ("Balconies & Porches", ("porch", "veranda", "balcony", "deck"), "#E8A0BF", 0.35),
+    ("Circulation & Hallways", ("hall", "corridor", "passage", "stair", "stairs", "entrance"), "#9B59B6", 0.35),
+    ("Unassigned Utility / Room", (), "#7F8C8D", 0.35),
+)
+HALLWAY_KEYWORDS = ("hall", "corridor", "passage", "stair", "stairs", "entrance")
+GEMINI_LABEL_MODEL = os.environ.get("GEMINI_LABEL_MODEL", "gemini-1.5-flash")
+
+
+class GeminiRoomCategory(BaseModel):
+    standardized_name: str = Field(min_length=1, max_length=150)
+    category: str
+    color_hex: str = Field(pattern=r"^#[0-9A-Fa-f]{6}$")
+
+
+def _category_color(category: str) -> str | None:
+    for matrix_category, _, color_hex, _ in CATEGORY_MATRIX:
+        if matrix_category == category:
+            return color_hex
+    return None
+
+
+def _normalize_label_with_gemini(raw_text: str, deterministic_category: str, deterministic_color: str) -> GeminiRoomCategory | None:
+    api_key = os.environ.get("GEMINI_API_KEY")
+    if not api_key or raw_text.startswith("UNLABELED_SPACE_"):
+        return None
+    try:
+        from google import genai
+        from google.genai import types
+
+        client = genai.Client(api_key=api_key)
+        prompt = (
+            "Classify this architectural room label into one standardized room name and one category. "
+            "Do not calculate or change any geometry, area, perimeter, polygon, or bounding-box value. "
+            "Allowed categories: Living Areas, Bedrooms / Suites, Master Suite, Kitchen & Dining, "
+            "Bathrooms & Services, Commercial & Storage, Balconies & Porches, Circulation & Hallways, "
+            "Unassigned Utility / Room. Use semantic normalization for multilingual labels such as SALA, "
+            "ESTAR, COMEDOR, COCINA, BANO, DORMITORIO, CUARTO, LAVANDERIA, or MURO annotations. "
+            f'Input JSON: {{"raw_text": "{raw_text}", "deterministic_category": "{deterministic_category}"}}'
+        )
+        response = client.models.generate_content(
+            model=GEMINI_LABEL_MODEL,
+            contents=[prompt],
+            config=types.GenerateContentConfig(
+                response_mime_type="application/json",
+                response_schema=GeminiRoomCategory,
+            ),
+        )
+        parsed = response.parsed
+        result = parsed if isinstance(parsed, GeminiRoomCategory) else GeminiRoomCategory.model_validate(parsed)
+        allowed_color = _category_color(result.category)
+        if not allowed_color:
+            return None
+        return GeminiRoomCategory(
+            standardized_name=result.standardized_name.strip() or raw_text,
+            category=result.category,
+            color_hex=allowed_color or deterministic_color,
+        )
+    except Exception:
+        return None
+
+
+def _hex_to_rgba(color_hex: str, alpha: float) -> tuple[int, int, int, float]:
+    return (int(color_hex[1:3], 16), int(color_hex[3:5], 16), int(color_hex[5:7], 16), alpha)
+
+
+def _space_aspect_ratio(polygon: Polygon) -> float:
+    min_x, min_y, max_x, max_y = polygon.bounds
+    width = max(max_x - min_x, 0.000001)
+    height = max(max_y - min_y, 0.000001)
+    return max(width, height) / min(width, height)
+
+
+def _category_for_space(name: str, polygon: Polygon, labeled: bool) -> tuple[str, str, float]:
+    lowered = canonical_name(name)
+    multilingual = {
+        "sala": "Living Areas",
+        "estar": "Living Areas",
+        "comedor": "Living Areas",
+        "cocina": "Kitchen & Dining",
+        "bano": "Bathrooms & Services",
+        "baño": "Bathrooms & Services",
+        "dormitorio": "Bedrooms / Suites",
+        "cuarto": "Bedrooms / Suites",
+        "lavanderia": "Bathrooms & Services",
+        "lavandería": "Bathrooms & Services",
+    }
+    if any(keyword in lowered for keyword in HALLWAY_KEYWORDS) or _space_aspect_ratio(polygon) >= 3.0:
+        return ("Circulation & Hallways", "#9B59B6", 0.35)
+    if "void" in lowered:
+        return ("Unassigned Utility / Room", "#7F8C8D", 0.35)
+    if not labeled:
+        return ("Unassigned Utility / Room", "#7F8C8D", 0.35)
+    for keyword, category in multilingual.items():
+        if re.search(rf"\b{re.escape(keyword)}\b", lowered):
+            return (category, _category_color(category) or "#7F8C8D", 0.35)
+    for category, keywords, color_hex, alpha in CATEGORY_MATRIX:
+        if keywords and any(re.search(rf"\b{re.escape(keyword)}\b", lowered) for keyword in keywords):
+            return (category, color_hex, alpha)
+    return ("Unassigned Utility / Room", "#7F8C8D", 0.35)
 
 
 def _matches(value: str | None, patterns: tuple[str, ...]) -> bool:
     lowered = f" {value or ''} ".lower()
     return any(pattern in lowered for pattern in patterns)
+
+
+def _symbol_signal(entity: NormalizedEntity) -> str:
+    return " ".join(part for part in [entity.layer, entity.block_name, entity.entity_type] if part).lower()
+
+
+def _classify_symbol_entity(entity: NormalizedEntity) -> str | None:
+    signal = _symbol_signal(entity)
+    classification = _classify_entity(entity)
+    if classification in {"door", "window"}:
+        return classification
+    if classification == "stairs" or _matches(signal, STAIR_PATTERNS):
+        return "stairs"
+    if _matches(signal, SYMBOL_BATH_PATTERNS):
+        return "bath_fixture"
+    if _matches(signal, SYMBOL_KITCHEN_PATTERNS):
+        return "kitchen_fixture"
+    if _matches(signal, SYMBOL_BED_PATTERNS):
+        return "bed"
+    if _matches(signal, SYMBOL_LIVING_PATTERNS):
+        return "living_furniture"
+    if _matches(signal, SYMBOL_SERVICE_PATTERNS):
+        return "service_fixture"
+    return None
+
+
+def _symbol_evidence_for_polygon(
+    polygon: Polygon,
+    entities: list[NormalizedEntity],
+    labels: list[TextLabel],
+    drawing_span: float,
+) -> list[str]:
+    evidence: list[str] = []
+    padded_polygon = polygon.buffer(max(drawing_span * 0.002, 0.05))
+    for entity in entities:
+        symbol = _classify_symbol_entity(entity)
+        if not symbol:
+            continue
+        if padded_polygon.contains(entity.geometry.representative_point()) or padded_polygon.intersects(entity.geometry):
+            evidence.append(symbol)
+    for label in labels:
+        lowered = canonical_name(label.text)
+        if lowered in {"up", "dn", "down"} and padded_polygon.contains(label.point):
+            evidence.append("stairs")
+        elif "void" in lowered and padded_polygon.contains(label.point):
+            evidence.append("void")
+    return sorted(set(evidence))
+
+
+def _name_from_symbol_evidence(evidence: list[str], fallback: str) -> str:
+    counts = Counter(evidence)
+    if counts["bath_fixture"] >= 1:
+        return "Bathroom"
+    if counts["kitchen_fixture"] >= 1:
+        return "Kitchen"
+    if counts["bed"] >= 1:
+        return "Bedroom"
+    if counts["living_furniture"] >= 1:
+        return "Living Area"
+    if counts["service_fixture"] >= 1:
+        return "Service Area"
+    if counts["stairs"] >= 1:
+        return "Stairs"
+    if counts["void"] >= 1:
+        return "Void Area"
+    return fallback
+
+
+def _confidence_from_symbol_evidence(confidence: float, evidence: list[str]) -> float:
+    if any(symbol in evidence for symbol in ("bath_fixture", "kitchen_fixture", "bed", "living_furniture", "service_fixture", "stairs", "void")):
+        return min(92, confidence + 18)
+    if any(symbol in evidence for symbol in ("door", "window")):
+        return min(86, confidence + 6)
+    return confidence
 
 
 def _bounds_area(bounds: tuple[float, float, float, float]) -> float:
@@ -274,6 +464,9 @@ def _all_bounds(entities: list[NormalizedEntity], labels: list[TextLabel]) -> tu
 def _floor_regions_from_labels(labels: list[TextLabel], drawing_bounds: tuple[float, float, float, float]) -> list[DxfFloorRegion]:
     floor_labels = [(label, normalize_floor_label(label.text)) for label in labels]
     floor_labels = [(label, name) for label, name in floor_labels if name]
+    proposal_labels = [(label, name) for label, name in floor_labels if "proposal" in name.lower()]
+    if len(proposal_labels) >= 2:
+        floor_labels = proposal_labels
     if not floor_labels:
         return [DxfFloorRegion(("Floor Plan", drawing_bounds))]
 
@@ -491,11 +684,103 @@ def _floor_regions_from_sheet_grid(
     return regions if len(regions) >= 2 else []
 
 
+def _dbscan_floor_regions_from_wall_midpoints(
+    entities: list[NormalizedEntity],
+    labels: list[TextLabel],
+    drawing_bounds: tuple[float, float, float, float],
+    metre_factor: float,
+    eps_m: float = 10.0,
+    min_samples: int = 20,
+) -> list[DxfFloorRegion]:
+    wall_entities = [
+        entity
+        for entity in entities
+        if entity.entity_type in {"LINE", "LWPOLYLINE", "POLYLINE"}
+        and _classify_entity(entity) in {"wall", "stairs", "unknown"}
+        and not entity.geometry.is_empty
+        and _bounds_area(entity.geometry.bounds) > 0
+    ]
+    if len(wall_entities) < min_samples * 2:
+        return []
+
+    points = [_bounds_center(entity.geometry.bounds) for entity in wall_entities]
+    eps = eps_m / max(metre_factor, 0.000001)
+    try:
+        from sklearn.cluster import DBSCAN
+
+        raw_labels = DBSCAN(eps=eps, min_samples=min_samples).fit(points).labels_
+        labels_by_index = {index: int(label) + 1 for index, label in enumerate(raw_labels) if int(label) >= 0}
+        cluster_ids = sorted(set(labels_by_index.values()))
+    except Exception:
+        visited: set[int] = set()
+        labels_by_index: dict[int, int] = {}
+        cluster_id = 0
+
+        def neighbors(index: int) -> list[int]:
+            x, y = points[index]
+            return [
+                other_index
+                for other_index, (other_x, other_y) in enumerate(points)
+                if math.hypot(x - other_x, y - other_y) <= eps
+            ]
+
+        for index in range(len(points)):
+            if index in visited:
+                continue
+            visited.add(index)
+            seed_neighbors = neighbors(index)
+            if len(seed_neighbors) < min_samples:
+                continue
+            cluster_id += 1
+            labels_by_index[index] = cluster_id
+            queue = list(seed_neighbors)
+            while queue:
+                candidate = queue.pop(0)
+                if candidate not in visited:
+                    visited.add(candidate)
+                    candidate_neighbors = neighbors(candidate)
+                    if len(candidate_neighbors) >= min_samples:
+                        for neighbor in candidate_neighbors:
+                            if neighbor not in queue:
+                                queue.append(neighbor)
+                labels_by_index.setdefault(candidate, cluster_id)
+        cluster_ids = list(range(1, cluster_id + 1))
+
+    if len(cluster_ids) < 2:
+        return []
+
+    floor_label_pairs = [(label, normalize_floor_label(label.text)) for label in labels]
+    floor_label_pairs = [(label, name) for label, name in floor_label_pairs if name]
+    regions: list[DxfFloorRegion] = []
+    for current_cluster_id in cluster_ids:
+        cluster_entities = [
+            wall_entities[index]
+            for index, assigned_cluster_id in labels_by_index.items()
+            if assigned_cluster_id == current_cluster_id
+        ]
+        if len(cluster_entities) < min_samples:
+            continue
+        bounds = _union_bounds([entity.geometry.bounds for entity in cluster_entities])
+        span = max(bounds[2] - bounds[0], bounds[3] - bounds[1], 1)
+        bounds = _expanded(bounds, span * 0.05)
+        nearby_labels = [
+            (label, name)
+            for label, name in floor_label_pairs
+            if _contains_point(_expanded(bounds, span * 0.25), (float(label.point.x), float(label.point.y)))
+        ]
+        name = nearby_labels[0][1] if nearby_labels else f"Floor Plan {len(regions) + 1}"
+        regions.append(DxfFloorRegion((name, bounds)))
+
+    drawing_area = max(_bounds_area(drawing_bounds), 1)
+    regions = [region for region in regions if _bounds_area(region.bounds) >= drawing_area * 0.01]
+    return sorted(regions, key=lambda region: (-_bounds_center(region.bounds)[1], _bounds_center(region.bounds)[0])) if len(regions) >= 2 else []
+
+
 def _split_regions_by_internal_label_gaps(regions: list[DxfFloorRegion], labels: list[TextLabel]) -> list[DxfFloorRegion]:
     split_regions: list[DxfFloorRegion] = []
     space_labels = [label for label in labels if is_room_name_label(label.text) or extract_room_dimension(label.text)]
 
-    for region in regions:
+    for floor_id, region in enumerate(regions, start=1):
         contained = [
             label
             for label in space_labels
@@ -546,7 +831,9 @@ def _split_regions_by_internal_label_gaps(regions: list[DxfFloorRegion], labels:
     deduped: list[DxfFloorRegion] = []
     ordered = sorted(split_regions, key=lambda item: (-_bounds_center(item.bounds)[1], _bounds_center(item.bounds)[0]))
     for index, region in enumerate(ordered, start=1):
-        label_name = region.name if not region.name.startswith("Floor Plan") and not region.name.endswith(" 2") else f"Floor Plan {index}"
+        proposal_region = "proposal" in region.name.lower()
+        generated_second_region = region.name.endswith(" 2") and "proposal" not in region.name.lower()
+        label_name = region.name if proposal_region or (not region.name.startswith("Floor Plan") and not generated_second_region) else f"Floor Plan {index}"
         deduped.append(DxfFloorRegion((label_name, region.bounds)))
     return deduped
 
@@ -592,9 +879,12 @@ def _iter_linework(entities: list[NormalizedEntity], include_unknown: bool = Tru
     return linework
 
 
-def _close_linework_gaps(linework: list[LineString], drawing_span: float, config: DxfExtractionConfig) -> list[LineString]:
-    max_gap = min(max(drawing_span * 0.014, config.door_width_min_m), config.door_width_max_m)
-    alignment_tolerance = min(max(drawing_span * 0.002, config.snap_tolerance_m), 0.18)
+def _close_linework_gaps(linework: list[LineString], drawing_span: float, metre_factor: float, config: DxfExtractionConfig) -> list[LineString]:
+    door_min = config.door_width_min_m / max(metre_factor, 0.000001)
+    door_max = config.door_width_max_m / max(metre_factor, 0.000001)
+    snap_tolerance = config.snap_tolerance_m / max(metre_factor, 0.000001)
+    max_gap = min(max(drawing_span * 0.014, door_min), door_max)
+    alignment_tolerance = min(max(drawing_span * 0.002, snap_tolerance), 0.18 / max(metre_factor, 0.000001))
     endpoints: list[tuple[float, float]] = []
     for line in linework:
         coords = list(line.coords)
@@ -608,7 +898,7 @@ def _close_linework_gaps(linework: list[LineString], drawing_span: float, config
             dx = abs(start[0] - end[0])
             dy = abs(start[1] - end[1])
             distance = math.hypot(dx, dy)
-            if distance <= config.snap_tolerance_m or distance > max_gap:
+            if distance <= snap_tolerance or distance > max_gap:
                 continue
             if min(dx, dy) > alignment_tolerance:
                 continue
@@ -659,6 +949,18 @@ def _label_point(label: TextLabel) -> Point:
     # We only persist insertion coordinates today. Keeping this helper isolates the
     # MTEXT quirk: once text extents are available, this should return the bbox centroid.
     return label.point
+
+
+def _is_candidate_room_text(label: TextLabel) -> bool:
+    text = label.text.strip()
+    if not text or normalize_floor_label(text) or extract_dimension_only(text):
+        return False
+    if is_room_name_label(text) or extract_room_dimension(text):
+        return True
+    if len(text) > 80:
+        return False
+    words = re.findall(r"[A-Za-zÀ-ÿ]{2,}", text)
+    return 1 <= len(words) <= 8
 
 
 def _room_label_count(polygon: Polygon, labels: list[TextLabel], tolerance: float = 0.0) -> int:
@@ -747,7 +1049,7 @@ def _closed_entity_room_candidates(
         label_count = _room_label_count(polygon, labels, label_tolerance)
         # Large closed loops are usually floor plates, tile boundaries, or exterior envelopes.
         # Keep them only if there is a single label and no better evidence later.
-        if _bounds_area(polygon.bounds) / floor_area > 0.45 and label_count != 1:
+        if _bounds_area(polygon.bounds) / floor_area > 0.45 and label_count != 1 and labels:
             continue
         candidates.append((polygon, entity))
     return candidates
@@ -873,7 +1175,7 @@ def _candidate_spaces_for_floor(
     drawing_span = max(bounds[2] - bounds[0], bounds[3] - bounds[1], 1)
     floor_area = max(_bounds_area(bounds), 1)
     floor_box = box(*bounds)
-    labels = [label for label in floor_labels if is_room_name_label(label.text) or extract_room_dimension(label.text)]
+    labels = [label for label in floor_labels if _is_candidate_room_text(label)]
     
     # Extract doors for validation
     doors = _extract_doors(floor_entities) if config.enable_door_validation else []
@@ -898,7 +1200,7 @@ def _candidate_spaces_for_floor(
         if containing_labels:
             # High confidence: labeled hatch
             label = containing_labels[0]
-            name = space_label_name(label.text) or f"Space {len(spaces) + 1}"
+            name = space_label_name(label.text) or label.text.strip() or f"Space {len(spaces) + 1}"
             area_sqm = round(polygon.area * metre_factor * metre_factor, 2)
             
             # Door validation boost
@@ -912,12 +1214,18 @@ def _candidate_spaces_for_floor(
         else:
             # Unlabeled hatch - still high confidence
             area_sqm = round(polygon.area * metre_factor * metre_factor, 2)
+            symbol_evidence = _symbol_evidence_for_polygon(polygon, floor_entities, floor_labels, drawing_span)
+            name = _name_from_symbol_evidence(symbol_evidence, "Unlabeled Space")
             
             # Door validation
             door_valid, door_count = _validate_space_with_doors(polygon, doors)
             if door_valid or area_sqm >= 3.0:  # Accept if has doors or is reasonable size
                 confidence = _space_confidence_from_door_validation(door_count, hatch_confidence)
-                spaces.append(CandidateSpace(polygon, None, "Unlabeled Space", "unlabeled", confidence, True, (), ("Hatch fill detected - no text label.",)))
+                confidence = _confidence_from_symbol_evidence(confidence, symbol_evidence)
+                warnings = ["Hatch fill detected - no text label."]
+                if symbol_evidence:
+                    warnings.append(f"Symbol evidence: {', '.join(symbol_evidence)}.")
+                spaces.append(CandidateSpace(polygon, None, name, canonical_name(name), confidence, True, (), tuple(warnings)))
                 used_keys.add(key)
                 diagnostics.door_validated_spaces += 1 if door_count > 0 else 0
     
@@ -925,9 +1233,11 @@ def _candidate_spaces_for_floor(
     min_area = config.min_space_area_sqm / max(metre_factor * metre_factor, 0.000001)
     linework = _iter_linework(floor_entities)
     diagnostics.candidate_wall_entities += len(linework)
-    closed_linework = _close_linework_gaps(linework, drawing_span, config)
+    closed_linework = _close_linework_gaps(linework, drawing_span, metre_factor, config)
     try:
-        polygons = [polygon for polygon in polygonize(unary_union(closed_linework)) if polygon.is_valid and polygon.area > 0]
+        line_graph = unary_union(closed_linework)
+        snapped_graph = snap(line_graph, line_graph, 0.15 / max(metre_factor, 0.000001))
+        polygons = [polygon for polygon in polygonize(snapped_graph) if polygon.is_valid and polygon.area > 0]
     except Exception:
         diagnostics.warnings.append("polygonize_failed")
         polygons = []
@@ -953,7 +1263,7 @@ def _candidate_spaces_for_floor(
         if label.handle in used_labels:
             continue
         
-        name = space_label_name(label.text) or (extract_room_dimension(label.text) or ("Unclassified Space", 0, 0))[0]
+        name = space_label_name(label.text) or (extract_room_dimension(label.text) or (label.text.strip() or "Unclassified Space", 0, 0))[0]
         canonical = canonical_name(name)
         printed_area = _printed_area_for(label, floor_labels, drawing_span)
         label_point = _label_point(label)
@@ -1033,13 +1343,19 @@ def _candidate_spaces_for_floor(
             diagnostics.warnings.append("zero_area_segment_rejected")
             continue
         
+        symbol_evidence = _symbol_evidence_for_polygon(polygon, floor_entities, floor_labels, drawing_span)
+        if canonical in {"unlabeled", "unclassified space", "space", "room"}:
+            name = _name_from_symbol_evidence(symbol_evidence, name)
+            canonical = canonical_name(name)
         confidence = _confidence(label, polygon, printed_area, area_sqm, inferred=not polygon.contains(label_point))
         
         # Door validation
         door_valid, door_count = _validate_space_with_doors(polygon, doors)
         confidence = _space_confidence_from_door_validation(door_count, confidence)
+        confidence = _confidence_from_symbol_evidence(confidence, symbol_evidence)
         
-        spaces.append(CandidateSpace(polygon, label, name, canonical_name(name), confidence, not polygon.contains(label_point), (label.handle,), ()))
+        warnings = (f"Symbol evidence: {', '.join(symbol_evidence)}.",) if symbol_evidence else ()
+        spaces.append(CandidateSpace(polygon, label, name, canonical_name(name), confidence, not polygon.contains(label_point), (label.handle,), warnings))
         used_keys.add(key)
         used_labels.add(label.handle)
         diagnostics.door_validated_spaces += 1 if door_count > 0 else 0
@@ -1087,6 +1403,9 @@ def _candidate_spaces_for_floor(
         if labeled_union is not None and polygon.intersection(labeled_union).area / max(polygon.area, 0.000001) > 0.6:
             continue
         
+        symbol_evidence = _symbol_evidence_for_polygon(polygon, floor_entities, floor_labels, drawing_span)
+        name = _name_from_symbol_evidence(symbol_evidence, "Unclassified Space")
+        
         # Higher confidence if doors validated
         if door_valid:
             base_confidence = 65.0 + (door_count * 5)  # 65% base + 5% per door
@@ -1095,8 +1414,12 @@ def _candidate_spaces_for_floor(
             base_confidence = 50.0
         
         confidence = _space_confidence_from_door_validation(door_count, base_confidence)
+        confidence = _confidence_from_symbol_evidence(confidence, symbol_evidence)
         
-        spaces.append(CandidateSpace(polygon, None, "Unclassified Space", "unclassified", confidence, True, (), ("No room label found.",)))
+        warnings = ["No room label found."]
+        if symbol_evidence:
+            warnings.append(f"Symbol evidence: {', '.join(symbol_evidence)}.")
+        spaces.append(CandidateSpace(polygon, None, name, canonical_name(name), confidence, True, (), tuple(warnings)))
         diagnostics.unclassified_spaces += 1
         used_keys.add(key)
         diagnostics.door_validated_spaces += 1 if door_count > 0 else 0
@@ -1116,36 +1439,94 @@ def _screen_transform(bounds: tuple[float, float, float, float], width: int, hei
     return screen
 
 
-def _render_svg(entities: list[NormalizedEntity], labels: list[TextLabel], bounds: tuple[float, float, float, float], width: int, height: int, padding: int) -> str:
+def _legend_for_segments(segments: list[ExtractedSegment]) -> list[BlueprintLegendItem]:
+    totals: dict[str, tuple[str, float, float]] = {}
+    for segment in segments:
+        if not segment.category or not segment.color_hex or segment.alpha is None:
+            continue
+        color_hex, alpha, area = totals.get(segment.category, (segment.color_hex, segment.alpha, 0.0))
+        totals[segment.category] = (color_hex, alpha, area + segment.area_sqm)
+    return [
+        BlueprintLegendItem(category=category, color_hex=color_hex, alpha=alpha, total_area_sqm=round(area, 2))
+        for category, (color_hex, alpha, area) in totals.items()
+    ]
+
+
+def _render_svg(
+    entities: list[NormalizedEntity],
+    labels: list[TextLabel],
+    segments: list[ExtractedSegment],
+    bounds: tuple[float, float, float, float],
+    width: int,
+    height: int,
+    padding: int,
+) -> str:
     screen = _screen_transform(bounds, width, height, padding)
     svg_paths: list[str] = []
+    overlay_paths: list[str] = []
+    for segment in segments:
+        if not segment.polygon_coords or not segment.color_hex:
+            continue
+        overlay_paths.append(
+            f'<polygon points="{" ".join(f"{x},{y}" for x, y in segment.polygon_coords)}" '
+            f'fill="{segment.color_hex}" fill-opacity="{segment.alpha or 0.35}" stroke="{segment.color_hex}" stroke-opacity="0.75" stroke-width="1"/>'
+        )
     for entity in entities:
         geometry = entity.geometry
         if isinstance(geometry, LineString):
             coords = [screen((float(x), float(y))) for x, y in geometry.coords]
             if len(coords) >= 2:
-                svg_paths.append(f'<polyline points="{" ".join(f"{x},{y}" for x, y in coords)}" stroke="#94a3b8" stroke-width="1.2" fill="none"/>')
+                svg_paths.append(f'<polyline points="{" ".join(f"{x},{y}" for x, y in coords)}" stroke="#111827" stroke-width="1.15" fill="none"/>')
         elif isinstance(geometry, Polygon):
             coords = [screen((float(x), float(y))) for x, y in list(geometry.exterior.coords)[:-1]]
-            svg_paths.append(f'<polygon points="{" ".join(f"{x},{y}" for x, y in coords)}" stroke="#334155" stroke-width="1.4" fill="none"/>')
+            svg_paths.append(f'<polygon points="{" ".join(f"{x},{y}" for x, y in coords)}" stroke="#111827" stroke-width="1.2" fill="none"/>')
     for label in labels:
         x, y = screen((float(label.point.x), float(label.point.y)))
         svg_paths.append(f'<text x="{x}" y="{y}" fill="#2563eb" font-size="12">{html.escape(label.text[:80])}</text>')
     return (
         f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" viewBox="0 0 {width} {height}">'
         f'<defs><clipPath id="floor-region-clip"><rect x="0" y="0" width="{width}" height="{height}"/></clipPath></defs>'
-        f'<rect width="100%" height="100%" fill="white"/><g clip-path="url(#floor-region-clip)">{"".join(svg_paths)}</g></svg>'
+        f'<rect width="100%" height="100%" fill="white"/><g clip-path="url(#floor-region-clip)">{"".join(overlay_paths)}{"".join(svg_paths)}</g></svg>'
     )
 
 
-def _to_segment(space: CandidateSpace, bounds: tuple[float, float, float, float], width: int, height: int, padding: int, metre_factor: float) -> ExtractedSegment:
+def _to_segment(
+    space: CandidateSpace,
+    bounds: tuple[float, float, float, float],
+    width: int,
+    height: int,
+    padding: int,
+    metre_factor: float,
+    unlabeled_id: int,
+    segment_index: int,
+    floor_id: int,
+) -> ExtractedSegment:
     screen = _screen_transform(bounds, width, height, padding)
     coords = [screen((float(x), float(y))) for x, y in list(space.polygon.exterior.coords)[:-1]]
+    name = space.name
+    symbol_inferred = any(warning.startswith("Symbol evidence:") for warning in space.warnings)
+    labeled = space.label is not None or symbol_inferred
+    if not labeled and canonical_name(name) in {"unclassified space", "unlabeled space", "unlabeled"}:
+        name = f"UNLABELED_SPACE_{unlabeled_id}"
+    category, color_hex, alpha = _category_for_space(name, space.polygon, labeled)
+    normalized = _normalize_label_with_gemini(name, category, color_hex) if labeled else None
+    if normalized:
+        name = normalized.standardized_name
+        category = normalized.category
+        color_hex = normalized.color_hex
+    overlay = RoomOverlay(category=category, color_hex=color_hex, alpha=alpha, rgba=_hex_to_rgba(color_hex, alpha))
     return ExtractedSegment(
-        segment_name=space.name[:150],
+        segment_id=f"segment_f{floor_id}_{segment_index:02d}",
+        segment_name=name[:150],
         area_sqm=round(space.polygon.area * metre_factor * metre_factor, 2),
+        perimeter_m=round(space.polygon.length * metre_factor, 2),
+        category=category,
+        color_hex=color_hex,
+        alpha=alpha,
+        overlay=overlay,
         polygon_coords=coords,
         confidence_score=space.confidence,
+        status="INCLUDED",
     )
 
 
@@ -1207,11 +1588,17 @@ def extract_dxf_blueprint(content: bytes, config: DxfExtractionConfig | None = N
     drawing_bounds = _all_bounds(entities, labels)
     metre_factor, units_name, unit_confidence, unit_warnings = infer_unit_factor(int(document.header.get("$INSUNITS", 0)), drawing_bounds, labels)
     diagnostics.warnings.extend(unit_warnings)
+    dbscan_regions = _dbscan_floor_regions_from_wall_midpoints(entities, labels, drawing_bounds, metre_factor)
     grid_regions = _floor_regions_from_sheet_grid(entities, labels, drawing_bounds)
     label_regions = _floor_regions_from_labels(labels, drawing_bounds)
     geometry_regions = _floor_regions_from_geometry(entities, labels, drawing_bounds)
     cluster_regions = _floor_regions_from_space_label_clusters(labels, drawing_bounds)
-    if len(grid_regions) >= 2:
+    proposal_label_regions = [region for region in label_regions if "proposal" in region.name.lower()]
+    if len(proposal_label_regions) >= 2:
+        regions = proposal_label_regions
+    elif len(dbscan_regions) >= 2:
+        regions = dbscan_regions
+    elif len(grid_regions) >= 2:
         regions = grid_regions
     elif len(label_regions) > 1:
         regions = label_regions
@@ -1219,7 +1606,7 @@ def extract_dxf_blueprint(content: bytes, config: DxfExtractionConfig | None = N
         regions = cluster_regions
     else:
         regions = geometry_regions or label_regions
-    if not grid_regions:
+    if not dbscan_regions and not grid_regions:
         regions = _split_regions_by_internal_label_gaps(regions, labels)
     
     # CRITICAL FIX: Calculate output dimensions based on visible_bounds aspect ratio
@@ -1230,7 +1617,7 @@ def extract_dxf_blueprint(content: bytes, config: DxfExtractionConfig | None = N
     floors: list[BlueprintFloor] = []
     floor_region_bounds: list[tuple[float, float, float, float]] = []
     all_segment_polygons: list[Polygon] = []
-    for region in regions:
+    for floor_id, region in enumerate(regions, start=1):
         region_bounds = _expanded(region.bounds, max(drawing_bounds[2] - drawing_bounds[0], drawing_bounds[3] - drawing_bounds[1]) * 0.015)
         
         # First pass: get all entities in region using geometry intersection
@@ -1309,10 +1696,20 @@ def extract_dxf_blueprint(content: bytes, config: DxfExtractionConfig | None = N
         height = max(height, 400)
         
         spaces = _candidate_spaces_for_floor(floor_entities, floor_labels, visible_bounds, metre_factor, config, diagnostics)
-        segments = [_to_segment(space, visible_bounds, width, height, padding, metre_factor) for space in spaces if space.polygon.is_valid and space.polygon.area > 0]
+        segments: list[ExtractedSegment] = []
+        unlabeled_id = 1
+        for space in spaces:
+            if not space.polygon.is_valid or space.polygon.area <= 0:
+                continue
+            segment = _to_segment(space, visible_bounds, width, height, padding, metre_factor, unlabeled_id, len(segments) + 1, floor_id)
+            if segment.segment_name.startswith("UNLABELED_SPACE_"):
+                unlabeled_id += 1
+            segments.append(segment)
         diagnostics.segments_after_filtering += len(segments)
         all_segment_polygons.extend(space.polygon for space in spaces)
-        svg = _render_svg(floor_entities, floor_labels, visible_bounds, width, height, padding)
+        legend = _legend_for_segments(segments)
+        svg = _render_svg(floor_entities, floor_labels, segments, visible_bounds, width, height, padding)
+        image_url = f"data:image/svg+xml;charset=utf-8,{quote(svg)}"
         focus_bounds = None
         if entity_bounds:
             focus_screen = _screen_transform(visible_bounds, width, height, padding)
@@ -1327,12 +1724,18 @@ def extract_dxf_blueprint(content: bytes, config: DxfExtractionConfig | None = N
             )
         floors.append(
             BlueprintFloor(
+                floor_id=floor_id,
                 floor_level=region.name,
-                image_url=f"data:image/svg+xml;charset=utf-8,{quote(svg)}",
+                floor_name=region.name,
+                image_url=image_url,
                 image_width=width,
                 image_height=height,
                 focus_bounds=focus_bounds,
+                viewport_bbox=region.bounds,
                 segments=segments,
+                legend=legend,
+                visual_preview_url=image_url,
+                report_page_url=image_url,
             )
         )
         floor_region_bounds.append(region.bounds)
@@ -1351,4 +1754,32 @@ def extract_dxf_blueprint(content: bytes, config: DxfExtractionConfig | None = N
     diagnostics.coverage_percent = round(min(100, detected_area / max(expected_area, 1) * 100), 2)
     diagnostics.warnings.append(f"units={units_name}; unit_confidence={unit_confidence}")
     diagnostics.warnings.append(f"elapsed_ms={round((time.perf_counter() - started) * 1000, 2)}")
-    return BlueprintExtractionResult(floors=floors, diagnostics=diagnostics.__dict__)
+    structured_json = {
+        "floors": [
+            {
+                "floor_level": floor.floor_level,
+                "floor_id": floor.floor_id,
+                "floor_name": floor.floor_name or floor.floor_level,
+                "viewport_bbox": floor.viewport_bbox,
+                "rooms": [
+                    {
+                        "id": segment.segment_id,
+                        "room_name": segment.segment_name,
+                        "name": segment.segment_name,
+                        "category": segment.category,
+                        "area_sqm": segment.area_sqm,
+                        "perimeter_m": segment.perimeter_m,
+                        "color_hex": segment.color_hex,
+                        "alpha": segment.alpha,
+                        "confidence_score": round((segment.confidence_score or 0) / 100, 2),
+                        "status": segment.status,
+                        "polygon_coords": segment.polygon_coords,
+                    }
+                    for segment in floor.segments
+                ],
+                "legend": [item.model_dump() for item in floor.legend],
+            }
+            for floor in floors
+        ]
+    }
+    return BlueprintExtractionResult(floors=floors, diagnostics=diagnostics.__dict__, structured_json=structured_json, report_url=floors[0].report_page_url if floors else None)

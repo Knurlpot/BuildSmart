@@ -26,21 +26,26 @@ export function SegmentBlueprintPreview({ floors, segments, hoveredId, onHoverCh
   return (
     <div className="flex flex-col gap-3">
       {floors.length > 1 && (
-        <div className="flex w-fit gap-1 rounded-lg border border-gray-200 bg-white p-1">
+        <div className="flex max-w-full gap-1 overflow-x-auto rounded-lg border border-gray-200 bg-white p-1">
           {floors.map((f) => (
             <button
               key={f.floor_level}
               type="button"
               onClick={() => setSelectedFloor(f.floor_level)}
-              className={`rounded-md px-4 py-1.5 text-xs font-semibold transition ${
+              className={`shrink-0 rounded-md px-4 py-1.5 text-xs font-semibold transition ${
                 f.floor_level === currentFloor.floor_level ? "bg-primary text-primary-foreground" : "text-gray-500 hover:bg-gray-50"
               }`}
+              title={`${f.floor_level} · ${f.segments.length} segment${f.segments.length === 1 ? "" : "s"}`}
             >
               {f.floor_level}
+              <span className="ml-2 opacity-75">{f.segments.length}</span>
             </button>
           ))}
         </div>
       )}
+      <div className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs font-semibold text-gray-600">
+        {currentFloor.floor_level} · {floorSegments.length} segment{floorSegments.length === 1 ? "" : "s"}
+      </div>
       <BlueprintOverlay
         key={currentFloor.floor_level}
         imageUrl={currentFloor.image_url}

@@ -14,12 +14,14 @@ from tenacity import retry, stop_after_attempt, wait_exponential
 from app.schemas.blueprint import (
     BlueprintExtractionResult,
     BlueprintFloor,
+    BlueprintLegendItem,
     ExtractedSegment,
     GeminiFloorExtraction,
+    RoomOverlay,
 )
 
 MAX_BLUEPRINT_BYTES = 25 * 1024 * 1024
-GEMINI_MODEL = os.environ.get("GEMINI_VISION_MODEL", os.environ.get("GEMINI_MODEL", "gemini-flash-latest"))
+GEMINI_MODEL = os.environ.get("GEMINI_VISION_MODEL", os.environ.get("GEMINI_MODEL", "gemini-1.5-flash"))
 
 
 def _data_url(content: bytes, mime_type: str) -> str:
@@ -33,6 +35,49 @@ def _png_bytes(image: Any) -> bytes:
     return output.getvalue()
 
 
+GEMINI_BLUEPRINT_SEGMENTATION_PROMPT = """
+You are an advanced architectural vision AI. Analyze the provided floor plan image, isolate a SINGLE floor plan viewport, and detect 100% of all distinct spatial zones, including rooms, central hallways, corridors, stairwells, balconies, and unlabelled utility spaces.
+
+MANDATORY SCANNING RULES:
+1. 100% FLOOR COVERAGE (NO SKIPPED PASSAGES):
+- Identify all circulation spaces, central corridors, entrance foyers, and stairwell lobbies.
+- Do not limit detection only to named rooms. Open passageways must be scanned and categorized as Circulation & Hallways.
+
+2. SINGLE FLOOR FOCUS:
+- Focus spatial bounding boxes strictly on the active floor layout.
+- Ignore outer title blocks, surrounding floor plans, legends, margin dimensions, furniture, and symbols.
+
+3. BOUNDING BOX PRECISION:
+- Provide normalized 2D bounding box coordinates on a 0-1000 scale as [ymin, xmin, ymax, xmax].
+
+CATEGORIZATION & COLOR MATRIX:
+- Living Areas: Living, Dining, Family Room, Lounge. Color #80B3FF.
+- Bedrooms / Suites: Bedroom, Suite, BR, Sleeping Area. Color #FFB3BA.
+- Kitchen & Dining: Kitchen, Pantry, Nook, Bar. Color #FFCC80.
+- Bathrooms & Services: Bathroom, WC, Toilet, Laundry, Service. Color #A8E6CF.
+- Commercial & Storage: Shop, Storefront, Commercial Bay, Storage. Color #4ECDC4.
+- Circulation & Hallways: Corridor, Hallway, Foyer, Passageway, Stairs, Elevators. Color #9B59B6.
+- Balconies & Porches: Balcony, Porch, Deck, Veranda, Slope, Ramp. Color #E8A0BF.
+- Unassigned Utility: Unlabelled rooms, enclosed utility bays, unassigned spaces. Color #7F8C8D.
+
+Return only a valid JSON object matching this schema:
+{
+  "floor_name": "Floor Plan 1",
+  "total_detected_spaces": 18,
+  "detected_spaces": [
+    {
+      "id": "space_1",
+      "name": "SHOP 1",
+      "category": "Commercial & Storage",
+      "color_hex": "#4ECDC4",
+      "bounding_box_1000": [150, 200, 350, 450],
+      "confidence_score": 0.95
+    }
+  ]
+}
+""".strip()
+
+
 @retry(stop=stop_after_attempt(4), wait=wait_exponential(multiplier=1, min=2, max=10))
 def _extract_pdf_page_with_gemini(image_bytes: bytes, page_number: int) -> GeminiFloorExtraction:
     api_key = os.environ.get("GEMINI_API_KEY")
@@ -43,16 +88,9 @@ def _extract_pdf_page_with_gemini(image_bytes: bytes, page_number: int) -> Gemin
     from google.genai import types
 
     client = genai.Client(api_key=api_key)
-    prompt = (
-        "Analyze this architectural blueprint page. Identify enclosed rooms or measurable construction areas. "
-        "Return each segment's printed room name, area in square metres, polygon boundary in the image's pixel "
-        "coordinates, and a 0-100 confidence score. Use a short floor label such as Ground Floor or Floor 2. "
-        "Do not invent an area when neither dimensions nor scale support it. Exclude legends, title blocks, "
-        "dimension labels, furniture, and symbols. Polygon points must follow the visible room boundary."
-    )
     response = client.models.generate_content(
         model=GEMINI_MODEL,
-        contents=[prompt, types.Part.from_bytes(data=image_bytes, mime_type="image/png")],
+        contents=[GEMINI_BLUEPRINT_SEGMENTATION_PROMPT, types.Part.from_bytes(data=image_bytes, mime_type="image/png")],
         config=types.GenerateContentConfig(
             response_mime_type="application/json",
             response_schema=GeminiFloorExtraction,
@@ -64,7 +102,51 @@ def _extract_pdf_page_with_gemini(image_bytes: bytes, page_number: int) -> Gemin
     return GeminiFloorExtraction.model_validate(parsed)
 
 
+def _bbox_1000_to_polygon(
+    bbox: tuple[float, float, float, float],
+    image_width: int,
+    image_height: int,
+) -> list[tuple[float, float]]:
+    ymin, xmin, ymax, xmax = bbox
+    clamped_ymin = min(max(ymin, 0), 1000)
+    clamped_xmin = min(max(xmin, 0), 1000)
+    clamped_ymax = min(max(ymax, 0), 1000)
+    clamped_xmax = min(max(xmax, 0), 1000)
+    x0 = round((min(clamped_xmin, clamped_xmax) / 1000) * image_width, 2)
+    x1 = round((max(clamped_xmin, clamped_xmax) / 1000) * image_width, 2)
+    y0 = round((min(clamped_ymin, clamped_ymax) / 1000) * image_height, 2)
+    y1 = round((max(clamped_ymin, clamped_ymax) / 1000) * image_height, 2)
+    return [(x0, y0), (x1, y0), (x1, y1), (x0, y1)]
+
+
+def _segment_from_gemini_space(space: Any, floor_index: int, segment_index: int, image_width: int, image_height: int) -> ExtractedSegment:
+    polygon = _bbox_1000_to_polygon(space.bounding_box_1000, image_width, image_height)
+    width_px = max(polygon[1][0] - polygon[0][0], 1)
+    height_px = max(polygon[2][1] - polygon[1][1], 1)
+    alpha = 0.35
+    return ExtractedSegment(
+        segment_id=space.id or f"segment_f{floor_index}_{segment_index:02d}",
+        segment_name=space.name[:150],
+        area_sqm=round((width_px * height_px) / 10000, 2),
+        perimeter_m=round((width_px + height_px) * 2 / 100, 2),
+        category=space.category,
+        color_hex=space.color_hex,
+        alpha=alpha,
+        overlay=RoomOverlay(category=space.category, color_hex=space.color_hex, alpha=alpha, rgba=_rgba(space.color_hex, alpha)),
+        polygon_coords=polygon,
+        confidence_score=round(space.confidence_score * 100, 2),
+        status="INCLUDED",
+    )
+
+
 def _extract_pdf(content: bytes) -> BlueprintExtractionResult:
+    vector_result = _extract_vector_pdf(content)
+    if vector_result is not None:
+        return vector_result
+    return _extract_scanned_pdf_preview(content)
+
+
+def _extract_scanned_pdf_preview(content: bytes) -> BlueprintExtractionResult:
     try:
         from pdf2image import convert_from_bytes
     except ImportError:
@@ -89,29 +171,285 @@ def _extract_pdf(content: bytes) -> BlueprintExtractionResult:
         raise ValueError("The PDF contains no readable pages.")
 
     floors: list[BlueprintFloor] = []
+    gemini_enabled = bool(os.environ.get("GEMINI_API_KEY"))
     for index, image in enumerate(images):
         image_bytes = _png_bytes(image)
-        detected = _extract_pdf_page_with_gemini(image_bytes, index + 1)
-        segments = [
-            ExtractedSegment(
-                segment_name=segment.segment_name.strip() or f"Segment {position + 1}",
-                area_sqm=round(segment.area_sqm, 2),
-                polygon_coords=segment.polygon_coords,
-                confidence_score=segment.confidence_score,
-            )
-            for position, segment in enumerate(detected.segments)
-            if segment.area_sqm > 0 and len(segment.polygon_coords) >= 3
-        ]
+        image_url = _data_url(image_bytes, "image/png")
+        floor_name = f"Page {index + 1}"
+        segments: list[ExtractedSegment] = []
+        if gemini_enabled:
+            extraction = _extract_pdf_page_with_gemini(image_bytes, index + 1)
+            floor_name = extraction.floor_name or floor_name
+            segments = [
+                _segment_from_gemini_space(space, index + 1, segment_index, image.width, image.height)
+                for segment_index, space in enumerate(extraction.detected_spaces, start=1)
+            ]
         floors.append(
             BlueprintFloor(
-                floor_level=detected.floor_level.strip() or f"Page {index + 1}",
-                image_url=_data_url(image_bytes, "image/png"),
+                floor_id=index + 1,
+                floor_level=floor_name,
+                floor_name=floor_name,
+                image_url=image_url,
                 image_width=image.width,
                 image_height=image.height,
+                viewport_bbox=(0, 0, image.width, image.height),
                 segments=segments,
+                legend=_legend(segments),
+                visual_preview_url=image_url,
             )
         )
-    return BlueprintExtractionResult(floors=floors)
+    if gemini_enabled:
+        return BlueprintExtractionResult(
+            floors=floors,
+            diagnostics={
+                "source": "gemini_vision",
+                "warnings": [
+                    "Scanned PDF spaces were detected by Gemini Vision and require human review before quotation."
+                ],
+            },
+            structured_json={
+                "floors": [
+                    {
+                        "floor_name": floor.floor_name or floor.floor_level,
+                        "total_detected_spaces": len(floor.segments),
+                        "detected_spaces": [
+                            {
+                                "id": segment.segment_id,
+                                "name": segment.segment_name,
+                                "category": segment.category,
+                                "color_hex": segment.color_hex,
+                                "confidence_score": round((segment.confidence_score or 0) / 100, 2),
+                            }
+                            for segment in floor.segments
+                        ],
+                    }
+                    for floor in floors
+                ]
+            },
+        )
+    return BlueprintExtractionResult(
+        floors=floors,
+        diagnostics={
+            "warnings": [
+                "PDF contains no deterministic vector room geometry; returned per-page scanned previews without room polygons."
+            ]
+        },
+        structured_json={"floors": [{"floor_level": floor.floor_level, "rooms": [], "legend": []} for floor in floors]},
+    )
+
+
+def _pdf_category_for(name: str, aspect_ratio: float, labeled: bool) -> tuple[str, str, float]:
+    lowered = re.sub(r"\s+", " ", name).strip().lower()
+    if any(keyword in lowered for keyword in ("hall", "corridor", "passage", "stair", "stairs", "entrance")) or aspect_ratio >= 3.0:
+        return ("Circulation & Hallways", "#9B59B6", 0.35)
+    if not labeled:
+        return ("Unassigned Utility / Room", "#7F8C8D", 0.35)
+    matrix = (
+        ("Master Suite", ("master", "master bed", "master bath"), "#A8DADC", 0.35),
+        ("Living Areas", ("living", "dining", "family", "great room"), "#80B3FF", 0.35),
+        ("Bedrooms / Suites", ("bed", "br", "bedroom", "suite"), "#FFB3BA", 0.35),
+        ("Kitchen & Dining", ("kitchen", "pantry", "nook", "bar"), "#FFCC80", 0.35),
+        ("Bathrooms & Services", ("bath", "wc", "powder", "toilet", "utility", "laundry"), "#A8E6CF", 0.35),
+        ("Commercial & Storage", ("shop", "store", "commercial", "storage"), "#4ECDC4", 0.35),
+        ("Balconies & Porches", ("porch", "veranda", "balcony", "deck"), "#E8A0BF", 0.35),
+        ("Circulation & Hallways", ("hall", "corridor", "passage", "stair", "stairs", "entrance"), "#9B59B6", 0.35),
+    )
+    for category, keywords, color_hex, alpha in matrix:
+        if any(re.search(rf"\b{re.escape(keyword)}\b", lowered) for keyword in keywords):
+            return (category, color_hex, alpha)
+    return ("Unassigned Utility / Room", "#7F8C8D", 0.35)
+
+
+def _rgba(color_hex: str, alpha: float) -> tuple[int, int, int, float]:
+    return (int(color_hex[1:3], 16), int(color_hex[3:5], 16), int(color_hex[5:7], 16), alpha)
+
+
+def _legend(segments: list[ExtractedSegment]) -> list[BlueprintLegendItem]:
+    totals: dict[str, tuple[str, float, float]] = {}
+    for segment in segments:
+        if not segment.category or not segment.color_hex or segment.alpha is None:
+            continue
+        color_hex, alpha, area = totals.get(segment.category, (segment.color_hex, segment.alpha, 0))
+        totals[segment.category] = (color_hex, alpha, area + segment.area_sqm)
+    return [
+        BlueprintLegendItem(category=category, color_hex=color_hex, alpha=alpha, total_area_sqm=round(area, 2))
+        for category, (color_hex, alpha, area) in totals.items()
+    ]
+
+
+def _with_hybrid_structured_json(filename: str, result: BlueprintExtractionResult) -> BlueprintExtractionResult:
+    floors_payload = []
+    total_area = 0.0
+    for floor_index, floor in enumerate(result.floors, start=1):
+        floor_id = floor.floor_id or floor_index
+        floor_name = floor.floor_name or floor.floor_level
+        floor_area = round(sum(segment.area_sqm for segment in floor.segments if segment.status == "INCLUDED"), 2)
+        total_area += floor_area
+        rooms = []
+        for segment_index, segment in enumerate(floor.segments, start=1):
+            room_id = segment.segment_id or f"segment_f{floor_id}_{segment_index:02d}"
+            rooms.append(
+                {
+                    "id": room_id,
+                    "name": segment.segment_name,
+                    "category": segment.category,
+                    "area_sqm": segment.area_sqm,
+                    "perimeter_m": segment.perimeter_m,
+                    "color_hex": segment.color_hex,
+                    "confidence_score": round((segment.confidence_score or 0) / 100, 2),
+                    "status": segment.status,
+                }
+            )
+        floors_payload.append(
+            {
+                "floor_id": floor_id,
+                "floor_name": floor_name,
+                "viewport_bbox": floor.viewport_bbox,
+                "floor_area_sqm": floor_area,
+                "total_segments": len(floor.segments),
+                "total_segments_count": len(floor.segments),
+                "segments": rooms,
+                "rooms": rooms,
+            }
+        )
+    result.structured_json = {
+        "file_name": filename,
+        "total_floors_detected": len(result.floors),
+        "active_floor_id": result.floors[0].floor_id if result.floors else None,
+        "total_building_area_sqm": round(total_area, 2),
+        "active_tab": result.floors[0].floor_level if result.floors else None,
+        "floors_count": len(result.floors),
+        "floors": floors_payload,
+    }
+    return result
+
+
+def _extract_vector_pdf(content: bytes) -> BlueprintExtractionResult | None:
+    try:
+        import pdfplumber
+        from shapely.geometry import LineString, Point
+        from shapely.ops import polygonize, unary_union
+    except Exception:
+        return None
+
+    floors: list[BlueprintFloor] = []
+    try:
+        document_ctx = pdfplumber.open(io.BytesIO(content))
+    except Exception:
+        return None
+
+    with document_ctx as document:
+        for page_index, page in enumerate(document.pages, start=1):
+            lines: list[LineString] = []
+            for line in page.lines:
+                lines.append(LineString([(float(line["x0"]), float(line["top"])), (float(line["x1"]), float(line["bottom"]))]))
+            for rect in page.rects:
+                x0, x1, top, bottom = float(rect["x0"]), float(rect["x1"]), float(rect["top"]), float(rect["bottom"])
+                coords = [(x0, top), (x1, top), (x1, bottom), (x0, bottom), (x0, top)]
+                lines.extend(LineString([coords[i], coords[i + 1]]) for i in range(4))
+            if not lines:
+                continue
+            words = page.extract_words() or []
+            labels = [
+                (str(word.get("text", "")).strip(), Point((float(word["x0"]) + float(word["x1"])) / 2, (float(word["top"]) + float(word["bottom"])) / 2))
+                for word in words
+                if str(word.get("text", "")).strip()
+            ]
+            try:
+                polygons = [polygon for polygon in polygonize(unary_union(lines)) if polygon.is_valid and polygon.area > 16]
+            except Exception:
+                continue
+            segments: list[ExtractedSegment] = []
+            unlabeled_id = 1
+            for segment_index, polygon in enumerate(sorted(polygons, key=lambda item: (item.bounds[1], item.bounds[0])), start=1):
+                contained = [text for text, point in labels if polygon.contains(point)]
+                name = " ".join(contained[:4]).strip()
+                labeled = bool(name)
+                if not labeled:
+                    min_x, min_y, max_x, max_y = polygon.bounds
+                    ratio = max(max_x - min_x, max_y - min_y) / max(min(max_x - min_x, max_y - min_y), 0.000001)
+                    name = f"UNLABELED_SPACE_{unlabeled_id}"
+                    unlabeled_id += 1
+                else:
+                    min_x, min_y, max_x, max_y = polygon.bounds
+                    ratio = max(max_x - min_x, max_y - min_y) / max(min(max_x - min_x, max_y - min_y), 0.000001)
+                category, color_hex, alpha = _pdf_category_for(name, ratio, labeled)
+                coords = [(round(float(x), 2), round(float(y), 2)) for x, y in list(polygon.exterior.coords)[:-1]]
+                segments.append(
+                    ExtractedSegment(
+                        segment_id=f"segment_f{page_index}_{segment_index:02d}",
+                        segment_name=name[:150],
+                        area_sqm=round(polygon.area, 2),
+                        perimeter_m=round(polygon.length, 2),
+                        category=category,
+                        color_hex=color_hex,
+                        alpha=alpha,
+                        overlay=RoomOverlay(category=category, color_hex=color_hex, alpha=alpha, rgba=_rgba(color_hex, alpha)),
+                        polygon_coords=coords,
+                        confidence_score=88 if labeled else 58,
+                        status="INCLUDED",
+                    )
+                )
+            if segments:
+                legend = _legend(segments)
+                width, height = int(page.width), int(page.height)
+                line_svg = []
+                for line in lines:
+                    coords = list(line.coords)
+                    line_svg.append(
+                        f'<polyline points="{" ".join(f"{round(float(x), 2)},{round(float(y), 2)}" for x, y in coords)}" '
+                        f'stroke="#111827" stroke-width="1" fill="none"/>'
+                    )
+                overlay_svg = [
+                    f'<polygon points="{" ".join(f"{x},{y}" for x, y in segment.polygon_coords or [])}" '
+                    f'fill="{segment.color_hex}" fill-opacity="{segment.alpha}" stroke="{segment.color_hex}" stroke-opacity="0.75" stroke-width="1"/>'
+                    for segment in segments
+                    if segment.polygon_coords and segment.color_hex and segment.alpha is not None
+                ]
+                svg = (
+                    f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" viewBox="0 0 {width} {height}">'
+                    f'<rect width="100%" height="100%" fill="white"/>{"".join(overlay_svg)}{"".join(line_svg)}</svg>'
+                )
+                visual_url = f"data:image/svg+xml;charset=utf-8,{quote(svg)}"
+                floors.append(
+                    BlueprintFloor(
+                        floor_id=page_index,
+                        floor_level=f"Page {page_index}",
+                        floor_name=f"Page {page_index}",
+                        image_url=visual_url,
+                        image_width=width,
+                        image_height=height,
+                        viewport_bbox=(0, 0, width, height),
+                        segments=segments,
+                        legend=legend,
+                        visual_preview_url=visual_url,
+                        report_page_url=visual_url,
+                    )
+                )
+    if not floors:
+        return None
+    structured_json = {
+        "floors": [
+            {
+                "floor_level": floor.floor_level,
+                "rooms": [
+                    {
+                        "room_name": segment.segment_name,
+                        "category": segment.category,
+                        "area_sqm": segment.area_sqm,
+                        "perimeter_m": segment.perimeter_m,
+                        "color_hex": segment.color_hex,
+                        "alpha": segment.alpha,
+                        "polygon_coords": segment.polygon_coords,
+                    }
+                    for segment in floor.segments
+                ],
+                "legend": [item.model_dump() for item in floor.legend],
+            }
+            for floor in floors
+        ]
+    }
+    return BlueprintExtractionResult(floors=floors, structured_json=structured_json, report_url=floors[0].visual_preview_url)
 
 
 def _unit_to_metres(insunits: int) -> float:
@@ -482,8 +820,10 @@ def extract_blueprint(filename: str, content: bytes) -> BlueprintExtractionResul
         raise ValueError("Blueprint files must be 25 MB or smaller.")
 
     extension = Path(filename).suffix.lower()
+    if extension in {".png", ".jpg", ".jpeg", ".bmp"}:
+        raise ValueError("Image uploads are not supported. Upload a vector PDF or DXF blueprint.")
     if extension == ".pdf":
-        return _extract_pdf(content)
+        return _with_hybrid_structured_json(filename, _extract_pdf(content))
     if extension == ".dxf":
-        return _extract_dxf(content)
+        return _with_hybrid_structured_json(filename, _extract_dxf(content))
     raise ValueError("Upload a PDF or DXF blueprint.")

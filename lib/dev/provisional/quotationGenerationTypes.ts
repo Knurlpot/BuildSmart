@@ -1,22 +1,32 @@
 export interface ExtractedSegment {
+  segment_id?: string | null;
   segment_name: string;
   area_sqm: number;
+  perimeter_m?: number | null;
+  category?: string | null;
+  color_hex?: string | null;
+  alpha?: number | null;
   polygon_coords: [number, number][] | null;
   confidence_score: number | null;
+  status?: string;
 }
 
 export interface BlueprintFloor {
+  floor_id?: number | null;
   floor_level: string;
+  floor_name?: string | null;
   image_url: string;
   image_width: number;
   image_height: number;
   focus_bounds?: [number, number, number, number] | null;
+  viewport_bbox?: [number, number, number, number] | null;
   segments: ExtractedSegment[];
 }
 
 export interface BlueprintExtractionResult {
   floors: BlueprintFloor[];
   diagnostics?: Record<string, unknown> | null;
+  structured_json?: Record<string, unknown> | null;
 }
 
 export const TREATMENT_TYPES = [

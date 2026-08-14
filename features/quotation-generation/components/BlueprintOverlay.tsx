@@ -18,9 +18,7 @@ const ZOOM_MAX = 2;
 const ZOOM_STEP = 0.25;
 const DEFAULT_ZOOM = 1;
 const DEFAULT_CROP_SCALE = 1.18;
-const FLOOR_CROP_PADDING_RATIO = 0.5;
-const MIN_FLOOR_CROP_WIDTH_RATIO = 0.82;
-const MIN_FLOOR_CROP_HEIGHT_RATIO = 0.72;
+const FLOOR_CROP_PADDING_RATIO = 0.04;
 const TOOLTIP_WIDTH = 210;
 const TOOLTIP_HEIGHT = 96;
 
@@ -175,21 +173,24 @@ export function BlueprintOverlay({
   const focusMinY = floorCropBounds?.minY ?? imageHeight / 4;
   const focusMaxX = floorCropBounds?.maxX ?? (imageWidth * 3) / 4;
   const focusMaxY = floorCropBounds?.maxY ?? (imageHeight * 3) / 4;
-  const focusWidth = Math.max(focusMaxX - focusMinX, imageWidth / DEFAULT_CROP_SCALE);
-  const focusHeight = Math.max(focusMaxY - focusMinY, imageHeight / DEFAULT_CROP_SCALE);
+  const hasFloorFocus = !!floorCropBounds;
+  const focusWidth = hasFloorFocus ? Math.max(focusMaxX - focusMinX, 1) : Math.max(focusMaxX - focusMinX, imageWidth / DEFAULT_CROP_SCALE);
+  const focusHeight = hasFloorFocus ? Math.max(focusMaxY - focusMinY, 1) : Math.max(focusMaxY - focusMinY, imageHeight / DEFAULT_CROP_SCALE);
   const cropPadding = Math.max(focusWidth, focusHeight) * FLOOR_CROP_PADDING_RATIO;
   const paddedWidth = Math.min(imageWidth, focusWidth + cropPadding * 2);
   const paddedHeight = Math.min(imageHeight, focusHeight + cropPadding * 2);
   const focusCenterX = (focusMinX + focusMaxX) / 2;
   const focusCenterY = (focusMinY + focusMaxY) / 2;
   const cropScale = Math.max(1, DEFAULT_CROP_SCALE * zoom);
+  const minimumCropWidth = hasFloorFocus ? 1 : imageWidth / cropScale;
+  const minimumCropHeight = hasFloorFocus ? 1 : imageHeight / cropScale;
   const cropWidth = Math.min(
     imageWidth,
-    Math.max(paddedWidth / zoom, imageWidth / cropScale, imageWidth * MIN_FLOOR_CROP_WIDTH_RATIO),
+    Math.max(paddedWidth / zoom, minimumCropWidth),
   );
   const cropHeight = Math.min(
     imageHeight,
-    Math.max(paddedHeight / zoom, imageHeight / cropScale, imageHeight * MIN_FLOOR_CROP_HEIGHT_RATIO),
+    Math.max(paddedHeight / zoom, minimumCropHeight),
   );
   const cropX = Math.min(Math.max(focusCenterX - cropWidth / 2, 0), Math.max(imageWidth - cropWidth, 0));
   const cropY = Math.min(Math.max(focusCenterY - cropHeight / 2, 0), Math.max(imageHeight - cropHeight, 0));
