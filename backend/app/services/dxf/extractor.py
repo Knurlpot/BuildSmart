@@ -13,7 +13,7 @@ from shapely.ops import polygonize, snap, unary_union
 
 from pydantic import BaseModel, Field
 
-from app.schemas.blueprint import BlueprintExtractionResult, BlueprintFloor, BlueprintLegendItem, ExtractedSegment, RoomOverlay
+from app.schemas.blueprint import BlueprintConfidenceBuckets, BlueprintExtractionResult, BlueprintFloor, BlueprintLegendItem, ExtractedSegment, RoomOverlay
 
 from .labels import (
     canonical_name,
@@ -1452,6 +1452,15 @@ def _legend_for_segments(segments: list[ExtractedSegment]) -> list[BlueprintLege
     ]
 
 
+def _confidence_buckets_for_segments(segments: list[ExtractedSegment]) -> BlueprintConfidenceBuckets:
+    return BlueprintConfidenceBuckets(
+        high_confidence=[segment for segment in segments if segment.confidence_score is not None and segment.confidence_score >= 85],
+        medium_confidence=[segment for segment in segments if segment.confidence_score is not None and 60 <= segment.confidence_score < 85],
+        low_confidence=[segment for segment in segments if segment.confidence_score is not None and segment.confidence_score < 60],
+        uncertain=[segment for segment in segments if segment.confidence_score is None],
+    )
+
+
 def _render_svg(
     entities: list[NormalizedEntity],
     labels: list[TextLabel],
@@ -1463,14 +1472,6 @@ def _render_svg(
 ) -> str:
     screen = _screen_transform(bounds, width, height, padding)
     svg_paths: list[str] = []
-    overlay_paths: list[str] = []
-    for segment in segments:
-        if not segment.polygon_coords or not segment.color_hex:
-            continue
-        overlay_paths.append(
-            f'<polygon points="{" ".join(f"{x},{y}" for x, y in segment.polygon_coords)}" '
-            f'fill="{segment.color_hex}" fill-opacity="{segment.alpha or 0.35}" stroke="{segment.color_hex}" stroke-opacity="0.75" stroke-width="1"/>'
-        )
     for entity in entities:
         geometry = entity.geometry
         if isinstance(geometry, LineString):
@@ -1486,7 +1487,7 @@ def _render_svg(
     return (
         f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" viewBox="0 0 {width} {height}">'
         f'<defs><clipPath id="floor-region-clip"><rect x="0" y="0" width="{width}" height="{height}"/></clipPath></defs>'
-        f'<rect width="100%" height="100%" fill="white"/><g clip-path="url(#floor-region-clip)">{"".join(overlay_paths)}{"".join(svg_paths)}</g></svg>'
+        f'<rect width="100%" height="100%" fill="white"/><g clip-path="url(#floor-region-clip)">{"".join(svg_paths)}</g></svg>'
     )
 
 
@@ -1708,6 +1709,7 @@ def extract_dxf_blueprint(content: bytes, config: DxfExtractionConfig | None = N
         diagnostics.segments_after_filtering += len(segments)
         all_segment_polygons.extend(space.polygon for space in spaces)
         legend = _legend_for_segments(segments)
+        confidence_buckets = _confidence_buckets_for_segments(segments)
         svg = _render_svg(floor_entities, floor_labels, segments, visible_bounds, width, height, padding)
         image_url = f"data:image/svg+xml;charset=utf-8,{quote(svg)}"
         focus_bounds = None
@@ -1733,6 +1735,12 @@ def extract_dxf_blueprint(content: bytes, config: DxfExtractionConfig | None = N
                 focus_bounds=focus_bounds,
                 viewport_bbox=region.bounds,
                 segments=segments,
+                confidence_buckets=confidence_buckets,
+                review_required=bool(
+                    confidence_buckets.medium_confidence
+                    or confidence_buckets.low_confidence
+                    or confidence_buckets.uncertain
+                ),
                 legend=legend,
                 visual_preview_url=image_url,
                 report_page_url=image_url,
@@ -1777,6 +1785,13 @@ def extract_dxf_blueprint(content: bytes, config: DxfExtractionConfig | None = N
                     }
                     for segment in floor.segments
                 ],
+                "confidence_buckets": {
+                    "high_confidence": [segment.segment_id for segment in floor.confidence_buckets.high_confidence],
+                    "medium_confidence": [segment.segment_id for segment in floor.confidence_buckets.medium_confidence],
+                    "low_confidence": [segment.segment_id for segment in floor.confidence_buckets.low_confidence],
+                    "uncertain": [segment.segment_id for segment in floor.confidence_buckets.uncertain],
+                },
+                "review_required": floor.review_required,
                 "legend": [item.model_dump() for item in floor.legend],
             }
             for floor in floors

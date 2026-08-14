@@ -1,3 +1,5 @@
+from enum import Enum
+
 from pydantic import BaseModel, Field
 
 
@@ -22,6 +24,20 @@ class ExtractedSegment(BaseModel):
     status: str = "INCLUDED"
 
 
+class ConfidenceBucket(str, Enum):
+    HIGH = "high_confidence"
+    MEDIUM = "medium_confidence"
+    LOW = "low_confidence"
+    UNCERTAIN = "uncertain"
+
+
+class BlueprintConfidenceBuckets(BaseModel):
+    high_confidence: list[ExtractedSegment] = Field(default_factory=list)
+    medium_confidence: list[ExtractedSegment] = Field(default_factory=list)
+    low_confidence: list[ExtractedSegment] = Field(default_factory=list)
+    uncertain: list[ExtractedSegment] = Field(default_factory=list)
+
+
 class BlueprintLegendItem(BaseModel):
     category: str
     color_hex: str = Field(pattern=r"^#[0-9A-Fa-f]{6}$")
@@ -39,6 +55,8 @@ class BlueprintFloor(BaseModel):
     focus_bounds: tuple[float, float, float, float] | None = None
     viewport_bbox: tuple[float, float, float, float] | None = None
     segments: list[ExtractedSegment]
+    confidence_buckets: BlueprintConfidenceBuckets = Field(default_factory=BlueprintConfidenceBuckets)
+    review_required: bool = True
     legend: list[BlueprintLegendItem] = Field(default_factory=list)
     visual_preview_url: str | None = None
     report_page_url: str | None = None

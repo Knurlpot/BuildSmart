@@ -1,14 +1,13 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { AlertTriangle, ZoomIn, ZoomOut, RotateCcw, ScanLine } from "lucide-react";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { ZoomIn, ZoomOut, RotateCcw, ScanLine } from "lucide-react";
 import { CONFIDENCE_BAND_LABEL, confidenceBand, polygonCentroidY, type DraftSegment } from "../lib/draftSegment";
 
 const BAND_COLOR: Record<ReturnType<typeof confidenceBand>, string> = {
-  high: "#16a34a", // green — confidence >= 90
-  medium: "#d97706", // amber — 70-89
-  low: "#dc2626", // red — < 70
+  high: "#16a34a", // green, 85+
+  medium: "#d97706", // amber, 60-84
+  low: "#dc2626", // red, below 60
   none: "#6b7280",
 };
 
@@ -34,9 +33,9 @@ interface BlueprintOverlayProps {
   onHoverChange: (id: string | null) => void;
   /** Part E — the actual DATA reset (discarding edits/groupings/deletions/manual adds back
    * to the original extraction) lives in the parent (BlueprintUploadPanel), which is the
-   * one holding the original extraction result. This component only owns the confirm
-   * dialog + the visual scan-replay; once the user confirms, it calls this AND replays its
-   * own local scan animation. Omitted when `readOnly` — see that prop's doc. */
+   * one holding the original extraction result. This component calls it directly from the
+   * Rescan button and replays its own local scan animation. Omitted when `readOnly` — see
+   * that prop's doc. */
   onRescanConfirmed?: () => void | Promise<void>;
   onScanStateChange?: (scanning: boolean) => void;
   /** Task 7, Part B — Segment Breakdown reuses this exact component (not a rebuild) to
@@ -89,7 +88,6 @@ export function BlueprintOverlay({
   const [syncedRescanToken, setSyncedRescanToken] = useState(0);
   const [scanProgress, setScanProgress] = useState(readOnly ? 100 : 0);
   const [scanning, setScanning] = useState(!readOnly);
-  const [rescanConfirmOpen, setRescanConfirmOpen] = useState(false);
 
   useEffect(() => {
     onScanStateChange?.(scanning);
@@ -97,7 +95,7 @@ export function BlueprintOverlay({
 
   // Adjusted during render (React's documented pattern for this — see e.g.
   // app/(app)/account/page.tsx's deactivate-dialog countdown) rather than a setState call
-  // inside the effect body below: resets the animation whenever "Rescan" is confirmed.
+  // inside the effect body below: resets the animation whenever "Rescan" is clicked.
   // Unreachable when readOnly (rescanToken never changes — there's no Rescan button).
   if (rescanToken !== syncedRescanToken) {
     setSyncedRescanToken(rescanToken);
@@ -123,10 +121,9 @@ export function BlueprintOverlay({
     return () => cancelAnimationFrame(raf);
   }, [rescanToken, readOnly]);
 
-  const handleRescanConfirm = async () => {
-    setRescanConfirmOpen(false);
-    await onRescanConfirmed?.();
+  const handleRescan = async () => {
     setRescanToken((t) => t + 1);
+    await onRescanConfirmed?.();
   };
 
   // ── Zoom ──
@@ -201,23 +198,22 @@ export function BlueprintOverlay({
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex flex-wrap items-center gap-1.5 text-xs font-semibold text-gray-500">
           <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2 py-0.5">
-            <span className="h-2 w-2 rounded-full" style={{ background: BAND_COLOR.high }} /> High &ge;90%
+            <span className="h-2 w-2 rounded-full" style={{ background: BAND_COLOR.high }} /> High &ge;85%
           </span>
           <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2 py-0.5">
-            <span className="h-2 w-2 rounded-full" style={{ background: BAND_COLOR.medium }} /> Medium 70-89%
+            <span className="h-2 w-2 rounded-full" style={{ background: BAND_COLOR.medium }} /> Medium 60-84%
           </span>
           <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2 py-0.5">
-            <span className="h-2 w-2 rounded-full" style={{ background: BAND_COLOR.low }} /> Low &lt;70%
+            <span className="h-2 w-2 rounded-full" style={{ background: BAND_COLOR.low }} /> Low &lt;60%
           </span>
         </div>
         <div className="flex flex-wrap shrink-0 items-center gap-1">
-          {/* Part E — no longer a silent reset: this only OPENS the confirm dialog below.
-              Hidden entirely when readOnly — Rescan is an edit action with no meaning
+          {/* Hidden entirely when readOnly — Rescan is an edit action with no meaning
               outside Review Segments (Task 7, Part B). */}
           {!readOnly && (
             <button
               type="button"
-              onClick={() => setRescanConfirmOpen(true)}
+              onClick={() => void handleRescan()}
               title="Rescan"
               className="flex items-center gap-1 rounded-lg border border-gray-200 bg-white px-2 py-1 text-xs font-semibold text-gray-500 transition hover:border-primary hover:text-primary"
             >
@@ -324,41 +320,6 @@ export function BlueprintOverlay({
         )}
       </div>
 
-      {/* Part E — rescanning RESTARTS: warn before discarding edits, don't silently wipe
-          the user's work. Unreachable when readOnly (no button opens it), so skip
-          rendering it at all rather than mount a dialog that can never show. */}
-      {!readOnly && (
-      <Dialog open={rescanConfirmOpen} onOpenChange={setRescanConfirmOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <AlertTriangle className="h-4 w-4 shrink-0 text-amber-500" /> Rescan this blueprint?
-            </DialogTitle>
-            <DialogDescription>
-              This restarts the review. Renamed or resized segments, groupings, deletions,
-              and anything added manually will be discarded,
-              and the view returns to the system&apos;s original detected findings.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <button
-              type="button"
-              onClick={() => setRescanConfirmOpen(false)}
-              className="rounded-xl border border-gray-200 px-4 py-2 text-sm font-semibold text-gray-600 transition hover:bg-gray-50"
-            >
-              Keep My Changes
-            </button>
-            <button
-              type="button"
-              onClick={handleRescanConfirm}
-              className="rounded-xl bg-red-600 px-4 py-2 text-sm font-bold text-white transition hover:bg-red-700"
-            >
-              Rescan and Discard Edits
-            </button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-      )}
     </div>
   );
 }

@@ -11,7 +11,7 @@ import { BlueprintUploadPanel } from "./BlueprintUploadPanel";
 import { ConfigureSegmentsStep } from "./ConfigureSegmentsStep";
 import { GeneratingQuotationAnimation } from "./GeneratingQuotationAnimation";
 import { QuotationResultsStep } from "./QuotationResultsStep";
-import { useUpdateQuotationInputMethod } from "@/hooks/useQuotationGeneration";
+import { useDeleteDraftQuotation, useUpdateQuotationInputMethod } from "@/hooks/useQuotationGeneration";
 import { buildWorkflowSteps, type InputMethod, type WizardPhase } from "../lib/workflowSteps";
 import type { Quotation, Client } from "@/types/entities";
 import type { DraftSegment } from "../lib/draftSegment";
@@ -25,6 +25,7 @@ import type { BlueprintFloor } from "@/lib/dev/provisional/quotationGenerationTy
 export function QuotationGenerationWizard() {
   const router = useRouter();
   const { updateInputMethod } = useUpdateQuotationInputMethod();
+  const { deleteDraftQuotation } = useDeleteDraftQuotation();
 
   const [step, setStep] = useState<WizardPhase>("client");
   const [method, setMethod] = useState<InputMethod>(null);
@@ -62,6 +63,13 @@ export function QuotationGenerationWizard() {
 
   const handleChooseMethod = async (chosen: "quick" | "blueprint") => {
     if (chosen === "blueprint" && quotation) {
+      // Choosing Upload Blueprint from the method picker means "start that path now".
+      // If the user backed out of a previous scan, clear the lifted scan state so the
+      // upload dropzone appears again. Configure-back and Structural Revision still
+      // preserve scans because they jump straight to the blueprint step.
+      setBlueprintFloors(null);
+      setOriginalBlueprintFloors(null);
+      setSegments((current) => current.filter((segment) => segment.source_method !== "Blueprint"));
       // Best-effort correction — this quotation was created with input_method: 'Manual' by
       // default (see ClientAndProjectStep); the local step transition below is what
       // actually matters for the wizard, so a failed PATCH here doesn't block progress.
@@ -72,18 +80,36 @@ export function QuotationGenerationWizard() {
   };
 
   // Part H — a single linear back-chain: Configure → (Quick or Blueprint, whichever this
-  // quotation actually used) → the method-choice overlay → Client & Project. Going back
-  // never discards `segments`/`quotation`/`client` — only `step` (and `method`, once back
-  // at the choice overlay) moves.
-  const handleBackToMethod = () => setStep("method");
-  const handleBackToClient = () => {
+  // quotation actually used) → the method-choice overlay. Once the user abandons the
+  // method-choice overlay, the server-side Draft quotation is discarded too, so cancelled
+  // project attempts never remain visible as real projects.
+  const resetDraftState = () => {
     setMethod(null);
+    setQuotation(null);
+    setSegments([]);
+    setBlueprintFloors(null);
+    setOriginalBlueprintFloors(null);
+  };
+
+  const discardDraftQuotation = async () => {
+    const quoteId = quotation?.quote_id;
+    if (quoteId) await deleteDraftQuotation(quoteId).catch(() => {});
+    resetDraftState();
+  };
+
+  const handleBackToMethod = () => setStep("method");
+  const handleBackToClient = async () => {
+    await discardDraftQuotation();
     setStep("client");
+  };
+  const handleExitWizard = async () => {
+    await discardDraftQuotation();
+    router.push("/dashboard");
   };
 
   let body: React.ReactNode;
   if (step === "client") {
-    body = <ClientAndProjectStep onContinue={handleClientContinue} />;
+    body = <ClientAndProjectStep onContinue={handleClientContinue} onExit={handleExitWizard} />;
   } else if (step === "method") {
     body = <InputMethodChoice onChoose={handleChooseMethod} onBack={handleBackToClient} />;
   } else if (step === "quick") {

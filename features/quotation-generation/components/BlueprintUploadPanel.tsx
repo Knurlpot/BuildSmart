@@ -1,11 +1,11 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { AlertTriangle, ArrowLeft, FileText, FileWarning, Upload as UploadIcon } from "lucide-react";
+import { AlertTriangle, ArrowLeft, CheckCircle2, FileText, FileWarning, Upload as UploadIcon } from "lucide-react";
 import { useBlueprintExtraction } from "@/hooks/useQuotationGeneration";
 import { BlueprintOverlay } from "./BlueprintOverlay";
 import { SegmentEditorList } from "./SegmentEditorList";
-import { createSegmentFromExtraction, isSegmentIncluded, type DraftSegment } from "../lib/draftSegment";
+import { confidenceBand, createSegmentFromExtraction, isSegmentIncluded, type DraftSegment } from "../lib/draftSegment";
 import type { BlueprintFloor } from "@/lib/dev/provisional/quotationGenerationTypes";
 
 const ACCEPTED_EXTENSIONS = [".pdf", ".dxf"];
@@ -129,6 +129,17 @@ function splitSingleSheetFloorIntoTabs(floors: BlueprintFloor[]): BlueprintFloor
       })),
     };
   });
+}
+
+function confidenceSummary(segments: DraftSegment[]) {
+  return segments.reduce(
+    (summary, segment) => {
+      const band = confidenceBand(segment.confidence_score);
+      summary[band] += 1;
+      return summary;
+    },
+    { high: 0, medium: 0, low: 0, none: 0 },
+  );
 }
 
 interface BlueprintUploadPanelProps {
@@ -406,6 +417,8 @@ export function BlueprintUploadPanel({
           return centerX >= minX && centerX <= maxX && centerY >= minY && centerY <= maxY;
         });
   const floorIncludedSegments = floorSegments.filter(isSegmentIncluded);
+  const floorConfidence = confidenceSummary(floorIncludedSegments);
+  const floorNeedsCloserReview = floorConfidence.medium + floorConfidence.low + floorConfidence.none;
   const floorConfirmedIncludedCount = floorIncludedSegments.filter((s) => s.confirmed).length;
   const manualAdds = segments.filter((s) => s.source_method === "Manual");
   // Part F — only segments still in scope for this quote need to be confirmed. Excluding a
@@ -465,6 +478,28 @@ export function BlueprintUploadPanel({
         </span>
       </div>
 
+      <div className="grid gap-2 rounded-xl border border-gray-200 bg-white px-3 py-3 text-xs text-gray-600 sm:grid-cols-[1fr_auto] sm:items-center">
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
+          {floorNeedsCloserReview > 0 ? (
+            <>
+              <AlertTriangle className="h-4 w-4 shrink-0 text-amber-500" />
+              <span className="font-semibold text-gray-800">{floorNeedsCloserReview} segment{floorNeedsCloserReview === 1 ? "" : "s"} need closer review</span>
+            </>
+          ) : (
+            <>
+              <CheckCircle2 className="h-4 w-4 shrink-0 text-green-600" />
+              <span className="font-semibold text-gray-800">All included segments are high confidence</span>
+            </>
+          )}
+        </div>
+        <div className="flex flex-wrap gap-1.5">
+          <span className="rounded-full bg-green-100 px-2 py-0.5 font-bold text-green-700">High {floorConfidence.high}</span>
+          <span className="rounded-full bg-amber-100 px-2 py-0.5 font-bold text-amber-700">Medium {floorConfidence.medium}</span>
+          <span className="rounded-full bg-red-100 px-2 py-0.5 font-bold text-red-700">Low {floorConfidence.low}</span>
+          {floorConfidence.none > 0 && <span className="rounded-full bg-gray-100 px-2 py-0.5 font-bold text-gray-600">Unknown {floorConfidence.none}</span>}
+        </div>
+      </div>
+
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-[1.3fr_1fr]">
         {/* Remounts on floor change — a clean slate for scan/zoom/tooltip state rather than
             carrying the previous floor's animation progress or zoom level into a different
@@ -489,8 +524,12 @@ export function BlueprintUploadPanel({
             // "Add Missing Segment" starts with no floor_level (see createManualSegment) —
             // stamped with the CURRENT floor here, since it was added in this floor's
             // context.
-            const floorDraftIds = new Set(floorSegments.map((s) => s.draft_id));
-            const otherSegments = segments.filter((s) => !floorDraftIds.has(s.draft_id));
+            const currentFloorDraftIds = new Set(floorSegments.map((s) => s.draft_id));
+            const currentFloorLevels = new Set(floorSegments.map((s) => s.floor_level).filter(Boolean));
+            const otherSegments = segments.filter((s) => {
+              if (currentFloorDraftIds.has(s.draft_id)) return false;
+              return !s.floor_level || !currentFloorLevels.has(s.floor_level);
+            });
             const stamped = nextFloorSegments.map((s) => (s.floor_level ? s : { ...s, floor_level: currentFloor.floor_level }));
             onChange([...otherSegments, ...stamped]);
           }}

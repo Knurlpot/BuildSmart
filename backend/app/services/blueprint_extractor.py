@@ -12,6 +12,7 @@ from urllib.parse import quote
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 from app.schemas.blueprint import (
+    BlueprintConfidenceBuckets,
     BlueprintExtractionResult,
     BlueprintFloor,
     BlueprintLegendItem,
@@ -22,6 +23,29 @@ from app.schemas.blueprint import (
 
 MAX_BLUEPRINT_BYTES = 25 * 1024 * 1024
 GEMINI_MODEL = os.environ.get("GEMINI_VISION_MODEL", os.environ.get("GEMINI_MODEL", "gemini-1.5-flash"))
+
+
+def _confidence_buckets_for_segments(segments: list[ExtractedSegment]) -> BlueprintConfidenceBuckets:
+    return BlueprintConfidenceBuckets(
+        high_confidence=[segment for segment in segments if segment.confidence_score is not None and segment.confidence_score >= 85],
+        medium_confidence=[segment for segment in segments if segment.confidence_score is not None and 60 <= segment.confidence_score < 85],
+        low_confidence=[segment for segment in segments if segment.confidence_score is not None and segment.confidence_score < 60],
+        uncertain=[segment for segment in segments if segment.confidence_score is None],
+    )
+
+
+def _floor_with_review_metadata(floor: BlueprintFloor) -> BlueprintFloor:
+    buckets = _confidence_buckets_for_segments(floor.segments)
+    return floor.model_copy(
+        update={
+            "confidence_buckets": buckets,
+            "review_required": bool(buckets.medium_confidence or buckets.low_confidence or buckets.uncertain),
+        }
+    )
+
+
+def _with_review_metadata(result: BlueprintExtractionResult) -> BlueprintExtractionResult:
+    return result.model_copy(update={"floors": [_floor_with_review_metadata(floor) for floor in result.floors]})
 
 
 def _data_url(content: bytes, mime_type: str) -> str:
@@ -142,8 +166,8 @@ def _segment_from_gemini_space(space: Any, floor_index: int, segment_index: int,
 def _extract_pdf(content: bytes) -> BlueprintExtractionResult:
     vector_result = _extract_vector_pdf(content)
     if vector_result is not None:
-        return vector_result
-    return _extract_scanned_pdf_preview(content)
+        return _with_review_metadata(vector_result)
+    return _with_review_metadata(_extract_scanned_pdf_preview(content))
 
 
 def _extract_scanned_pdf_preview(content: bytes) -> BlueprintExtractionResult:
@@ -300,6 +324,12 @@ def _with_hybrid_structured_json(filename: str, result: BlueprintExtractionResul
                     "status": segment.status,
                 }
             )
+        confidence_buckets = {
+            "high_confidence": [segment.segment_id for segment in floor.confidence_buckets.high_confidence],
+            "medium_confidence": [segment.segment_id for segment in floor.confidence_buckets.medium_confidence],
+            "low_confidence": [segment.segment_id for segment in floor.confidence_buckets.low_confidence],
+            "uncertain": [segment.segment_id for segment in floor.confidence_buckets.uncertain],
+        }
         floors_payload.append(
             {
                 "floor_id": floor_id,
@@ -310,6 +340,8 @@ def _with_hybrid_structured_json(filename: str, result: BlueprintExtractionResul
                 "total_segments_count": len(floor.segments),
                 "segments": rooms,
                 "rooms": rooms,
+                "confidence_buckets": confidence_buckets,
+                "review_required": floor.review_required,
             }
         )
     result.structured_json = {
@@ -400,15 +432,9 @@ def _extract_vector_pdf(content: bytes) -> BlueprintExtractionResult | None:
                         f'<polyline points="{" ".join(f"{round(float(x), 2)},{round(float(y), 2)}" for x, y in coords)}" '
                         f'stroke="#111827" stroke-width="1" fill="none"/>'
                     )
-                overlay_svg = [
-                    f'<polygon points="{" ".join(f"{x},{y}" for x, y in segment.polygon_coords or [])}" '
-                    f'fill="{segment.color_hex}" fill-opacity="{segment.alpha}" stroke="{segment.color_hex}" stroke-opacity="0.75" stroke-width="1"/>'
-                    for segment in segments
-                    if segment.polygon_coords and segment.color_hex and segment.alpha is not None
-                ]
                 svg = (
                     f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" viewBox="0 0 {width} {height}">'
-                    f'<rect width="100%" height="100%" fill="white"/>{"".join(overlay_svg)}{"".join(line_svg)}</svg>'
+                    f'<rect width="100%" height="100%" fill="white"/>{"".join(line_svg)}</svg>'
                 )
                 visual_url = f"data:image/svg+xml;charset=utf-8,{quote(svg)}"
                 floors.append(
@@ -825,5 +851,5 @@ def extract_blueprint(filename: str, content: bytes) -> BlueprintExtractionResul
     if extension == ".pdf":
         return _with_hybrid_structured_json(filename, _extract_pdf(content))
     if extension == ".dxf":
-        return _with_hybrid_structured_json(filename, _extract_dxf(content))
+        return _with_hybrid_structured_json(filename, _with_review_metadata(_extract_dxf(content)))
     raise ValueError("Upload a PDF or DXF blueprint.")

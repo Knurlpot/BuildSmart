@@ -21,6 +21,13 @@ export interface BlueprintFloor {
   focus_bounds?: [number, number, number, number] | null;
   viewport_bbox?: [number, number, number, number] | null;
   segments: ExtractedSegment[];
+  confidence_buckets?: {
+    high_confidence: ExtractedSegment[];
+    medium_confidence: ExtractedSegment[];
+    low_confidence: ExtractedSegment[];
+    uncertain: ExtractedSegment[];
+  };
+  review_required?: boolean;
 }
 
 export interface BlueprintExtractionResult {

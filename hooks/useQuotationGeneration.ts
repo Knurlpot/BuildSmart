@@ -33,6 +33,15 @@ export function useUpdateQuotationInputMethod() {
   };
 }
 
+export function useDeleteDraftQuotation() {
+  const remove = useMutation<{ deleted: boolean; quote_id: number }>();
+  return {
+    deleteDraftQuotation: (quoteId: number) => remove.mutate(`/api/quotations/${quoteId}`, {}, 'DELETE'),
+    isDeleting: remove.isLoading,
+    deleteError: remove.error,
+  };
+}
+
 export function useBlueprintExtraction() {
   const extract = useMutation<BlueprintExtractionResult>();
   return {

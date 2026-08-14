@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
 import { AlertTriangle, Search } from "lucide-react";
 import { QueryState } from "@/components/feedback/QueryState";
 import {
@@ -188,10 +187,10 @@ function ClientPicker({
 
 interface ClientAndProjectStepProps {
   onContinue: (quotation: Quotation, client: Client) => void;
+  onExit: () => void | Promise<void>;
 }
 
-export function ClientAndProjectStep({ onContinue }: ClientAndProjectStepProps) {
-  const router = useRouter();
+export function ClientAndProjectStep({ onContinue, onExit }: ClientAndProjectStepProps) {
   const { createQuotation, isCreating, createError } = useCreateQuotation();
   const { clients, isLoading: clientsLoading, error: clientsError, refetch: refetchClients, createClient, isCreating: isCreatingClient, createError: createClientError, resetCreate } = useClients();
 
@@ -313,7 +312,7 @@ export function ClientAndProjectStep({ onContinue }: ClientAndProjectStepProps) 
       setCancelConfirmOpen(true);
       return;
     }
-    router.push("/dashboard");
+    void onExit();
   };
 
   return (
@@ -469,7 +468,7 @@ export function ClientAndProjectStep({ onContinue }: ClientAndProjectStepProps) 
             </button>
             <button
               type="button"
-              onClick={() => router.push("/dashboard")}
+              onClick={() => void onExit()}
               className="rounded-xl bg-red-600 px-4 py-2 text-sm font-bold text-white transition hover:bg-red-700"
             >
               Discard
