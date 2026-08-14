@@ -25,6 +25,7 @@ function asCompanyId(value: unknown): number | null {
 
 export default function PricelistPage() {
   const [activeTab, setActiveTab] = useState<TabId>("upload");
+  const [uploadCompleted, setUploadCompleted] = useState(false);
   const goToCatalog = () => setActiveTab("catalog");
 
   const { currentUser, updateOnboardingStep } = useAuth();
@@ -45,7 +46,7 @@ export default function PricelistPage() {
   const pricelistDone = hasCompletedPricelistStep({
     uploadCatalogCount: supplierCatalog.records.length,
     dpwhCatalogCount: dpwhCatalog.records.length,
-  });
+  }) || uploadCompleted;
 
   useEffect(() => {
     if (currentUser && pricelistDone) {
@@ -92,6 +93,7 @@ export default function PricelistPage() {
             companyId={companyId}
             defaultSupplierMode={currentUser?.onboardingStep === 0 ? "new" : "existing"}
             onCatalogChanged={() => {
+              setUploadCompleted(true);
               supplierCatalog.refetch();
               goToCatalog();
             }}

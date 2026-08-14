@@ -1,11 +1,8 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { ColumnDef } from "@tanstack/react-table";
 import {
-  AlertTriangle,
-  CheckCircle2,
-  Database,
   Eye,
   Landmark,
   Loader2,
@@ -51,31 +48,6 @@ function TrendIcon({ direction }: { direction: PsaIndexEntry["trend_direction"] 
   return <Minus className="h-4 w-4 text-gray-400" />;
 }
 
-function VersionBanner({ status, releaseLabel, upToDateNote, newAvailableNote }: {
-  status: "up_to_date" | "new_available";
-  releaseLabel: string;
-  upToDateNote: string;
-  newAvailableNote: string;
-}) {
-  const upToDate = status === "up_to_date";
-  return (
-    <div
-      className={`flex items-center gap-3 rounded-xl border px-4 py-3 text-sm ${
-        upToDate ? "border-green-200 bg-green-50 text-green-700" : "border-amber-200 bg-amber-50 text-amber-700"
-      }`}
-    >
-      {upToDate ? (
-        <CheckCircle2 className="h-4 w-4 shrink-0" />
-      ) : (
-        <AlertTriangle className="h-4 w-4 shrink-0" />
-      )}
-      <span>
-        {upToDate ? upToDateNote.replace("{release}", releaseLabel) : newAvailableNote.replace("{release}", releaseLabel)}
-      </span>
-    </div>
-  );
-}
-
 export function PublishedSourceTab({
   onViewCatalog,
   onCatalogChanged,
@@ -107,10 +79,8 @@ export function PublishedSourceTab({
     checkPsaVersion,
     isCheckingPsaVersion,
     checkPsaVersionError,
-    psaVersionResult,
     dpwhCatalog,
   } = usePricelistPublishedSource();
-  const [source, setSource] = useState<"DPWH" | "PSA">("DPWH");
   const [region, setRegion] = useState("NCR");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
@@ -170,8 +140,7 @@ export function PublishedSourceTab({
     [resolve, revealCatalog, onCatalogChanged]
   );
 
-  const handleCheckDpwh = async () => {
-    setSelectedIds(new Set());
+  const handleCheckDpwh = useCallback(async () => {
     try {
       const status = await checkDpwhVersion(region);
       if (status.status === "new_available") {
@@ -184,16 +153,24 @@ export function PublishedSourceTab({
     } catch {
       // surfaced via checkDpwhVersionError below
     }
-  };
+  }, [checkDpwhVersion, region, trigger, onCatalogChanged, revealCatalog]);
 
-  const handleCheckPsa = async () => {
-    try {
-      await checkPsaVersion();
-    } catch {
-      // surfaced via checkPsaVersionError below
-    }
-    triggerPsaIndex().catch(() => {}); // both statuses land on the (possibly refreshed) index view
-  };
+  useEffect(() => {
+    void handleCheckDpwh();
+  }, [handleCheckDpwh]);
+
+  useEffect(() => {
+    if (region !== "NCR") return;
+    const loadPsa = async () => {
+      try {
+        await checkPsaVersion();
+      } catch {
+        // surfaced via checkPsaVersionError below
+      }
+      triggerPsaIndex().catch(() => {});
+    };
+    void loadPsa();
+  }, [region, checkPsaVersion, triggerPsaIndex]);
 
   const dpwhCatalogRows = useMemo(
     () => dpwhCatalog.records.filter((item) => region === "All" || item.region === region),
@@ -317,103 +294,55 @@ export function PublishedSourceTab({
   return (
     <div className="flex flex-col gap-5">
       <div className="rounded-2xl border border-gray-200 bg-white p-5">
-        <p className="mb-4 text-sm font-bold text-gray-900">Fetch from a published source</p>
+        <p className="mb-1 text-sm font-bold text-gray-900">Published government data</p>
+        <p className="mb-4 text-xs text-gray-500">
+          DPWH CMPD prices refresh when the region changes. PSA CMRPI rates are NCR-only and used for trend and
+          escalation analysis.
+        </p>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
           <div className="flex flex-col gap-1.5">
-            <label className="text-xs font-semibold uppercase tracking-wide text-gray-600">Source</label>
-            <div className="flex gap-2">
-              {(["DPWH", "PSA"] as const).map((s) => (
-                <button
-                  key={s}
-                  type="button"
-                  onClick={() => setSource(s)}
-                  className={`flex-1 rounded-xl border-2 px-3 py-2.5 text-sm font-bold transition ${
-                    source === s
-                      ? "border-primary bg-orange-50/40 text-primary"
-                      : "border-gray-200 bg-white text-gray-600 hover:border-gray-300"
-                  }`}
-                >
-                  {s}
-                </button>
-              ))}
+            <label className="text-xs font-semibold uppercase tracking-wide text-gray-600">Price Source</label>
+            <div className="rounded-xl border-2 border-primary bg-orange-50/40 px-3 py-2.5 text-sm font-bold text-primary">
+              DPWH CMPD Prices
             </div>
           </div>
           <div className="flex flex-col gap-1.5">
-            <label className="text-xs font-semibold uppercase tracking-wide text-gray-600">Region</label>
-            {source === "DPWH" ? (
-              <select
-                value={region}
-                onChange={(e) => setRegion(e.target.value)}
-                className="max-h-60 overflow-y-auto rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm outline-none focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/20"
-              >
-                {/* DPWH-CMPD publishes for every region — the full 18-value set (not the
-                    short analytics filter list), so the dropdown never silently excludes
-                    one the user actually needs to fetch. */}
-                {ALL_REGIONS.map((r) => (
-                  <option key={r}>{r}</option>
-                ))}
-              </select>
-            ) : (
-              <div className="flex items-center rounded-xl border border-dashed border-gray-200 bg-gray-50 px-3 py-2.5 text-sm text-gray-400">
-                NCR only. PSA publishes no other region.
-              </div>
-            )}
+            <label className="text-xs font-semibold uppercase tracking-wide text-gray-600">DPWH Region</label>
+            <select
+              value={region}
+              onChange={(e) => {
+                setSelectedIds(new Set());
+                setRegion(e.target.value);
+              }}
+              className="max-h-60 overflow-y-auto rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm outline-none focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/20"
+            >
+              {/* DPWH-CMPD publishes for every region — the full 18-value set (not the
+                  short analytics filter list), so the dropdown never silently excludes
+                  one the user actually needs to fetch. */}
+              {ALL_REGIONS.map((r) => (
+                <option key={r}>{r}</option>
+              ))}
+            </select>
           </div>
-          <div className="flex items-end">
-            {source === "DPWH" ? (
-              <button
-                type="button"
-                disabled={isCheckingDpwhVersion || isFetching}
-                onClick={handleCheckDpwh}
-                className="flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-bold text-primary-foreground shadow-sm transition hover:bg-(--primary-hover) disabled:opacity-60"
-              >
-                {isCheckingDpwhVersion || isFetching ? (
-                  <>
-                    <Loader2 className="h-4 w-4 animate-spin" /> {isCheckingDpwhVersion ? "Checking…" : "Fetching…"}
-                  </>
-                ) : (
-                  <>
-                    <Database className="h-4 w-4" /> Fetch Latest Prices
-                  </>
-                )}
-              </button>
-            ) : (
-              <button
-                type="button"
-                disabled={isCheckingPsaVersion || isFetchingPsaIndex}
-                onClick={handleCheckPsa}
-                className="flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-bold text-primary-foreground shadow-sm transition hover:bg-(--primary-hover) disabled:opacity-60"
-              >
-                {isCheckingPsaVersion || isFetchingPsaIndex ? (
-                  <>
-                    <Loader2 className="h-4 w-4 animate-spin" /> {isCheckingPsaVersion ? "Checking…" : "Loading…"}
-                  </>
-                ) : (
-                  <>
-                    <Landmark className="h-4 w-4" /> Load Market Index
-                  </>
-                )}
-              </button>
-            )}
+          <div className="flex flex-col gap-1.5">
+            <label className="text-xs font-semibold uppercase tracking-wide text-gray-600">Rate Source</label>
+            <div className="rounded-xl border border-dashed border-gray-200 bg-gray-50 px-3 py-2.5 text-sm font-semibold text-gray-500">
+              PSA CMRPI Rates · NCR only
+            </div>
           </div>
+          {(isCheckingDpwhVersion || isFetching || isCheckingPsaVersion || isFetchingPsaIndex) && (
+            <div className="flex items-center gap-2 text-xs font-semibold text-gray-400 sm:col-span-3">
+              <Loader2 className="h-3.5 w-3.5 animate-spin" /> Updating published data…
+            </div>
+          )}
         </div>
       </div>
 
-      {source === "DPWH" ? (
-        <>
+      <>
           {checkDpwhVersionError && (
             <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
               Couldn&apos;t check the DPWH release: {checkDpwhVersionError.message}
             </div>
-          )}
-
-          {dpwhVersionResult && !isCheckingDpwhVersion && (
-            <VersionBanner
-              status={dpwhVersionResult.status}
-              releaseLabel={dpwhVersionResult.release_label}
-              upToDateNote="You have the latest DPWH-CMPD release ({release})."
-              newAvailableNote="A new DPWH-CMPD report is available ({release}). Review the significant deviations below."
-            />
           )}
 
           {dpwhVersionResult?.status === "up_to_date" && (
@@ -574,9 +503,7 @@ export function PublishedSourceTab({
               )}
             </div>
           )}
-        </>
-      ) : (
-        <>
+
           {checkPsaVersionError && (
             <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
               Couldn&apos;t check the PSA release: {checkPsaVersionError.message}
@@ -588,26 +515,17 @@ export function PublishedSourceTab({
             </div>
           )}
 
-          {psaVersionResult && !isCheckingPsaVersion && (
-            <VersionBanner
-              status={psaVersionResult.status}
-              releaseLabel={psaVersionResult.release_label}
-              upToDateNote="You have the latest PSA indices ({release})."
-              newAvailableNote="A new PSA index is available ({release}). The market view below reflects it."
-            />
-          )}
-
-          {psaIndexResult && (
+          {region === "NCR" && (psaIndexResult || isFetchingPsaIndex || fetchPsaIndexError) && (
             <div className="flex flex-col gap-3 rounded-2xl border border-indigo-100 bg-indigo-50/30 p-4">
               <div className="flex items-center gap-2">
                 <Landmark className="h-4 w-4 text-indigo-500" />
                 <p className="text-xs font-bold uppercase tracking-wider text-indigo-500">
-                  PSA Market Index (NCR): Analytics Only
+                  PSA CMRPI Rates (NCR): Analytics Only
                 </p>
               </div>
               <p className="text-xs text-indigo-400">
-                Base-year index numbers, not peso prices. This is market context
-                to read, not something to approve: nothing here is written to your catalog.
+                Index rates only. PSA values support market trend analysis and escalation reference, not exact material
+                prices. Nothing here is written to your catalog.
               </p>
               <QueryState
                 isLoading={isFetchingPsaIndex}
@@ -643,7 +561,7 @@ export function PublishedSourceTab({
                         }`}
                       >
                         {v.percent_change > 0 ? "+" : ""}
-                        {v.percent_change.toFixed(1)}% YoY
+                        {v.percent_change.toFixed(1)}%
                       </p>
                       {v.is_significant_spike && (
                         <span className="w-fit rounded-full bg-red-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-red-600">
@@ -657,7 +575,6 @@ export function PublishedSourceTab({
             </div>
           )}
         </>
-      )}
     </div>
   );
 }

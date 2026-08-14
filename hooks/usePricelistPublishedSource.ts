@@ -86,7 +86,7 @@ interface MutationState<T> {
 function useBackendMutation<T = unknown>() {
   const [state, setState] = useState<MutationState<T>>({ data: null, error: null, isLoading: false });
 
-  const mutate = async (endpoint: string, body: unknown, method: 'PATCH' | 'POST' | 'PUT' | 'DELETE' = 'PATCH') => {
+  const mutate = useCallback(async (endpoint: string, body: unknown, method: 'PATCH' | 'POST' | 'PUT' | 'DELETE' = 'PATCH') => {
     setState({ data: null, error: null, isLoading: true });
     try {
       const isFormData = typeof FormData !== 'undefined' && body instanceof FormData;
@@ -102,9 +102,9 @@ function useBackendMutation<T = unknown>() {
       setState({ data: null, error, isLoading: false });
       throw error;
     }
-  };
+  }, []);
 
-  const reset = () => setState({ data: null, error: null, isLoading: false });
+  const reset = useCallback(() => setState({ data: null, error: null, isLoading: false }), []);
 
   return { ...state, mutate, reset };
 }
@@ -184,6 +184,10 @@ export interface PsaIndexResponse {
   index: PsaIndexEntry[];
 }
 
+interface MaterialPriceVarianceApiRow extends PsaIndexEntry {
+  variance_source: 'Internal' | 'PSA';
+}
+
 /** Read-only DPWH catalog row — current committed price, not a deviation comparison. */
 export interface DpwhCatalogRow {
   historicalrec_id: number;
@@ -234,43 +238,54 @@ export function usePricelistPublishedSource() {
   const fetchPublished = useBackendMutation<FetchPublishedResponse>();
   const resolveDeviation = useBackendMutation<{ resolved: boolean }>();
   const resolveBulk = useBackendMutation<BulkResolveResponse>();
-  const fetchPsaIndex = useBackendMutation<PsaIndexResponse>();
+  const [psaIndexState, setPsaIndexState] = useState<MutationState<PsaIndexResponse>>({
+    data: null,
+    error: null,
+    isLoading: false,
+  });
   const [catalogEnabled, setCatalogEnabled] = useState(false);
   const dpwhCatalog = useBackendFetch<DpwhCatalogRow[]>(catalogEnabled ? '/pricelist/catalog/dpwh' : null);
   const loadDpwhCatalog = useCallback(() => setCatalogEnabled(true), []);
   const deleteDpwhRecord = useBackendMutation<{ deleted: boolean }>();
+  const fetchPublishedMutate = fetchPublished.mutate;
+  const resolveDeviationMutate = resolveDeviation.mutate;
+  const resolveBulkMutate = resolveBulk.mutate;
+  const deleteDpwhRecordMutate = deleteDpwhRecord.mutate;
+  const dpwhCatalogRefetch = dpwhCatalog.refetch;
   // Deletes just this one price record (see the endpoint's own scoping to
   // price_source == "DPWH") — the underlying item and its other price
   // history are untouched.
-  const removeDpwhCatalogRecord = async (historicalrecId: number) => {
-    await deleteDpwhRecord.mutate(`/pricelist/catalog/dpwh/${historicalrecId}`, undefined, 'DELETE');
-    dpwhCatalog.refetch();
-  };
+  const removeDpwhCatalogRecord = useCallback(async (historicalrecId: number) => {
+    await deleteDpwhRecordMutate(`/pricelist/catalog/dpwh/${historicalrecId}`, undefined, 'DELETE');
+    dpwhCatalogRefetch();
+  }, [deleteDpwhRecordMutate, dpwhCatalogRefetch]);
   // Separate instances (not one shared mutation) so DPWH's and PSA's loading/error/result
   // state never bleed into each other when the user switches source.
   const checkDpwhVersion = useBackendMutation<VersionCheckResponse>();
   const checkPsaVersion = useBackendMutation<VersionCheckResponse>();
+  const checkDpwhVersionMutate = checkDpwhVersion.mutate;
+  const checkPsaVersionMutate = checkPsaVersion.mutate;
 
-  const trigger = async (region: string) => {
+  const trigger = useCallback(async (region: string) => {
     setResolutions(new Map());
-    const res = await fetchPublished.mutate('/pricelist/fetch-published', { source: 'DPWH', region }, 'POST');
+    const res = await fetchPublishedMutate('/pricelist/fetch-published', { source: 'DPWH', region }, 'POST');
     setFlagged(res.flagged ?? []);
     return res;
-  };
+  }, [fetchPublishedMutate]);
 
-  const resolve = async (item: FlaggedPriceDeviation, action: 'approve' | 'reject') => {
-    await resolveDeviation.mutate(
+  const resolve = useCallback(async (item: FlaggedPriceDeviation, action: 'approve' | 'reject') => {
+    await resolveDeviationMutate(
       '/pricelist/deviations/resolve',
       { item_code: item.item_code, quarter: item.quarter, year: item.year, action },
       'POST'
     );
     setResolutions((prev) => new Map(prev).set(deviationKey(item), outcomeOf(item, action)));
     setFlagged((prev) => prev.filter((f) => deviationKey(f) !== deviationKey(item)));
-  };
+  }, [resolveDeviationMutate]);
 
-  const resolveMany = async (items: FlaggedPriceDeviation[], action: 'approve' | 'reject') => {
+  const resolveMany = useCallback(async (items: FlaggedPriceDeviation[], action: 'approve' | 'reject') => {
     const keys = items.map((i) => ({ item_code: i.item_code, quarter: i.quarter, year: i.year }));
-    const res = await resolveBulk.mutate('/pricelist/deviations/resolve-bulk', { items: keys, action }, 'POST');
+    const res = await resolveBulkMutate('/pricelist/deviations/resolve-bulk', { items: keys, action }, 'POST');
     setResolutions((prev) => {
       const next = new Map(prev);
       for (const item of items) next.set(deviationKey(item), outcomeOf(item, action));
@@ -279,9 +294,39 @@ export function usePricelistPublishedSource() {
     const resolvedKeys = new Set(items.map(deviationKey));
     setFlagged((prev) => prev.filter((f) => !resolvedKeys.has(deviationKey(f))));
     return res;
-  };
+  }, [resolveBulkMutate]);
 
-  const triggerPsaIndex = () => fetchPsaIndex.mutate('/pricelist/fetch-published-index', { region: 'NCR' }, 'POST');
+  const triggerPsaIndex = useCallback(async () => {
+    setPsaIndexState({ data: null, error: null, isLoading: true });
+    try {
+      const res = await fetch('/api/material-price-variances', {
+        method: 'GET',
+        headers: { Accept: 'application/json' },
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => null);
+        throw new Error(formatApiErrorDetail(body?.detail) || formatApiErrorDetail(body?.error) || `API error: ${res.status}`);
+      }
+      const rows = (await res.json()) as MaterialPriceVarianceApiRow[];
+      const result = { index: rows.filter((row) => row.variance_source === 'PSA') };
+      setPsaIndexState({ data: result, error: null, isLoading: false });
+      return result;
+    } catch (err) {
+      const error = err instanceof Error ? err : new Error(String(err));
+      setPsaIndexState({ data: null, error, isLoading: false });
+      throw error;
+    }
+  }, []);
+
+  const checkDpwhPublishedVersion = useCallback(
+    (region: string) => checkDpwhVersionMutate('/pricelist/check-version', { source: 'DPWH', region }, 'POST'),
+    [checkDpwhVersionMutate]
+  );
+
+  const checkPsaPublishedVersion = useCallback(
+    () => checkPsaVersionMutate('/pricelist/check-version', { source: 'PSA', region: 'NCR' }, 'POST'),
+    [checkPsaVersionMutate]
+  );
 
   return {
     trigger,
@@ -297,17 +342,15 @@ export function usePricelistPublishedSource() {
     resolveBulkError: resolveBulk.error,
     resolutions,
     triggerPsaIndex,
-    isFetchingPsaIndex: fetchPsaIndex.isLoading,
-    fetchPsaIndexError: fetchPsaIndex.error,
-    psaIndex: fetchPsaIndex.data?.index ?? [],
-    psaIndexResult: fetchPsaIndex.data,
-    checkDpwhVersion: (region: string) =>
-      checkDpwhVersion.mutate('/pricelist/check-version', { source: 'DPWH', region }, 'POST'),
+    isFetchingPsaIndex: psaIndexState.isLoading,
+    fetchPsaIndexError: psaIndexState.error,
+    psaIndex: psaIndexState.data?.index ?? [],
+    psaIndexResult: psaIndexState.data,
+    checkDpwhVersion: checkDpwhPublishedVersion,
     isCheckingDpwhVersion: checkDpwhVersion.isLoading,
     checkDpwhVersionError: checkDpwhVersion.error,
     dpwhVersionResult: checkDpwhVersion.data,
-    checkPsaVersion: () =>
-      checkPsaVersion.mutate('/pricelist/check-version', { source: 'PSA', region: 'NCR' }, 'POST'),
+    checkPsaVersion: checkPsaPublishedVersion,
     isCheckingPsaVersion: checkPsaVersion.isLoading,
     checkPsaVersionError: checkPsaVersion.error,
     psaVersionResult: checkPsaVersion.data,
