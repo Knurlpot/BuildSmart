@@ -4,14 +4,16 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ColumnDef } from "@tanstack/react-table";
-import { Ellipsis, Eye, Plus, Search, Upload } from "lucide-react";
+import { Ellipsis, Eye, Plus, Search, Trash2, Upload } from "lucide-react";
 import { RequireOnboardingStep } from "@/components/auth/RequireOnboardingStep";
 import { DataTable } from "@/components/data-table/DataTable";
 import { QueryState } from "@/components/feedback/QueryState";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useRouter } from "next/navigation";
 import { useFetch } from "@/hooks/useFetch";
-import { useSavedProjects } from "@/lib/dev/provisional/savedProjectsStore";
+import { deleteSavedProject, useSavedProjects } from "@/lib/dev/provisional/savedProjectsStore";
+import { apiClient } from "@/lib/api/client";
 import type { SavedProjectRecord } from "@/lib/dev/provisional/savedProjectsTypes";
 import { MyClientsTab } from "@/features/clients/components/MyClientsTab";
 import type { Quotation } from "@/types/entities";
@@ -69,6 +71,9 @@ function OpenProjectsContent({ onMetaChange }: OpenProjectsContentProps) {
   const { data: quotations, isLoading, error, refetch } = useFetch<ProjectListQuotation[]>("/api/quotations");
   const [search, setSearch] = useState("");
   const [region, setRegion] = useState("All");
+  const [deleteTarget, setDeleteTarget] = useState<OpenProjectRow | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const rows = useMemo<OpenProjectRow[]>(() => {
     const savedByProject = new Map(
@@ -125,6 +130,25 @@ function OpenProjectsContent({ onMetaChange }: OpenProjectsContentProps) {
   };
   const createNew = useCallback(() => router.push("/quotations/new"), [router]);
 
+  const deleteProject = useCallback(async () => {
+    if (!deleteTarget || isDeleting) return;
+    setIsDeleting(true);
+    setDeleteError(null);
+    try {
+      await apiClient<void>(`/api/quotations/${deleteTarget.quote_id}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+      if (deleteTarget.savedProject) deleteSavedProject(deleteTarget.savedProject.project_id);
+      setDeleteTarget(null);
+      refetch();
+    } catch (error) {
+      setDeleteError(error instanceof Error ? error.message : "Could not delete this project.");
+    } finally {
+      setIsDeleting(false);
+    }
+  }, [deleteTarget, isDeleting, refetch]);
+
   useEffect(() => {
     onMetaChange({ filteredCount: filteredRows.length, totalCount: rows.length, onCreateNew: createNew });
   }, [createNew, filteredRows.length, onMetaChange, rows.length]);
@@ -157,15 +181,30 @@ function OpenProjectsContent({ onMetaChange }: OpenProjectsContentProps) {
         header: "",
         enableGlobalFilter: false,
         cell: ({ row }) => (
-          <Link
-            href={row.original.savedProject ? `/projects/${row.original.savedProject.project_id}` : `/quotations/${row.original.quote_id}`}
-            onClick={(e) => e.stopPropagation()}
-            title="View"
-            aria-label={`View ${row.original.project_name}`}
-            className="flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-500 transition hover:border-primary hover:text-primary"
-          >
-            <Eye className="h-3.5 w-3.5" />
-          </Link>
+          <div className="flex items-center justify-end gap-2">
+            <Link
+              href={row.original.savedProject ? `/projects/${row.original.savedProject.project_id}` : `/quotations/${row.original.quote_id}`}
+              onClick={(e) => e.stopPropagation()}
+              title="View"
+              aria-label={`View ${row.original.project_name}`}
+              className="flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-500 transition hover:border-primary hover:text-primary"
+            >
+              <Eye className="h-3.5 w-3.5" />
+            </Link>
+            <button
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation();
+                setDeleteError(null);
+                setDeleteTarget(row.original);
+              }}
+              title="Delete"
+              aria-label={`Delete ${row.original.project_name}`}
+              className="flex h-8 w-8 items-center justify-center rounded-lg border border-red-200 bg-white text-red-500 transition hover:bg-red-50 hover:text-red-700"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </button>
+          </div>
         ),
       },
     ],
@@ -208,6 +247,35 @@ function OpenProjectsContent({ onMetaChange }: OpenProjectsContentProps) {
           />
         </QueryState>
       </div>
+      <Dialog open={deleteTarget !== null} onOpenChange={(open) => !open && !isDeleting && setDeleteTarget(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete project?</DialogTitle>
+            <DialogDescription>
+              {deleteTarget ? `Delete ${deleteTarget.project_name} and its quotation data? This cannot be undone.` : "This cannot be undone."}
+            </DialogDescription>
+          </DialogHeader>
+          {deleteError && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{deleteError}</p>}
+          <DialogFooter>
+            <button
+              type="button"
+              disabled={isDeleting}
+              onClick={() => setDeleteTarget(null)}
+              className="rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-semibold text-gray-700 transition hover:bg-gray-50 disabled:opacity-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              disabled={isDeleting}
+              onClick={deleteProject}
+              className="rounded-lg bg-red-600 px-4 py-2 text-sm font-bold text-white transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {isDeleting ? "Deleting..." : "Delete project"}
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -36,6 +36,7 @@ export function QuotationGenerationWizard() {
   // shows the SAME already-scanned segments instead of forcing a new upload. See
   // BlueprintUploadPanel.tsx's prop doc for why local state there couldn't survive this.
   const [blueprintFloors, setBlueprintFloors] = useState<BlueprintFloor[] | null>(null);
+  const [blueprintFilePath, setBlueprintFilePath] = useState<string | null>(null);
   const [originalBlueprintFloors, setOriginalBlueprintFloors] = useState<BlueprintFloor[] | null>(null);
 
   // Registers the path-aware step sequence on the GLOBAL header (components/layout/
@@ -108,6 +109,8 @@ export function QuotationGenerationWizard() {
         onFloorsChange={setBlueprintFloors}
         originalFloors={originalBlueprintFloors}
         onOriginalFloorsChange={setOriginalBlueprintFloors}
+        blueprintFilePath={blueprintFilePath}
+        onBlueprintFilePathChange={setBlueprintFilePath}
       />
     );
   } else if (step === "configure" && quotation) {

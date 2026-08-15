@@ -2,10 +2,11 @@
 
 import { useRef, useState } from "react";
 import { AlertTriangle, ArrowLeft, FileText, FileWarning, Upload as UploadIcon } from "lucide-react";
-import { useBlueprintExtraction } from "@/hooks/useQuotationGeneration";
+import { useBlueprintExtraction, useBlueprintRescan } from "@/hooks/useQuotationGeneration";
 import { BlueprintOverlay } from "./BlueprintOverlay";
 import { SegmentEditorList } from "./SegmentEditorList";
 import { createSegmentFromExtraction, isSegmentIncluded, type DraftSegment } from "../lib/draftSegment";
+import { resetBlueprintReview, rescanBlueprintReview } from "../lib/blueprintReviewActions.mjs";
 import type { BlueprintFloor } from "@/lib/dev/provisional/quotationGenerationTypes";
 
 const ACCEPTED_EXTENSIONS = [".pdf", ".dxf"];
@@ -41,6 +42,8 @@ interface BlueprintUploadPanelProps {
   onFloorsChange: (floors: BlueprintFloor[] | null) => void;
   originalFloors: BlueprintFloor[] | null;
   onOriginalFloorsChange: (floors: BlueprintFloor[] | null) => void;
+  blueprintFilePath: string | null;
+  onBlueprintFilePathChange: (path: string | null) => void;
 }
 
 // Path B — the harder, supported path. Upload validates the file type client-side; actual
@@ -59,8 +62,11 @@ export function BlueprintUploadPanel({
   onFloorsChange,
   originalFloors,
   onOriginalFloorsChange,
+  blueprintFilePath,
+  onBlueprintFilePathChange,
 }: BlueprintUploadPanelProps) {
   const { extractBlueprint, isExtracting, extractError, resetExtract } = useBlueprintExtraction();
+  const { rescanBlueprint, isRescanning, rescanError, resetRescan } = useBlueprintRescan();
   const [fileTypeError, setFileTypeError] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
   // Part C — a file is only STAGED here first; scanning is a separate, explicit action.
@@ -81,6 +87,8 @@ export function BlueprintUploadPanel({
       return;
     }
     resetExtract();
+    resetRescan();
+    onBlueprintFilePathChange(null);
     onFloorsChange(null);
     onOriginalFloorsChange(null);
     onChange(segments.filter((segment) => segment.source_method !== "Blueprint"));
@@ -101,6 +109,7 @@ export function BlueprintUploadPanel({
       const result = await extractBlueprint(quoteId, selectedFile);
       onFloorsChange(result.floors);
       onOriginalFloorsChange(result.floors);
+      onBlueprintFilePathChange(result.blueprint_file_path ?? null);
       setSelectedFloor(result.floors[0]?.floor_level ?? null);
       // Segments are seeded into the SAME wizard-level list Quick Measurement writes to —
       // "MUST VALIDATE" (edit/delete/group/add) below is just further edits to it, not a
@@ -132,11 +141,44 @@ export function BlueprintUploadPanel({
   // scan is discarded, replaced with a fresh reconstruction of the original detection.
   const handleRescanConfirmed = () => {
     if (!originalFloors) return;
-    const fresh = originalFloors.flatMap((floor) => floor.segments.map((seg) => createSegmentFromExtraction(seg, floor.floor_level)));
-    onChange(fresh);
-    onFloorsChange(originalFloors);
+    const reset = resetBlueprintReview(originalFloors, (nextFloors: BlueprintFloor[]) =>
+      nextFloors.flatMap((floor) => floor.segments.map((seg) => createSegmentFromExtraction(seg, floor.floor_level))),
+    );
+    onChange(reset.segments);
+    onFloorsChange(reset.floors);
     setSelectedFloor(originalFloors[0]?.floor_level ?? null);
     setHoveredId(null);
+  };
+
+  const handleGenuineRescan = async () => {
+    if (!blueprintFilePath) return;
+    try {
+      const rescanned = await rescanBlueprintReview(
+        () => rescanBlueprint(quoteId),
+        (nextFloors: BlueprintFloor[]) => nextFloors.flatMap((floor) => floor.segments.map((seg) => createSegmentFromExtraction(seg, floor.floor_level))),
+      );
+      const result = rescanned.result;
+      onFloorsChange(rescanned.floors);
+      onOriginalFloorsChange(rescanned.floors);
+      onBlueprintFilePathChange(result.blueprint_file_path ?? blueprintFilePath);
+      setSelectedFloor(result.floors[0]?.floor_level ?? null);
+      setHoveredId(null);
+      onChange(rescanned.segments);
+    } catch {
+      // Surfaced below.
+    }
+  };
+
+  const handleBackToUpload = () => {
+    resetExtract();
+    resetRescan();
+    setSelectedFile(null);
+    setSelectedFloor(null);
+    setHoveredId(null);
+    onBlueprintFilePathChange(null);
+    onFloorsChange(null);
+    onOriginalFloorsChange(null);
+    onChange(segments.filter((segment) => segment.source_method !== "Blueprint"));
   };
 
   if (!floors) {
@@ -269,14 +311,14 @@ export function BlueprintUploadPanel({
   const includedSegments = segments.filter(isSegmentIncluded);
   const confirmedIncludedCount = includedSegments.filter((s) => s.confirmed).length;
   const allIncludedConfirmed = includedSegments.length > 0 && confirmedIncludedCount === includedSegments.length;
-  const confirmationDisabled = overlayScanning;
+  const confirmationDisabled = overlayScanning || isRescanning;
 
   return (
     <div className="flex flex-col gap-4">
       <div className="flex items-start gap-3">
         <button
           type="button"
-          onClick={onBack}
+          onClick={handleBackToUpload}
           title="Back to Upload"
           className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-gray-200 bg-white text-gray-500 transition hover:border-primary hover:text-primary"
         >
@@ -286,9 +328,7 @@ export function BlueprintUploadPanel({
           {/* Part G — trimmed to the project name only, no redundant client-name preamble. */}
           <h2 className="text-base font-bold text-gray-900">{projectName}</h2>
           <p className="text-xs text-gray-500">
-            Hover a shaded area for its size and confidence. Edit any name or area that&apos;s
-            off, delete anything that isn&apos;t real, group areas that are actually one room,
-            add one that was missed, and confirm each before continuing.
+            Review each detected room. Correct names and areas, remove false results, add missing rooms, then confirm.
           </p>
         </div>
       </div>
@@ -324,8 +364,11 @@ export function BlueprintUploadPanel({
           segments={floorSegments}
           hoveredId={hoveredId}
           onHoverChange={setHoveredId}
-          onRescanConfirmed={handleRescanConfirmed}
-          onScanStateChange={setOverlayScanning}
+          onResetConfirmed={handleRescanConfirmed}
+          onRescanConfirmed={handleGenuineRescan}
+          canRescan={Boolean(blueprintFilePath)}
+          isRescanning={isRescanning}
+          onScanStateChange={(scanning) => setOverlayScanning(scanning || isRescanning)}
         />
         <SegmentEditorList
           segments={floorSegments}
@@ -357,6 +400,13 @@ export function BlueprintUploadPanel({
           }}
         />
       </div>
+
+      {!blueprintFilePath && (
+        <p className="text-xs text-amber-700">Saved-file storage is not configured. Reset is available, but genuine rescan is disabled.</p>
+      )}
+      {rescanError && (
+        <p className="flex items-center gap-1.5 text-xs text-red-600"><AlertTriangle className="h-3.5 w-3.5" /> Rescan failed: {rescanError.message}</p>
+      )}
 
       {manualAdds.length > 0 && (
         <p className="text-xs text-gray-400">

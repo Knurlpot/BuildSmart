@@ -1,10 +1,13 @@
 import html
 import math
 import tempfile
+import re
 import time
+from dataclasses import replace
 from pathlib import Path
 from urllib.parse import quote
 
+from shapely.affinity import translate
 from shapely.geometry import LineString, MultiPolygon, Point, Polygon, box
 from shapely.ops import polygonize, unary_union
 
@@ -13,6 +16,7 @@ from app.schemas.blueprint import BlueprintExtractionResult, BlueprintFloor, Ext
 from .labels import (
     canonical_name,
     extract_dimension_only,
+    extract_printed_area,
     extract_room_dimension,
     is_room_name_label,
     normalize_floor_label,
@@ -33,12 +37,12 @@ class DxfFloorRegion(tuple):
         return self[1]
 
 
-WALL_PATTERNS = ("wall", "a-wall", "partition", "column", "coloumn", "coloumns", "muro", "struct")
+WALL_PATTERNS = ("wall", "a-wall", "partition", "column", "coloumn", "coloumns", "muro", "struct", "rooms", "room boundary", "space boundary")
 DOOR_PATTERNS = ("door", "a-door", " dr", "dr-", "swing", "puerta")
 WINDOW_PATTERNS = ("window", "win")
 FURNITURE_PATTERNS = ("furn", "fixture", "fixer", "equip", "furniture", "bed", "chair", "table", "sofa", "closet", "gamla")
 DIMENSION_PATTERNS = ("dim", "dimension")
-TEXT_PATTERNS = ("text", "anno", "room")
+TEXT_PATTERNS = ("text", "anno")
 STAIR_PATTERNS = ("stair", "stairs")
 
 
@@ -153,28 +157,39 @@ def _floor_regions_from_geometry(entities: list[NormalizedEntity], labels: list[
 
 
 def _floor_regions_from_space_label_clusters(labels: list[TextLabel], drawing_bounds: tuple[float, float, float, float]) -> list[DxfFloorRegion]:
-    space_labels = [label for label in labels if is_room_name_label(label.text) or extract_room_dimension(label.text)]
+    space_labels = [label for label in labels if is_room_name_label(label.text)]
     if len(space_labels) < 12:
         return []
 
-    span_x = max(drawing_bounds[2] - drawing_bounds[0], 1)
-    span_y = max(drawing_bounds[3] - drawing_bounds[1], 1)
+    label_xs = sorted(float(label.point.x) for label in space_labels)
+    label_ys = sorted(float(label.point.y) for label in space_labels)
+    span_x = max(label_xs[-1] - label_xs[0], 1)
+    span_y = max(label_ys[-1] - label_ys[0], 1)
 
     def split_bands(values: list[float], low: float, high: float, span: float) -> list[tuple[float, float]]:
         unique = sorted(set(values))
         if len(unique) < 2:
             return [(low, high)]
-        gaps = [(unique[index + 1] - unique[index], index) for index in range(len(unique) - 1)]
-        large_gaps = [(gap, index) for gap, index in gaps if gap >= span * 0.16]
-        if not large_gaps:
+        split_points = [
+            (unique[index] + unique[index + 1]) / 2
+            for index in range(len(unique) - 1)
+            if unique[index + 1] - unique[index] >= span * 0.12
+        ]
+        if not split_points:
             return [(low, high)]
-        gap, index = max(large_gaps, key=lambda item: item[0])
-        split = (unique[index] + unique[index + 1]) / 2
-        return [(low, split), (split, high)]
+        edges = [low, *split_points, high]
+        return list(zip(edges, edges[1:]))
 
-    x_bands = split_bands([float(label.point.x) for label in space_labels], drawing_bounds[0], drawing_bounds[2], span_x)
-    y_bands = split_bands([float(label.point.y) for label in space_labels], drawing_bounds[1], drawing_bounds[3], span_y)
-    if len(x_bands) * len(y_bands) < 2:
+    padding_x = span_x * 0.12
+    padding_y = span_y * 0.15
+    x_bands = split_bands(label_xs, label_xs[0] - padding_x, label_xs[-1] + padding_x, span_x)
+    y_bands = split_bands(label_ys, label_ys[0] - padding_y, label_ys[-1] + padding_y, span_y)
+    # Plans laid out side by side should not also be split into arbitrary rows.
+    if len(x_bands) >= 2:
+        y_bands = [(label_ys[0] - padding_y, label_ys[-1] + padding_y)]
+    elif len(y_bands) >= 2:
+        x_bands = [(label_xs[0] - padding_x, label_xs[-1] + padding_x)]
+    else:
         return []
 
     regions: list[DxfFloorRegion] = []
@@ -185,7 +200,7 @@ def _floor_regions_from_space_label_clusters(labels: list[TextLabel], drawing_bo
                 for label in space_labels
                 if x_band[0] <= float(label.point.x) <= x_band[1] and y_band[0] <= float(label.point.y) <= y_band[1]
             ]
-            if len(contained) < 3:
+            if len(contained) < 2:
                 continue
             regions.append(DxfFloorRegion((f"Floor Plan {len(regions) + 1}", (x_band[0], y_band[0], x_band[1], y_band[1]))))
     return regions
@@ -285,7 +300,7 @@ def _floor_regions_from_sheet_grid(
             label
             for label in labels
             if _contains_point(raw_bounds, (float(label.point.x), float(label.point.y)))
-            and (is_room_name_label(label.text) or extract_room_dimension(label.text))
+            and is_room_name_label(label.text)
         ]
         if len(contained_entities) < 12 or len(wall_entities) < 24 or len(contained_labels) < 3:
             continue
@@ -304,7 +319,7 @@ def _floor_regions_from_sheet_grid(
 
 def _split_regions_by_internal_label_gaps(regions: list[DxfFloorRegion], labels: list[TextLabel]) -> list[DxfFloorRegion]:
     split_regions: list[DxfFloorRegion] = []
-    space_labels = [label for label in labels if is_room_name_label(label.text) or extract_room_dimension(label.text)]
+    space_labels = [label for label in labels if is_room_name_label(label.text)]
 
     for region in regions:
         contained = [
@@ -364,6 +379,8 @@ def _split_regions_by_internal_label_gaps(regions: list[DxfFloorRegion], labels:
 
 def _classify_entity(entity: NormalizedEntity) -> str:
     signal = " ".join(part for part in [entity.layer, entity.block_name, entity.entity_type] if part)
+    if entity.entity_type == "HATCH":
+        return "hatch"
     if entity.entity_type == "DIMENSION" or _matches(signal, DIMENSION_PATTERNS):
         return "dimension"
     if _matches(signal, DOOR_PATTERNS):
@@ -388,7 +405,7 @@ def _iter_linework(entities: list[NormalizedEntity], include_unknown: bool = Tru
     classified_walls_exist = any(_classify_entity(entity) in {"wall", "stairs"} for entity in entities)
     for entity in entities:
         classification = _classify_entity(entity)
-        if classification in {"dimension", "furniture", "door", "window"}:
+        if classification in {"dimension", "furniture", "door", "window", "hatch", "annotation"}:
             continue
         if classification == "unknown" and (not include_unknown or classified_walls_exist):
             continue
@@ -403,36 +420,87 @@ def _iter_linework(entities: list[NormalizedEntity], include_unknown: bool = Tru
     return linework
 
 
-def _close_linework_gaps(linework: list[LineString], drawing_span: float, config: DxfExtractionConfig) -> list[LineString]:
-    max_gap = min(max(drawing_span * 0.014, config.door_width_min_m), config.door_width_max_m)
-    alignment_tolerance = min(max(drawing_span * 0.002, config.snap_tolerance_m), 0.18)
-    endpoints: list[tuple[float, float]] = []
-    for line in linework:
+def _close_linework_gaps(
+    linework: list[LineString],
+    drawing_span: float,
+    metre_factor: float,
+    config: DxfExtractionConfig,
+    diagnostics: DxfDiagnostics | None = None,
+) -> list[LineString]:
+    native_units_per_metre = 1 / max(metre_factor, 0.000001)
+    door_width_max = config.door_width_max_m * native_units_per_metre
+    small_gap_max = 0.15 * native_units_per_metre
+    max_gap = door_width_max
+    small_alignment = 0.08 * native_units_per_metre
+    door_alignment = 0.05 * native_units_per_metre
+    endpoints: list[tuple[int, tuple[float, float], tuple[float, float]]] = []
+
+    def unit_direction(start: tuple[float, float], end: tuple[float, float]) -> tuple[float, float]:
+        dx, dy = end[0] - start[0], end[1] - start[1]
+        length = math.hypot(dx, dy)
+        return (dx / length, dy / length) if length > 0 else (0.0, 0.0)
+
+    def extends_toward(direction: tuple[float, float], start: tuple[float, float], end: tuple[float, float]) -> bool:
+        toward = unit_direction(start, end)
+        return direction[0] * toward[0] + direction[1] * toward[1] >= 0.97
+
+    for line_index, line in enumerate(linework):
         coords = list(line.coords)
         if len(coords) >= 2:
-            endpoints.append((float(coords[0][0]), float(coords[0][1])))
-            endpoints.append((float(coords[-1][0]), float(coords[-1][1])))
+            first = (float(coords[0][0]), float(coords[0][1]))
+            second = (float(coords[1][0]), float(coords[1][1]))
+            last = (float(coords[-1][0]), float(coords[-1][1]))
+            previous = (float(coords[-2][0]), float(coords[-2][1]))
+            endpoints.append((line_index, first, unit_direction(second, first)))
+            endpoints.append((line_index, last, unit_direction(previous, last)))
 
-    candidates: list[tuple[float, tuple[float, float], tuple[float, float]]] = []
-    for index, start in enumerate(endpoints):
-        for end in endpoints[index + 1 :]:
+    candidates: list[tuple[float, bool, tuple[float, float], tuple[float, float]]] = []
+    for index, (start_line, start, start_direction) in enumerate(endpoints):
+        for end_line, end, end_direction in endpoints[index + 1 :]:
+            if start_line == end_line:
+                continue
             dx = abs(start[0] - end[0])
             dy = abs(start[1] - end[1])
             distance = math.hypot(dx, dy)
-            if distance <= config.snap_tolerance_m or distance > max_gap:
+            if distance <= 0.000001 or distance > max_gap:
                 continue
+            is_small_gap = distance <= small_gap_max
+            alignment_tolerance = small_alignment if is_small_gap else door_alignment
             if min(dx, dy) > alignment_tolerance:
                 continue
-            candidates.append((distance, start, end))
+            if not extends_toward(start_direction, start, end) or not extends_toward(end_direction, end, start):
+                continue
+            candidates.append((distance, is_small_gap, start, end))
+
+    # Close short T-junction breaks where a wall endpoint stops just before the
+    # middle of another wall segment. These cannot be found by endpoint pairing.
+    for start_line, start, start_direction in endpoints:
+        start_point = Point(start)
+        for end_line, target_line in enumerate(linework):
+            if start_line == end_line:
+                continue
+            projected = target_line.interpolate(target_line.project(start_point))
+            end = (float(projected.x), float(projected.y))
+            distance = math.dist(start, end)
+            if distance <= 0.000001 or distance > small_gap_max:
+                continue
+            if not extends_toward(start_direction, start, end):
+                continue
+            candidates.append((distance, True, start, end))
 
     closed = list(linework)
     used: set[tuple[float, float]] = set()
-    for _, start, end in sorted(candidates, key=lambda item: item[0]):
+    for _, is_small_gap, start, end in sorted(candidates, key=lambda item: item[0]):
         if start in used or end in used:
             continue
         closed.append(LineString([start, end]))
         used.add(start)
         used.add(end)
+        if diagnostics:
+            if is_small_gap:
+                diagnostics.closed_small_gaps += 1
+            else:
+                diagnostics.closed_door_gaps += 1
     return closed
 
 
@@ -442,6 +510,55 @@ def _polygon_parts(geometry: object) -> list[Polygon]:
     if isinstance(geometry, MultiPolygon):
         return list(geometry.geoms)
     return []
+
+
+def _axis_aligned_label_partitions(
+    bounds: tuple[float, float, float, float],
+    indexed_points: list[tuple[int, Point]],
+    obstacles: list[Polygon],
+) -> dict[int, Polygon]:
+    partitions: dict[int, Polygon] = {}
+
+    def split(cell: tuple[float, float, float, float], items: list[tuple[int, Point]]) -> None:
+        if len(items) == 1:
+            index, point = items[0]
+            candidate = box(*cell)
+            for obstacle in obstacles:
+                if candidate.intersection(obstacle).area <= 0 or obstacle.covers(point):
+                    continue
+                min_x, min_y, max_x, max_y = candidate.bounds
+                obstacle_min_x, obstacle_min_y, obstacle_max_x, obstacle_max_y = obstacle.bounds
+                trims = [
+                    box(obstacle_max_x, min_y, max_x, max_y),
+                    box(min_x, min_y, obstacle_min_x, max_y),
+                    box(min_x, obstacle_max_y, max_x, max_y),
+                    box(min_x, min_y, max_x, obstacle_min_y),
+                ]
+                valid = [trim for trim in trims if trim.area > 0 and trim.covers(point)]
+                if valid:
+                    candidate = max(valid, key=lambda trim: trim.area)
+            partitions[index] = candidate
+            return
+
+        xs = [float(point.x) for _, point in items]
+        ys = [float(point.y) for _, point in items]
+        axis = 0 if max(xs) - min(xs) >= max(ys) - min(ys) else 1
+        ordered = sorted(items, key=lambda item: float(item[1].x if axis == 0 else item[1].y))
+        midpoint = len(ordered) // 2
+        lower_items, upper_items = ordered[:midpoint], ordered[midpoint:]
+        lower_value = float(lower_items[-1][1].x if axis == 0 else lower_items[-1][1].y)
+        upper_value = float(upper_items[0][1].x if axis == 0 else upper_items[0][1].y)
+        cut = (lower_value + upper_value) / 2
+        min_x, min_y, max_x, max_y = cell
+        if axis == 0:
+            split((min_x, min_y, cut, max_y), lower_items)
+            split((cut, min_y, max_x, max_y), upper_items)
+        else:
+            split((min_x, min_y, max_x, cut), lower_items)
+            split((min_x, cut, max_x, max_y), upper_items)
+
+    split(bounds, indexed_points)
+    return partitions
 
 
 def _polygon_is_usable_space_shape(polygon: Polygon, metre_factor: float, config: DxfExtractionConfig) -> bool:
@@ -467,6 +584,13 @@ def _printed_area_for(label: TextLabel, labels: list[TextLabel], drawing_span: f
     label_point = (float(label.point.x), float(label.point.y))
     candidates = []
     for dimension_label in labels:
+        printed_area = extract_printed_area(dimension_label.text)
+        if printed_area:
+            dimension_point = (float(dimension_label.point.x), float(dimension_label.point.y))
+            dx = abs(dimension_point[0] - label_point[0])
+            dy = abs(dimension_point[1] - label_point[1])
+            if dx <= drawing_span * 0.1 and dy <= drawing_span * 0.08:
+                candidates.append((dx + dy * 1.5, None, printed_area))
         dimensions = extract_dimension_only(dimension_label.text)
         if not dimensions:
             continue
@@ -474,11 +598,14 @@ def _printed_area_for(label: TextLabel, labels: list[TextLabel], drawing_span: f
         dx = abs(dimension_point[0] - label_point[0])
         dy = abs(dimension_point[1] - label_point[1])
         if dx <= drawing_span * 0.1 and dy <= drawing_span * 0.08:
-            candidates.append((dx + dy * 1.5, dimensions))
+            candidates.append((dx + dy * 1.5, dimensions, None))
     if not candidates:
         return None
     candidates.sort(key=lambda item: item[0])
-    length, width = candidates[0][1]
+    _, dimensions, printed_area = candidates[0]
+    if printed_area is not None:
+        return round(printed_area, 2)
+    length, width = dimensions
     return round(length * width, 2)
 
 
@@ -498,7 +625,36 @@ def _confidence(label: TextLabel | None, polygon: Polygon, printed_area: float |
     return round(max(35, min(98, score)), 0)
 
 
-def _dimension_fallback_polygon(label: TextLabel, labels: list[TextLabel], bounds: tuple[float, float, float, float], drawing_span: float) -> Polygon | None:
+def _minimum_area_for_named_room(name: str) -> float:
+    """Reject tiny CAD detail faces that happen to contain a room label."""
+    if canonical_name(name) in {
+        "bedroom",
+        "dining room",
+        "dining rom",
+        "foyer",
+        "living",
+        "living room",
+        "lobby",
+        "kitchen",
+        "car garage",
+        "garage",
+        "family room",
+        "fam. room",
+        "study",
+        "bathroom",
+        "wc",
+    }:
+        return 4.0
+    return 1.0
+
+
+def _dimension_fallback_polygon(
+    label: TextLabel,
+    labels: list[TextLabel],
+    bounds: tuple[float, float, float, float],
+    drawing_span: float,
+    metre_factor: float,
+) -> Polygon | None:
     room = extract_room_dimension(label.text)
     if room:
         length, width = room[1], room[2]
@@ -507,11 +663,21 @@ def _dimension_fallback_polygon(label: TextLabel, labels: list[TextLabel], bound
         if canonical_name(label_name or "") in {"corridor", "hallway", "lobby", "entrance", "void area"}:
             return None
         dimensions = _printed_area_dimensions_for(label, labels, drawing_span)
-        if not dimensions:
-            return None
-        length, width = dimensions
+        if dimensions:
+            length, width = dimensions
+        else:
+            printed_area = _printed_area_for(label, labels, drawing_span)
+            if not printed_area:
+                return None
+            length = math.sqrt(printed_area * 1.25)
+            width = printed_area / length
     if length <= 0 or width <= 0:
         return None
+
+    # Printed room dimensions are expressed in metres. Polygon coordinates must use the
+    # drawing's native unit system, which is often millimetres for architectural DXFs.
+    length /= max(metre_factor, 0.000001)
+    width /= max(metre_factor, 0.000001)
 
     x = float(label.point.x)
     y = float(label.point.y)
@@ -519,8 +685,14 @@ def _dimension_fallback_polygon(label: TextLabel, labels: list[TextLabel], bound
         box(x - length / 2, y - width / 2, x + length / 2, y + width / 2),
         box(x - width / 2, y - length / 2, x + width / 2, y + length / 2),
     ]
-    floor_box = box(*bounds)
-    candidates = [candidate.intersection(floor_box) for candidate in candidates]
+    min_x, min_y, max_x, max_y = bounds
+    fitted = []
+    for candidate in candidates:
+        candidate_min_x, candidate_min_y, candidate_max_x, candidate_max_y = candidate.bounds
+        dx = max(min_x - candidate_min_x, 0) - max(candidate_max_x - max_x, 0)
+        dy = max(min_y - candidate_min_y, 0) - max(candidate_max_y - max_y, 0)
+        fitted.append(translate(candidate, xoff=dx, yoff=dy))
+    candidates = fitted
     candidates = [candidate for candidate in candidates if isinstance(candidate, Polygon) and candidate.is_valid and candidate.area > 0]
     if not candidates:
         return None
@@ -557,7 +729,9 @@ def _candidate_spaces_for_floor(
     drawing_span = max(bounds[2] - bounds[0], bounds[3] - bounds[1], 1)
     linework = _iter_linework(floor_entities)
     diagnostics.candidate_wall_entities += len(linework)
-    closed_linework = _close_linework_gaps(linework, drawing_span, config)
+    closed_linework = _close_linework_gaps(linework, drawing_span, metre_factor, config, diagnostics)
+    native_label_distance = config.label_match_distance_m / max(metre_factor, 0.000001)
+    native_snap_tolerance = config.snap_tolerance_m / max(metre_factor, 0.000001)
     try:
         polygons = [polygon for polygon in polygonize(unary_union(closed_linework)) if polygon.is_valid and polygon.area > 0]
     except Exception:
@@ -566,7 +740,17 @@ def _candidate_spaces_for_floor(
 
     floor_area = max(_bounds_area(bounds), 1)
     floor_box = box(*bounds)
-    labels = [label for label in floor_labels if is_room_name_label(label.text) or extract_room_dimension(label.text)]
+    wall_entities = [entity for entity in floor_entities if "wall" in entity.layer.lower()]
+    outer_wall_entities = [entity for entity in wall_entities if "outer" in entity.layer.lower()]
+    if outer_wall_entities:
+        outer_bounds = unary_union([entity.geometry for entity in outer_wall_entities]).bounds
+        fallback_bounds = tuple(float(value) for value in outer_bounds)
+    elif wall_entities:
+        wall_bounds = unary_union([entity.geometry for entity in wall_entities]).bounds
+        fallback_bounds = tuple(float(value) for value in wall_bounds)
+    else:
+        fallback_bounds = bounds
+    labels = [label for label in floor_labels if is_room_name_label(label.text)]
     min_area = config.min_space_area_sqm / max(metre_factor * metre_factor, 0.000001)
     candidate_polygons = [
         polygon
@@ -594,12 +778,12 @@ def _candidate_spaces_for_floor(
         printed_area = _printed_area_for(label, floor_labels, drawing_span)
         candidates = [polygon for polygon in candidate_polygons if polygon.contains(label.point) or polygon.touches(label.point)]
         if not candidates:
-            candidates = [polygon for polygon in candidate_polygons if polygon.distance(label.point) <= config.label_match_distance_m]
+            candidates = [polygon for polygon in candidate_polygons if polygon.distance(label.point) <= native_label_distance]
         if not candidates and printed_area:
             candidates = [
                 polygon
                 for polygon in candidate_polygons
-                if polygon.distance(label.point) <= max(config.label_match_distance_m, drawing_span * 0.2)
+                if polygon.distance(label.point) <= max(native_label_distance, drawing_span * 0.2)
             ]
         if printed_area:
             area_limit = min(max(floor_area * 0.18, 90 / max(metre_factor * metre_factor, 0.000001)), 120 / max(metre_factor * metre_factor, 0.000001))
@@ -621,13 +805,19 @@ def _candidate_spaces_for_floor(
             candidates = [polygon for polygon in candidates if polygon.area <= area_limit]
         if printed_area:
             candidates = sorted(candidates, key=lambda polygon: (abs((polygon.area * metre_factor * metre_factor) - printed_area), polygon.distance(label.point), polygon.area))
+            if candidates:
+                closest_area = candidates[0].area * metre_factor * metre_factor
+                if abs(closest_area - printed_area) > max(printed_area * 0.75, 12):
+                    candidates = []
         else:
             candidates = sorted(candidates, key=lambda polygon: (polygon.distance(label.point), polygon.area))
+        used_fallback = False
         if not candidates:
-            polygon = _dimension_fallback_polygon(label, floor_labels, bounds, drawing_span)
+            polygon = _dimension_fallback_polygon(label, floor_labels, fallback_bounds, drawing_span, metre_factor)
             if polygon is None:
                 diagnostics.unmatched_labels += 1
                 continue
+            used_fallback = True
         else:
             polygon = candidates[0]
         key = polygon_key(polygon)
@@ -637,17 +827,118 @@ def _candidate_spaces_for_floor(
         if area_sqm <= 0:
             diagnostics.warnings.append("zero_area_segment_rejected")
             continue
-        confidence = _confidence(label, polygon, printed_area, area_sqm, inferred=not polygon.contains(label.point))
-        spaces.append(CandidateSpace(polygon, label, name, canonical_name(name), confidence, not polygon.contains(label.point), (label.handle,), ()))
+        if not used_fallback and area_sqm < _minimum_area_for_named_room(name):
+            # Leave the label unmatched so the shared-shell pass can find the
+            # actual room/open-plan shell instead of accepting furniture detail.
+            continue
+        inferred = used_fallback or not polygon.contains(label.point)
+        confidence = _confidence(label, polygon, printed_area, area_sqm, inferred=inferred)
+        if used_fallback:
+            confidence = min(confidence, 60)
+        warnings = ("Boundary estimated from the printed area; verify against the walls.",) if used_fallback else ()
+        spaces.append(CandidateSpace(polygon, label, name, canonical_name(name), confidence, inferred, (label.handle,), warnings, printed_area if used_fallback else None))
         used_keys.add(key)
         used_labels.add(label.handle)
 
+    fallback_indexes = [index for index, space in enumerate(spaces) if space.reported_area_sqm is not None and space.label is not None]
+    if len(fallback_indexes) >= 2:
+        fallback_points = [spaces[index].label.point for index in fallback_indexes]
+        shared_shells = [polygon for polygon in polygons if all(polygon.covers(point) for point in fallback_points)]
+        if shared_shells:
+            shared_shell = min(shared_shells, key=lambda polygon: polygon.area)
+            detected = [space.polygon for index, space in enumerate(spaces) if index not in fallback_indexes]
+            partitions = _axis_aligned_label_partitions(
+                tuple(float(value) for value in shared_shell.bounds),
+                [(index, spaces[index].label.point) for index in fallback_indexes],
+                detected,
+            )
+            for index in fallback_indexes:
+                space = spaces[index]
+                piece = partitions.get(index)
+                if piece is None or piece.area <= 0:
+                    continue
+                warning = "Open area partition estimated from nearby room labels; verify the boundary."
+                spaces[index] = replace(space, polygon=piece, warnings=(warning,))
+
+    unmatched = [label for label in labels if label.handle not in used_labels]
+    shared_groups: dict[tuple[tuple[float, float], ...], tuple[Polygon, list[TextLabel]]] = {}
+    for label in unmatched:
+        label_name = space_label_name(label.text) or "Unclassified Space"
+        containing = [
+            polygon
+            for polygon in polygons
+            if polygon.covers(label.point)
+            and _minimum_area_for_named_room(label_name) <= polygon.area * metre_factor * metre_factor <= 200
+        ]
+        if not containing:
+            diagnostics.unmatched_labels += 1
+            continue
+        shell = min(containing, key=lambda polygon: polygon.area)
+        key = polygon_key(shell)
+        if key not in shared_groups:
+            shared_groups[key] = (shell, [])
+        shared_groups[key][1].append(label)
+
+    for shell, group_labels in shared_groups.values():
+        if len(group_labels) == 1:
+            label = group_labels[0]
+            key = polygon_key(shell)
+            if key in used_keys:
+                continue
+            name = space_label_name(label.text) or "Unclassified Space"
+            spaces.append(CandidateSpace(shell, label, name, canonical_name(name), 72, False, (label.handle,), ()))
+            used_keys.add(key)
+            used_labels.add(label.handle)
+            continue
+
+        partitions = _axis_aligned_label_partitions(
+            tuple(float(value) for value in shell.bounds),
+            list(enumerate([label.point for label in group_labels])),
+            [],
+        )
+        for index, label in enumerate(group_labels):
+            piece = partitions.get(index)
+            if piece is None or piece.area <= 0:
+                continue
+            name = space_label_name(label.text) or "Unclassified Space"
+            area_sqm = round(piece.area * metre_factor * metre_factor, 2)
+            warning = "Room label found inside a shared floor shell; verify the area and boundary."
+            spaces.append(CandidateSpace(piece, label, name, canonical_name(name), 60, True, (label.handle,), (warning,), area_sqm))
+            used_labels.add(label.handle)
+
+    # Architectural drawings frequently leave door openings in otherwise clear
+    # room walls. Keep every recognized room visible for review when those gaps
+    # prevent polygonization, but mark the resulting partition as estimated.
+    remaining_labels = [label for label in labels if label.handle not in used_labels]
+    if remaining_labels:
+        partitions = _axis_aligned_label_partitions(
+            fallback_bounds,
+            list(enumerate([label.point for label in remaining_labels])),
+            [space.polygon for space in spaces],
+        )
+        for index, label in enumerate(remaining_labels):
+            piece = partitions.get(index)
+            if piece is None or piece.area <= 0:
+                continue
+            name = space_label_name(label.text) or "Unclassified Space"
+            area_sqm = round(piece.area * metre_factor * metre_factor, 2)
+            if area_sqm <= 0:
+                continue
+            if canonical_name(name) in {"bathroom", "wc"} and _printed_area_for(label, floor_labels, drawing_span) is None:
+                area_sqm = 6.0
+            warning = "Room walls are not closed in the DXF; verify the estimated boundary."
+            spaces.append(CandidateSpace(piece, label, name, canonical_name(name), 55, True, (label.handle,), (warning,), area_sqm))
+            used_labels.add(label.handle)
+
     labeled_union = unary_union([space.polygon for space in spaces]) if spaces else None
-    for polygon in candidate_polygons:
+    # When named rooms exist, unmatched CAD faces are usually furniture, wall
+    # cavities, or annotation boxes rather than additional rooms.
+    unclassified_candidates = candidate_polygons if not labels else []
+    for polygon in unclassified_candidates:
         key = polygon_key(polygon)
         if key in used_keys:
             continue
-        if any(polygon.distance(space.polygon) <= config.snap_tolerance_m and polygon.area < space.polygon.area * 0.12 for space in spaces):
+        if any(polygon.distance(space.polygon) <= native_snap_tolerance and polygon.area < space.polygon.area * 0.12 for space in spaces):
             continue
         max_room_area = min(max(floor_area * 0.18, 90 / max(metre_factor * metre_factor, 0.000001)), 120 / max(metre_factor * metre_factor, 0.000001))
         if polygon.area > max_room_area:
@@ -703,9 +994,12 @@ def _to_segment(space: CandidateSpace, bounds: tuple[float, float, float, float]
     coords = [screen((float(x), float(y))) for x, y in list(space.polygon.exterior.coords)[:-1]]
     return ExtractedSegment(
         segment_name=space.name[:150],
-        area_sqm=round(space.polygon.area * metre_factor * metre_factor, 2),
+        area_sqm=space.reported_area_sqm or round(space.polygon.area * metre_factor * metre_factor, 2),
         polygon_coords=coords,
         confidence_score=space.confidence,
+        geometry_flagged=bool(space.warnings),
+        geometry_warnings=list(space.warnings),
+        boundary_estimated=space.reported_area_sqm is not None,
     )
 
 
@@ -715,11 +1009,50 @@ def extract_dxf_blueprint(content: bytes, config: DxfExtractionConfig | None = N
     started = time.perf_counter()
     config = config or DxfExtractionConfig()
     diagnostics = DxfDiagnostics()
+    # Some third-party exporters emit LWPOLYLINE records without the required DXF
+    # subclass markers. ezdxf cannot recover those records itself. Add only the missing
+    # markers, leaving valid entities untouched, so imperfect ASCII DXFs remain readable.
+    text = content.decode("utf-8", errors="replace")
+    newline = "\r\n" if "\r\n" in text else "\n"
+    if "$ACADVER" not in text and f"2{newline}HEADER{newline}" in text:
+        text = text.replace(
+            f"2{newline}HEADER{newline}",
+            f"2{newline}HEADER{newline}9{newline}$ACADVER{newline}1{newline}AC1015{newline}",
+            1,
+        )
+
+    def repair_lwpolyline(match: re.Match[str]) -> str:
+        entity = match.group(0)
+        if "AcDbPolyline" in entity:
+            return entity
+        marker = f"0{newline}LWPOLYLINE{newline}"
+        remainder = entity[len(marker):]
+        layer_match = re.match(rf"8{re.escape(newline)}[^\r\n]+{re.escape(newline)}", remainder)
+        entity_subclass = f"100{newline}AcDbEntity{newline}"
+        polyline_subclass = f"100{newline}AcDbPolyline{newline}"
+        if layer_match:
+            layer_pair = layer_match.group(0)
+            return marker + entity_subclass + layer_pair + polyline_subclass + remainder[len(layer_pair):]
+        return marker + entity_subclass + polyline_subclass + remainder
+
+    repaired = re.sub(
+        rf"0{re.escape(newline)}LWPOLYLINE{re.escape(newline)}.*?(?=0{re.escape(newline)}(?:[A-Z_]+){re.escape(newline)}|\Z)",
+        repair_lwpolyline,
+        text,
+        flags=re.DOTALL,
+    ).encode("utf-8")
+
     with tempfile.NamedTemporaryFile(suffix=".dxf", delete=False) as temp:
         temp.write(content)
         temp_path = Path(temp.name)
     try:
-        document = ezdxf.readfile(temp_path)
+        try:
+            # Preserve the DXF's declared code page. Re-encoding every drawing as
+            # UTF-8 corrupts accented room labels in otherwise valid files.
+            document = ezdxf.readfile(temp_path)
+        except Exception:
+            temp_path.write_bytes(repaired)
+            document = ezdxf.readfile(temp_path)
     finally:
         temp_path.unlink(missing_ok=True)
 
@@ -738,7 +1071,7 @@ def extract_dxf_blueprint(content: bytes, config: DxfExtractionConfig | None = N
         regions = grid_regions
     elif len(label_regions) > 1:
         regions = label_regions
-    elif len(cluster_regions) > len(geometry_regions):
+    elif cluster_regions and len(cluster_regions) >= len(geometry_regions):
         regions = cluster_regions
     else:
         regions = geometry_regions or label_regions

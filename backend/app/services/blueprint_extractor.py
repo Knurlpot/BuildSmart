@@ -17,6 +17,7 @@ from app.schemas.blueprint import (
     ExtractedSegment,
     GeminiFloorExtraction,
 )
+from app.services.blueprint_geometry_validator import validate_extraction_geometry
 
 MAX_BLUEPRINT_BYTES = 25 * 1024 * 1024
 GEMINI_MODEL = os.environ.get("GEMINI_VISION_MODEL", os.environ.get("GEMINI_MODEL", "gemini-flash-latest"))
@@ -483,7 +484,9 @@ def extract_blueprint(filename: str, content: bytes) -> BlueprintExtractionResul
 
     extension = Path(filename).suffix.lower()
     if extension == ".pdf":
-        return _extract_pdf(content)
+        result = _extract_pdf(content)
+        return validate_extraction_geometry(result)
     if extension == ".dxf":
-        return _extract_dxf(content)
+        result = _extract_dxf(content)
+        return validate_extraction_geometry(result)
     raise ValueError("Upload a PDF or DXF blueprint.")

@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { AlertTriangle, ZoomIn, ZoomOut, RotateCcw, ScanLine } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { CONFIDENCE_BAND_LABEL, confidenceBand, polygonCentroidY, type DraftSegment } from "../lib/draftSegment";
+import { CONFIDENCE_BAND_LABEL, confidenceBand, type DraftSegment } from "../lib/draftSegment";
 
 const BAND_COLOR: Record<ReturnType<typeof confidenceBand>, string> = {
   high: "#16a34a", // green — confidence >= 90
@@ -33,7 +33,10 @@ interface BlueprintOverlayProps {
    * one holding the original extraction result. This component only owns the confirm
    * dialog + the visual scan-replay; once the user confirms, it calls this AND replays its
    * own local scan animation. Omitted when `readOnly` — see that prop's doc. */
+  onResetConfirmed?: () => void;
   onRescanConfirmed?: () => void;
+  canRescan?: boolean;
+  isRescanning?: boolean;
   onScanStateChange?: (scanning: boolean) => void;
   /** Task 7, Part B — Segment Breakdown reuses this exact component (not a rebuild) to
    * preview an already-generated/saved quote's blueprint. Rescan is a destructive EDIT
@@ -70,8 +73,10 @@ export function BlueprintOverlay({
   imageHeight,
   segments,
   hoveredId,
-  onHoverChange,
+  onResetConfirmed,
   onRescanConfirmed,
+  canRescan = false,
+  isRescanning = false,
   onScanStateChange,
   readOnly = false,
 }: BlueprintOverlayProps) {
@@ -118,10 +123,15 @@ export function BlueprintOverlay({
     return () => cancelAnimationFrame(raf);
   }, [rescanToken, readOnly]);
 
+  const handleResetConfirm = () => {
+    setRescanConfirmOpen(false);
+    onResetConfirmed?.();
+    setRescanToken((t) => t + 1);
+  };
+
   const handleRescanConfirm = () => {
     setRescanConfirmOpen(false);
     onRescanConfirmed?.();
-    setRescanToken((t) => t + 1);
   };
 
   // ── Zoom ──
@@ -171,10 +181,15 @@ export function BlueprintOverlay({
             <button
               type="button"
               onClick={() => setRescanConfirmOpen(true)}
-              title="Rescan"
+              title="Reset or rescan"
               className="flex items-center gap-1 rounded-lg border border-gray-200 bg-white px-2 py-1 text-xs font-semibold text-gray-500 transition hover:border-primary hover:text-primary"
             >
-              <ScanLine className="h-3.5 w-3.5" /> Rescan
+              <ScanLine className="h-3.5 w-3.5" /> Scan Actions
+            </button>
+          )}
+          {zoom !== 1 && (
+            <button type="button" onClick={zoomReset} title="Reset zoom" aria-label="Reset zoom" className="rounded-lg border border-gray-200 bg-white p-1.5 text-gray-400 transition hover:text-gray-600">
+              <RotateCcw className="h-3.5 w-3.5" />
             </button>
           )}
           <div className="flex items-center overflow-hidden rounded-lg border border-gray-200 bg-white">
@@ -193,11 +208,6 @@ export function BlueprintOverlay({
               <ZoomIn className="h-3.5 w-3.5" />
             </button>
           </div>
-          {zoom !== 1 && (
-            <button type="button" onClick={zoomReset} title="Reset" className="rounded-lg border border-gray-200 bg-white p-1.5 text-gray-400 transition hover:text-gray-600">
-              <RotateCcw className="h-3.5 w-3.5" />
-            </button>
-          )}
         </div>
       </div>
 
@@ -215,26 +225,6 @@ export function BlueprintOverlay({
           style={{ width: `${zoom * 100}%`, minWidth: "100%" }}
         >
           <image href={imageUrl} x={0} y={0} width={imageWidth} height={imageHeight} />
-          {segments.map((seg) => {
-            if (!seg.polygon_coords) return null;
-            const color = BAND_COLOR[confidenceBand(seg.confidence_score)];
-            const isHovered = hoveredId === seg.draft_id;
-            const revealed = !scanning || scanLineY >= polygonCentroidY(seg.polygon_coords);
-            return (
-              <polygon
-                key={seg.draft_id}
-                points={seg.polygon_coords.map(([x, y]) => `${x},${y}`).join(" ")}
-                fill={color}
-                fillOpacity={revealed ? (isHovered ? 0.4 : 0.2) : 0}
-                stroke={color}
-                strokeOpacity={revealed ? 1 : 0}
-                strokeWidth={isHovered ? 6 : 3}
-                className={`transition-[fill-opacity,stroke-opacity,stroke-width] duration-500 ${revealed ? "cursor-pointer" : "pointer-events-none"}`}
-                onMouseEnter={() => onHoverChange(seg.draft_id)}
-                onMouseLeave={() => onHoverChange(null)}
-              />
-            );
-          })}
           {scanning && (
             <g>
               <defs>
@@ -267,6 +257,11 @@ export function BlueprintOverlay({
           >
             <p className="truncate font-bold text-white">{hoveredSegment.segment_name || "Untitled segment"}</p>
             <p className="text-white/60">{hoveredSegment.area_sqm.toFixed(1)} sqm</p>
+            {hoveredSegment.geometry_flagged && (
+              <p className="flex items-start gap-1 text-red-300">
+                <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" /> {hoveredSegment.geometry_warnings[0] || "Needs geometry review"}
+              </p>
+            )}
             {hoveredSegment.confidence_score !== null && (
               <p className="flex items-center gap-1.5 text-white/80">
                 <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: BAND_COLOR[confidenceBand(hoveredSegment.confidence_score)] }} />
@@ -285,12 +280,11 @@ export function BlueprintOverlay({
         <DialogContent>
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <AlertTriangle className="h-4 w-4 shrink-0 text-amber-500" /> Rescan this blueprint?
+              <AlertTriangle className="h-4 w-4 shrink-0 text-amber-500" /> Reset or rescan?
             </DialogTitle>
             <DialogDescription>
-              This restarts the review. Renamed or resized segments, groupings, deletions,
-              and anything added manually will be discarded,
-              and the view returns to the system&apos;s original detected findings.
+              Both actions discard review edits. Reset restores the first result instantly and does not call AI.
+              Rescan processes the saved file again. PDF rescans call Gemini Vision again and may take longer or hit rate limits.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -303,10 +297,19 @@ export function BlueprintOverlay({
             </button>
             <button
               type="button"
-              onClick={handleRescanConfirm}
-              className="rounded-xl bg-red-600 px-4 py-2 text-sm font-bold text-white transition hover:bg-red-700"
+              onClick={handleResetConfirm}
+              className="rounded-xl border border-orange-300 px-4 py-2 text-sm font-bold text-orange-700 transition hover:bg-orange-50"
             >
-              Rescan and Discard Edits
+              Reset to Original
+            </button>
+            <button
+              type="button"
+              onClick={handleRescanConfirm}
+              disabled={!canRescan || isRescanning}
+              title={canRescan ? "Runs extraction again" : "Saved-file storage is not configured"}
+              className="rounded-xl bg-red-600 px-4 py-2 text-sm font-bold text-white transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              {isRescanning ? "Rescanning..." : "Rescan Saved File"}
             </button>
           </DialogFooter>
         </DialogContent>

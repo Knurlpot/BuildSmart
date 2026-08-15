@@ -3,6 +3,9 @@ export interface ExtractedSegment {
   area_sqm: number;
   polygon_coords: [number, number][] | null;
   confidence_score: number | null;
+  geometry_flagged: boolean;
+  geometry_warnings: string[];
+  boundary_estimated: boolean;
 }
 
 export interface BlueprintFloor {
@@ -16,6 +19,9 @@ export interface BlueprintFloor {
 export interface BlueprintExtractionResult {
   floors: BlueprintFloor[];
   diagnostics?: Record<string, unknown> | null;
+  blueprint_file_path?: string | null;
+  persistence_enabled?: boolean;
+  persistence_warning?: string | null;
 }
 
 export const TREATMENT_TYPES = [

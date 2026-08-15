@@ -46,6 +46,8 @@ class DxfDiagnostics:
     wall_polygons: int = 0
     door_candidates: int = 0
     accepted_doors: int = 0
+    closed_small_gaps: int = 0
+    closed_door_gaps: int = 0
     candidate_spaces: int = 0
     segments_before_filtering: int = 0
     segments_after_filtering: int = 0
@@ -65,4 +67,5 @@ class CandidateSpace:
     inferred_boundary: bool
     source_handles: tuple[str, ...] = ()
     warnings: tuple[str, ...] = ()
+    reported_area_sqm: float | None = None
 

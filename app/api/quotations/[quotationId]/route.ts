@@ -66,3 +66,26 @@ export async function PATCH(request: NextRequest, { params }: Params) {
   if (!result.rows[0]) return NextResponse.json({ error: "Quotation not found." }, { status: 404 });
   return NextResponse.json(result.rows[0]);
 }
+
+export async function DELETE(request: NextRequest, { params }: Params) {
+  const auth = await authContext(request);
+  if (!isAuthContext(auth)) return auth;
+
+  const { quotationId } = await params;
+  const quoteId = Number(quotationId);
+  if (!Number.isInteger(quoteId)) {
+    return NextResponse.json({ error: "Invalid quotation id." }, { status: 400 });
+  }
+
+  const result = await pool.query(
+    `DELETE FROM quotation
+     WHERE quote_id = $1 AND company_id = $2
+     RETURNING quote_id`,
+    [quoteId, auth.companyId]
+  );
+
+  if (!result.rows[0]) {
+    return NextResponse.json({ error: "Project not found." }, { status: 404 });
+  }
+  return new NextResponse(null, { status: 204 });
+}

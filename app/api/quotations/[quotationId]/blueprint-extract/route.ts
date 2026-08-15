@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { authContext, isAuthContext } from "../../pricing";
 import { pool } from "@/lib/server/db";
+import { linkBlueprintToQuotation } from "@/lib/server/blueprintPersistence.mjs";
 
 const API_BASE = process.env.NEXT_PUBLIC_NORMALIZATION_API_BASE_URL || "http://localhost:8000";
 const MAX_FILE_BYTES = 25 * 1024 * 1024;
@@ -37,12 +38,24 @@ export async function POST(request: NextRequest, { params }: Params) {
   const outgoing = new FormData();
   outgoing.append("file", file, file.name);
   try {
-    const response = await fetch(`${API_BASE}/blueprints/extract/${quoteId}`, { method: "POST", body: outgoing });
+    const response = await fetch(`${API_BASE}/blueprints/extract/${quoteId}`, {
+      method: "POST",
+      body: outgoing,
+      cache: "no-store",
+    });
     const body = await response.json().catch(() => null);
     if (!response.ok) {
       return NextResponse.json({ error: body?.detail || "Blueprint extraction failed." }, { status: response.status });
     }
-    return NextResponse.json(body);
+    if (body?.blueprint_file_path) {
+      try {
+        await linkBlueprintToQuotation(pool, body.blueprint_file_path, quoteId, auth.companyId);
+      } catch {
+        body.blueprint_file_path = null;
+        body.persistence_warning = "The scan completed, but its saved file could not be linked to this quotation.";
+      }
+    }
+    return NextResponse.json(body, { headers: { "Cache-Control": "no-store" } });
   } catch {
     return NextResponse.json({ error: "Blueprint scanner is unavailable. Start the FastAPI service and try again." }, { status: 503 });
   }
