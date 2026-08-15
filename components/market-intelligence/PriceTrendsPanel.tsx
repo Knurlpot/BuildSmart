@@ -389,11 +389,10 @@ export function PriceTrendsPanel({ compact = false }: PriceTrendsPanelProps) {
 
       <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
         <div className="mb-5">
-          <p className="text-xs font-bold uppercase tracking-wider text-gray-400">Executive Summary</p>
+          <p className="text-xs font-bold uppercase tracking-wider text-gray-400">Price Trends</p>
           <p className="mt-1 text-sm leading-relaxed text-gray-600">
-            Variance analysis compares uploaded Supplier/Internal actual rates against DPWH CMPD baseline rates adjusted
-            by the latest PSA CMRPI commodity movement. Variance is computed from unit prices only, without quantity or
-            project usage data.
+            Variance analysis compares uploaded Supplier rates against DPWH CMPD baseline rates adjusted
+            by the latest PSA CMRPI commodity movement.
           </p>
         </div>
         <div className="mb-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
@@ -444,8 +443,7 @@ export function PriceTrendsPanel({ compact = false }: PriceTrendsPanelProps) {
           error={historical.error}
           isEmpty={categoryVariance.rows.length === 0}
           onRetry={historical.refetch}
-          emptyTitle="No comparable Supplier/Internal vs DPWH variance yet"
-          emptyHint="This chart needs Supplier/Internal prices and a DPWH baseline with the same normalized material, category, and unit."
+          emptyTitle="No comparable Data"
           minHeight={300}
         >
           <div className="overflow-x-auto pb-2">
@@ -554,8 +552,7 @@ export function PriceTrendsPanel({ compact = false }: PriceTrendsPanelProps) {
             historical.refetch();
             variances.refetch();
           }}
-          emptyTitle="No actual-vs-DPWH variance data yet"
-          emptyHint="Upload or approve Supplier/Internal prices and load DPWH CMPD benchmarks to populate this analysis."
+          emptyTitle="No actual-vs-DPWH variance data"
           minHeight={120}
         >
           <div className="overflow-x-auto rounded-2xl border border-gray-100 bg-white shadow-sm">
@@ -621,12 +618,11 @@ export function PriceTrendsPanel({ compact = false }: PriceTrendsPanelProps) {
         <div className="flex items-center gap-2">
           <Landmark className="h-4 w-4 text-indigo-500" />
           <p className="text-xs font-bold uppercase tracking-wider text-indigo-500">
-            Market Index (PSA): Not Item-Specific
+            Market Index (PSA): By commodity group
           </p>
         </div>
         <p className="text-xs text-indigo-400">
-          PSA CMRPI commodity-group index movement from OpenSTAT. BuildSmart uses this to adjust DPWH CMPD benchmarks
-          for variance analysis, but it is never a specific item&apos;s transactable price.
+          PSA CMRPI publishes quarterly commodity price movement data for construction materials.
         </p>
         <QueryState
           isLoading={variances.isLoading}

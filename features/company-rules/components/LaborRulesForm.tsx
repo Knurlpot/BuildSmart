@@ -41,6 +41,8 @@ export function LaborRulesForm({ focusRuleId, onFocusHandled }: LaborRulesFormPr
   const editable = useEditableRuleList<LaborRule>({ checkUsage, update, supersede, idPrefix: "lr" });
   const { options: laborTradeOptions } = useLaborTradeOptions();
   const allRules = editable.applyOverrides([...editable.localExtra, ...rules]);
+  const [statusFilter, setStatusFilter] = useState<"active" | "disabled">("active");
+  const visibleRules = allRules.filter((rule) => rule.is_active === (statusFilter === "active"));
 
   // seeded from the prop at construction, not synced via effect: a jump always remounts
   // this component fresh (see ScopeTemplatesForm for the full reasoning).
@@ -120,6 +122,7 @@ export function LaborRulesForm({ focusRuleId, onFocusHandled }: LaborRulesFormPr
     if (mode === "edit" && selectedId) {
       const resultId = await editable.saveEdit(selectedId, buildPayload());
       if (resultId) {
+        setStatusFilter("active");
         setMode("idle");
         setSelectedId(resultId);
         setSavedMessage(true);
@@ -136,6 +139,7 @@ export function LaborRulesForm({ focusRuleId, onFocusHandled }: LaborRulesFormPr
         effective_date: new Date().toISOString().slice(0, 10),
       };
       editable.addCreated(optimistic);
+      setStatusFilter("active");
       setMode("idle");
       setSelectedId(optimistic.rule_id);
       setSavedMessage(true);
@@ -158,13 +162,13 @@ export function LaborRulesForm({ focusRuleId, onFocusHandled }: LaborRulesFormPr
       <div>
         <h2 className="text-base font-bold text-gray-900">Labor Rules</h2>
         <p className="text-xs text-gray-500">
-          Set labor rates and an optional rush charge.
+          Set labor rates.
         </p>
       </div>
 
       <RuleListDetailPanel
         title="Labor Rules"
-        items={allRules}
+        items={visibleRules}
         isLoading={isLoading}
         error={error}
         onRetry={refetch}
@@ -175,19 +179,50 @@ export function LaborRulesForm({ focusRuleId, onFocusHandled }: LaborRulesFormPr
           setMode("idle");
         }}
         onAdd={startAdd}
-        emptyHint="Add a labor rule scoped by treatment, by trade, or a general fallback rate."
+        countLabel={`${allRules.length} configured`}
+        listHeader={
+          <div className="grid grid-cols-2 gap-2 border-b border-gray-100 px-4 py-3">
+            {(["active", "disabled"] as const).map((filter) => (
+              <button
+                key={filter}
+                type="button"
+                onClick={() => {
+                  setStatusFilter(filter);
+                  setMode("idle");
+                  setSelectedId(null);
+                }}
+                className={`min-h-9 rounded-lg border px-3 py-2 text-center text-xs font-semibold capitalize transition ${
+                  statusFilter === filter
+                    ? "border-primary bg-orange-50 text-primary"
+                    : "border-gray-200 bg-white text-gray-500 hover:border-gray-300"
+                }`}
+              >
+                {filter}
+              </button>
+            ))}
+          </div>
+        }
         renderListItem={(r) => {
           const s = laborRuleScope(r);
           return (
             <div className="flex flex-col gap-0.5">
-              {s === "Treatment" && <span className="text-sm font-semibold text-gray-800">{r.treatment_type}</span>}
-              {s === "Trade" && (
-                <span className="text-sm font-semibold text-gray-800">
-                  {r.labor_trade}
-                  {r.region && ` · ${r.region}`}
+              <div className="flex items-center justify-between gap-2">
+                {s === "Treatment" && <span className="truncate text-sm font-semibold text-gray-800">{r.treatment_type}</span>}
+                {s === "Trade" && (
+                  <span className="truncate text-sm font-semibold text-gray-800">
+                    {r.labor_trade}
+                    {r.region && ` · ${r.region}`}
+                  </span>
+                )}
+                {s === "General" && <span className="truncate text-sm font-semibold text-gray-800">General</span>}
+                <span
+                  className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                    r.is_active ? "bg-green-50 text-green-700" : "bg-gray-100 text-gray-400"
+                  }`}
+                >
+                  {r.is_active ? "Active" : "Disabled"}
                 </span>
-              )}
-              {s === "General" && <span className="text-sm font-semibold text-gray-800">General</span>}
+              </div>
               <span className="text-[10px] text-gray-400">
                 {fmt(r.labor_rate)}
                 {rateUnit(s)}
@@ -205,15 +240,6 @@ export function LaborRulesForm({ focusRuleId, onFocusHandled }: LaborRulesFormPr
                   <X className="h-4 w-4" />
                 </button>
               </div>
-
-              {mode === "edit" && (
-                <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-                  <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                  <span>
-                    Saving creates a new version for rules already in use.
-                  </span>
-                </div>
-              )}
 
               <div className="flex flex-col gap-1.5">
                 <label className="text-xs font-semibold text-gray-600">Rule Scope</label>
@@ -407,9 +433,7 @@ export function LaborRulesForm({ focusRuleId, onFocusHandled }: LaborRulesFormPr
               {savedMessage && (
                 <div className="flex items-center gap-2 rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-xs text-green-700">
                   <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
-                  {editable.supersededNotice
-                    ? "A new version of this rule was created. The previous version is preserved for existing quotations."
-                    : "Company preferences updated successfully."}
+                  Company preferences updated successfully.
                 </div>
               )}
               <div className="flex items-start justify-between gap-3 rounded-xl border border-gray-100 bg-gray-50/60 p-4">
@@ -419,6 +443,13 @@ export function LaborRulesForm({ focusRuleId, onFocusHandled }: LaborRulesFormPr
                     {laborRuleScope(selected) === "Trade" && selected.labor_trade}
                     {laborRuleScope(selected) === "General" && "General Labor Rule"}
                   </p>
+                  <span
+                    className={`mt-1 inline-flex rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                      selected.is_active ? "bg-green-50 text-green-700" : "bg-gray-100 text-gray-400"
+                    }`}
+                  >
+                    {selected.is_active ? "Active" : "Disabled"}
+                  </span>
                   {laborRuleScope(selected) === "Trade" && (
                     <p className="text-sm text-gray-500">{selected.region ?? "Any region"}</p>
                   )}

@@ -13,7 +13,9 @@ interface RuleListDetailPanelProps<T> {
   selectedId: string | null;
   onSelect: (id: string) => void;
   onAdd: () => void;
-  emptyHint: string;
+  emptyHint?: string;
+  countLabel?: string;
+  listHeader?: ReactNode;
   renderListItem: (item: T) => ReactNode;
   detail: ReactNode;
 }
@@ -29,6 +31,8 @@ export function RuleListDetailPanel<T>({
   onSelect,
   onAdd,
   emptyHint,
+  countLabel,
+  listHeader,
   renderListItem,
   detail,
 }: RuleListDetailPanelProps<T>) {
@@ -38,7 +42,7 @@ export function RuleListDetailPanel<T>({
         <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3">
           <div>
             <p className="text-sm font-bold text-gray-900">{title}</p>
-            <p className="text-[11px] text-gray-400">{items.length} configured</p>
+            <p className="text-[11px] text-gray-400">{countLabel ?? `${items.length} configured`}</p>
           </div>
           <button
             type="button"
@@ -48,13 +52,14 @@ export function RuleListDetailPanel<T>({
             Add
           </button>
         </div>
+        {listHeader}
 
         <QueryState
           isLoading={isLoading}
           error={error}
           isEmpty={items.length === 0}
           onRetry={onRetry}
-          emptyTitle={`No ${title.toLowerCase()} yet`}
+          emptyTitle={`No ${title.toLowerCase()}`}
           emptyHint={emptyHint}
           minHeight={220}
         >

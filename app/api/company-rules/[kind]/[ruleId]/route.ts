@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { companyIdFor, createRule, setRuleStatus, unauthorized, type RuleKindParam } from "../../db";
+import { companyIdFor, setRuleStatus, unauthorized, updateRule, type RuleKindParam } from "../../db";
 
 export async function PATCH(
   request: NextRequest,
@@ -10,9 +10,8 @@ export async function PATCH(
     if (!companyId) return unauthorized();
 
     const { kind, ruleId } = await params;
-    await setRuleStatus(companyId, ruleId, "Inactive");
     const body = (await request.json()) as Record<string, unknown>;
-    return NextResponse.json(await createRule(companyId, kind as RuleKindParam, body));
+    return NextResponse.json(await updateRule(companyId, kind as RuleKindParam, ruleId, body));
   } catch (error) {
     return NextResponse.json(
       { error: `Failed to update rule: ${error instanceof Error ? error.message : String(error)}` },

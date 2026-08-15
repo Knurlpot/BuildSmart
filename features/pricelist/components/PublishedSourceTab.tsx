@@ -294,11 +294,7 @@ export function PublishedSourceTab({
   return (
     <div className="flex flex-col gap-5">
       <div className="rounded-2xl border border-gray-200 bg-white p-5">
-        <p className="mb-1 text-sm font-bold text-gray-900">Published government data</p>
-        <p className="mb-4 text-xs text-gray-500">
-          DPWH CMPD prices refresh when the region changes. PSA CMRPI rates are NCR-only and used for trend and
-          escalation analysis.
-        </p>
+        <p className="mb-1 text-sm font-bold text-gray-900">Government Data</p>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
           <div className="flex flex-col gap-1.5">
             <label className="text-xs font-semibold uppercase tracking-wide text-gray-600">Price Source</label>
@@ -524,8 +520,8 @@ export function PublishedSourceTab({
                 </p>
               </div>
               <p className="text-xs text-indigo-400">
-                Index rates only. PSA values support market trend analysis and escalation reference, not exact material
-                prices. Nothing here is written to your catalog.
+                PSA values support market trend analysis and escalation reference, not exact material
+                prices.
               </p>
               <QueryState
                 isLoading={isFetchingPsaIndex}

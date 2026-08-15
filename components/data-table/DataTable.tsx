@@ -107,14 +107,15 @@ export function DataTable<TData>({
             <tr key={headerGroup.id} className="border-b border-gray-100 bg-gray-50/60">
               {headerGroup.headers.map((header) => {
                 const sortable = header.column.getCanSort();
+                const alignRight = header.column.id === "actions";
                 return (
                   <th
                     key={header.id}
                     onClick={sortable ? header.column.getToggleSortingHandler() : undefined}
-                    className={`${headCellCls} ${sortable ? "cursor-pointer select-none" : ""}`}
+                    className={`${headCellCls} ${alignRight ? "text-right" : ""} ${sortable ? "cursor-pointer select-none" : ""}`}
                   >
                     {header.isPlaceholder ? null : (
-                      <span className="inline-flex items-center gap-1">
+                      <span className={`${alignRight ? "flex justify-end" : "inline-flex"} items-center gap-1`}>
                         {flexRender(header.column.columnDef.header, header.getContext())}
                         {sortable && <ArrowUpDown className="h-3 w-3 text-gray-300" />}
                       </span>

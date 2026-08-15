@@ -3,9 +3,9 @@
 // PART A (Supplier Rules task) — the real, replacement of SupplierRulesPlaceholder.tsx.
 // Built over the REAL supplier_discount_rule table (schema v3) — see
 // lib/dev/provisional/companyRulesTypes.ts's SupplierRuleEntry doc for exactly why this
-// doesn't reuse useEditableRuleList/RuleEnvelope the way the other five CPRM forms do (no
-// superseded_by_rule_id column on the real table). Reuses RuleListDetailPanel (fully
-// generic, no changes needed) for the shared list+detail layout.
+// doesn't reuse useEditableRuleList/RuleEnvelope the way the other five CPRM forms do.
+// Reuses RuleListDetailPanel (fully generic, no changes needed) for the shared
+// list+detail layout.
 import { type Dispatch, type KeyboardEvent, type SetStateAction, useEffect, useState } from "react";
 import { AlertTriangle, CheckCircle2, Info, Pencil, X, XCircle } from "lucide-react";
 import { RuleListDetailPanel } from "./RuleListDetailPanel";
@@ -164,8 +164,8 @@ export function SupplierRulesForm({ focusRuleId, onFocusHandled }: SupplierRules
   } = useSupplierRules();
   const { suppliers, isLoading: suppliersLoading } = useSuppliers();
 
-  // Mock has no real persistence — same "local overrides + optimistic creates on top of
-  // the fixture" pattern every other CPRM form in this feature uses.
+  // Keep an immediate local view of edits/creates while the shared company rules payload
+  // refetches after persistence.
   const [overrides, setOverrides] = useState<Record<string, Partial<SupplierRuleEntry>>>({});
   const [localExtra, setLocalExtra] = useState<SupplierRuleEntry[]>([]);
   const persistedRuleKeys = new Set(rules.map(supplierRuleRecordKey));
@@ -173,6 +173,8 @@ export function SupplierRulesForm({ focusRuleId, onFocusHandled }: SupplierRules
   const allRules = [...visibleLocalExtra, ...rules]
     .map((r) => (overrides[r.rule_id] ? { ...r, ...overrides[r.rule_id] } : r))
     .sort((a, b) => a.supplier_name.localeCompare(b.supplier_name) || a.rule_type.localeCompare(b.rule_type));
+  const [statusFilter, setStatusFilter] = useState<"active" | "disabled">("active");
+  const visibleRules = allRules.filter((rule) => rule.is_active === (statusFilter === "active"));
 
   const [selectedId, setSelectedId] = useState<string | null>(focusRuleId ?? null);
   const [mode, setMode] = useState<"idle" | "add" | "edit">("idle");
@@ -281,6 +283,7 @@ export function SupplierRulesForm({ focusRuleId, onFocusHandled }: SupplierRules
       try {
         await update(selectedId, payload);
         setOverrides((prev) => ({ ...prev, [selectedId]: payload }));
+        setStatusFilter(payload.is_active ? "active" : "disabled");
         setMode("idle");
         setSavedMessage(true);
       } catch {
@@ -292,6 +295,7 @@ export function SupplierRulesForm({ focusRuleId, onFocusHandled }: SupplierRules
     try {
       const saved = await save(payload);
       setLocalExtra((prev) => [saved, ...prev.filter((r) => supplierRuleRecordKey(r) !== supplierRuleRecordKey(saved))]);
+      setStatusFilter(saved.is_active ? "active" : "disabled");
       setMode("idle");
       setSelectedId(saved.rule_id);
       setSavedMessage(true);
@@ -305,6 +309,8 @@ export function SupplierRulesForm({ focusRuleId, onFocusHandled }: SupplierRules
     try {
       await deactivate(r.rule_id);
       setOverrides((prev) => ({ ...prev, [r.rule_id]: { is_active: false, expiration_date: todayIso() } }));
+      setStatusFilter("disabled");
+      setSelectedId(r.rule_id);
     } catch {
       // surfaced via deactivateError below — no fabricated success
     } finally {
@@ -318,10 +324,6 @@ export function SupplierRulesForm({ focusRuleId, onFocusHandled }: SupplierRules
     <div>
       <h2 className="text-base font-bold text-gray-900">Supplier Rules</h2>
       <p className="text-xs text-gray-500">Set supplier discounts, minimum orders, and preferred status.</p>
-      <p className="mt-1.5 flex items-start gap-1.5 text-[11px] text-gray-400">
-        <Info className="mt-0.5 h-3 w-3 shrink-0" />
-        Automatic application to quotations is not yet supported.
-      </p>
     </div>
   );
 
@@ -347,7 +349,7 @@ export function SupplierRulesForm({ focusRuleId, onFocusHandled }: SupplierRules
 
       <RuleListDetailPanel
         title="Supplier Rules"
-        items={allRules}
+        items={visibleRules}
         isLoading={isLoading}
         error={error}
         onRetry={refetch}
@@ -358,12 +360,40 @@ export function SupplierRulesForm({ focusRuleId, onFocusHandled }: SupplierRules
           setMode("idle");
         }}
         onAdd={startAdd}
-        emptyHint="Add a negotiated term for one of your suppliers."
+        countLabel={`${allRules.length} configured`}
+        listHeader={
+          <div className="grid grid-cols-2 gap-2 border-b border-gray-100 px-4 py-3">
+            {(["active", "disabled"] as const).map((filter) => (
+              <button
+                key={filter}
+                type="button"
+                onClick={() => {
+                  setStatusFilter(filter);
+                  setMode("idle");
+                  setSelectedId(null);
+                }}
+                className={`min-h-9 rounded-lg border px-3 py-2 text-center text-xs font-semibold capitalize transition ${
+                  statusFilter === filter
+                    ? "border-primary bg-orange-50 text-primary"
+                    : "border-gray-200 bg-white text-gray-500 hover:border-gray-300"
+                }`}
+              >
+                {filter}
+              </button>
+            ))}
+          </div>
+        }
         renderListItem={(r) => (
           <div className="flex flex-col gap-1">
             <div className="flex items-center justify-between gap-2">
               <span className="truncate text-sm font-semibold text-gray-800">{r.supplier_name}</span>
-              {!r.is_active && <span className="shrink-0 rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-bold text-gray-400">Inactive</span>}
+              <span
+                className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                  r.is_active ? "bg-green-50 text-green-700" : "bg-gray-100 text-gray-400"
+                }`}
+              >
+                {r.is_active ? "Active" : "Disabled"}
+              </span>
             </div>
             <RuleTypeBadge type={r.rule_type} />
             <span className="text-xs text-gray-400">{ruleSummary(r)}</span>
@@ -559,12 +589,19 @@ export function SupplierRulesForm({ focusRuleId, onFocusHandled }: SupplierRules
             <div className="flex flex-col gap-4">
               {savedMessage && (
                 <div className="flex items-center gap-2 rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-xs text-green-700">
-                  <CheckCircle2 className="h-3.5 w-3.5 shrink-0" /> Saved.
+                  <CheckCircle2 className="h-3.5 w-3.5 shrink-0" /> Supplier Rule updated.
                 </div>
               )}
               <div className="flex items-start justify-between gap-3 rounded-xl border border-gray-100 bg-gray-50/60 p-4">
                 <div className="flex flex-col gap-1.5">
                   <p className="text-lg font-bold text-gray-900">{selected.supplier_name}</p>
+                  <span
+                    className={`w-fit rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                      selected.is_active ? "bg-green-50 text-green-700" : "bg-gray-100 text-gray-400"
+                    }`}
+                  >
+                    {selected.is_active ? "Active" : "Disabled"}
+                  </span>
                   <RuleTypeBadge type={selected.rule_type} />
                 </div>
                 <div className="flex shrink-0 gap-2">
@@ -619,7 +656,7 @@ export function SupplierRulesForm({ focusRuleId, onFocusHandled }: SupplierRules
                 </div>
                 <div>
                   <dt className="text-xs font-semibold uppercase tracking-wide text-gray-400">Status</dt>
-                  <dd className="text-gray-700">{selected.is_active ? "Active" : "Inactive"}</dd>
+                  <dd className="text-gray-700">{selected.is_active ? "Active" : "Disabled"}</dd>
                 </div>
               </dl>
             </div>

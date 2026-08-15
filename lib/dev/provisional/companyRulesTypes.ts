@@ -172,11 +172,9 @@ export function unitRuleTargetKind(r: Pick<UnitRule, 'item_code'>): UnitRuleTarg
 // denormalizes supplier_name for display, the same way MaterialRuleEntry denormalizes
 // preferred_item_name.
 //
-// supplier_discount_rule has NO superseded_by_rule_id column (unlike RuleEnvelope above) —
-// so this does NOT extend RuleEnvelope and does NOT go through useEditableRuleList (built
-// around that field). "Supersede, don't mutate" here means exactly what the real columns
-// support: deactivate + expire the old row (is_active: false, expiration_date), create a
-// new one — see SupplierRulesForm.tsx.
+// supplier_discount_rule has NO superseded_by_rule_id column (unlike RuleEnvelope above),
+// so this does NOT extend RuleEnvelope and does NOT go through useEditableRuleList.
+// Editing mutates the row in place; disabling uses is_active / expiration_date.
 export const SUPPLIER_RULE_TYPES = ['Bulk Discount', 'Negotiated Price', 'Minimum Order', 'Preferred Supplier'] as const;
 export type SupplierRuleType = (typeof SUPPLIER_RULE_TYPES)[number];
 

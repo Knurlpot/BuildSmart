@@ -317,7 +317,7 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
               ) : itemsError ? (
                 <p className="text-xs text-red-500">Couldn&apos;t load your catalog: {itemsError.message}</p>
               ) : items.length === 0 ? (
-                <p className="text-xs text-amber-600">No items in your catalog yet. Upload a pricelist first.</p>
+                <p className="text-xs text-amber-600">No items in your catalog. Upload a pricelist first.</p>
               ) : filteredItems.length === 0 ? (
                 <p className="text-xs text-gray-400">No catalog items match that search.</p>
               ) : (
