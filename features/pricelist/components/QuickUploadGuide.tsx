@@ -5,7 +5,7 @@ import { FileSpreadsheet, ListChecks } from "lucide-react";
 // not with the separate (unwired) UploadPricelistTab/usePricelistUpload one.
 export function QuickUploadGuide() {
   return (
-    <div className="flex w-72 shrink-0 flex-col gap-3 rounded-2xl border border-gray-200 bg-white p-5">
+    <div className="flex w-full flex-col gap-3 rounded-2xl border border-gray-200 bg-white p-5">
       <p className="text-sm font-bold text-gray-800">Quick Upload Guide</p>
 
       <div className="rounded-xl border border-gray-100 bg-gray-50 p-3">

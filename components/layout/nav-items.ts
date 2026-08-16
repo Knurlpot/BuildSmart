@@ -26,7 +26,7 @@ export const NAV_ITEMS: NavItem[] = [
     color: "#10b981",
   },
   {
-    label: "Company Preferences & Rules",
+    label: "Preferences & Rules",
     icon: SlidersHorizontal,
     href: "/management",
     minStep: 1,
