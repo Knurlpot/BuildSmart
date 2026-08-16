@@ -62,9 +62,9 @@ const SOURCE_OPTIONS: { value: QuotationPrioritySource; label: string; icon: typ
 ];
 
 const FALLBACK_OPTIONS: { value: QuotationFallbackRule; label: string; helper: string }[] = [
-  { value: "Use next available source", label: "Use next available source", helper: "Try the selected source first, then use the other source when a line is missing a rate." },
-  { value: "Use lowest uploaded rate", label: "Use lowest uploaded rate", helper: "Use the lowest matching rate from the uploaded pricelist entries for each material." },
-  { value: "Flag for manual review", label: "Flag for manual review", helper: "Keep missing prices visible for Minor Revision instead of auto-substituting." },
+  { value: "Use next available source", label: "Next Available Source", helper: "Try the selected source first, then use the other source when a line is missing a rate." },
+  { value: "Use lowest uploaded rate", label: "Lowest Uploaded Rate", helper: "Use the lowest matching rate from the uploaded pricelist entries for each material." },
+  { value: "Flag for manual review", label: "Flag for Manual Review", helper: "Keep missing prices visible for Minor Revision instead of auto-substituting." },
 ];
 
 function initTierItems(segments: DraftSegment[], basis: PricelistBasis): Record<ProvisionalTier, ProvisionalItemLine[]> {
@@ -396,9 +396,8 @@ export function QuotationResultsStep({ client, quotation, segments, blueprintFlo
           <DialogHeader>
             <DialogTitle>Return to segmentation?</DialogTitle>
             <DialogDescription>
-              This returns you to reviewing and confirming segments. For a blueprint quote, the same already-scanned
-              areas (no re-upload), for Quick Measurement your existing entries. Both quotation options generated
-              here are discarded and regenerated once you continue.
+              You return to review segments with your previous data. Any quotations generated here are discarded and
+              regenerated when you proceed.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
