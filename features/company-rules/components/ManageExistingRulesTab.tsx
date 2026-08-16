@@ -26,6 +26,7 @@ interface ManageExistingRulesTabProps {
 }
 
 type RuleFilter = "all" | RuleKind;
+const RULE_FILTER_KINDS = RULE_KINDS.filter((kind) => kind !== "material-rule");
 
 export function ManageExistingRulesTab({ onViewRule }: ManageExistingRulesTabProps) {
   const { rules, isLoading, error, refetch, checkUsage, isCheckingUsage, disable, isDisabling, disableError } =
@@ -206,7 +207,7 @@ export function ManageExistingRulesTab({ onViewRule }: ManageExistingRulesTabPro
             >
               All
             </button>
-            {RULE_KINDS.map((kind) => (
+            {RULE_FILTER_KINDS.map((kind) => (
               <button
                 key={kind}
                 type="button"

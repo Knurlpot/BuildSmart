@@ -206,10 +206,7 @@ function BoqTab({ items }: { items: ProvisionalItemLine[] }) {
   return (
     <div className="flex flex-col gap-3">
       <p className="text-xs text-gray-500">
-        Read-only item-level Bill of Quantities. Every line is derived from a segment&apos;s treatment (Part C: this
-        shows specific materials, not just service types, once <code className="rounded bg-gray-100 px-1">treatment_type</code> and
-        material rules exist on the backend). To edit a quantity, price, or supplier, use Validate &amp; Edit →
-        Minor Revision.
+        These are the materials needed for the project.
       </p>
       <div className="overflow-x-auto rounded-xl border border-gray-100">
         <table className="w-full text-xs">

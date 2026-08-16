@@ -57,7 +57,7 @@ type QuotationPrioritySource = "Uploaded" | "DPWH";
 type QuotationFallbackRule = "Use next available source" | "Use lowest uploaded rate" | "Flag for manual review";
 
 const SOURCE_OPTIONS: { value: QuotationPrioritySource; label: string; icon: typeof FileText }[] = [
-  { value: "Uploaded", label: "Uploaded Pricelist", icon: FileText },
+  { value: "Uploaded", label: "Supplier", icon: FileText },
   { value: "DPWH", label: "DPWH CMPD", icon: Database },
 ];
 
@@ -306,10 +306,6 @@ export function QuotationResultsStep({ client, quotation, segments, blueprintFlo
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Material Source &amp; Fallback</DialogTitle>
-            <DialogDescription>
-              Apply one source rule to all materials in this quotation. Individual exceptions can still be changed in
-              Minor Revision.
-            </DialogDescription>
           </DialogHeader>
           <div className="flex flex-col gap-5">
             <div>
