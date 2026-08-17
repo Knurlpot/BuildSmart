@@ -311,16 +311,16 @@ function OpenProjectsTabs() {
     <Tabs value={activeTab} onValueChange={setActiveTab} className="flex flex-col gap-5">
       <div className="flex shrink-0 flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-3">
-          <TabsList className="flex h-10 w-fit gap-0 overflow-hidden rounded-lg border border-gray-200 bg-white p-0">
+          <TabsList className="flex h-12 w-fit gap-0 overflow-hidden rounded-xl border border-gray-200 bg-white p-0">
             <TabsTrigger
               value="projects"
-              className="!h-full w-36 flex-none rounded-none px-4 py-2 text-sm font-semibold text-gray-500 transition hover:bg-gray-50 data-active:bg-primary data-active:text-primary-foreground"
+              className="!h-full min-w-52 flex-none rounded-none px-7 py-3 text-sm font-semibold text-gray-500 transition hover:bg-gray-50 data-active:bg-primary data-active:text-primary-foreground"
             >
               Quotations / Projects
             </TabsTrigger>
             <TabsTrigger
               value="clients"
-              className="!h-full w-36 flex-none rounded-none px-4 py-2 text-sm font-semibold text-gray-500 transition hover:bg-gray-50 data-active:bg-primary data-active:text-primary-foreground"
+              className="!h-full min-w-44 flex-none rounded-none px-7 py-3 text-sm font-semibold text-gray-500 transition hover:bg-gray-50 data-active:bg-primary data-active:text-primary-foreground"
             >
               My Clients
             </TabsTrigger>

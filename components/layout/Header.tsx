@@ -77,21 +77,23 @@ export default function Header({ workflow }: HeaderProps) {
         workflow ? "bg-primary shadow-md qg-header-shimmer" : "border-b border-gray-200 bg-white shadow-sm"
       }`}
     >
-      {workflow ? (
-        <div className="flex min-w-0 flex-1 items-center gap-2.5">
-          <div className="flex shrink-0 items-center gap-1.5 rounded-md bg-white/15 px-2 py-1">
-            <Image src={logoFrame(13)} alt="" className="h-3.5 w-3.5 brightness-0 invert" />
-            <span className="text-[10px] font-extrabold uppercase tracking-wide text-white">{workflow.label}</span>
+      <div className="flex min-w-0 flex-1 items-center gap-3">
+        {workflow ? (
+          <div className="flex min-w-0 flex-1 items-center gap-2.5">
+            <div className="flex shrink-0 items-center gap-1.5 rounded-md bg-white/15 px-2 py-1">
+              <Image src={logoFrame(13)} alt="" className="h-3.5 w-3.5 brightness-0 invert" />
+              <span className="text-[10px] font-extrabold uppercase tracking-wide text-white">{workflow.label}</span>
+            </div>
+            <div className="hidden h-5 w-px shrink-0 bg-white/20 sm:block" />
+            <WorkflowStepper steps={workflow.steps} currentStep={workflow.currentStep} />
           </div>
-          <div className="hidden h-5 w-px shrink-0 bg-white/20 sm:block" />
-          <WorkflowStepper steps={workflow.steps} currentStep={workflow.currentStep} />
-        </div>
-      ) : (
-        <div>
-          <h1 className="text-base font-bold text-gray-900">{title}</h1>
-          {subtitle && <p className="text-xs text-gray-500">{subtitle}</p>}
-        </div>
-      )}
+        ) : (
+          <div>
+            <h1 className="text-base font-bold text-gray-900">{title}</h1>
+            {subtitle && <p className="text-xs text-gray-500">{subtitle}</p>}
+          </div>
+        )}
+      </div>
 
       <div ref={menuRef} className="relative shrink-0">
         <button
