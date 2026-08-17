@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Database, LibraryBig, Upload } from "lucide-react";
+import { Database, LibraryBig, Truck, Upload } from "lucide-react";
 import { RequireAuth } from "@/components/auth/RequireAuth";
 import { AiNormalizationPanel, PriceCatalogTab, PublishedSourceTab } from "@/features/pricelist/components";
+import { SupplierBenchmarkContent } from "@/features/supplier-benchmarking/components";
 import { usePricelistCatalog } from "@/hooks/usePricelistCatalog";
 import { usePricelistPublishedSource } from "@/hooks/usePricelistPublishedSource";
 import { useAuth } from "@/providers/AuthProvider";
@@ -14,6 +15,7 @@ const TABS = [
   { id: "upload", label: "Upload Pricelist", icon: Upload },
   { id: "published", label: "Published Sources", icon: Database },
   { id: "catalog", label: "Price Catalog", icon: LibraryBig },
+  { id: "benchmark", label: "Benchmark Suppliers", icon: Truck },
 ] as const;
 
 type TabId = (typeof TABS)[number]["id"];
@@ -101,6 +103,7 @@ export default function PricelistPage() {
         )}
         {activeTab === "published" && <PublishedSourceTab onViewCatalog={goToCatalog} />}
         {activeTab === "catalog" && <PriceCatalogTab />}
+        {activeTab === "benchmark" && <SupplierBenchmarkContent />}
       </div>
     </RequireAuth>
   );

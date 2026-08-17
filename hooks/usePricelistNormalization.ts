@@ -63,6 +63,7 @@ export interface PricelistReviewItem {
   upload_id: number | null;
   source: string;
   supplier_id: number | null;
+  supplier_name: string | null;
   status: string;
   created_at: string;
 }
@@ -115,7 +116,14 @@ export type PricelistReviewItemUpdate = Partial<
 >;
 
 async function uploadPricelistFile(form: FormData): Promise<UploadResponse> {
-  const res = await fetch(`${NORMALIZATION_API_BASE}/pricelist/upload`, { method: 'POST', body: form });
+  let res: Response;
+  try {
+    res = await fetch(`${NORMALIZATION_API_BASE}/pricelist/upload`, { method: 'POST', body: form });
+  } catch {
+    throw new Error(
+      `Cannot reach the pricelist processing backend at ${NORMALIZATION_API_BASE || 'the configured API URL'}. Make sure FastAPI is running on port 8000.`
+    );
+  }
   const body = await res.json().catch(() => null);
 
   if (res.status === 422) {

@@ -11,11 +11,9 @@ import { useFetch } from './useFetch';
 import { useMutation } from './useMutation';
 
 export interface SavedPriceRecord {
-  // Always present — the route's JOIN LATERAL requires an actual
-  // Supplier-sourced historical_price_record to exist for an item to appear
-  // here at all (see app/api/pricelist/catalog/route.ts). An item that's had
-  // its only price record deleted drops out of this list entirely, rather
-  // than lingering as a zero-price row with nothing left to act on.
+  // Always present. The route lists Supplier-sourced historical_price_record
+  // rows directly, so the same material from different suppliers appears as
+  // separate catalog records instead of being collapsed into one latest row.
   historicalrec_id: number;
   item_code: number;
   item_name: string;
@@ -59,10 +57,8 @@ export function usePricelistCatalog() {
     refetch();
   }, [enabled, refetch]);
 
-  // Deletes EVERY Supplier price record for the item behind this row (see
-  // the route's own comment for why) — the underlying Items row itself is
-  // untouched, but its whole Supplier price history is gone, not just the
-  // single latest record shown.
+  // Deletes only the selected Supplier price record. Other supplier records
+  // for the same material remain in the catalog.
   const remove = async (historicalrecId: number) => {
     await deleteMutation.mutate(`/api/pricelist/catalog/${historicalrecId}`, undefined, 'DELETE');
     refetch();

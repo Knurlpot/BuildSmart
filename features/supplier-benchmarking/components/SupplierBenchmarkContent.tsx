@@ -4,7 +4,6 @@ import { useMemo, useState } from "react";
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { Filter, Lightbulb } from "lucide-react";
 import type { ColumnDef } from "@tanstack/react-table";
-import { RequireOnboardingStep } from "@/components/auth/RequireOnboardingStep";
 import { QueryState } from "@/components/feedback/QueryState";
 import { DataTable } from "@/components/data-table/DataTable";
 import { useSupplierBenchmarks, type SupplierBenchmarkRow } from "@/hooks/useSupplierBenchmarks";
@@ -22,12 +21,12 @@ const RANKING_COLUMNS: ColumnDef<SupplierBenchmarkRow>[] = [
   {
     accessorKey: "supplier_name",
     header: "Supplier",
-    cell: ({ getValue }) => getValue<string | undefined>() ?? "—",
+    cell: ({ getValue }) => getValue<string | undefined>() ?? "-",
   },
   {
     accessorKey: "region",
     header: "Region",
-    cell: ({ getValue }) => getValue<string | undefined>() ?? "—",
+    cell: ({ getValue }) => getValue<string | undefined>() ?? "-",
   },
   { accessorKey: "average_price_score", header: "Price" },
   { accessorKey: "update_frequency_score", header: "Updates" },
@@ -42,12 +41,11 @@ const RANKING_COLUMNS: ColumnDef<SupplierBenchmarkRow>[] = [
   },
 ];
 
-function SupplierBenchmarkContent() {
+export function SupplierBenchmarkContent() {
   const [region, setRegion] = useState("All");
   const [category, setCategory] = useState("All");
-  // No category field exists on SupplierBenchmark — options can't be honestly
-  // derived from real data yet, so this stays a single disabled "All" option
-  // until a categories endpoint is wired.
+  // No category field exists on SupplierBenchmark, so this remains a single
+  // disabled option until a category-aware endpoint is available.
   const categoryOptions = useMemo(() => ["All"], []);
 
   const { data, isLoading, error, refetch } = useSupplierBenchmarks({ region, category });
@@ -114,7 +112,7 @@ function SupplierBenchmarkContent() {
               <div key={key} className="rounded-xl border border-gray-100 bg-gray-50/60 p-4">
                 <p className="text-xs font-semibold text-gray-500">{label}</p>
                 <p className="mt-1 text-xl font-extrabold text-gray-900">
-                  {averages?.[key] !== undefined ? averages[key]!.toFixed(1) : "—"}
+                  {averages?.[key] !== undefined ? averages[key]!.toFixed(1) : "-"}
                 </p>
               </div>
             ))}
@@ -188,13 +186,5 @@ function SupplierBenchmarkContent() {
         <p className="text-sm text-gray-400">No recommendations available yet.</p>
       </div>
     </div>
-  );
-}
-
-export default function SupplierBenchmarkPage() {
-  return (
-    <RequireOnboardingStep minStep={2}>
-      <SupplierBenchmarkContent />
-    </RequireOnboardingStep>
   );
 }

@@ -105,6 +105,7 @@ class ReviewItemResponse(BaseModel):
     company_id: int | None
     source: str
     supplier_id: int | None
+    supplier_name: str | None = None
     status: str
     created_at: datetime
     upload_id: int | None = None
@@ -123,6 +124,10 @@ class ReviewItemUpdateRequest(BaseModel):
     region: str | None = Field(default=None, max_length=255)
     location: str | None = Field(default=None, max_length=255)
     status: str | None = Field(default=None, min_length=1, max_length=20)
+
+
+def _review_item_response(row: PriceListReviewItem, supplier_name: str | None = None) -> ReviewItemResponse:
+    return ReviewItemResponse.model_validate(row).model_copy(update={"supplier_name": supplier_name})
 
 
 class VersionCheckRequest(BaseModel):
@@ -365,15 +370,25 @@ def _save_review_item_to_catalog(row: PriceListReviewItem, db: Session) -> None:
         if description and not item.description:
             item.description = description
 
-    existing_price = db.execute(
+    existing_price_statement = (
         select(HistoricalPriceRecord)
         .where(HistoricalPriceRecord.item_code == item.item_code)
-        .where(HistoricalPriceRecord.supplier_id == supplier_id)
         .where(HistoricalPriceRecord.price_source == source)
         .where(HistoricalPriceRecord.region == price_region if price_region is not None else HistoricalPriceRecord.region.is_(None))
         .where(HistoricalPriceRecord.location == price_location if price_location is not None else HistoricalPriceRecord.location.is_(None))
-        .where(HistoricalPriceRecord.effective_date == effective_date)
-        .order_by(HistoricalPriceRecord.historicalrec_id.desc())
+    )
+    if supplier_id is None:
+        existing_price_statement = existing_price_statement.where(HistoricalPriceRecord.supplier_id.is_(None))
+    else:
+        existing_price_statement = existing_price_statement.where(HistoricalPriceRecord.supplier_id == supplier_id)
+    if source != "Supplier":
+        existing_price_statement = existing_price_statement.where(HistoricalPriceRecord.effective_date == effective_date)
+    existing_price = db.execute(
+        existing_price_statement.order_by(
+            HistoricalPriceRecord.effective_date.desc(),
+            HistoricalPriceRecord.recorded_at.desc(),
+            HistoricalPriceRecord.historicalrec_id.desc(),
+        )
     ).scalars().first()
 
     if existing_price is None:
@@ -392,6 +407,9 @@ def _save_review_item_to_catalog(row: PriceListReviewItem, db: Session) -> None:
         )
     else:
         existing_price.price = float(row.raw_price)
+        existing_price.effective_date = effective_date
+        existing_price.quarter = upload.quarter if upload is not None else None
+        existing_price.year = upload.year if upload is not None else None
         existing_price.recorded_at = datetime.now()
 
     # Remember this human-confirmed mapping so future uploads of the same raw
@@ -447,6 +465,32 @@ def _upload_has_catalog_rows(upload: PriceListUpload, db: Session) -> bool:
     return db.execute(statement).scalar_one() > 0
 
 
+def _find_existing_upload_for_scope(
+    db: Session,
+    *,
+    company_id: int,
+    file_hash: str,
+    effective_date,
+    source: str,
+    supplier_id: int | None,
+) -> PriceListUpload | None:
+    statement = (
+        select(PriceListUpload)
+        .where(
+            PriceListUpload.company_id == company_id,
+            PriceListUpload.file_hash == file_hash,
+            PriceListUpload.effective_date == effective_date,
+            PriceListUpload.source == (source.strip() or "Supplier"),
+        )
+        .order_by(PriceListUpload.upload_timestamp.desc(), PriceListUpload.upload_id.desc())
+    )
+    if supplier_id is None:
+        statement = statement.where(PriceListUpload.supplier_id.is_(None))
+    else:
+        statement = statement.where(PriceListUpload.supplier_id == supplier_id)
+    return db.execute(statement).scalars().first()
+
+
 @router.post("/upload", response_model=UploadResponse, response_model_exclude_none=True)
 async def upload_pricelist(
     file: UploadFile = File(...),
@@ -485,15 +529,14 @@ async def upload_pricelist(
         ).scalars().first()
         force_review_for_cross_company_file = cross_company_upload is not None
 
-        existing_upload = db.execute(
-            select(PriceListUpload)
-            .where(
-                PriceListUpload.company_id == company_id,
-                PriceListUpload.file_hash == file_hash,
-                PriceListUpload.effective_date == upload_effective_date,
-            )
-            .order_by(PriceListUpload.upload_timestamp.desc(), PriceListUpload.upload_id.desc())
-        ).scalars().first()
+        existing_upload = _find_existing_upload_for_scope(
+            db,
+            company_id=company_id,
+            file_hash=file_hash,
+            effective_date=upload_effective_date,
+            source=source,
+            supplier_id=supplier_id,
+        )
 
         existing_upload_is_reviewed = (
             existing_upload is not None
@@ -634,15 +677,14 @@ async def confirm_column_mapping(
         ).scalars().first()
         force_review_for_cross_company_file = cross_company_upload is not None
 
-        existing_upload = db.execute(
-            select(PriceListUpload)
-            .where(
-                PriceListUpload.company_id == company_id,
-                PriceListUpload.file_hash == file_hash,
-                PriceListUpload.effective_date == upload_effective_date,
-            )
-            .order_by(PriceListUpload.upload_timestamp.desc(), PriceListUpload.upload_id.desc())
-        ).scalars().first()
+        existing_upload = _find_existing_upload_for_scope(
+            db,
+            company_id=company_id,
+            file_hash=file_hash,
+            effective_date=upload_effective_date,
+            source=source,
+            supplier_id=supplier_id,
+        )
 
         existing_upload_is_reviewed = (
             existing_upload is not None
@@ -778,7 +820,20 @@ def list_review_items(
             return []
         statement = statement.where(PriceListReviewItem.upload_id == latest_upload_id)
     rows = db.execute(statement).scalars().all()
-    return rows
+    if not rows:
+        return []
+
+    supplier_ids = sorted({row.supplier_id for row in rows if row.supplier_id is not None})
+    supplier_names: dict[int, str] = {}
+    if supplier_ids:
+        for supplier_id in supplier_ids:
+            supplier_name = db.execute(
+                text("SELECT supplier_name FROM suppliers WHERE supplier_id = :supplier_id"),
+                {"supplier_id": supplier_id},
+            ).scalar_one_or_none()
+            if supplier_name is not None:
+                supplier_names[supplier_id] = supplier_name
+    return [_review_item_response(row, supplier_names.get(row.supplier_id)) for row in rows]
 
 
 @router.delete("/review", response_model=ClearReviewResponse)
@@ -832,7 +887,13 @@ def update_review_item(
 
     db.commit()
     db.refresh(row)
-    return row
+    supplier_name = None
+    if row.supplier_id is not None:
+        supplier_name = db.execute(
+            text("SELECT supplier_name FROM suppliers WHERE supplier_id = :supplier_id"),
+            {"supplier_id": row.supplier_id},
+        ).scalar_one_or_none()
+    return _review_item_response(row, supplier_name)
 
 
 @router.post("/fetch-published", response_model=FetchPublishedResponse)

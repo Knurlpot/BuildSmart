@@ -246,6 +246,7 @@ function ReviewItemRow({
     "h-8 w-full min-w-[7rem] rounded-lg border border-gray-200 bg-white px-2 text-sm text-gray-700 outline-none focus:border-primary focus:ring-2 focus:ring-primary/15";
   const displayRegion = item.region || inferRegionFromLocation(item.location) || "—";
   const displayLocation = item.location || "—";
+  const displaySource = item.supplier_name || item.source || "Supplier";
 
   const checkboxCell = (
     <td className="w-8 py-2 pr-2">
@@ -280,7 +281,7 @@ function ReviewItemRow({
             <td className="py-2 pr-4 text-gray-500">{item.suggested_brand || "Generic"}</td>
           </>
         )}
-        <td className="py-2 pr-4 text-gray-500">{item.source || "Supplier"}</td>
+        <td className="py-2 pr-4 text-gray-500">{displaySource}</td>
       </tr>
     );
   }
@@ -358,7 +359,7 @@ function ReviewItemRow({
           </td>
         </>
       )}
-      <td className="py-2 pr-4 text-gray-500">{item.source}</td>
+      <td className="py-2 pr-4 text-gray-500">{displaySource}</td>
     </tr>
   );
 }

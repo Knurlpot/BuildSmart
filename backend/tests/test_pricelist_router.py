@@ -18,6 +18,18 @@ FIXTURE = Path(__file__).parent / "fixtures" / "sample_pricelist.csv"
 client = TestClient(app)
 
 
+def _insert_supplier(db_session, name: str) -> int:
+    slug = name.lower().replace(" ", "-")
+    return db_session.execute(
+        text(
+            "INSERT INTO suppliers (supplier_name, supplier_address, city, region, contact_email, contact_number, supplier_type) "
+            "VALUES (:name, 'Test Address', 'Bacolod', 'NIR', :email, '09170000000', 'Distributor') "
+            "RETURNING supplier_id"
+        ),
+        {"name": name, "email": f"{slug}@example.com"},
+    ).scalar_one()
+
+
 def _cleanup_upload(upload_id: str) -> None:
     for f in pricelist_router.UPLOAD_DIR.glob(f"{upload_id}.*"):
         f.unlink()
@@ -47,6 +59,65 @@ def test_upload_triggers_task_without_a_real_worker():
     assert saved_file.exists()
     assert saved_file.suffix == ".csv"
     saved_file.unlink()  # clean up the copy this test caused upload_pricelist() to write
+
+
+def test_upload_same_file_for_different_supplier_is_not_marked_already_processed(db_session):
+    first_supplier_id = _insert_supplier(db_session, "Already Processed Supplier A")
+    second_supplier_id = _insert_supplier(db_session, "Already Processed Supplier B")
+    company_id = db_session.execute(
+        text(
+            "INSERT INTO company (company_name, company_address, contact_email, contact_number, specialization_1) "
+            "VALUES ('Upload Scope Co', 'Test Address', 'upload-scope@example.com', '09170000000', 'General Contractor') "
+            "RETURNING company_id"
+        )
+    ).scalar_one()
+
+    def override_get_db():
+        yield db_session
+
+    fake_result = SimpleNamespace(id="different-supplier-task")
+    app.dependency_overrides[get_db] = override_get_db
+    try:
+        with patch.object(pricelist_router.normalize_price_list, "delay", return_value=fake_result):
+            with FIXTURE.open("rb") as f:
+                first_response = client.post(
+                    "/pricelist/upload",
+                    files={"file": ("sample_pricelist.csv", f, "text/csv")},
+                    data={
+                        "source": "Supplier",
+                        "supplier_id": str(first_supplier_id),
+                        "company_id": str(company_id),
+                        "effective_date": "2026-08-17",
+                    },
+                )
+            assert first_response.status_code == 200
+
+            first_upload = db_session.execute(
+                select(PriceListUpload)
+                .where(PriceListUpload.company_id == company_id)
+                .where(PriceListUpload.supplier_id == first_supplier_id)
+            ).scalars().first()
+            assert first_upload is not None
+            first_upload.processing_status = "completed"
+            first_upload.records_imported = 1
+            db_session.flush()
+
+            with FIXTURE.open("rb") as f:
+                second_response = client.post(
+                    "/pricelist/upload",
+                    files={"file": ("sample_pricelist.csv", f, "text/csv")},
+                    data={
+                        "source": "Supplier",
+                        "supplier_id": str(second_supplier_id),
+                        "company_id": str(company_id),
+                        "effective_date": "2026-08-17",
+                    },
+                )
+    finally:
+        del app.dependency_overrides[get_db]
+
+    assert second_response.status_code == 200
+    assert second_response.json() == {"task_id": "different-supplier-task"}
 
 
 def test_upload_with_unrecognized_columns_returns_structured_422():
@@ -551,6 +622,123 @@ def test_update_review_item_approve_does_not_store_missing_description_as_item_n
     ).scalars().first()
     assert saved_item is not None
     assert saved_item.description is None
+
+
+def test_approving_same_supplier_material_updates_existing_supplier_price(db_session):
+    supplier_id = _insert_supplier(db_session, "Same Supplier Co")
+    material_name = "Regression Same Supplier Cement Board"
+    item = PriceListReviewItem(
+        raw_name=material_name,
+        raw_unit="bag",
+        raw_price=255.50,
+        confidence=0.82,
+        suggested_category_type="Structural",
+        suggested_material=material_name,
+        suggested_brand="Holcim",
+        source="Supplier",
+        supplier_id=supplier_id,
+    )
+    db_session.add(item)
+    db_session.flush()
+
+    def override_get_db():
+        yield db_session
+
+    app.dependency_overrides[get_db] = override_get_db
+    try:
+        first_response = client.patch(f"/pricelist/review/{item.review_id}", json={"status": "Approved"})
+        assert first_response.status_code == 200
+
+        saved_item = db_session.execute(
+            select(Items)
+            .where(Items.item_name == material_name)
+            .where(Items.brand == "Holcim")
+            .where(Items.unit == "bag")
+            .where(Items.item_source == "Supplier")
+        ).scalars().first()
+        assert saved_item is not None
+
+        existing_price = db_session.execute(
+            select(HistoricalPriceRecord)
+            .where(HistoricalPriceRecord.item_code == saved_item.item_code)
+            .where(HistoricalPriceRecord.supplier_id == supplier_id)
+            .where(HistoricalPriceRecord.price_source == "Supplier")
+        ).scalars().one()
+        original_price_id = existing_price.historicalrec_id
+
+        second = PriceListReviewItem(
+            raw_name=material_name,
+            raw_unit="bag",
+            raw_price=275.25,
+            confidence=0.82,
+            suggested_category_type="Structural",
+            suggested_material=material_name,
+            suggested_brand="Holcim",
+            source="Supplier",
+            supplier_id=supplier_id,
+        )
+        db_session.add(second)
+        db_session.flush()
+        second_response = client.patch(f"/pricelist/review/{second.review_id}", json={"status": "Approved"})
+        assert second_response.status_code == 200
+    finally:
+        del app.dependency_overrides[get_db]
+
+    prices = db_session.execute(
+        select(HistoricalPriceRecord)
+        .where(HistoricalPriceRecord.item_code == saved_item.item_code)
+        .where(HistoricalPriceRecord.supplier_id == supplier_id)
+        .where(HistoricalPriceRecord.price_source == "Supplier")
+    ).scalars().all()
+    assert len(prices) == 1
+    assert prices[0].historicalrec_id == original_price_id
+    assert float(prices[0].price) == 275.25
+
+
+def test_approving_different_supplier_same_material_creates_separate_supplier_price(db_session):
+    first_supplier_id = _insert_supplier(db_session, "First Supplier Co")
+    second_supplier_id = _insert_supplier(db_session, "Second Supplier Co")
+    material_name = "Regression Multi Supplier Cement Board"
+
+    def override_get_db():
+        yield db_session
+
+    app.dependency_overrides[get_db] = override_get_db
+    try:
+        for supplier_id in (first_supplier_id, second_supplier_id):
+            item = PriceListReviewItem(
+                raw_name=material_name,
+                raw_unit="bag",
+                raw_price=255.50,
+                confidence=0.82,
+                suggested_category_type="Structural",
+                suggested_material=material_name,
+                suggested_brand="Holcim",
+                source="Supplier",
+                supplier_id=supplier_id,
+            )
+            db_session.add(item)
+            db_session.flush()
+            response = client.patch(f"/pricelist/review/{item.review_id}", json={"status": "Approved"})
+            assert response.status_code == 200
+    finally:
+        del app.dependency_overrides[get_db]
+
+    saved_item = db_session.execute(
+        select(Items)
+        .where(Items.item_name == material_name)
+        .where(Items.brand == "Holcim")
+        .where(Items.unit == "bag")
+        .where(Items.item_source == "Supplier")
+    ).scalars().first()
+    assert saved_item is not None
+
+    prices = db_session.execute(
+        select(HistoricalPriceRecord)
+        .where(HistoricalPriceRecord.item_code == saved_item.item_code)
+        .where(HistoricalPriceRecord.price_source == "Supplier")
+    ).scalars().all()
+    assert {price.supplier_id for price in prices} == {first_supplier_id, second_supplier_id}
 
 
 def test_approving_review_item_writes_approved_match_cache_entry(db_session):

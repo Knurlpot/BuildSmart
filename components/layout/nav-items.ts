@@ -4,7 +4,6 @@ import {
   FileSpreadsheet,
   FolderOpen,
   TrendingUp,
-  Truck,
   type LucideIcon,
 } from "lucide-react";
 
@@ -53,12 +52,5 @@ export const NAV_ITEMS: NavItem[] = [
     href: "/market-intelligence",
     minStep: 2,
     color: "#06b6d4",
-  },
-  {
-    label: "Benchmark Suppliers",
-    icon: Truck,
-    href: "/suppliers/benchmark",
-    minStep: 2,
-    color: "#8b5cf6",
   },
 ];

@@ -545,7 +545,7 @@ CREATE TABLE price_list_upload (
     error_message TEXT,  -- if processing_status = 'failed'
     CONSTRAINT fk_upload_company FOREIGN KEY (company_id) REFERENCES company(company_id) ON DELETE CASCADE,
     CONSTRAINT fk_upload_supplier FOREIGN KEY (supplier_id) REFERENCES suppliers(supplier_id) ON DELETE SET NULL,
-    CONSTRAINT uq_company_file_effective_date UNIQUE (company_id, file_hash, effective_date)
+    CONSTRAINT uq_company_file_supplier_effective_date UNIQUE (company_id, file_hash, supplier_id, effective_date)
 );
 
 CREATE INDEX idx_upload_company_status ON price_list_upload(company_id, processing_status);
