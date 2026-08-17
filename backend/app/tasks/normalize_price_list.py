@@ -95,6 +95,7 @@ def _find_existing_supplier_price(
     source: str,
     region: str | None,
     location: str | None,
+    effective_date: date,
 ) -> HistoricalPriceRecord | None:
     if source != "Supplier":
         return None
@@ -105,6 +106,7 @@ def _find_existing_supplier_price(
         .where(HistoricalPriceRecord.price_source == source)
         .where(HistoricalPriceRecord.region == region if region is not None else HistoricalPriceRecord.region.is_(None))
         .where(HistoricalPriceRecord.location == location if location is not None else HistoricalPriceRecord.location.is_(None))
+        .where(HistoricalPriceRecord.effective_date == effective_date)
         .order_by(HistoricalPriceRecord.effective_date.desc(), HistoricalPriceRecord.recorded_at.desc(), HistoricalPriceRecord.historicalrec_id.desc())
     )
     if supplier_id is None:
@@ -282,6 +284,7 @@ def normalize_price_list(
                 source=source,
                 region=price_region,
                 location=price_location,
+                effective_date=price_effective_date,
             )
 
             if existing_price is None:

@@ -14,8 +14,8 @@ import { advanceOnboardingStep, hasCompletedPricelistStep } from "@/lib/onboardi
 const TABS = [
   { id: "upload", label: "Upload Pricelist", icon: Upload },
   { id: "published", label: "Published Sources", icon: Database },
-  { id: "catalog", label: "Price Catalog", icon: LibraryBig },
   { id: "benchmark", label: "Benchmark Suppliers", icon: Truck },
+  { id: "catalog", label: "Price Catalog", icon: LibraryBig },
 ] as const;
 
 type TabId = (typeof TABS)[number]["id"];
@@ -97,7 +97,6 @@ export default function PricelistPage() {
             onCatalogChanged={() => {
               setUploadCompleted(true);
               supplierCatalog.refetch();
-              goToCatalog();
             }}
           />
         )}

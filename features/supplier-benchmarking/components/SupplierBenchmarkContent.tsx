@@ -1,69 +1,89 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { Filter, Lightbulb } from "lucide-react";
-import type { ColumnDef } from "@tanstack/react-table";
+import { CalendarClock, Filter, PackageSearch, Search, TrendingDown } from "lucide-react";
 import { QueryState } from "@/components/feedback/QueryState";
-import { DataTable } from "@/components/data-table/DataTable";
-import { useSupplierBenchmarks, type SupplierBenchmarkRow } from "@/hooks/useSupplierBenchmarks";
+import { useFetch } from "@/hooks/useFetch";
+import type { SavedPriceRecord } from "@/hooks/usePricelistCatalog";
 import { REGIONS } from "@/lib/regions";
 
-const SCORE_DIMENSIONS: { key: keyof SupplierBenchmarkRow; label: string }[] = [
-  { key: "average_price_score", label: "Avg. Price Score" },
-  { key: "update_frequency_score", label: "Update Frequency" },
-  { key: "reliability_score", label: "Reliability" },
-  { key: "delivery_score", label: "Delivery" },
-  { key: "overall_score", label: "Overall Score" },
-];
+type MaterialComparison = {
+  key: string;
+  itemName: string;
+  category: string;
+  unit: string;
+  offers: SavedPriceRecord[];
+};
 
-const RANKING_COLUMNS: ColumnDef<SupplierBenchmarkRow>[] = [
-  {
-    accessorKey: "supplier_name",
-    header: "Supplier",
-    cell: ({ getValue }) => getValue<string | undefined>() ?? "-",
-  },
-  {
-    accessorKey: "region",
-    header: "Region",
-    cell: ({ getValue }) => getValue<string | undefined>() ?? "-",
-  },
-  { accessorKey: "average_price_score", header: "Price" },
-  { accessorKey: "update_frequency_score", header: "Updates" },
-  { accessorKey: "reliability_score", header: "Reliability" },
-  { accessorKey: "delivery_score", header: "Delivery" },
-  {
-    accessorKey: "overall_score",
-    header: "Overall",
-    cell: ({ getValue }) => (
-      <span className="font-bold text-primary">{getValue<number>().toFixed(1)}</span>
-    ),
-  },
-];
+function fmt(n: number) {
+  return "PHP " + n.toLocaleString("en-PH", { minimumFractionDigits: 2 });
+}
+
+function formatDate(iso: string) {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "-";
+  return d.toLocaleDateString("en-PH", { month: "short", day: "numeric", year: "numeric" });
+}
+
+function materialKey(row: SavedPriceRecord) {
+  return [row.item_name.trim().toLowerCase(), row.unit.trim().toLowerCase(), row.category_type ?? ""].join("|");
+}
 
 export function SupplierBenchmarkContent() {
   const [region, setRegion] = useState("All");
   const [category, setCategory] = useState("All");
-  // No category field exists on SupplierBenchmark, so this remains a single
-  // disabled option until a category-aware endpoint is available.
-  const categoryOptions = useMemo(() => ["All"], []);
+  const [search, setSearch] = useState("");
+  const [selectedKey, setSelectedKey] = useState<string | null>(null);
 
-  const { data, isLoading, error, refetch } = useSupplierBenchmarks({ region, category });
+  const { data, isLoading, error, refetch } = useFetch<SavedPriceRecord[]>("/api/pricelist/catalog");
   const rows = useMemo(() => data ?? [], [data]);
 
-  const ranked = useMemo(
-    () => [...rows].sort((a, b) => b.overall_score - a.overall_score),
+  const categoryOptions = useMemo(
+    () => Array.from(new Set(rows.map((row) => row.category_type ?? "Uncategorized"))).sort(),
     [rows]
   );
 
-  const averages = useMemo(() => {
-    if (rows.length === 0) return null;
-    const result: Partial<Record<string, number>> = {};
-    for (const { key } of SCORE_DIMENSIONS) {
-      result[key] = rows.reduce((sum, r) => sum + (Number(r[key]) || 0), 0) / rows.length;
+  const comparisons = useMemo<MaterialComparison[]>(() => {
+    const needle = search.trim().toLowerCase();
+    const filtered = rows.filter((row) => {
+      const matchesRegion = region === "All" || row.region === region;
+      const rowCategory = row.category_type ?? "Uncategorized";
+      const matchesCategory = category === "All" || rowCategory === category;
+      const text = `${row.item_name} ${row.supplier_name ?? ""} ${row.brand} ${row.description_material}`.toLowerCase();
+      return matchesRegion && matchesCategory && (!needle || text.includes(needle));
+    });
+
+    const grouped = new Map<string, SavedPriceRecord[]>();
+    for (const row of filtered) {
+      const key = materialKey(row);
+      grouped.set(key, [...(grouped.get(key) ?? []), row]);
     }
-    return result;
-  }, [rows]);
+
+    return Array.from(grouped.entries())
+      .map(([key, offers]) => {
+        const sortedOffers = [...offers].sort((a, b) => a.price - b.price);
+        const first = sortedOffers[0];
+        return {
+          key,
+          itemName: first.item_name,
+          category: first.category_type ?? "Uncategorized",
+          unit: first.unit,
+          offers: sortedOffers,
+        };
+      })
+      .sort((a, b) => b.offers.length - a.offers.length || a.itemName.localeCompare(b.itemName));
+  }, [rows, region, category, search]);
+
+  const selected = useMemo(() => {
+    if (comparisons.length === 0) return null;
+    return comparisons.find((item) => item.key === selectedKey) ?? comparisons[0];
+  }, [comparisons, selectedKey]);
+
+  const supplierCount = selected ? new Set(selected.offers.map((offer) => offer.supplier_name ?? "Unassigned")).size : 0;
+  const cheapest = selected?.offers[0] ?? null;
+  const highest = selected?.offers[selected.offers.length - 1] ?? null;
+  const savings = cheapest && highest ? highest.price - cheapest.price : 0;
+  const savingsPercent = cheapest && highest && highest.price > 0 ? (savings / highest.price) * 100 : 0;
 
   return (
     <div className="flex flex-col gap-5">
@@ -86,105 +106,163 @@ export function SupplierBenchmarkContent() {
           <select
             value={category}
             onChange={(e) => setCategory(e.target.value)}
-            disabled={categoryOptions.length <= 1}
-            className="rounded-lg border border-gray-200 px-3 py-1.5 text-sm focus:border-primary focus:outline-none disabled:opacity-50"
+            className="rounded-lg border border-gray-200 px-3 py-1.5 text-sm focus:border-primary focus:outline-none"
           >
-            {categoryOptions.map((c) => (
-              <option key={c}>{c}</option>
+            <option>All</option>
+            {categoryOptions.map((option) => (
+              <option key={option}>{option}</option>
             ))}
           </select>
         </div>
-      </div>
-
-      <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
-        <p className="mb-4 font-bold text-gray-900">Score Overview</p>
-        <QueryState
-          isLoading={isLoading}
-          error={error}
-          isEmpty={rows.length === 0}
-          onRetry={refetch}
-          emptyTitle="No supplier benchmark data yet"
-          emptyHint="This section populates once /api/supplier-benchmarks returns records for the selected filters."
-          minHeight={120}
-        >
-          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
-            {SCORE_DIMENSIONS.map(({ key, label }) => (
-              <div key={key} className="rounded-xl border border-gray-100 bg-gray-50/60 p-4">
-                <p className="text-xs font-semibold text-gray-500">{label}</p>
-                <p className="mt-1 text-xl font-extrabold text-gray-900">
-                  {averages?.[key] !== undefined ? averages[key]!.toFixed(1) : "-"}
-                </p>
-              </div>
-            ))}
-          </div>
-        </QueryState>
-      </div>
-
-      <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
-        <div className="flex items-center justify-between border-b border-gray-100 px-6 py-4">
-          <p className="font-bold text-gray-900">Supplier Rankings</p>
-          <span className="text-xs text-gray-400">
-            {ranked.length} supplier{ranked.length !== 1 ? "s" : ""}
-          </span>
-        </div>
-        <QueryState
-          isLoading={isLoading}
-          error={error}
-          isEmpty={ranked.length === 0}
-          onRetry={refetch}
-          emptyTitle="No supplier benchmark data yet"
-          emptyHint="This table renders live once /api/supplier-benchmarks is available."
-          minHeight={220}
-        >
-          <DataTable
-            columns={RANKING_COLUMNS}
-            data={ranked}
-            initialSorting={[{ id: "overall_score", desc: true }]}
+        <div className="relative min-w-64 flex-1">
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search material or supplier..."
+            className="w-full rounded-lg border border-gray-200 bg-gray-50 py-2 pl-9 pr-3 text-sm outline-none transition focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/20"
           />
-        </QueryState>
-      </div>
-
-      <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
-        <p className="mb-1 font-bold text-gray-900">Overall Score by Supplier</p>
-        <p className="mb-4 text-xs text-gray-400">Higher is better</p>
-        <QueryState
-          isLoading={isLoading}
-          error={error}
-          isEmpty={ranked.length === 0}
-          onRetry={refetch}
-          emptyTitle="No data to chart yet"
-          minHeight={260}
-        >
-          <div style={{ height: 280 }}>
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart
-                data={ranked.slice(0, 10)}
-                layout="vertical"
-                margin={{ top: 5, right: 30, left: 10, bottom: 5 }}
-              >
-                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                <XAxis type="number" domain={[0, 100]} tick={{ fontSize: 11, fill: "#9ca3af" }} />
-                <YAxis
-                  type="category"
-                  dataKey="supplier_name"
-                  width={140}
-                  tick={{ fontSize: 11, fill: "#9ca3af" }}
-                />
-                <Tooltip contentStyle={{ borderRadius: 12, border: "1px solid #e5e7eb", fontSize: 12 }} />
-                <Bar dataKey="overall_score" fill="#E07B39" radius={[0, 4, 4, 0]} maxBarSize={20} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </QueryState>
-      </div>
-
-      <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
-        <div className="mb-1 flex items-center gap-2">
-          <Lightbulb className="h-4 w-4 text-gray-400" />
-          <p className="font-bold text-gray-900">Recommendations</p>
         </div>
-        <p className="text-sm text-gray-400">No recommendations available yet.</p>
       </div>
+
+      <QueryState
+        isLoading={isLoading}
+        error={error}
+        isEmpty={comparisons.length === 0}
+        onRetry={refetch}
+        emptyTitle="No supplier prices to compare yet"
+        emptyHint="Upload and approve supplier pricelists with matching materials to compare supplier offers."
+        minHeight={320}
+      >
+        <div className="grid gap-5 lg:grid-cols-[minmax(260px,0.8fr)_minmax(0,1.6fr)]">
+          <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
+            <div className="border-b border-gray-100 px-4 py-3">
+              <p className="font-bold text-gray-900">Materials</p>
+              <p className="text-xs text-gray-400">
+                {comparisons.length} material{comparisons.length !== 1 ? "s" : ""}
+              </p>
+            </div>
+            <div className="max-h-[520px] overflow-y-auto">
+              {comparisons.map((item) => {
+                const active = selected?.key === item.key;
+                const best = item.offers[0];
+                return (
+                  <button
+                    key={item.key}
+                    type="button"
+                    onClick={() => setSelectedKey(item.key)}
+                    className={`block w-full border-b border-gray-50 px-4 py-3 text-left transition last:border-b-0 ${
+                      active ? "bg-orange-50/70" : "hover:bg-gray-50"
+                    }`}
+                  >
+                    <p className="font-semibold text-gray-900">{item.itemName}</p>
+                    <p className="mt-1 text-xs text-gray-500">
+                      {item.offers.length} offer{item.offers.length !== 1 ? "s" : ""} | {item.unit} | {item.category}
+                    </p>
+                    <p className="mt-1 text-xs font-semibold text-primary">Lowest: {fmt(best.price)}</p>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-5">
+            <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Material Comparison</p>
+                  <h2 className="mt-1 text-xl font-bold text-gray-900">{selected?.itemName}</h2>
+                  <p className="text-sm text-gray-500">
+                    {selected?.category} | {selected?.unit}
+                  </p>
+                </div>
+                <div className="grid grid-cols-3 gap-4 text-right">
+                  <div>
+                    <p className="text-xs text-gray-400">Suppliers</p>
+                    <p className="text-lg font-bold text-gray-900">{supplierCount}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-400">Best Price</p>
+                    <p className="text-lg font-bold text-primary">{cheapest ? fmt(cheapest.price) : "-"}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-400">Savings</p>
+                    <p className="text-lg font-bold text-green-600">{fmt(Math.max(0, savings))}</p>
+                  </div>
+                </div>
+              </div>
+
+              {selected && selected.offers.length > 1 && (
+                <div className="mt-4 flex items-center gap-2 rounded-lg border border-green-100 bg-green-50 px-3 py-2 text-sm text-green-700">
+                  <TrendingDown className="h-4 w-4" />
+                  Choosing {cheapest?.supplier_name ?? "the lowest supplier"} saves {savingsPercent.toFixed(1)}% versus the highest offer.
+                </div>
+              )}
+            </div>
+
+            <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
+              <div className="border-b border-gray-100 px-5 py-3">
+                <p className="font-bold text-gray-900">Supplier Offers</p>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-sm">
+                  <thead>
+                    <tr className="border-b border-gray-100 text-xs uppercase tracking-wide text-gray-400">
+                      <th className="px-5 py-3">Rank</th>
+                      <th className="px-5 py-3">Supplier</th>
+                      <th className="px-5 py-3">Brand</th>
+                      <th className="px-5 py-3">Price</th>
+                      <th className="px-5 py-3">Gap</th>
+                      <th className="px-5 py-3">Effective</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-50">
+                    {selected?.offers.map((offer, index) => {
+                      const gap = cheapest ? offer.price - cheapest.price : 0;
+                      const gapPercent = cheapest && cheapest.price > 0 ? (gap / cheapest.price) * 100 : 0;
+                      return (
+                        <tr key={offer.historicalrec_id}>
+                          <td className="px-5 py-3 text-gray-500">#{index + 1}</td>
+                          <td className="px-5 py-3">
+                            <p className="font-semibold text-gray-900">{offer.supplier_name ?? "Unassigned"}</p>
+                            <p className="text-xs text-gray-400">{offer.region}</p>
+                          </td>
+                          <td className="px-5 py-3 text-gray-600">{offer.brand || "-"}</td>
+                          <td className="px-5 py-3 font-bold text-gray-900">{fmt(offer.price)}</td>
+                          <td className="px-5 py-3">
+                            {index === 0 ? (
+                              <span className="rounded-full bg-green-100 px-2 py-1 text-xs font-bold text-green-700">Lowest</span>
+                            ) : (
+                              <span className="text-gray-500">
+                                +{fmt(gap)} ({gapPercent.toFixed(1)}%)
+                              </span>
+                            )}
+                          </td>
+                          <td className="px-5 py-3 text-gray-500">
+                            <span className="inline-flex items-center gap-1">
+                              <CalendarClock className="h-3.5 w-3.5" />
+                              {formatDate(offer.effective_date)}
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {selected?.offers.length === 1 && (
+              <div className="rounded-2xl border border-amber-100 bg-amber-50 p-4 text-sm text-amber-700">
+                <div className="flex items-center gap-2">
+                  <PackageSearch className="h-4 w-4" />
+                  This material has one supplier offer. Upload another supplier pricelist with the same material to compare prices.
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      </QueryState>
     </div>
   );
 }

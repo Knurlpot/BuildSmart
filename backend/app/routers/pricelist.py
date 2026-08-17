@@ -47,13 +47,16 @@ def _default_period() -> tuple[str, int]:
     return quarter, now.year
 
 
-def _default_effective_date() -> date:
+def _effective_date_from_period(quarter: str | None, year: int | None) -> date:
+    if quarter in {"Q1", "Q2", "Q3", "Q4"} and year is not None:
+        start_month = {"Q1": 1, "Q2": 4, "Q3": 7, "Q4": 10}[quarter]
+        return date(year, start_month, 1)
     return date.today()
 
 
-def _parse_effective_date(value: str | None) -> date:
+def _parse_effective_date(value: str | None, quarter: str | None = None, year: int | None = None) -> date:
     if not value:
-        return _default_effective_date()
+        return _effective_date_from_period(quarter, year)
     try:
         return date.fromisoformat(value)
     except ValueError as exc:
@@ -329,7 +332,7 @@ def _save_review_item_to_catalog(row: PriceListReviewItem, db: Session) -> None:
             price_location = price_region
             price_region = "NIR"
     upload = db.get(PriceListUpload, row.upload_id) if row.upload_id is not None else None
-    effective_date = upload.effective_date if upload is not None and upload.effective_date is not None else _default_effective_date()
+    effective_date = upload.effective_date if upload is not None and upload.effective_date is not None else _effective_date_from_period(None, None)
 
     if supplier_id is not None:
         supplier_exists = db.execute(
@@ -381,8 +384,7 @@ def _save_review_item_to_catalog(row: PriceListReviewItem, db: Session) -> None:
         existing_price_statement = existing_price_statement.where(HistoricalPriceRecord.supplier_id.is_(None))
     else:
         existing_price_statement = existing_price_statement.where(HistoricalPriceRecord.supplier_id == supplier_id)
-    if source != "Supplier":
-        existing_price_statement = existing_price_statement.where(HistoricalPriceRecord.effective_date == effective_date)
+    existing_price_statement = existing_price_statement.where(HistoricalPriceRecord.effective_date == effective_date)
     existing_price = db.execute(
         existing_price_statement.order_by(
             HistoricalPriceRecord.effective_date.desc(),
@@ -510,7 +512,7 @@ async def upload_pricelist(
 
     default_quarter, default_year = _default_period()
     period_quarter, period_year = quarter or default_quarter, year or default_year
-    upload_effective_date = _parse_effective_date(effective_date)
+    upload_effective_date = _parse_effective_date(effective_date, period_quarter, period_year)
     file_hash = calculate_file_hash(dest)
     file_size = calculate_file_size(dest)
     db_upload: PriceListUpload | None = None
@@ -658,7 +660,7 @@ async def confirm_column_mapping(
     dest = matches[0]
     default_quarter, default_year = _default_period()
     period_quarter, period_year = quarter or default_quarter, year or default_year
-    upload_effective_date = _parse_effective_date(effective_date)
+    upload_effective_date = _parse_effective_date(effective_date, period_quarter, period_year)
     db_upload: PriceListUpload | None = None
     force_review_for_cross_company_file = False
 
