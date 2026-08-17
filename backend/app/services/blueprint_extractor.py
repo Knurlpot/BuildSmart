@@ -850,15 +850,11 @@ def extract_blueprint(filename: str, content: bytes) -> BlueprintExtractionResul
     if extension in {".png", ".jpg", ".jpeg", ".bmp"}:
         raise ValueError("Image uploads are not supported. Upload a vector PDF or DXF blueprint.")
     if extension == ".pdf":
-<<<<<<< HEAD
         result = _extract_pdf(content)
-        return validate_extraction_geometry(result)
+        result = validate_extraction_geometry(result)
+        return _with_hybrid_structured_json(filename, _with_review_metadata(result))
     if extension == ".dxf":
         result = _extract_dxf(content)
-        return validate_extraction_geometry(result)
-=======
-        return _with_hybrid_structured_json(filename, _extract_pdf(content))
-    if extension == ".dxf":
-        return _with_hybrid_structured_json(filename, _with_review_metadata(_extract_dxf(content)))
->>>>>>> b18ef380b1ed66463eeecb56171fd0b12a1aebb8
+        result = validate_extraction_geometry(result)
+        return _with_hybrid_structured_json(filename, _with_review_metadata(result))
     raise ValueError("Upload a PDF or DXF blueprint.")

@@ -21,11 +21,9 @@ class ExtractedSegment(BaseModel):
     overlay: RoomOverlay | None = None
     polygon_coords: list[tuple[float, float]] | None = None
     confidence_score: float | None = Field(default=None, ge=0, le=100)
-<<<<<<< HEAD
     geometry_flagged: bool = False
     geometry_warnings: list[str] = Field(default_factory=list)
     boundary_estimated: bool = False
-=======
     status: str = "INCLUDED"
 
 
@@ -48,7 +46,6 @@ class BlueprintLegendItem(BaseModel):
     color_hex: str = Field(pattern=r"^#[0-9A-Fa-f]{6}$")
     alpha: float = Field(ge=0, le=1)
     total_area_sqm: float = Field(ge=0)
->>>>>>> b18ef380b1ed66463eeecb56171fd0b12a1aebb8
 
 
 class BlueprintFloor(BaseModel):
@@ -71,18 +68,15 @@ class BlueprintFloor(BaseModel):
 class BlueprintExtractionResult(BaseModel):
     floors: list[BlueprintFloor] = Field(min_length=1)
     diagnostics: dict | None = None
-<<<<<<< HEAD
     blueprint_file_path: str | None = None
     persistence_enabled: bool = False
     persistence_warning: str | None = None
+    structured_json: dict | None = None
+    report_url: str | None = None
 
 
 class SavedBlueprintExtractionRequest(BaseModel):
     blueprint_file_path: str = Field(min_length=1, max_length=255)
-=======
-    structured_json: dict | None = None
-    report_url: str | None = None
->>>>>>> b18ef380b1ed66463eeecb56171fd0b12a1aebb8
 
 
 class GeminiDetectedSpace(BaseModel):

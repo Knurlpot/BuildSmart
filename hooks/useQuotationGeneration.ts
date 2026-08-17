@@ -66,8 +66,6 @@ export function useSaveSegments() {
     resetSave: save.reset,
   };
 }
-<<<<<<< HEAD
-
 export function useBlueprintRescan() {
   const rescan = useMutation<BlueprintExtractionResult>();
   return {
@@ -77,5 +75,3 @@ export function useBlueprintRescan() {
     resetRescan: rescan.reset,
   };
 }
-=======
->>>>>>> b18ef380b1ed66463eeecb56171fd0b12a1aebb8

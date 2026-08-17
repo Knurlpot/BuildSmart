@@ -8,13 +8,10 @@ export interface ExtractedSegment {
   alpha?: number | null;
   polygon_coords: [number, number][] | null;
   confidence_score: number | null;
-<<<<<<< HEAD
   geometry_flagged: boolean;
   geometry_warnings: string[];
   boundary_estimated: boolean;
-=======
   status?: string;
->>>>>>> b18ef380b1ed66463eeecb56171fd0b12a1aebb8
 }
 
 export interface BlueprintFloor {
@@ -39,13 +36,10 @@ export interface BlueprintFloor {
 export interface BlueprintExtractionResult {
   floors: BlueprintFloor[];
   diagnostics?: Record<string, unknown> | null;
-<<<<<<< HEAD
   blueprint_file_path?: string | null;
   persistence_enabled?: boolean;
   persistence_warning?: string | null;
-=======
   structured_json?: Record<string, unknown> | null;
->>>>>>> b18ef380b1ed66463eeecb56171fd0b12a1aebb8
 }
 
 export const TREATMENT_TYPES = [

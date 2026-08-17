@@ -5,11 +5,8 @@ import re
 import tempfile
 import re
 import time
-<<<<<<< HEAD
-from dataclasses import replace
-=======
 from collections import Counter
->>>>>>> b18ef380b1ed66463eeecb56171fd0b12a1aebb8
+from dataclasses import replace
 from pathlib import Path
 from urllib.parse import quote
 
@@ -54,9 +51,7 @@ class DxfFloorRegion(tuple):
         return self[1]
 
 
-<<<<<<< HEAD
 WALL_PATTERNS = ("wall", "a-wall", "partition", "column", "coloumn", "coloumns", "muro", "struct", "rooms", "room boundary", "space boundary")
-=======
 # ============================================================================
 # PHASE 1: LAYER CONFIDENCE SCORING
 # ============================================================================
@@ -236,8 +231,7 @@ def _extract_hatch_candidates(
     return hatch_candidates
 
 
-WALL_PATTERNS = ("wall", "a-wall", "partition", "column", "coloumn", "coloumns", "muro", "struct")
->>>>>>> b18ef380b1ed66463eeecb56171fd0b12a1aebb8
+WALL_PATTERNS = ("wall", "a-wall", "partition", "column", "coloumn", "coloumns", "muro", "struct", "rooms", "room boundary", "space boundary")
 DOOR_PATTERNS = ("door", "a-door", " dr", "dr-", "swing", "puerta")
 WINDOW_PATTERNS = ("window", "win")
 FURNITURE_PATTERNS = ("furn", "fixture", "fixer", "equip", "furniture", "bed", "chair", "table", "sofa", "closet", "gamla")
@@ -903,7 +897,6 @@ def _iter_linework(entities: list[NormalizedEntity], include_unknown: bool = Tru
     return linework
 
 
-<<<<<<< HEAD
 def _close_linework_gaps(
     linework: list[LineString],
     drawing_span: float,
@@ -929,16 +922,6 @@ def _close_linework_gaps(
         return direction[0] * toward[0] + direction[1] * toward[1] >= 0.97
 
     for line_index, line in enumerate(linework):
-=======
-def _close_linework_gaps(linework: list[LineString], drawing_span: float, metre_factor: float, config: DxfExtractionConfig) -> list[LineString]:
-    door_min = config.door_width_min_m / max(metre_factor, 0.000001)
-    door_max = config.door_width_max_m / max(metre_factor, 0.000001)
-    snap_tolerance = config.snap_tolerance_m / max(metre_factor, 0.000001)
-    max_gap = min(max(drawing_span * 0.014, door_min), door_max)
-    alignment_tolerance = min(max(drawing_span * 0.002, snap_tolerance), 0.18 / max(metre_factor, 0.000001))
-    endpoints: list[tuple[float, float]] = []
-    for line in linework:
->>>>>>> b18ef380b1ed66463eeecb56171fd0b12a1aebb8
         coords = list(line.coords)
         if len(coords) >= 2:
             first = (float(coords[0][0]), float(coords[0][1]))
@@ -956,11 +939,7 @@ def _close_linework_gaps(linework: list[LineString], drawing_span: float, metre_
             dx = abs(start[0] - end[0])
             dy = abs(start[1] - end[1])
             distance = math.hypot(dx, dy)
-<<<<<<< HEAD
             if distance <= 0.000001 or distance > max_gap:
-=======
-            if distance <= snap_tolerance or distance > max_gap:
->>>>>>> b18ef380b1ed66463eeecb56171fd0b12a1aebb8
                 continue
             is_small_gap = distance <= small_gap_max
             alignment_tolerance = small_alignment if is_small_gap else door_alignment
@@ -1424,13 +1403,9 @@ def _candidate_spaces_for_floor(
     min_area = config.min_space_area_sqm / max(metre_factor * metre_factor, 0.000001)
     linework = _iter_linework(floor_entities)
     diagnostics.candidate_wall_entities += len(linework)
-<<<<<<< HEAD
     closed_linework = _close_linework_gaps(linework, drawing_span, metre_factor, config, diagnostics)
     native_label_distance = config.label_match_distance_m / max(metre_factor, 0.000001)
     native_snap_tolerance = config.snap_tolerance_m / max(metre_factor, 0.000001)
-=======
-    closed_linework = _close_linework_gaps(linework, drawing_span, metre_factor, config)
->>>>>>> b18ef380b1ed66463eeecb56171fd0b12a1aebb8
     try:
         line_graph = unary_union(closed_linework)
         snapped_graph = snap(line_graph, line_graph, 0.15 / max(metre_factor, 0.000001))
@@ -1439,7 +1414,6 @@ def _candidate_spaces_for_floor(
         diagnostics.warnings.append("polygonize_failed")
         polygons = []
 
-<<<<<<< HEAD
     floor_area = max(_bounds_area(bounds), 1)
     floor_box = box(*bounds)
     wall_entities = [entity for entity in floor_entities if "wall" in entity.layer.lower()]
@@ -1454,8 +1428,6 @@ def _candidate_spaces_for_floor(
         fallback_bounds = bounds
     labels = [label for label in floor_labels if is_room_name_label(label.text)]
     min_area = config.min_space_area_sqm / max(metre_factor * metre_factor, 0.000001)
-=======
->>>>>>> b18ef380b1ed66463eeecb56171fd0b12a1aebb8
     candidate_polygons = [
         (polygon, None)
         for polygon in polygons
@@ -1485,29 +1457,12 @@ def _candidate_spaces_for_floor(
         # Label matching
         candidates = [polygon for polygon, _ in candidate_polygons if polygon.contains(label_point) or polygon.touches(label_point)]
         if not candidates:
-<<<<<<< HEAD
-            candidates = [polygon for polygon in candidate_polygons if polygon.distance(label.point) <= native_label_distance]
+            candidates = [polygon for polygon, _ in candidate_polygons if polygon.distance(label.point) <= native_label_distance]
         if not candidates and printed_area:
             candidates = [
                 polygon
-                for polygon in candidate_polygons
-                if polygon.distance(label.point) <= max(native_label_distance, drawing_span * 0.2)
-=======
-            # CAD room labels are not guaranteed to sit strictly inside the room loop:
-            # on dense plans they can be nudged into corridors/fixtures, or dimension
-            # text can be anchored just outside an angled/notched space. Prefer a nearby
-            # real polygon over the dimension fallback rectangle so the UI highlight
-            # keeps the actual room shape.
-            label_match_tolerance = config.label_match_distance_m / max(metre_factor, 0.000001)
-            buffer_tolerance = min(
-                max(config.snap_tolerance_m, drawing_span * 0.002, label_match_tolerance),
-                drawing_span * 0.08,
-            )
-            candidates = [
-                polygon
                 for polygon, _ in candidate_polygons
-                if polygon.buffer(buffer_tolerance).contains(label_point)
->>>>>>> b18ef380b1ed66463eeecb56171fd0b12a1aebb8
+                if polygon.distance(label.point) <= max(native_label_distance, drawing_span * 0.2)
             ]
         
         if printed_area:
@@ -1530,7 +1485,6 @@ def _candidate_spaces_for_floor(
             candidates = [polygon for polygon in candidates if polygon.area <= area_limit]
         
         if printed_area:
-<<<<<<< HEAD
             candidates = sorted(candidates, key=lambda polygon: (abs((polygon.area * metre_factor * metre_factor) - printed_area), polygon.distance(label.point), polygon.area))
             if candidates:
                 closest_area = candidates[0].area * metre_factor * metre_factor
@@ -1539,27 +1493,6 @@ def _candidate_spaces_for_floor(
         else:
             candidates = sorted(candidates, key=lambda polygon: (polygon.distance(label.point), polygon.area))
         used_fallback = False
-=======
-            candidates = sorted(
-                candidates,
-                key=lambda polygon: (
-                    not (polygon.contains(label_point) or polygon.touches(label_point)),
-                    polygon.distance(label_point),
-                    abs((polygon.area * metre_factor * metre_factor) - printed_area),
-                    polygon.area,
-                ),
-            )
-        else:
-            candidates = sorted(
-                candidates,
-                key=lambda polygon: (
-                    not (polygon.contains(label_point) or polygon.touches(label_point)),
-                    polygon.distance(label_point),
-                    polygon.area,
-                ),
-            )
-        
->>>>>>> b18ef380b1ed66463eeecb56171fd0b12a1aebb8
         if not candidates:
             polygon = _dimension_fallback_polygon(label, floor_labels, fallback_bounds, drawing_span, metre_factor)
             if polygon is None:
@@ -1577,7 +1510,6 @@ def _candidate_spaces_for_floor(
         if area_sqm <= 0:
             diagnostics.warnings.append("zero_area_segment_rejected")
             continue
-<<<<<<< HEAD
         if not used_fallback and area_sqm < _minimum_area_for_named_room(name):
             # Leave the label unmatched so the shared-shell pass can find the
             # actual room/open-plan shell instead of accepting furniture detail.
@@ -1588,27 +1520,11 @@ def _candidate_spaces_for_floor(
             confidence = min(confidence, 60)
         warnings = ("Boundary estimated from the printed area; verify against the walls.",) if used_fallback else ()
         spaces.append(CandidateSpace(polygon, label, name, canonical_name(name), confidence, inferred, (label.handle,), warnings, printed_area if used_fallback else None))
-=======
-        
-        symbol_evidence = _symbol_evidence_for_polygon(polygon, floor_entities, floor_labels, drawing_span)
-        if canonical in {"unlabeled", "unclassified space", "space", "room"}:
-            name = _name_from_symbol_evidence(symbol_evidence, name)
-            canonical = canonical_name(name)
-        confidence = _confidence(label, polygon, printed_area, area_sqm, inferred=not polygon.contains(label_point))
-        
-        # Door validation
-        door_valid, door_count = _validate_space_with_doors(polygon, doors)
-        confidence = _space_confidence_from_door_validation(door_count, confidence)
-        confidence = _confidence_from_symbol_evidence(confidence, symbol_evidence)
-        
-        warnings = (f"Symbol evidence: {', '.join(symbol_evidence)}.",) if symbol_evidence else ()
-        spaces.append(CandidateSpace(polygon, label, name, canonical_name(name), confidence, not polygon.contains(label_point), (label.handle,), warnings))
->>>>>>> b18ef380b1ed66463eeecb56171fd0b12a1aebb8
         used_keys.add(key)
         used_labels.add(label.handle)
+        _, door_count = _validate_space_with_doors(polygon, doors)
         diagnostics.door_validated_spaces += 1 if door_count > 0 else 0
 
-<<<<<<< HEAD
     fallback_indexes = [index for index, space in enumerate(spaces) if space.reported_area_sqm is not None and space.label is not None]
     if len(fallback_indexes) >= 2:
         fallback_points = [spaces[index].label.point for index in fallback_indexes]
@@ -1703,47 +1619,14 @@ def _candidate_spaces_for_floor(
     # When named rooms exist, unmatched CAD faces are usually furniture, wall
     # cavities, or annotation boxes rather than additional rooms.
     unclassified_candidates = candidate_polygons if not labels else []
-    for polygon in unclassified_candidates:
+    min_area_threshold = 0.8
+    for polygon, _ in unclassified_candidates:
         key = polygon_key(polygon)
         if key in used_keys:
             continue
         if any(polygon.distance(space.polygon) <= native_snap_tolerance and polygon.area < space.polygon.area * 0.12 for space in spaces):
             continue
         max_room_area = min(max(floor_area * 0.18, 90 / max(metre_factor * metre_factor, 0.000001)), 120 / max(metre_factor * metre_factor, 0.000001))
-=======
-    # ===== PASS 3: UNLABELED LINEWORK (lower confidence fallback) =====
-    # Detect rooms that don't have explicit labels but have closed linework/polygons
-    labeled_union = unary_union([space.polygon for space in spaces]) if spaces else None
-    for polygon, _ in candidate_polygons:
-        key = polygon_key(polygon)
-        if key in used_keys:
-            continue
-        
-        # Don't skip if close to existing space - only skip if fully contained within it
-        existing_space_overlap = None
-        if spaces:
-            for space in spaces:
-                overlap_ratio = polygon.intersection(space.polygon).area / max(polygon.area, 0.000001)
-                if overlap_ratio > 0.5:  # Only skip if >50% overlapped
-                    existing_space_overlap = space
-                    break
-        
-        if existing_space_overlap and polygon.area < existing_space_overlap.polygon.area * 0.2:
-            continue  # Skip only if this is a small fragment
-        
-        # Area validation - increase limits for rooms with doors
-        door_valid, door_count = _validate_space_with_doors(polygon, doors)
-        
-        if door_valid:
-            # If polygon contains doors, it's definitely a room - much higher confidence
-            max_room_area = min(max(floor_area * 0.4, 180 / max(metre_factor * metre_factor, 0.000001)), 200 / max(metre_factor * metre_factor, 0.000001))
-            min_area_threshold = 0.3  # Lower threshold for door-validated spaces
-        else:
-            # Standard room validation
-            max_room_area = min(max(floor_area * 0.25, 120 / max(metre_factor * metre_factor, 0.000001)), 150 / max(metre_factor * metre_factor, 0.000001))
-            min_area_threshold = 0.8
-        
->>>>>>> b18ef380b1ed66463eeecb56171fd0b12a1aebb8
         if polygon.area > max_room_area:
             continue
         
@@ -1759,6 +1642,7 @@ def _candidate_spaces_for_floor(
         name = _name_from_symbol_evidence(symbol_evidence, "Unclassified Space")
         
         # Higher confidence if doors validated
+        door_valid, door_count = _validate_space_with_doors(polygon, doors)
         if door_valid:
             base_confidence = 65.0 + (door_count * 5)  # 65% base + 5% per door
             base_confidence = min(base_confidence, 85.0)
@@ -1869,7 +1753,6 @@ def _to_segment(
         color_hex = normalized.color_hex
     overlay = RoomOverlay(category=category, color_hex=color_hex, alpha=alpha, rgba=_hex_to_rgba(color_hex, alpha))
     return ExtractedSegment(
-<<<<<<< HEAD
         segment_name=space.name[:150],
         area_sqm=space.reported_area_sqm or round(space.polygon.area * metre_factor * metre_factor, 2),
         polygon_coords=coords,
@@ -1877,19 +1760,6 @@ def _to_segment(
         geometry_flagged=bool(space.warnings),
         geometry_warnings=list(space.warnings),
         boundary_estimated=space.reported_area_sqm is not None,
-=======
-        segment_id=f"segment_f{floor_id}_{segment_index:02d}",
-        segment_name=name[:150],
-        area_sqm=round(space.polygon.area * metre_factor * metre_factor, 2),
-        perimeter_m=round(space.polygon.length * metre_factor, 2),
-        category=category,
-        color_hex=color_hex,
-        alpha=alpha,
-        overlay=overlay,
-        polygon_coords=coords,
-        confidence_score=space.confidence,
-        status="INCLUDED",
->>>>>>> b18ef380b1ed66463eeecb56171fd0b12a1aebb8
     )
 
 

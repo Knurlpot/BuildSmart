@@ -73,32 +73,15 @@ export async function DELETE(request: NextRequest, { params }: Params) {
 
   const { quotationId } = await params;
   const quoteId = Number(quotationId);
-<<<<<<< HEAD
-  if (!Number.isInteger(quoteId)) {
-    return NextResponse.json({ error: "Invalid quotation id." }, { status: 400 });
-  }
-
-  const result = await pool.query(
-    `DELETE FROM quotation
-     WHERE quote_id = $1 AND company_id = $2
-=======
   if (!Number.isInteger(quoteId)) return NextResponse.json({ error: "Invalid quotation id." }, { status: 400 });
 
   const result = await pool.query(
     `DELETE FROM quotation
      WHERE quote_id = $1 AND company_id = $2 AND status = 'Draft'
->>>>>>> b18ef380b1ed66463eeecb56171fd0b12a1aebb8
      RETURNING quote_id`,
     [quoteId, auth.companyId]
   );
 
-<<<<<<< HEAD
-  if (!result.rows[0]) {
-    return NextResponse.json({ error: "Project not found." }, { status: 404 });
-  }
-  return new NextResponse(null, { status: 204 });
-=======
   if (!result.rows[0]) return NextResponse.json({ error: "Draft quotation not found." }, { status: 404 });
   return NextResponse.json({ deleted: true, quote_id: result.rows[0].quote_id });
->>>>>>> b18ef380b1ed66463eeecb56171fd0b12a1aebb8
 }

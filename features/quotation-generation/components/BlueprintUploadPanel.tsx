@@ -1,20 +1,12 @@
 "use client";
 
 import { useRef, useState } from "react";
-<<<<<<< HEAD
-import { AlertTriangle, ArrowLeft, FileText, FileWarning, Upload as UploadIcon } from "lucide-react";
+import { AlertTriangle, ArrowLeft, CheckCircle2, FileText, FileWarning, Upload as UploadIcon } from "lucide-react";
 import { useBlueprintExtraction, useBlueprintRescan } from "@/hooks/useQuotationGeneration";
 import { BlueprintOverlay } from "./BlueprintOverlay";
 import { SegmentEditorList } from "./SegmentEditorList";
-import { createSegmentFromExtraction, isSegmentIncluded, type DraftSegment } from "../lib/draftSegment";
-import { resetBlueprintReview, rescanBlueprintReview } from "../lib/blueprintReviewActions.mjs";
-=======
-import { AlertTriangle, ArrowLeft, CheckCircle2, FileText, FileWarning, Upload as UploadIcon } from "lucide-react";
-import { useBlueprintExtraction } from "@/hooks/useQuotationGeneration";
-import { BlueprintOverlay } from "./BlueprintOverlay";
-import { SegmentEditorList } from "./SegmentEditorList";
 import { confidenceBand, createSegmentFromExtraction, isSegmentIncluded, type DraftSegment } from "../lib/draftSegment";
->>>>>>> b18ef380b1ed66463eeecb56171fd0b12a1aebb8
+import { resetBlueprintReview, rescanBlueprintReview } from "../lib/blueprintReviewActions.mjs";
 import type { BlueprintFloor } from "@/lib/dev/provisional/quotationGenerationTypes";
 
 const ACCEPTED_EXTENSIONS = [".pdf", ".dxf"];
@@ -235,17 +227,11 @@ export function BlueprintUploadPanel({
       onChange(nonBlueprintSegments);
       setOverlayScanning(false);
       const result = await extractBlueprint(quoteId, selectedFile);
-<<<<<<< HEAD
-      onFloorsChange(result.floors);
-      onOriginalFloorsChange(result.floors);
-      onBlueprintFilePathChange(result.blueprint_file_path ?? null);
-      setSelectedFloor(result.floors[0]?.floor_level ?? null);
-=======
       const splitFloors = splitSingleSheetFloorIntoTabs(result.floors);
       onFloorsChange(splitFloors);
       onOriginalFloorsChange(splitFloors);
+      onBlueprintFilePathChange(result.blueprint_file_path ?? null);
       setSelectedFloor(splitFloors[0]?.floor_level ?? null);
->>>>>>> b18ef380b1ed66463eeecb56171fd0b12a1aebb8
       // Segments are seeded into the SAME wizard-level list Quick Measurement writes to —
       // "MUST VALIDATE" (edit/delete/group/add) below is just further edits to it, not a
       // separate staging area. Nothing is sent to the backend until Step 3's final save.

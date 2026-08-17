@@ -1,14 +1,9 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-<<<<<<< HEAD
 import { AlertTriangle, ZoomIn, ZoomOut, RotateCcw, ScanLine } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { CONFIDENCE_BAND_LABEL, confidenceBand, type DraftSegment } from "../lib/draftSegment";
-=======
-import { ZoomIn, ZoomOut, RotateCcw, ScanLine } from "lucide-react";
-import { CONFIDENCE_BAND_LABEL, confidenceBand, polygonCentroidY, type DraftSegment } from "../lib/draftSegment";
->>>>>>> b18ef380b1ed66463eeecb56171fd0b12a1aebb8
 
 const BAND_COLOR: Record<ReturnType<typeof confidenceBand>, string> = {
   high: "#16a34a", // green, 85+
@@ -39,7 +34,6 @@ interface BlueprintOverlayProps {
   onHoverChange: (id: string | null) => void;
   /** Part E — the actual DATA reset (discarding edits/groupings/deletions/manual adds back
    * to the original extraction) lives in the parent (BlueprintUploadPanel), which is the
-<<<<<<< HEAD
    * one holding the original extraction result. This component only owns the confirm
    * dialog + the visual scan-replay; once the user confirms, it calls this AND replays its
    * own local scan animation. Omitted when `readOnly` — see that prop's doc. */
@@ -47,12 +41,6 @@ interface BlueprintOverlayProps {
   onRescanConfirmed?: () => void;
   canRescan?: boolean;
   isRescanning?: boolean;
-=======
-   * one holding the original extraction result. This component calls it directly from the
-   * Rescan button and replays its own local scan animation. Omitted when `readOnly` — see
-   * that prop's doc. */
-  onRescanConfirmed?: () => void | Promise<void>;
->>>>>>> b18ef380b1ed66463eeecb56171fd0b12a1aebb8
   onScanStateChange?: (scanning: boolean) => void;
   /** Task 7, Part B — Segment Breakdown reuses this exact component (not a rebuild) to
    * preview an already-generated/saved quote's blueprint. Rescan is a destructive EDIT
@@ -98,6 +86,7 @@ export function BlueprintOverlay({
   readOnly = false,
 }: BlueprintOverlayProps) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const [rescanConfirmOpen, setRescanConfirmOpen] = useState(false);
 
   // ── Scan animation — RAF-driven, not setInterval, per the task's explicit ask. ──
   // readOnly starts fully "scanned" (scanning=false) so a Segment Breakdown viewer sees
@@ -139,7 +128,6 @@ export function BlueprintOverlay({
     return () => cancelAnimationFrame(raf);
   }, [rescanToken, readOnly]);
 
-<<<<<<< HEAD
   const handleResetConfirm = () => {
     setRescanConfirmOpen(false);
     onResetConfirmed?.();
@@ -149,11 +137,6 @@ export function BlueprintOverlay({
   const handleRescanConfirm = () => {
     setRescanConfirmOpen(false);
     onRescanConfirmed?.();
-=======
-  const handleRescan = async () => {
-    setRescanToken((t) => t + 1);
-    await onRescanConfirmed?.();
->>>>>>> b18ef380b1ed66463eeecb56171fd0b12a1aebb8
   };
 
   // ── Zoom ──
@@ -243,13 +226,8 @@ export function BlueprintOverlay({
           {!readOnly && (
             <button
               type="button"
-<<<<<<< HEAD
               onClick={() => setRescanConfirmOpen(true)}
               title="Reset or rescan"
-=======
-              onClick={() => void handleRescan()}
-              title="Rescan"
->>>>>>> b18ef380b1ed66463eeecb56171fd0b12a1aebb8
               className="flex items-center gap-1 rounded-lg border border-gray-200 bg-white px-2 py-1 text-xs font-semibold text-gray-500 transition hover:border-primary hover:text-primary"
             >
               <ScanLine className="h-3.5 w-3.5" /> Scan Actions
@@ -276,14 +254,6 @@ export function BlueprintOverlay({
               <ZoomIn className="h-3.5 w-3.5" />
             </button>
           </div>
-<<<<<<< HEAD
-=======
-          {zoom !== DEFAULT_ZOOM && (
-            <button type="button" onClick={zoomReset} title="Reset" className="rounded-lg border border-gray-200 bg-white p-1.5 text-gray-400 transition hover:text-gray-600">
-              <RotateCcw className="h-3.5 w-3.5" />
-            </button>
-          )}
->>>>>>> b18ef380b1ed66463eeecb56171fd0b12a1aebb8
         </div>
       </div>
 
@@ -300,31 +270,7 @@ export function BlueprintOverlay({
           className="block h-auto"
           style={{ width: "100%", minWidth: "100%" }}
         >
-<<<<<<< HEAD
           <image href={imageUrl} x={0} y={0} width={imageWidth} height={imageHeight} />
-=======
-          <image href={imageUrl} x={0} y={0} width={imageWidth} height={imageHeight} preserveAspectRatio="none" />
-          {segments.map((seg) => {
-            if (!seg.polygon_coords) return null;
-            const color = BAND_COLOR[confidenceBand(seg.confidence_score)];
-            const isHovered = hoveredId === seg.draft_id;
-            const revealed = !scanning || scanLineY >= polygonCentroidY(seg.polygon_coords);
-            return (
-              <polygon
-                key={seg.draft_id}
-                points={seg.polygon_coords.map(([x, y]) => `${x},${y}`).join(" ")}
-                fill={color}
-                fillOpacity={revealed ? (isHovered ? 0.4 : 0.2) : 0}
-                stroke={color}
-                strokeOpacity={revealed ? 1 : 0}
-                strokeWidth={isHovered ? 6 : 3}
-                className={`transition-[fill-opacity,stroke-opacity,stroke-width] duration-500 ${revealed ? "cursor-pointer" : "pointer-events-none"}`}
-                onMouseEnter={() => onHoverChange(seg.draft_id)}
-                onMouseLeave={() => onHoverChange(null)}
-              />
-            );
-          })}
->>>>>>> b18ef380b1ed66463eeecb56171fd0b12a1aebb8
           {scanning && (
             <g>
               <defs>
@@ -372,7 +318,6 @@ export function BlueprintOverlay({
         )}
       </div>
 
-<<<<<<< HEAD
       {/* Part E — rescanning RESTARTS: warn before discarding edits, don't silently wipe
           the user's work. Unreachable when readOnly (no button opens it), so skip
           rendering it at all rather than mount a dialog that can never show. */}
@@ -416,8 +361,6 @@ export function BlueprintOverlay({
         </DialogContent>
       </Dialog>
       )}
-=======
->>>>>>> b18ef380b1ed66463eeecb56171fd0b12a1aebb8
     </div>
   );
 }
