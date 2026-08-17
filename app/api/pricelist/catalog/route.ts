@@ -41,26 +41,14 @@ export async function GET(request: NextRequest) {
        'Supplier Upload' AS source,
        h.effective_date::text AS effective_date,
        COALESCE(h.recorded_at::text, NOW()::text) AS recorded_at
-     FROM items i
+     FROM historical_price_record h
+     JOIN items i ON i.item_code = h.item_code
      LEFT JOIN category c ON c.category_id = i.category_id
-     JOIN LATERAL (
-       SELECT
-         hp.historicalrec_id,
-         hp.supplier_id,
-         hp.price,
-         hp.region,
-         hp.effective_date,
-         hp.recorded_at
-       FROM historical_price_record hp
-       WHERE hp.item_code = i.item_code
-         AND hp.price_source = 'Supplier'
-       ORDER BY hp.effective_date DESC, hp.recorded_at DESC, hp.historicalrec_id DESC
-       LIMIT 1
-     ) h ON TRUE
      LEFT JOIN suppliers s ON s.supplier_id = h.supplier_id
-     WHERE i.item_source = 'Supplier'
+     WHERE h.price_source = 'Supplier'
+       AND i.item_source = 'Supplier'
        AND (i.company_id IS NULL OR i.company_id = (SELECT company_id FROM users WHERE user_id = $1))
-     ORDER BY h.effective_date DESC, h.recorded_at DESC, i.item_code DESC`,
+     ORDER BY h.effective_date DESC, h.recorded_at DESC, h.historicalrec_id DESC`,
     values
   );
 

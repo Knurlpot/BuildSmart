@@ -208,7 +208,7 @@ def init_db() -> None:
                             CHECK (processing_status IN ('pending', 'processing', 'completed', 'failed')),
                         records_imported INT,
                         error_message TEXT,
-                        CONSTRAINT uq_company_file_effective_date UNIQUE (company_id, file_hash, effective_date)
+                        CONSTRAINT uq_company_file_supplier_effective_date UNIQUE (company_id, file_hash, supplier_id, effective_date)
                     )
                     """
                 )
@@ -234,12 +234,13 @@ def init_db() -> None:
             connection.execute(text("ALTER TABLE price_list_upload ALTER COLUMN effective_date SET NOT NULL"))
             connection.execute(text("ALTER TABLE price_list_upload DROP CONSTRAINT IF EXISTS uq_company_file_period"))
             connection.execute(text("ALTER TABLE price_list_upload DROP CONSTRAINT IF EXISTS uq_company_file_effective_date"))
+            connection.execute(text("ALTER TABLE price_list_upload DROP CONSTRAINT IF EXISTS uq_company_file_supplier_effective_date"))
             connection.execute(
                 text(
                     """
                     ALTER TABLE price_list_upload
-                    ADD CONSTRAINT uq_company_file_effective_date
-                    UNIQUE (company_id, file_hash, effective_date)
+                    ADD CONSTRAINT uq_company_file_supplier_effective_date
+                    UNIQUE (company_id, file_hash, supplier_id, effective_date)
                     """
                 )
             )

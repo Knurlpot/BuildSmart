@@ -26,6 +26,7 @@ interface ManageExistingRulesTabProps {
 }
 
 type RuleFilter = "all" | RuleKind;
+const RULE_FILTER_KINDS = RULE_KINDS.filter((kind) => kind !== "material-rule");
 
 export function ManageExistingRulesTab({ onViewRule }: ManageExistingRulesTabProps) {
   const { rules, isLoading, error, refetch, checkUsage, isCheckingUsage, disable, isDisabling, disableError } =
@@ -99,7 +100,11 @@ export function ManageExistingRulesTab({ onViewRule }: ManageExistingRulesTabPro
       },
       {
         id: "actions",
-        header: () => <span className="flex justify-end">Action</span>,
+        header: () => (
+          <span className="flex justify-end">
+            <span className="w-[6.75rem] text-center">Action</span>
+          </span>
+        ),
         enableGlobalFilter: false,
         cell: ({ row }) => {
           const rule = row.original;
@@ -179,8 +184,8 @@ export function ManageExistingRulesTab({ onViewRule }: ManageExistingRulesTabPro
       )}
 
       <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
-        <div className="flex flex-wrap items-center gap-3 border-b border-gray-100 bg-white px-4 py-3">
-          <div className="relative w-full sm:w-56 sm:flex-none lg:w-64">
+        <div className="grid items-center gap-3 border-b border-gray-100 bg-white px-4 py-3 xl:grid-cols-[minmax(24rem,1fr)_auto]">
+          <div className="relative min-w-0">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
             <input
               type="search"
@@ -190,7 +195,7 @@ export function ManageExistingRulesTab({ onViewRule }: ManageExistingRulesTabPro
               className="w-full rounded-full border border-gray-200 bg-white py-1.5 pl-9 pr-3 text-xs font-medium text-gray-700 outline-none transition placeholder:text-gray-400 focus:border-primary focus:ring-2 focus:ring-primary/15"
             />
           </div>
-          <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+          <div className="flex min-w-0 flex-wrap items-center gap-2 xl:justify-end">
             <button
               type="button"
               onClick={() => setRuleFilter("all")}
@@ -202,7 +207,7 @@ export function ManageExistingRulesTab({ onViewRule }: ManageExistingRulesTabPro
             >
               All
             </button>
-            {RULE_KINDS.map((kind) => (
+            {RULE_FILTER_KINDS.map((kind) => (
               <button
                 key={kind}
                 type="button"
@@ -223,7 +228,7 @@ export function ManageExistingRulesTab({ onViewRule }: ManageExistingRulesTabPro
           error={error}
           isEmpty={filteredRules.length === 0}
           onRetry={refetch}
-          emptyTitle={search.trim() ? "No matching rules" : ruleFilter === "all" ? "No rules configured yet" : `No ${RULE_KIND_LABEL[ruleFilter]} rules`}
+          emptyTitle={search.trim() ? "No matching rules" : ruleFilter === "all" ? "No rules configured" : `No ${RULE_KIND_LABEL[ruleFilter]} rules`}
           emptyHint={
             search.trim()
               ? "Try a different search or clear the filter."

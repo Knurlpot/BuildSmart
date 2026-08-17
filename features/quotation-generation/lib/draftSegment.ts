@@ -249,8 +249,8 @@ export function computeQuotationInputMethod(segments: DraftSegment[]): 'Manual' 
 
 export function confidenceBand(score: number | null): 'high' | 'medium' | 'low' | 'none' {
   if (score === null) return 'none';
-  if (score >= 90) return 'high';
-  if (score >= 70) return 'medium';
+  if (score >= 85) return 'high';
+  if (score >= 60) return 'medium';
   return 'low';
 }
 

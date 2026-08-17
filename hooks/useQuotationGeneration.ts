@@ -33,6 +33,15 @@ export function useUpdateQuotationInputMethod() {
   };
 }
 
+export function useDeleteDraftQuotation() {
+  const remove = useMutation<{ deleted: boolean; quote_id: number }>();
+  return {
+    deleteDraftQuotation: (quoteId: number) => remove.mutate(`/api/quotations/${quoteId}`, {}, 'DELETE'),
+    isDeleting: remove.isLoading,
+    deleteError: remove.error,
+  };
+}
+
 export function useBlueprintExtraction() {
   const extract = useMutation<BlueprintExtractionResult>();
   return {
@@ -57,6 +66,7 @@ export function useSaveSegments() {
     resetSave: save.reset,
   };
 }
+<<<<<<< HEAD
 
 export function useBlueprintRescan() {
   const rescan = useMutation<BlueprintExtractionResult>();
@@ -67,3 +77,5 @@ export function useBlueprintRescan() {
     resetRescan: rescan.reset,
   };
 }
+=======
+>>>>>>> b18ef380b1ed66463eeecb56171fd0b12a1aebb8

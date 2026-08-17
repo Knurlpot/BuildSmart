@@ -8,6 +8,7 @@ FLOOR_LABEL_RE = re.compile(
     r")\s+floor(?:\s+plan)?\b",
     re.IGNORECASE,
 )
+PROPOSAL_LABEL_RE = re.compile(r"\bproposal\s*[-:/#]?\s*(?P<number>\d+)\b", re.IGNORECASE)
 ROOM_DIMENSION_RE = re.compile(
     r"(?P<name>[A-Z][A-Z0-9 &./'-]{1,60}?)\s+"
     r"(?P<length>\d+(?:\.\d+)?)\s*[xX]\s*(?P<width>\d+(?:\.\d+)?)"
@@ -148,10 +149,20 @@ def normalize_room_name(name: str) -> str:
 
 
 def normalize_floor_label(text: str) -> str | None:
-    match = FLOOR_LABEL_RE.search(clean_text(text))
-    if not match:
+    cleaned = clean_text(text)
+    proposal_match = PROPOSAL_LABEL_RE.search(cleaned)
+    floor_match = FLOOR_LABEL_RE.search(cleaned)
+    if proposal_match:
+        proposal_name = f"Proposal {proposal_match.group('number')}"
+        if floor_match:
+            raw = floor_match.group(0)
+            words = [word.upper() if word.isdigit() else word.capitalize() for word in raw.split()]
+            floor_name = " ".join(words).replace("Floor Plan", "Floor").replace("Floor", "Floor Plan", 1)
+            return f"{floor_name} {proposal_name}"
+        return f"Floor Plan {proposal_name}"
+    if not floor_match:
         return None
-    raw = match.group(0)
+    raw = floor_match.group(0)
     words = [word.upper() if word.isdigit() else word.capitalize() for word in raw.split()]
     return " ".join(words).replace("Floor Plan", "Floor").replace("Floor", "Floor Plan", 1)
 

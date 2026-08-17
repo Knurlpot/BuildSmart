@@ -402,8 +402,7 @@ export default function SignUpPage() {
                 <div>
                   <h3 className="text-sm font-bold text-gray-900">Your Account</h3>
                   <p className="text-xs text-gray-400">
-                    Enter the details of the person creating the account. You&apos;ll set up the
-                    company details in the next step.
+                    Enter your details.
                   </p>
                 </div>
 
@@ -479,13 +478,12 @@ export default function SignUpPage() {
 
                 <div className="mt-2">
                   <h3 className="text-sm font-bold text-gray-900">Account Credentials</h3>
+                  <p className="text-[11px] text-gray-400">
+                    The email will be used for logging in
+                  </p>
                 </div>
 
                 <div className="flex flex-col gap-1.5">
-                  <p className="text-[11px] text-gray-400">
-                    Use this email to sign in. It can differ from the company&apos;s
-                    contact email, which comes next.
-                  </p>
                   <div className="relative">
                     <input
                       id="signup-login-email"
@@ -699,10 +697,6 @@ export default function SignUpPage() {
                       )}
                     </div>
                   </div>
-                  <p className="text-[11px] text-gray-400">
-                    Enter the company&apos;s public contact email, not the login email entered
-                    earlier.
-                  </p>
                 </div>
 
                 <SpecializationSelect

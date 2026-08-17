@@ -642,11 +642,7 @@ export function PriceCatalogTab() {
           isEmpty={!active.isLoading && !active.error && active.count === 0}
           onRetry={active.refetch}
           emptyTitle={subTab === "dpwh" ? "No DPWH-sourced records yet" : "No supplier-sourced records yet"}
-          emptyHint={
-            subTab === "dpwh"
-              ? "Populates once a DPWH fetch in Published Sources has saved records."
-              : "Populates once a Supplier pricelist upload has been approved."
-          }
+          emptyHint={undefined}
           minHeight={260}
         >
           {subTab === "dpwh" ? (

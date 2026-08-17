@@ -14,7 +14,7 @@ import { NAV_ITEMS } from "./nav-items";
 import WorkflowStepper from "./WorkflowStepper";
 
 const STATIC_TITLES: Record<string, { title: string; subtitle?: string }> = {
-  "/dashboard": { title: "Dashboard", subtitle: "Select a function to get started" },
+  "/dashboard": { title: "Dashboard" },
   "/onboarding/pricelist": { title: "Setup: Step 1 of 2", subtitle: "Set up your pricelist" },
   "/onboarding/preferences": {
     title: "Setup: Step 2 of 2",
@@ -23,7 +23,7 @@ const STATIC_TITLES: Record<string, { title: string; subtitle?: string }> = {
   // No longer in NAV_ITEMS (the sidebar/dashboard tab was removed in favor of
   // the header dropdown link below), so resolveTitle's NAV_ITEMS lookup can't
   // find this page's title/subtitle anymore — pinned here instead.
-  "/account": { title: "Profile", subtitle: "Update your profile and company details" },
+  "/account": { title: "Profile" },
 };
 
 function resolveTitle(pathname: string) {

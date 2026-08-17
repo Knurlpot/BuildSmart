@@ -4,8 +4,7 @@ import ezdxf
 import pytest
 from PIL import Image
 
-from app.schemas.blueprint import GeminiFloorExtraction, GeminiSegment
-from app.services import blueprint_extractor
+from app.schemas.blueprint import GeminiDetectedSpace, GeminiFloorExtraction
 from app.services.blueprint_extractor import extract_blueprint
 from app.services.dxf.extractor import _axis_aligned_label_partitions, _close_linework_gaps, _iter_linework
 from app.services.dxf.parser import _should_infer_closed_wall
@@ -190,6 +189,56 @@ def make_open_door_corridor_dxf() -> bytes:
     return output.getvalue().encode(document.encoding)
 
 
+def make_duplicate_container_dxf() -> bytes:
+    document = ezdxf.new("R2010")
+    document.header["$INSUNITS"] = 6
+    modelspace = document.modelspace()
+    modelspace.add_lwpolyline([(0, 0), (12, 0), (12, 6), (0, 6)], close=True, dxfattribs={"layer": "Tile 18x18"})
+    modelspace.add_lwpolyline([(0, 0), (6, 0), (6, 6), (0, 6)], close=True, dxfattribs={"layer": "A-ROOM"})
+    modelspace.add_lwpolyline([(0, 0), (6, 0), (6, 6), (0, 6)], close=True, dxfattribs={"layer": "HATCH"})
+    modelspace.add_lwpolyline([(6, 0), (12, 0), (12, 6), (6, 6)], close=True, dxfattribs={"layer": "A-ROOM"})
+    modelspace.add_text("BEDROOM", dxfattribs={"insert": (3, 3)})
+    modelspace.add_text("KITCHEN", dxfattribs={"insert": (9, 3)})
+    output = io.StringIO()
+    document.write(output)
+    return output.getvalue().encode(document.encoding)
+
+
+def make_l_shaped_room_with_offset_label_dxf() -> bytes:
+    document = ezdxf.new("R2010")
+    document.header["$INSUNITS"] = 6
+    modelspace = document.modelspace()
+    modelspace.add_lwpolyline(
+        [(0, 0), (6, 0), (6, 2), (3, 2), (3, 5), (0, 5)],
+        close=True,
+        dxfattribs={"layer": "A-ROOM"},
+    )
+    modelspace.add_text("KITCHEN", dxfattribs={"insert": (3.3, 2.3)})
+    modelspace.add_text("GROUND FLOOR PLAN", dxfattribs={"insert": (0, -1)})
+    output = io.StringIO()
+    document.write(output)
+    return output.getvalue().encode(document.encoding)
+
+
+def make_unlabeled_symbol_rooms_dxf() -> bytes:
+    document = ezdxf.new("R2010")
+    document.header["$INSUNITS"] = 6
+    bed_block = document.blocks.new(name="BED")
+    bed_block.add_lwpolyline([(0, 0), (1.8, 0), (1.8, 2.0), (0, 2.0)], close=True, dxfattribs={"layer": "FURN"})
+    toilet_block = document.blocks.new(name="TOILET")
+    toilet_block.add_circle((0.4, 0.4), 0.25, dxfattribs={"layer": "FIXTURE"})
+    toilet_block.add_lwpolyline([(0, 0), (0.8, 0), (0.8, 0.5), (0, 0.5)], close=True, dxfattribs={"layer": "FIXTURE"})
+    modelspace = document.modelspace()
+    modelspace.add_lwpolyline([(0, 0), (5, 0), (5, 4), (0, 4)], close=True, dxfattribs={"layer": "A-WALL"})
+    modelspace.add_lwpolyline([(7, 0), (10, 0), (10, 3), (7, 3)], close=True, dxfattribs={"layer": "A-WALL"})
+    modelspace.add_blockref("BED", (1.5, 1), dxfattribs={"layer": "FURN"})
+    modelspace.add_blockref("TOILET", (8, 1), dxfattribs={"layer": "FIXTURE"})
+    modelspace.add_text("GROUND FLOOR PLAN", dxfattribs={"insert": (0, -1)})
+    output = io.StringIO()
+    document.write(output)
+    return output.getvalue().encode(document.encoding)
+
+
 def test_extracts_closed_dxf_room_with_label_and_area():
     result = extract_blueprint("floor-plan.dxf", make_dxf())
 
@@ -252,35 +301,106 @@ def test_open_doors_keep_bedrooms_and_corridor_as_spaces_without_furniture_segme
     assert all("Furniture" not in segment.segment_name for segment in result.floors[0].segments)
 
 
+def test_dedupes_duplicate_room_loops_and_rejects_floor_plate_container():
+    result = extract_blueprint("duplicate-container.dxf", make_duplicate_container_dxf())
+
+    segments = result.floors[0].segments
+    names = sorted(segment.segment_name for segment in segments)
+    assert names == ["Bedroom", "Kitchen"]
+    assert all(segment.area_sqm == 36 for segment in segments)
+
+
+def test_offset_label_keeps_l_shaped_room_polygon_instead_of_dimension_box():
+    result = extract_blueprint("l-shaped-offset-label.dxf", make_l_shaped_room_with_offset_label_dxf())
+
+    segment = result.floors[0].segments[0]
+
+    assert segment.segment_name == "Kitchen"
+    assert segment.area_sqm == 21
+    assert len(segment.polygon_coords or []) == 6
+
+
+def test_unlabeled_dxf_rooms_use_fixture_symbols_for_room_type():
+    result = extract_blueprint("symbol-rooms.dxf", make_unlabeled_symbol_rooms_dxf())
+
+    segments = result.floors[0].segments
+    names = {segment.segment_name for segment in segments}
+    categories = {segment.segment_name: segment.category for segment in segments}
+
+    assert "Bedroom" in names
+    assert "Bathroom" in names
+    assert categories["Bedroom"] == "Bedrooms / Suites"
+    assert categories["Bathroom"] == "Bathrooms & Services"
+
+
 def test_rejects_empty_file():
     with pytest.raises(ValueError, match="empty"):
         extract_blueprint("floor-plan.pdf", b"")
 
 
-def test_pdf_page_is_rendered_and_returned_with_detected_segments(monkeypatch):
+def test_scanned_pdf_page_is_rendered_without_ai_room_inference(monkeypatch):
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
     pdf = io.BytesIO()
     Image.new("RGB", (200, 100), "white").save(pdf, format="PDF")
-    monkeypatch.setattr(
-        blueprint_extractor,
-        "_extract_pdf_page_with_gemini",
-        lambda _content, _page: GeminiFloorExtraction(
-            floor_level="Ground Floor",
-            segments=[
-                GeminiSegment(
-                    segment_name="Living Room",
-                    area_sqm=18.5,
-                    polygon_coords=[(10, 10), (100, 10), (100, 70), (10, 70)],
-                    confidence_score=92,
-                )
-            ],
-        ),
-    )
 
     result = extract_blueprint("floor-plan.pdf", pdf.getvalue())
 
-    assert result.floors[0].floor_level == "Ground Floor"
+    assert result.floors[0].floor_level == "Page 1"
     assert result.floors[0].image_url.startswith("data:image/png;base64,")
-    assert result.floors[0].segments[0].segment_name == "Living Room"
+    assert result.floors[0].segments == []
+    assert result.diagnostics is not None
+    assert "no deterministic vector room geometry" in result.diagnostics["warnings"][0]
+
+
+def test_scanned_pdf_uses_gemini_single_floor_space_schema(monkeypatch):
+    pdf = io.BytesIO()
+    Image.new("RGB", (200, 100), "white").save(pdf, format="PDF")
+    monkeypatch.setenv("GEMINI_API_KEY", "test-key")
+
+    def fake_extract(image_bytes: bytes, page_number: int) -> GeminiFloorExtraction:
+        assert image_bytes
+        assert page_number == 1
+        return GeminiFloorExtraction(
+            floor_name="Ground Floor Plan",
+            total_detected_spaces=2,
+            detected_spaces=[
+                GeminiDetectedSpace(
+                    id="space_1",
+                    name="MAIN CORRIDOR",
+                    category="Circulation & Hallways",
+                    color_hex="#9B59B6",
+                    bounding_box_1000=(350, 100, 430, 900),
+                    confidence_score=0.9,
+                ),
+                GeminiDetectedSpace(
+                    id="space_2",
+                    name="UNLABELED_UTILITY_1",
+                    category="Unassigned Utility",
+                    color_hex="#7F8C8D",
+                    bounding_box_1000=(430, 200, 520, 350),
+                    confidence_score=0.85,
+                ),
+            ],
+        )
+
+    monkeypatch.setattr("app.services.blueprint_extractor._extract_pdf_page_with_gemini", fake_extract)
+
+    result = extract_blueprint("floor-plan.pdf", pdf.getvalue())
+
+    floor = result.floors[0]
+    assert floor.floor_level == "Ground Floor Plan"
+    assert [segment.segment_name for segment in floor.segments] == ["MAIN CORRIDOR", "UNLABELED_UTILITY_1"]
+    assert floor.segments[0].category == "Circulation & Hallways"
+    assert floor.segments[0].color_hex == "#9B59B6"
+    assert floor.segments[0].polygon_coords == [(20.0, 35.0), (180.0, 35.0), (180.0, 43.0), (20.0, 43.0)]
+    assert floor.segments[0].confidence_score == 90
+    assert result.diagnostics is not None
+    assert result.diagnostics["source"] == "gemini_vision"
+
+
+def test_rejects_raw_image_uploads():
+    with pytest.raises(ValueError, match="Image uploads are not supported"):
+        extract_blueprint("floor-plan.bmp", b"not-empty")
 
 
 def test_rejects_unknown_file_type():

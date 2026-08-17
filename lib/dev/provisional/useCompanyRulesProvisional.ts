@@ -59,7 +59,7 @@ function useRuleMutation<T>(kind: string, refetch: () => void) {
     const next = await mutation.mutate(`/api/company-rules/${kind}/${ruleId}`, payload, "PATCH");
     window.dispatchEvent(new CustomEvent("buildsmart:company-rules-changed", { detail: { kind } }));
     refetch();
-    return latestForKind<T>(kind, next);
+    return findRuleForKind<T>(kind, next, ruleId) ?? latestForKind<T>(kind, next);
   };
 
   const supersede = update;
@@ -75,6 +75,14 @@ function useRuleMutation<T>(kind: string, refetch: () => void) {
 }
 
 function latestForKind<T>(kind: string, payload: CompanyRulesPayload): T {
+  return listForKind(kind, payload)[0] as T;
+}
+
+function findRuleForKind<T>(kind: string, payload: CompanyRulesPayload, ruleId: string): T | undefined {
+  return listForKind(kind, payload).find((rule) => rule.rule_id === ruleId) as T | undefined;
+}
+
+function listForKind(kind: string, payload: CompanyRulesPayload): Array<{ rule_id: string }> {
   const list =
     kind === "scope-templates"
       ? payload.scopeTemplates
@@ -87,7 +95,7 @@ function latestForKind<T>(kind: string, payload: CompanyRulesPayload): T {
             : kind === "supplier-rules"
               ? payload.supplierRules
               : payload.unitRules;
-  return list[0] as T;
+  return list;
 }
 
 export function useCheckRuleUsage() {

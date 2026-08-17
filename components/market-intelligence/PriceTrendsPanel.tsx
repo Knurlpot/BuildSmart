@@ -6,6 +6,7 @@ import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAx
 import { Filter, Globe2, Info, Landmark, Minus, Sparkles, Truck, TrendingDown, TrendingUp } from "lucide-react";
 import { QueryState } from "@/components/feedback/QueryState";
 import { useMarketIntelligence, type HistoricalPriceRecordRow } from "@/hooks/useMarketIntelligence";
+import { mapToPsaCmrpiCommodityGroup, type CmrpiMappingResult } from "@/lib/psa-cmrpi-mapping";
 import { REGIONS } from "@/lib/regions";
 import type { MaterialPriceVariance } from "@/types/entities";
 
@@ -46,6 +47,13 @@ function materialKey(value?: string | null) {
   return (value ?? "").trim().toLowerCase();
 }
 
+function cmrpiLookupKey(value?: string | null) {
+  return materialKey(value)
+    .replace(/\b(and|related|compounds)\b/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 function comparisonKey(row: Pick<HistoricalPriceRecordRow, "item_name" | "material" | "category_type" | "unit">) {
   const name = materialKey(row.material || row.item_name)
     .replace(/\b(type|grade|class)\s+/g, "$1")
@@ -65,6 +73,9 @@ type VarianceAnalysisRow = {
   actualPrice: number;
   dpwhRate: number | null;
   psaAdjustedRate: number | null;
+  psaCommodityGroup: string;
+  psaMappingType: CmrpiMappingResult["matchType"];
+  psaMappingReason: string;
   unitVariance: number | null;
   deviationPct: number | null;
   status: "Favorable" | "Unfavorable" | "Benchmark Missing";
@@ -123,6 +134,21 @@ export function PriceTrendsPanel({ compact = false }: PriceTrendsPanelProps) {
   });
 
   const historicalRows = useMemo(() => historical.data ?? [], [historical.data]);
+  const varianceRows = useMemo(() => variances.data ?? [], [variances.data]);
+  const psaVariance = useMemo(() => varianceRows.filter((v) => v.variance_source === "PSA"), [varianceRows]);
+
+  const latestPsaByCommodity = useMemo(() => {
+    const map = new Map<string, MaterialPriceVariance>();
+    for (const row of psaVariance) {
+      const key = cmrpiLookupKey(row.commodity_group);
+      if (!key) continue;
+      const current = map.get(key);
+      const currentRank = current ? current.year * 10 + QUARTER_ORDER[current.quarter] : -1;
+      const nextRank = row.year * 10 + QUARTER_ORDER[row.quarter];
+      if (!current || nextRank > currentRank) map.set(key, row);
+    }
+    return map;
+  }, [psaVariance]);
 
   const categories = useMemo(() => {
     const values = new Set<string>();
@@ -258,36 +284,22 @@ export function PriceTrendsPanel({ compact = false }: PriceTrendsPanelProps) {
     ? COLORS[Math.max(categoryVariance.categories.indexOf(selectedVariance.category), 0) % COLORS.length]
     : COLORS[0];
 
-  const varianceRows = useMemo(() => variances.data ?? [], [variances.data]);
-  // PSA (CMWPI/CMRPI) rows are per-commodity-group index movement, analytics-only market
-  // context — never a specific item's price. Kept visually separate from BuildSmart's own
-  // per-item variance so neither reads as the other. Never join a PSA row to item_code.
-  const psaVariance = useMemo(() => varianceRows.filter((v) => v.variance_source === "PSA"), [varianceRows]);
-
-  const latestPsaByCommodity = useMemo(() => {
-    const map = new Map<string, MaterialPriceVariance>();
-    for (const row of psaVariance) {
-      const key = materialKey(row.commodity_group);
-      if (!key) continue;
-      const current = map.get(key);
-      const currentRank = current ? current.year * 10 + QUARTER_ORDER[current.quarter] : -1;
-      const nextRank = row.year * 10 + QUARTER_ORDER[row.quarter];
-      if (!current || nextRank > currentRank) map.set(key, row);
-    }
-    return map;
-  }, [psaVariance]);
-
   const analysisRows = useMemo<VarianceAnalysisRow[]>(() => {
     return categoryVariance.materialPoints.map((point) => {
-      const psa =
-        latestPsaByCommodity.get(materialKey(point.itemName)) ??
-        latestPsaByCommodity.get(materialKey(point.category));
-      const psaAdjustedRate = point.dpwhRate * (1 + (psa?.percent_change ?? 0) / 100);
+      const cmrpiMapping = mapToPsaCmrpiCommodityGroup({
+        itemName: point.itemName,
+        material: point.itemName,
+        category: point.category,
+      });
+      const psa = latestPsaByCommodity.get(cmrpiLookupKey(cmrpiMapping.commodityGroup)) ?? null;
+      const psaAdjustedRate = psa ? point.dpwhRate * (1 + psa.percent_change / 100) : point.dpwhRate;
+      const variancePeso = point.actualPrice - psaAdjustedRate;
+      const variancePct = psaAdjustedRate > 0 ? (variancePeso / psaAdjustedRate) * 100 : null;
       const status: VarianceAnalysisRow["status"] =
-        point.actualPrice <= point.dpwhRate ? "Favorable" : "Unfavorable";
+        variancePct !== null && variancePct <= 0 ? "Favorable" : "Unfavorable";
       const primaryDriver =
         point.actualPrice <= point.dpwhRate
-            ? "Below DPWH benchmark"
+            ? "Below DPWH CMPD"
             : point.actualPrice <= psaAdjustedRate
               ? "PSA market inflation"
               : "Supplier/procurement markup";
@@ -301,8 +313,11 @@ export function PriceTrendsPanel({ compact = false }: PriceTrendsPanelProps) {
         actualPrice: point.actualPrice,
         dpwhRate: point.dpwhRate,
         psaAdjustedRate,
-        unitVariance: point.variancePeso,
-        deviationPct: point.variancePct,
+        psaCommodityGroup: cmrpiMapping.commodityGroup,
+        psaMappingType: cmrpiMapping.matchType,
+        psaMappingReason: cmrpiMapping.reason,
+        unitVariance: variancePeso,
+        deviationPct: variancePct,
         status,
         primaryDriver,
       };
@@ -374,11 +389,10 @@ export function PriceTrendsPanel({ compact = false }: PriceTrendsPanelProps) {
 
       <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
         <div className="mb-5">
-          <p className="text-xs font-bold uppercase tracking-wider text-gray-400">Executive Summary</p>
+          <p className="text-xs font-bold uppercase tracking-wider text-gray-400">Price Trends</p>
           <p className="mt-1 text-sm leading-relaxed text-gray-600">
-            Variance analysis compares uploaded Supplier/Internal actual rates against DPWH CMPD baseline rates,
-            then uses PSA CMWPI/CMRPI commodity movement as market-inflation context. Variance is computed from
-            unit prices only, without quantity or project usage data.
+            Variance analysis compares uploaded Supplier rates against DPWH CMPD baseline rates adjusted
+            by the latest PSA CMRPI commodity movement.
           </p>
         </div>
         <div className="mb-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
@@ -387,7 +401,7 @@ export function PriceTrendsPanel({ compact = false }: PriceTrendsPanelProps) {
             <p className={`mt-1 text-xl font-extrabold ${(varianceSummary.averagePct ?? 0) > 0 ? "text-red-500" : "text-green-600"}`}>
               {varianceSummary.averagePct === null ? "N/A" : pct(varianceSummary.averagePct)}
             </p>
-            <p className="text-xs text-gray-400">Unit price vs DPWH CMPD</p>
+            <p className="text-xs text-gray-400">Unit price vs PSA-adjusted DPWH</p>
           </div>
           <div className="rounded-xl border border-gray-100 bg-gray-50 p-4">
             <p className="text-xs font-semibold text-gray-400">Avg Unit Difference</p>
@@ -412,7 +426,7 @@ export function PriceTrendsPanel({ compact = false }: PriceTrendsPanelProps) {
         <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
           <div>
             <p className="font-bold text-gray-900">Category Variance Over Time: {region}</p>
-            <p className="text-xs text-gray-400">Average % difference between Supplier/Internal prices and DPWH rates</p>
+            <p className="text-xs text-gray-400">Average % difference between Supplier/Internal prices and raw DPWH rates</p>
           </div>
           {selectedVariance && (
             <button
@@ -429,8 +443,7 @@ export function PriceTrendsPanel({ compact = false }: PriceTrendsPanelProps) {
           error={historical.error}
           isEmpty={categoryVariance.rows.length === 0}
           onRetry={historical.refetch}
-          emptyTitle="No comparable Supplier/Internal vs DPWH variance yet"
-          emptyHint="This chart needs Supplier/Internal prices and a DPWH baseline with the same normalized material, category, and unit."
+          emptyTitle="No comparable Data"
           minHeight={300}
         >
           <div className="overflow-x-auto pb-2">
@@ -539,16 +552,16 @@ export function PriceTrendsPanel({ compact = false }: PriceTrendsPanelProps) {
             historical.refetch();
             variances.refetch();
           }}
-          emptyTitle="No actual-vs-DPWH variance data yet"
-          emptyHint="Upload or approve Supplier/Internal prices and load DPWH CMPD benchmarks to populate this analysis."
+          emptyTitle="No actual-vs-DPWH variance data"
           minHeight={120}
         >
           <div className="overflow-x-auto rounded-2xl border border-gray-100 bg-white shadow-sm">
-            <table className="min-w-[1100px] w-full text-left text-sm">
+            <table className="min-w-[1280px] w-full text-left text-sm">
               <thead className="border-b border-gray-100 bg-gray-50 text-xs uppercase tracking-wider text-gray-400">
                 <tr>
                   <th className="px-4 py-3">Material Item</th>
                   <th className="px-4 py-3">Unit</th>
+                  <th className="px-4 py-3">PSA CMRPI Group</th>
                   <th className="px-4 py-3 text-right">Actual Price</th>
                   <th className="px-4 py-3 text-right">DPWH CMPD Rate</th>
                   <th className="px-4 py-3 text-right">PSA Adjusted Rate</th>
@@ -566,6 +579,10 @@ export function PriceTrendsPanel({ compact = false }: PriceTrendsPanelProps) {
                       <p className="text-xs text-gray-400">{row.category}</p>
                     </td>
                     <td className="px-4 py-3">{row.unit}</td>
+                    <td className="px-4 py-3">
+                      <p className="font-semibold text-gray-700">{row.psaCommodityGroup}</p>
+                      <p className="text-xs text-gray-400" title={row.psaMappingReason}>{row.psaMappingType}</p>
+                    </td>
                     <td className="px-4 py-3 text-right">{fmt(row.actualPrice)}</td>
                     <td className="px-4 py-3 text-right">{fmtMaybe(row.dpwhRate)}</td>
                     <td className="px-4 py-3 text-right">{fmtMaybe(row.psaAdjustedRate)}</td>
@@ -601,12 +618,11 @@ export function PriceTrendsPanel({ compact = false }: PriceTrendsPanelProps) {
         <div className="flex items-center gap-2">
           <Landmark className="h-4 w-4 text-indigo-500" />
           <p className="text-xs font-bold uppercase tracking-wider text-indigo-500">
-            Market Index (PSA): Not Item-Specific
+            Market Index (PSA): By commodity group
           </p>
         </div>
         <p className="text-xs text-indigo-400">
-          PSA commodity-group index movement, shown as market context only. This is never a
-          specific item&apos;s price change and is never used by quotation pricing.
+          PSA CMRPI publishes quarterly commodity price movement data for construction materials.
         </p>
         <QueryState
           isLoading={variances.isLoading}

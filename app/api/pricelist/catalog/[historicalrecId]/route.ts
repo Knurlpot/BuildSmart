@@ -6,6 +6,7 @@ type SupplierCatalogRecord = {
   historicalrec_id: number;
   item_code: number;
   item_name: string;
+  supplier_name: string | null;
   brand: string;
   description_material: string;
   unit: string;
@@ -100,11 +101,12 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
          h.historicalrec_id,
          i.item_code,
          i.item_name,
+         s.supplier_name,
          i.brand,
          CASE
            WHEN BTRIM(COALESCE(i.description, '')) = BTRIM(i.item_name) THEN ''
            ELSE COALESCE(i.description, '')
-         END AS description_material,
+       END AS description_material,
          i.unit,
          COALESCE(h.price::float, 0) AS price,
          COALESCE(h.region, 'N/A') AS region,
@@ -113,6 +115,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
          COALESCE(h.recorded_at::text, NOW()::text) AS recorded_at
        FROM items i
        JOIN historical_price_record h ON h.item_code = i.item_code
+       LEFT JOIN suppliers s ON s.supplier_id = h.supplier_id
        WHERE h.historicalrec_id = $1`,
       [recordId]
     );
@@ -127,12 +130,8 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   }
 }
 
-// Deletes EVERY Supplier-owned database record for the material behind the row
-// shown: all Supplier price history, cached match approvals, pending/review
-// rows for now-orphaned uploads, and the Supplier item itself when nothing else
-// references it. Upload logs are removed once no Supplier prices remain for the
-// same company/supplier/effective-date, so uploading the same deleted file goes
-// through the normal new-file flow again.
+// Deletes exactly the selected Supplier price record. Shared item metadata and
+// other supplier records for the same material stay intact.
 export async function DELETE(request: NextRequest, { params }: { params: Promise<{ historicalrecId: string }> }) {
   const session = readSession(request);
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -147,10 +146,16 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
   try {
     await client.query("BEGIN");
 
-    const lookup = await client.query<{ item_code: number; company_id: number; item_company_id: number | null }>(
+    const lookup = await client.query<{
+      item_code: number;
+      company_id: number;
+      supplier_id: number | null;
+      effective_date: string;
+    }>(
       `SELECT i.item_code,
               u.company_id,
-              i.company_id AS item_company_id
+              hp.supplier_id,
+              hp.effective_date::text AS effective_date
        FROM historical_price_record hp
        JOIN items i ON i.item_code = hp.item_code
        JOIN users u ON u.user_id = $2
@@ -166,52 +171,47 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
       return NextResponse.json({ error: "Price record not found" }, { status: 404 });
     }
 
-    const deletedPrices = await client.query<{ historicalrec_id: number; supplier_id: number | null; effective_date: string }>(
-      `DELETE FROM historical_price_record hp
-       USING items i
-       WHERE hp.item_code = i.item_code
-         AND hp.item_code = $1
-         AND hp.price_source = 'Supplier'
-         AND (i.company_id IS NULL OR i.company_id = $2)
-       RETURNING hp.historicalrec_id, hp.supplier_id, hp.effective_date::text AS effective_date`,
-      [target.item_code, target.company_id]
+    const deletedPrice = await client.query<{ historicalrec_id: number }>(
+      `DELETE FROM historical_price_record
+       WHERE historicalrec_id = $1
+         AND price_source = 'Supplier'
+       RETURNING historicalrec_id`,
+      [recordId]
     );
 
-    await client.query(`DELETE FROM approved_match_cache WHERE item_code = $1 AND (company_id IS NULL OR company_id = $2)`, [
-      target.item_code,
-      target.company_id,
-    ]);
+    if ((deletedPrice.rowCount ?? 0) === 0) {
+      await client.query("ROLLBACK");
+      return NextResponse.json({ error: "Price record not found" }, { status: 404 });
+    }
 
     const deletedUploadIds = new Set<number>();
-    for (const row of deletedPrices.rows) {
-      const uploadLookup = await client.query<{ upload_id: number }>(
-        `SELECT plu.upload_id
-         FROM price_list_upload plu
-         WHERE plu.company_id = $1
-           AND COALESCE(plu.source, 'Supplier') = 'Supplier'
-           AND plu.effective_date = $2::date
-           AND (
-             (plu.supplier_id IS NULL AND $3::int IS NULL)
-             OR plu.supplier_id = $3::int
-           )
-           AND NOT EXISTS (
-             SELECT 1
-             FROM historical_price_record hp
-             JOIN items i ON i.item_code = hp.item_code
-             WHERE hp.price_source = 'Supplier'
-               AND hp.effective_date = plu.effective_date
-               AND (
-                 (hp.supplier_id IS NULL AND plu.supplier_id IS NULL)
-                 OR hp.supplier_id = plu.supplier_id
-               )
-               AND (i.company_id IS NULL OR i.company_id = plu.company_id)
-           )`,
-        [target.company_id, row.effective_date, row.supplier_id]
-      );
+    const uploadLookup = await client.query<{ upload_id: number }>(
+      `SELECT plu.upload_id
+       FROM price_list_upload plu
+       WHERE plu.company_id = $1
+         AND COALESCE(plu.source, 'Supplier') = 'Supplier'
+         AND plu.effective_date = $2::date
+         AND (
+           (plu.supplier_id IS NULL AND $3::int IS NULL)
+           OR plu.supplier_id = $3::int
+         )
+         AND NOT EXISTS (
+           SELECT 1
+           FROM historical_price_record hp
+           JOIN items i ON i.item_code = hp.item_code
+           WHERE hp.price_source = 'Supplier'
+             AND hp.effective_date = plu.effective_date
+             AND (
+               (hp.supplier_id IS NULL AND plu.supplier_id IS NULL)
+               OR hp.supplier_id = plu.supplier_id
+             )
+             AND (i.company_id IS NULL OR i.company_id = plu.company_id)
+         )`,
+      [target.company_id, target.effective_date, target.supplier_id]
+    );
 
-      for (const upload of uploadLookup.rows) {
-        deletedUploadIds.add(upload.upload_id);
-      }
+    for (const upload of uploadLookup.rows) {
+      deletedUploadIds.add(upload.upload_id);
     }
 
     if (deletedUploadIds.size > 0) {
@@ -239,7 +239,7 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
 
     return NextResponse.json({
       deleted: true,
-      deletedCount: deletedPrices.rowCount,
+      deletedCount: deletedPrice.rowCount,
       deletedUploadCount: deletedUploadIds.size,
       deletedItem: (itemDelete.rowCount ?? 0) > 0,
     });

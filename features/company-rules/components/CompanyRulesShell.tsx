@@ -54,10 +54,7 @@ export default function CompanyRulesShell() {
     setFocusRuleId(rule.rule_id);
   };
 
-  // "needs configuration" dots, driven by the same real fetched lists each form already
-  // uses (not a hardcoded list of "which tabs matter"). Manage Existing Rules is excluded
-  // (a management/utility tab, not a "configure this" one) — every Configure-X tab,
-  // including Supplier Rules now that it's wired, gets a dot.
+  // 
   const { currentUser, updateOnboardingStep } = useAuth();
   const { templates, refetch: refetchScopeTemplates } = useScopeTemplates();
   const { rules: laborRules, refetch: refetchLaborRules } = useLaborRules();

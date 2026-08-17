@@ -124,10 +124,6 @@ function SegmentConfigForm({ segment, onSave }: SegmentConfigFormProps) {
           placeholder="Anything worth flagging about this area's condition…"
           className={`${inputCls} resize-none`}
         />
-        <p className="text-[11px] text-gray-400">
-          Descriptive only. Nothing here derives a surcharge. Pricing adjustments for site
-          conditions happen later, when the estimator sets the rate.
-        </p>
       </div>
 
       <label className="flex items-center gap-2.5 text-sm text-gray-700">
@@ -343,9 +339,7 @@ export function ConfigureSegmentsStep({ quoteId, segments, onChange, onSaved, on
         <div>
           <h2 className="text-base font-bold text-gray-900">Configure Each Segment</h2>
           <p className="text-xs text-gray-500">
-            {configuredCount} of {includedSegments.length} included segments configured. A
-            treatment type is required on every INCLUDED segment before you can continue.
-            Excluded segments are shown but never block this.
+            {configuredCount} of {includedSegments.length} included segments configured.
           </p>
         </div>
       </div>

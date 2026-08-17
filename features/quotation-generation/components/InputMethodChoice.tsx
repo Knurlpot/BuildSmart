@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowLeft, Ruler, Upload } from "lucide-react";
+import { Ruler, Upload } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
 interface InputMethodChoiceProps {
@@ -69,13 +69,6 @@ export function InputMethodChoice({ onChoose, onBack }: InputMethodChoiceProps) 
             </div>
           </button>
         </div>
-        <button
-          type="button"
-          onClick={onBack}
-          className="flex w-fit items-center gap-1.5 text-xs font-semibold text-gray-400 transition hover:text-gray-600"
-        >
-          <ArrowLeft className="h-3.5 w-3.5" /> Back to Client &amp; Project
-        </button>
       </DialogContent>
     </Dialog>
   );

@@ -1,14 +1,19 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+<<<<<<< HEAD
 import { AlertTriangle, ZoomIn, ZoomOut, RotateCcw, ScanLine } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { CONFIDENCE_BAND_LABEL, confidenceBand, type DraftSegment } from "../lib/draftSegment";
+=======
+import { ZoomIn, ZoomOut, RotateCcw, ScanLine } from "lucide-react";
+import { CONFIDENCE_BAND_LABEL, confidenceBand, polygonCentroidY, type DraftSegment } from "../lib/draftSegment";
+>>>>>>> b18ef380b1ed66463eeecb56171fd0b12a1aebb8
 
 const BAND_COLOR: Record<ReturnType<typeof confidenceBand>, string> = {
-  high: "#16a34a", // green — confidence >= 90
-  medium: "#d97706", // amber — 70-89
-  low: "#dc2626", // red — < 70
+  high: "#16a34a", // green, 85+
+  medium: "#d97706", // amber, 60-84
+  low: "#dc2626", // red, below 60
   none: "#6b7280",
 };
 
@@ -16,6 +21,9 @@ const SCAN_DURATION_MS = 4000;
 const ZOOM_MIN = 0.5;
 const ZOOM_MAX = 2;
 const ZOOM_STEP = 0.25;
+const DEFAULT_ZOOM = 1;
+const DEFAULT_CROP_SCALE = 1.18;
+const FLOOR_CROP_PADDING_RATIO = 0.04;
 const TOOLTIP_WIDTH = 210;
 const TOOLTIP_HEIGHT = 96;
 
@@ -23,6 +31,7 @@ interface BlueprintOverlayProps {
   imageUrl: string;
   imageWidth: number;
   imageHeight: number;
+  focusBounds?: [number, number, number, number] | null;
   /** Already filtered to this floor's segments that still have a polygon (a merged/grouped
    * segment has none — see draftSegment.ts's mergeSegments). */
   segments: DraftSegment[];
@@ -30,6 +39,7 @@ interface BlueprintOverlayProps {
   onHoverChange: (id: string | null) => void;
   /** Part E — the actual DATA reset (discarding edits/groupings/deletions/manual adds back
    * to the original extraction) lives in the parent (BlueprintUploadPanel), which is the
+<<<<<<< HEAD
    * one holding the original extraction result. This component only owns the confirm
    * dialog + the visual scan-replay; once the user confirms, it calls this AND replays its
    * own local scan animation. Omitted when `readOnly` — see that prop's doc. */
@@ -37,6 +47,12 @@ interface BlueprintOverlayProps {
   onRescanConfirmed?: () => void;
   canRescan?: boolean;
   isRescanning?: boolean;
+=======
+   * one holding the original extraction result. This component calls it directly from the
+   * Rescan button and replays its own local scan animation. Omitted when `readOnly` — see
+   * that prop's doc. */
+  onRescanConfirmed?: () => void | Promise<void>;
+>>>>>>> b18ef380b1ed66463eeecb56171fd0b12a1aebb8
   onScanStateChange?: (scanning: boolean) => void;
   /** Task 7, Part B — Segment Breakdown reuses this exact component (not a rebuild) to
    * preview an already-generated/saved quote's blueprint. Rescan is a destructive EDIT
@@ -71,6 +87,7 @@ export function BlueprintOverlay({
   imageUrl,
   imageWidth,
   imageHeight,
+  focusBounds,
   segments,
   hoveredId,
   onResetConfirmed,
@@ -89,7 +106,6 @@ export function BlueprintOverlay({
   const [syncedRescanToken, setSyncedRescanToken] = useState(0);
   const [scanProgress, setScanProgress] = useState(readOnly ? 100 : 0);
   const [scanning, setScanning] = useState(!readOnly);
-  const [rescanConfirmOpen, setRescanConfirmOpen] = useState(false);
 
   useEffect(() => {
     onScanStateChange?.(scanning);
@@ -97,7 +113,7 @@ export function BlueprintOverlay({
 
   // Adjusted during render (React's documented pattern for this — see e.g.
   // app/(app)/account/page.tsx's deactivate-dialog countdown) rather than a setState call
-  // inside the effect body below: resets the animation whenever "Rescan" is confirmed.
+  // inside the effect body below: resets the animation whenever "Rescan" is clicked.
   // Unreachable when readOnly (rescanToken never changes — there's no Rescan button).
   if (rescanToken !== syncedRescanToken) {
     setSyncedRescanToken(rescanToken);
@@ -123,6 +139,7 @@ export function BlueprintOverlay({
     return () => cancelAnimationFrame(raf);
   }, [rescanToken, readOnly]);
 
+<<<<<<< HEAD
   const handleResetConfirm = () => {
     setRescanConfirmOpen(false);
     onResetConfirmed?.();
@@ -132,13 +149,18 @@ export function BlueprintOverlay({
   const handleRescanConfirm = () => {
     setRescanConfirmOpen(false);
     onRescanConfirmed?.();
+=======
+  const handleRescan = async () => {
+    setRescanToken((t) => t + 1);
+    await onRescanConfirmed?.();
+>>>>>>> b18ef380b1ed66463eeecb56171fd0b12a1aebb8
   };
 
   // ── Zoom ──
-  const [zoom, setZoom] = useState(1);
+  const [zoom, setZoom] = useState(DEFAULT_ZOOM);
   const zoomIn = () => setZoom((z) => Math.min(ZOOM_MAX, Math.round((z + ZOOM_STEP) * 100) / 100));
   const zoomOut = () => setZoom((z) => Math.max(ZOOM_MIN, Math.round((z - ZOOM_STEP) * 100) / 100));
-  const zoomReset = () => setZoom(1);
+  const zoomReset = () => setZoom(DEFAULT_ZOOM);
 
   // ── Cursor-following tooltip ──
   // Container width/height travel alongside the cursor position, captured together from
@@ -158,30 +180,76 @@ export function BlueprintOverlay({
   const tooltipTop = cursor && cursor.y + TOOLTIP_HEIGHT + 20 > cursor.containerHeight ? cursor.y - TOOLTIP_HEIGHT - 14 : (cursor?.y ?? 0) + 14;
 
   const scanLineY = (scanProgress / 100) * imageHeight;
+  const segmentPoints = segments.flatMap((seg) => seg.polygon_coords ?? []);
+  const segmentCropBounds =
+    segmentPoints.length > 0
+      ? segmentPoints.reduce(
+          (bounds, [x, y]) => ({
+            minX: Math.min(bounds.minX, x),
+            minY: Math.min(bounds.minY, y),
+            maxX: Math.max(bounds.maxX, x),
+            maxY: Math.max(bounds.maxY, y),
+          }),
+          { minX: imageWidth, minY: imageHeight, maxX: 0, maxY: 0 },
+        )
+      : null;
+  const floorCropBounds = focusBounds
+    ? { minX: focusBounds[0], minY: focusBounds[1], maxX: focusBounds[2], maxY: focusBounds[3] }
+    : segmentCropBounds;
+  const focusMinX = floorCropBounds?.minX ?? imageWidth / 4;
+  const focusMinY = floorCropBounds?.minY ?? imageHeight / 4;
+  const focusMaxX = floorCropBounds?.maxX ?? (imageWidth * 3) / 4;
+  const focusMaxY = floorCropBounds?.maxY ?? (imageHeight * 3) / 4;
+  const hasFloorFocus = !!floorCropBounds;
+  const focusWidth = hasFloorFocus ? Math.max(focusMaxX - focusMinX, 1) : Math.max(focusMaxX - focusMinX, imageWidth / DEFAULT_CROP_SCALE);
+  const focusHeight = hasFloorFocus ? Math.max(focusMaxY - focusMinY, 1) : Math.max(focusMaxY - focusMinY, imageHeight / DEFAULT_CROP_SCALE);
+  const cropPadding = Math.max(focusWidth, focusHeight) * FLOOR_CROP_PADDING_RATIO;
+  const paddedWidth = Math.min(imageWidth, focusWidth + cropPadding * 2);
+  const paddedHeight = Math.min(imageHeight, focusHeight + cropPadding * 2);
+  const focusCenterX = (focusMinX + focusMaxX) / 2;
+  const focusCenterY = (focusMinY + focusMaxY) / 2;
+  const cropScale = Math.max(1, DEFAULT_CROP_SCALE * zoom);
+  const minimumCropWidth = hasFloorFocus ? 1 : imageWidth / cropScale;
+  const minimumCropHeight = hasFloorFocus ? 1 : imageHeight / cropScale;
+  const cropWidth = Math.min(
+    imageWidth,
+    Math.max(paddedWidth / zoom, minimumCropWidth),
+  );
+  const cropHeight = Math.min(
+    imageHeight,
+    Math.max(paddedHeight / zoom, minimumCropHeight),
+  );
+  const cropX = Math.min(Math.max(focusCenterX - cropWidth / 2, 0), Math.max(imageWidth - cropWidth, 0));
+  const cropY = Math.min(Math.max(focusCenterY - cropHeight / 2, 0), Math.max(imageHeight - cropHeight, 0));
+  const croppedViewBox = `${cropX} ${cropY} ${cropWidth} ${cropHeight}`;
 
   return (
     <div className="flex flex-col gap-2">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex flex-wrap items-center gap-1.5 text-xs font-semibold text-gray-500">
           <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2 py-0.5">
-            <span className="h-2 w-2 rounded-full" style={{ background: BAND_COLOR.high }} /> High &ge;90%
+            <span className="h-2 w-2 rounded-full" style={{ background: BAND_COLOR.high }} /> High &ge;85%
           </span>
           <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2 py-0.5">
-            <span className="h-2 w-2 rounded-full" style={{ background: BAND_COLOR.medium }} /> Medium 70-89%
+            <span className="h-2 w-2 rounded-full" style={{ background: BAND_COLOR.medium }} /> Medium 60-84%
           </span>
           <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2 py-0.5">
-            <span className="h-2 w-2 rounded-full" style={{ background: BAND_COLOR.low }} /> Low &lt;70%
+            <span className="h-2 w-2 rounded-full" style={{ background: BAND_COLOR.low }} /> Low &lt;60%
           </span>
         </div>
         <div className="flex flex-wrap shrink-0 items-center gap-1">
-          {/* Part E — no longer a silent reset: this only OPENS the confirm dialog below.
-              Hidden entirely when readOnly — Rescan is an edit action with no meaning
+          {/* Hidden entirely when readOnly — Rescan is an edit action with no meaning
               outside Review Segments (Task 7, Part B). */}
           {!readOnly && (
             <button
               type="button"
+<<<<<<< HEAD
               onClick={() => setRescanConfirmOpen(true)}
               title="Reset or rescan"
+=======
+              onClick={() => void handleRescan()}
+              title="Rescan"
+>>>>>>> b18ef380b1ed66463eeecb56171fd0b12a1aebb8
               className="flex items-center gap-1 rounded-lg border border-gray-200 bg-white px-2 py-1 text-xs font-semibold text-gray-500 transition hover:border-primary hover:text-primary"
             >
               <ScanLine className="h-3.5 w-3.5" /> Scan Actions
@@ -208,6 +276,14 @@ export function BlueprintOverlay({
               <ZoomIn className="h-3.5 w-3.5" />
             </button>
           </div>
+<<<<<<< HEAD
+=======
+          {zoom !== DEFAULT_ZOOM && (
+            <button type="button" onClick={zoomReset} title="Reset" className="rounded-lg border border-gray-200 bg-white p-1.5 text-gray-400 transition hover:text-gray-600">
+              <RotateCcw className="h-3.5 w-3.5" />
+            </button>
+          )}
+>>>>>>> b18ef380b1ed66463eeecb56171fd0b12a1aebb8
         </div>
       </div>
 
@@ -220,11 +296,35 @@ export function BlueprintOverlay({
         style={{ maxHeight: 560 }}
       >
         <svg
-          viewBox={`0 0 ${imageWidth} ${imageHeight}`}
+          viewBox={croppedViewBox}
           className="block h-auto"
-          style={{ width: `${zoom * 100}%`, minWidth: "100%" }}
+          style={{ width: "100%", minWidth: "100%" }}
         >
+<<<<<<< HEAD
           <image href={imageUrl} x={0} y={0} width={imageWidth} height={imageHeight} />
+=======
+          <image href={imageUrl} x={0} y={0} width={imageWidth} height={imageHeight} preserveAspectRatio="none" />
+          {segments.map((seg) => {
+            if (!seg.polygon_coords) return null;
+            const color = BAND_COLOR[confidenceBand(seg.confidence_score)];
+            const isHovered = hoveredId === seg.draft_id;
+            const revealed = !scanning || scanLineY >= polygonCentroidY(seg.polygon_coords);
+            return (
+              <polygon
+                key={seg.draft_id}
+                points={seg.polygon_coords.map(([x, y]) => `${x},${y}`).join(" ")}
+                fill={color}
+                fillOpacity={revealed ? (isHovered ? 0.4 : 0.2) : 0}
+                stroke={color}
+                strokeOpacity={revealed ? 1 : 0}
+                strokeWidth={isHovered ? 6 : 3}
+                className={`transition-[fill-opacity,stroke-opacity,stroke-width] duration-500 ${revealed ? "cursor-pointer" : "pointer-events-none"}`}
+                onMouseEnter={() => onHoverChange(seg.draft_id)}
+                onMouseLeave={() => onHoverChange(null)}
+              />
+            );
+          })}
+>>>>>>> b18ef380b1ed66463eeecb56171fd0b12a1aebb8
           {scanning && (
             <g>
               <defs>
@@ -272,6 +372,7 @@ export function BlueprintOverlay({
         )}
       </div>
 
+<<<<<<< HEAD
       {/* Part E — rescanning RESTARTS: warn before discarding edits, don't silently wipe
           the user's work. Unreachable when readOnly (no button opens it), so skip
           rendering it at all rather than mount a dialog that can never show. */}
@@ -315,6 +416,8 @@ export function BlueprintOverlay({
         </DialogContent>
       </Dialog>
       )}
+=======
+>>>>>>> b18ef380b1ed66463eeecb56171fd0b12a1aebb8
     </div>
   );
 }

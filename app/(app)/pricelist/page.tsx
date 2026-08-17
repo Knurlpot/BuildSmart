@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Database, LibraryBig, Upload } from "lucide-react";
+import { Database, LibraryBig, Truck, Upload } from "lucide-react";
 import { RequireAuth } from "@/components/auth/RequireAuth";
 import { AiNormalizationPanel, PriceCatalogTab, PublishedSourceTab } from "@/features/pricelist/components";
+import { SupplierBenchmarkContent } from "@/features/supplier-benchmarking/components";
 import { usePricelistCatalog } from "@/hooks/usePricelistCatalog";
 import { usePricelistPublishedSource } from "@/hooks/usePricelistPublishedSource";
 import { useAuth } from "@/providers/AuthProvider";
@@ -13,6 +14,7 @@ import { advanceOnboardingStep, hasCompletedPricelistStep } from "@/lib/onboardi
 const TABS = [
   { id: "upload", label: "Upload Pricelist", icon: Upload },
   { id: "published", label: "Published Sources", icon: Database },
+  { id: "benchmark", label: "Benchmark Suppliers", icon: Truck },
   { id: "catalog", label: "Price Catalog", icon: LibraryBig },
 ] as const;
 
@@ -25,6 +27,7 @@ function asCompanyId(value: unknown): number | null {
 
 export default function PricelistPage() {
   const [activeTab, setActiveTab] = useState<TabId>("upload");
+  const [uploadCompleted, setUploadCompleted] = useState(false);
   const goToCatalog = () => setActiveTab("catalog");
 
   const { currentUser, updateOnboardingStep } = useAuth();
@@ -45,7 +48,7 @@ export default function PricelistPage() {
   const pricelistDone = hasCompletedPricelistStep({
     uploadCatalogCount: supplierCatalog.records.length,
     dpwhCatalogCount: dpwhCatalog.records.length,
-  });
+  }) || uploadCompleted;
 
   useEffect(() => {
     if (currentUser && pricelistDone) {
@@ -58,7 +61,6 @@ export default function PricelistPage() {
 
   const needsAttention: Partial<Record<TabId, boolean>> = {
     upload: !pricelistDone,
-    published: !pricelistDone,
   };
 
   return (
@@ -91,14 +93,16 @@ export default function PricelistPage() {
         {activeTab === "upload" && (
           <AiNormalizationPanel
             companyId={companyId}
+            defaultSupplierMode={currentUser?.onboardingStep === 0 ? "new" : "existing"}
             onCatalogChanged={() => {
+              setUploadCompleted(true);
               supplierCatalog.refetch();
-              goToCatalog();
             }}
           />
         )}
         {activeTab === "published" && <PublishedSourceTab onViewCatalog={goToCatalog} />}
         {activeTab === "catalog" && <PriceCatalogTab />}
+        {activeTab === "benchmark" && <SupplierBenchmarkContent />}
       </div>
     </RequireAuth>
   );

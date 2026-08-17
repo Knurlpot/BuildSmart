@@ -197,7 +197,7 @@ class PriceListUpload(Base):
     error_message: Mapped[str | None] = mapped_column(Text)
 
     __table_args__ = (
-        UniqueConstraint("company_id", "file_hash", "effective_date", name="uq_company_file_effective_date"),
+        UniqueConstraint("company_id", "file_hash", "supplier_id", "effective_date", name="uq_company_file_supplier_effective_date"),
     )
 
 

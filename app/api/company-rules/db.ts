@@ -484,3 +484,165 @@ export async function setRuleStatus(companyId: number, ruleId: string, status: "
   }
   return fetchCompanyRules(companyId);
 }
+
+export async function updateRule(companyId: number, kind: RuleKindParam, ruleId: string, body: Record<string, unknown>) {
+  const [prefix, rawId] = ruleId.split("-");
+  const id = Number(rawId);
+  if (!Number.isFinite(id)) throw new Error("Invalid rule id");
+
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+
+    if (kind === "scope-templates" && prefix === "st") {
+      const updatedTemplate = await client.query(
+        `UPDATE scope_template
+         SET template_name = $1, specialization = $2, scope_of_work = $1, description = $3, date_updated = NOW()
+         WHERE company_id = $4 AND scope_template_id = $5`,
+        [
+          body.template_name,
+          body.service_specialization,
+          JSON.stringify({ others_description: body.others_description ?? null }),
+          companyId,
+          id,
+        ]
+      );
+      if (updatedTemplate.rowCount === 0) throw new Error("Scope template not found");
+
+      await client.query("DELETE FROM scope_template_category WHERE scope_template_id = $1", [id]);
+      for (const category of (body.material_categories as CategoryType[]) ?? []) {
+        const categoryIdValue = await categoryId(client, category);
+        if (categoryIdValue) {
+          await client.query(
+            "INSERT INTO scope_template_category (scope_template_id, category_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
+            [id, categoryIdValue]
+          );
+        }
+      }
+    } else if (kind === "supplier-rules" && prefix === "sr") {
+      const updatedSupplierRule = await client.query(
+        `UPDATE supplier_discount_rule
+         SET supplier_id = $1,
+             rule_type = $2,
+             minimum_order_amount = $3,
+             discount_percentage_rate = $4,
+             fixed_discount_amount = $5,
+             effective_date = $6,
+             expiration_date = $7,
+             is_active = $8
+         WHERE company_id = $9 AND supplierdisc_id = $10`,
+        [
+          body.supplier_id,
+          body.rule_type,
+          body.minimum_order_amount ?? null,
+          body.discount_percentage_rate ?? null,
+          body.fixed_discount_amount ?? null,
+          body.effective_date,
+          body.expiration_date || null,
+          body.is_active ?? true,
+          companyId,
+          id,
+        ]
+      );
+      if (updatedSupplierRule.rowCount === 0) throw new Error("Supplier rule not found");
+    } else if (kind === "unit-rules" && prefix === "ur") {
+      const idForCategory = await categoryId(client, body.category as CategoryType | null);
+      const description = JSON.stringify({
+        item_code: body.item_code,
+        item_name: body.item_name,
+        wastage_allowance_percentage: body.wastage_allowance_percentage,
+      });
+      const updatedUnitRule = await client.query(
+        `UPDATE unit_rule
+         SET category_id = $1,
+             unit_name = $2,
+             unit_abbreviation = $3,
+             conversion_to_base_unit = $4,
+             description = $5,
+             updated_at = NOW()
+         WHERE company_id = $6 AND unit_rule_id = $7`,
+        [
+          idForCategory,
+          body.item_name || body.category || "Unit Rule",
+          String(body.item_code || body.category || "unit").slice(0, 10),
+          body.conversion_factor,
+          description,
+          companyId,
+          id,
+        ]
+      );
+      if (updatedUnitRule.rowCount === 0) throw new Error("Unit rule not found");
+    } else if (kind === "pricing-strategy" && prefix === "ps") {
+      const ruleName = `${body.quotation_tier} Pricing Strategy`;
+      const updatedRule = await client.query(
+        `UPDATE company_rule
+         SET rule_name = $1, checklist_items = $2, strategy_type = $3
+         WHERE company_id = $4 AND rule_id = $5 AND work_type = 'Pricing Strategy'`,
+        [
+          ruleName,
+          JSON.stringify({ vat_percentage: body.vat_percentage }),
+          quotationTierToStrategyType(body.quotation_tier),
+          companyId,
+          id,
+        ]
+      );
+      if (updatedRule.rowCount === 0) throw new Error("Pricing strategy not found");
+
+      await client.query(
+        `UPDATE rule_pricing
+         SET quotation_tier = $1,
+             markup_percentage = $2,
+             contingency_percentage = $3,
+             overhead_percentage = $4,
+             profit_margin_percentage = $5
+         WHERE rule_id = $6`,
+        [
+          body.quotation_tier,
+          body.markup_percentage,
+          body.contingency_percentage,
+          body.overhead_percentage,
+          body.profit_margin_percentage,
+          id,
+        ]
+      );
+    } else if (kind === "labor-rules" && prefix === "lr") {
+      const metaBody = {
+        treatment_type: body.treatment_type,
+        labor_trade: body.labor_trade,
+        region: body.region,
+        rush_multiplier_percentage: body.rush_multiplier_percentage,
+      };
+      const label = (body.treatment_type || body.labor_trade || "General Labor Rule") as string;
+      const updatedRule = await client.query(
+        `UPDATE company_rule
+         SET rule_name = $1, checklist_items = $2
+         WHERE company_id = $3 AND rule_id = $4 AND work_type = 'Labor Rule'`,
+        [label, JSON.stringify(metaBody), companyId, id]
+      );
+      if (updatedRule.rowCount === 0) throw new Error("Labor rule not found");
+
+      await client.query(
+        `UPDATE rule_labor
+         SET region = $1, labor_trade = $2, labor_rate = $3, productivity_index = $4
+         WHERE rule_id = $5`,
+        [
+          body.region || "NCR",
+          body.labor_trade || body.treatment_type || "General",
+          body.labor_rate,
+          body.productivity_index,
+          id,
+        ]
+      );
+    } else {
+      throw new Error("Rule type does not support in-place updates yet");
+    }
+
+    await client.query("COMMIT");
+    return await fetchCompanyRules(companyId);
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
+  }
+}

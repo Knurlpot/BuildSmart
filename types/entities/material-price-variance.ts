@@ -2,16 +2,14 @@
 // BuildSmart_schema_v3.sql. Computed/derived data — likely read-only on the
 // frontend (job output or view, not a form).
 //
-// v3 change (B): this table now also hosts PSA (CMWPI/CMRPI) commodity-group
-// INDEX movement as ANALYTICS-ONLY market context, alongside BuildSmart's own
-// per-item variance:
+// v3 change (B): this table now also hosts PSA CMRPI commodity-group INDEX
+// movement, alongside BuildSmart's own per-item variance:
 //   - variance_source 'Internal' rows: item_code set, commodity_group null —
 //     the existing per-item peso % change.
 //   - variance_source 'PSA' rows: item_code null, commodity_group set (e.g.
-//     'Cement') — PSA's per-commodity-group index YoY %, never a single item.
-// PSA rows must NEVER be joined to an item_code and must NEVER feed a pricing
-// computation — they are market-context display only. See PriceTrendsPanel for
-// the required visual separation between the two.
+//     'Masonry Materials') — PSA's per-commodity-group index YoY %, never a
+//     single item's peso price. PSA rows may adjust DPWH CMPD benchmarks for
+//     variance analysis, but they are not direct transactable rates.
 export interface MaterialPriceVariance {
   mpv_id: number;
   item_code: number | null; // null for 'PSA' rows
