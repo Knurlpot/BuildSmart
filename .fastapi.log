@@ -1,0 +1,72 @@
+INFO:     127.0.0.1:59496 - "GET /pricelist/review?latest_upload_only=true&company_id=8 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64526 - "GET /pricelist/catalog/dpwh HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64526 - "GET /pricelist/review?latest_upload_only=true&company_id=8 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59496 - "GET /pricelist/catalog/dpwh HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60883 - "OPTIONS /pricelist/check-version HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60883 - "OPTIONS /pricelist/check-version HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60883 - "OPTIONS /pricelist/check-version HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60883 - "OPTIONS /pricelist/check-version HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60883 - "POST /pricelist/check-version HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60883 - "POST /pricelist/check-version HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60883 - "POST /pricelist/check-version HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60883 - "POST /pricelist/check-version HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60883 - "OPTIONS /pricelist/fetch-published HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60883 - "OPTIONS /pricelist/fetch-published HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59444 - "POST /pricelist/fetch-published HTTP/1.1" 502 Bad Gateway
+INFO:     127.0.0.1:60883 - "POST /pricelist/fetch-published HTTP/1.1" 502 Bad Gateway
+INFO:     127.0.0.1:60883 - "GET /pricelist/catalog/dpwh HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60883 - "POST /pricelist/check-version HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52849 - "POST /pricelist/check-version HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59444 - "POST /pricelist/check-version HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51293 - "POST /pricelist/check-version HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59444 - "GET /pricelist/review?latest_upload_only=true&company_id=8 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51293 - "POST /pricelist/fetch-published HTTP/1.1" 502 Bad Gateway
+INFO:     127.0.0.1:52849 - "POST /pricelist/fetch-published HTTP/1.1" 502 Bad Gateway
+INFO:     127.0.0.1:57533 - "GET /pricelist/review?latest_upload_only=true&company_id=8 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56893 - "GET /pricelist/catalog/dpwh HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56893 - "POST /pricelist/check-version HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57533 - "POST /pricelist/check-version HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58740 - "POST /pricelist/check-version HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56893 - "POST /pricelist/check-version HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58740 - "POST /pricelist/fetch-published HTTP/1.1" 502 Bad Gateway
+INFO:     127.0.0.1:56893 - "POST /pricelist/fetch-published HTTP/1.1" 502 Bad Gateway
+INFO:     127.0.0.1:56893 - "GET /pricelist/catalog/dpwh HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57601 - "GET /pricelist/catalog/dpwh HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57601 - "POST /pricelist/check-version HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57601 - "POST /pricelist/check-version HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57601 - "POST /pricelist/check-version HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57601 - "POST /pricelist/check-version HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57601 - "POST /pricelist/fetch-published HTTP/1.1" 502 Bad Gateway
+INFO:     127.0.0.1:57601 - "GET /pricelist/catalog/dpwh HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57601 - "GET /pricelist/review?latest_upload_only=true&company_id=8 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53455 - "POST /pricelist/fetch-published HTTP/1.1" 502 Bad Gateway
+INFO:     127.0.0.1:58307 - "GET /pricelist/catalog/dpwh HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51683 - "GET /pricelist/review?latest_upload_only=true&company_id=8 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51683 - "GET /pricelist/review?latest_upload_only=true&company_id=8 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58307 - "GET /pricelist/catalog/dpwh HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49913 - "GET /pricelist/catalog/dpwh HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53802 - "GET /pricelist/review?latest_upload_only=true&company_id=8 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59506 - "GET /pricelist/review?latest_upload_only=true&company_id=8 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59506 - "GET /pricelist/catalog/dpwh HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62126 - "GET /pricelist/catalog/dpwh HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52366 - "GET /pricelist/review?latest_upload_only=true&company_id=8 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61574 - "GET /pricelist/review?latest_upload_only=true&company_id=8 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61574 - "GET /pricelist/catalog/dpwh HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58627 - "GET /pricelist/catalog/dpwh HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61574 - "GET /pricelist/review?latest_upload_only=true&company_id=8 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56279 - "GET /pricelist/catalog/dpwh HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63482 - "GET /pricelist/review?latest_upload_only=true&company_id=8 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51653 - "GET /pricelist/review?latest_upload_only=true&company_id=8 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51653 - "GET /pricelist/catalog/dpwh HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57324 - "GET /pricelist/review?latest_upload_only=true&company_id=8 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57324 - "GET /pricelist/catalog/dpwh HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60491 - "GET /pricelist/catalog/dpwh HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55313 - "GET /pricelist/review?latest_upload_only=true&company_id=8 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65464 - "GET /pricelist/review?latest_upload_only=true&company_id=8 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65464 - "GET /pricelist/catalog/dpwh HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60403 - "GET /pricelist/review?latest_upload_only=true&company_id=8 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60403 - "GET /pricelist/catalog/dpwh HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51138 - "GET /pricelist/review?latest_upload_only=true&company_id=8 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51138 - "GET /pricelist/catalog/dpwh HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50421 - "GET /pricelist/review?latest_upload_only=true&company_id=8 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50421 - "GET /pricelist/catalog/dpwh HTTP/1.1" 200 OK

@@ -1,12 +1,24 @@
 import type { Metadata } from "next";
-import type { CSSProperties } from "react";
+import localFont from "next/font/local";
 import { AuthProvider } from "@/providers/AuthProvider";
 import "./globals.css";
 
-const fontVariables = {
-  "--font-sans": '"Avenir Next", "Segoe UI", "Helvetica Neue", Arial, sans-serif',
-  "--font-geist-mono": '"SFMono-Regular", "SF Mono", Consolas, "Liberation Mono", Menlo, monospace',
-} as CSSProperties;
+const montserrat = localFont({
+  src: [
+    {
+      path: "./fonts/Montserrat-VariableFont_wght.ttf",
+      style: "normal",
+      weight: "100 900",
+    },
+    {
+      path: "./fonts/Montserrat-Italic-VariableFont_wght.ttf",
+      style: "italic",
+      weight: "100 900",
+    },
+  ],
+  variable: "--font-montserrat",
+  display: "swap",
+});
 
 export const metadata: Metadata = {
   title: "Create Next App",
@@ -22,8 +34,7 @@ export default function RootLayout({
     <html
       lang="en"
       suppressHydrationWarning
-      className="h-full antialiased"
-      style={fontVariables}
+      className={`${montserrat.variable} h-full antialiased`}
     >
       <body suppressHydrationWarning className="min-h-full flex flex-col">
         <AuthProvider>{children}</AuthProvider>

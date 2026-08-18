@@ -42,6 +42,8 @@ export default function Header({ workflow }: HeaderProps) {
   const router = useRouter();
   const { currentUser, logout } = useAuth();
   const { title, subtitle } = resolveTitle(pathname);
+  const isDashboard = pathname === "/dashboard";
+  const lightHeaderContent = Boolean(workflow) || isDashboard;
 
   const companyId = currentUser?.companyId;
   const companyEndpoint = companyId !== undefined && companyId !== null ? `/api/company/${companyId}` : null;
@@ -74,7 +76,11 @@ export default function Header({ workflow }: HeaderProps) {
   return (
     <header
       className={`flex h-16 shrink-0 items-center justify-between gap-4 px-6 transition-colors ${
-        workflow ? "bg-primary shadow-md qg-header-shimmer" : "border-b border-gray-200 bg-white shadow-sm"
+        workflow
+          ? "bg-primary shadow-md qg-header-shimmer"
+          : isDashboard
+            ? "animate-brand-gradient border-b border-white/15 shadow-md"
+            : "border-b border-gray-200 bg-white shadow-sm"
       }`}
     >
       <div className="flex min-w-0 flex-1 items-center gap-3">
@@ -89,8 +95,8 @@ export default function Header({ workflow }: HeaderProps) {
           </div>
         ) : (
           <div>
-            <h1 className="text-base font-bold text-gray-900">{title}</h1>
-            {subtitle && <p className="text-xs text-gray-500">{subtitle}</p>}
+            <h1 className={`text-base font-bold ${isDashboard ? "text-white" : "text-gray-900"}`}>{title}</h1>
+            {subtitle && <p className={`text-xs ${isDashboard ? "text-white/70" : "text-gray-500"}`}>{subtitle}</p>}
           </div>
         )}
       </div>
@@ -100,7 +106,7 @@ export default function Header({ workflow }: HeaderProps) {
           type="button"
           onClick={() => setMenuOpen((v) => !v)}
           className={`flex items-center gap-2 rounded-xl px-2 py-1.5 transition ${
-            workflow ? "hover:bg-white/10" : "hover:bg-gray-50"
+            lightHeaderContent ? "hover:bg-white/10" : "hover:bg-gray-50"
           }`}
         >
           {company?.company_logo ? (
@@ -108,23 +114,23 @@ export default function Header({ workflow }: HeaderProps) {
             <img
               src={company.company_logo}
               alt=""
-              className={`h-9 w-9 shrink-0 rounded-full object-cover ${workflow ? "border-2 border-white/40" : "border border-gray-100"}`}
+              className={`h-9 w-9 shrink-0 rounded-full object-cover ${lightHeaderContent ? "border-2 border-white/40" : "border border-gray-100"}`}
             />
           ) : (
             <div
               className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-sm font-bold ${
-                workflow ? "bg-white text-primary" : "bg-primary text-primary-foreground"
+                lightHeaderContent ? "bg-white text-primary" : "bg-primary text-primary-foreground"
               }`}
             >
               {companyInitials}
             </div>
           )}
           <div className="text-left">
-            <p className={`text-xs font-semibold leading-tight ${workflow ? "text-white" : "text-gray-800"}`}>{fullName}</p>
-            <p className={`text-[10px] ${workflow ? "text-white/70" : "text-gray-500"}`}>{companyName}</p>
+            <p className={`text-xs font-semibold leading-tight ${lightHeaderContent ? "text-white" : "text-gray-800"}`}>{fullName}</p>
+            <p className={`text-[10px] ${lightHeaderContent ? "text-white/70" : "text-gray-500"}`}>{companyName}</p>
           </div>
           <ChevronDown
-            className={`h-3.5 w-3.5 shrink-0 transition-transform ${workflow ? "text-white/70" : "text-gray-400"} ${menuOpen ? "rotate-180" : ""}`}
+            className={`h-3.5 w-3.5 shrink-0 transition-transform ${lightHeaderContent ? "text-white/70" : "text-gray-400"} ${menuOpen ? "rotate-180" : ""}`}
           />
         </button>
 
