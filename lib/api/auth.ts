@@ -16,8 +16,9 @@ export interface RegisterPayload {
   email: string; 
   password: string;
   user_role: Users['user_role'];
+  company_id?: number;
   // company
-  company: {
+  company?: {
     company_name: string;
     company_address: string;
     contact_email: string;
@@ -27,6 +28,15 @@ export interface RegisterPayload {
     specialization_3: string | null;
     company_logo?: string;
   };
+}
+
+export interface CompanyLookupResult {
+  company_id: number;
+  company_name: string;
+  company_address: string;
+  contact_email: string;
+  contact_number: string;
+  specializations: string[];
 }
 
 export function login(email: string, password: string) {
@@ -44,6 +54,14 @@ export function register(payload: RegisterPayload) {
     headers: { "Content-Type": "application/json" },
     credentials: "include",
     body: JSON.stringify(payload),
+  });
+}
+
+export function checkCompany(query: string) {
+  return apiClient<{ company: CompanyLookupResult | null }>("/api/auth/check-company", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ query }),
   });
 }
 
