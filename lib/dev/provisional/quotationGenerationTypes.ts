@@ -8,6 +8,9 @@ export interface ExtractedSegment {
   alpha?: number | null;
   polygon_coords: [number, number][] | null;
   confidence_score: number | null;
+  geometry_flagged: boolean;
+  geometry_warnings: string[];
+  boundary_estimated: boolean;
   status?: string;
 }
 
@@ -33,6 +36,9 @@ export interface BlueprintFloor {
 export interface BlueprintExtractionResult {
   floors: BlueprintFloor[];
   diagnostics?: Record<string, unknown> | null;
+  blueprint_file_path?: string | null;
+  persistence_enabled?: boolean;
+  persistence_warning?: string | null;
   structured_json?: Record<string, unknown> | null;
 }
 

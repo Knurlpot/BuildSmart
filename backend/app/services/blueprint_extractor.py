@@ -20,6 +20,7 @@ from app.schemas.blueprint import (
     GeminiFloorExtraction,
     RoomOverlay,
 )
+from app.services.blueprint_geometry_validator import validate_extraction_geometry
 
 MAX_BLUEPRINT_BYTES = 25 * 1024 * 1024
 GEMINI_MODEL = os.environ.get("GEMINI_VISION_MODEL", os.environ.get("GEMINI_MODEL", "gemini-1.5-flash"))
@@ -849,7 +850,11 @@ def extract_blueprint(filename: str, content: bytes) -> BlueprintExtractionResul
     if extension in {".png", ".jpg", ".jpeg", ".bmp"}:
         raise ValueError("Image uploads are not supported. Upload a vector PDF or DXF blueprint.")
     if extension == ".pdf":
-        return _with_hybrid_structured_json(filename, _extract_pdf(content))
+        result = _extract_pdf(content)
+        result = validate_extraction_geometry(result)
+        return _with_hybrid_structured_json(filename, _with_review_metadata(result))
     if extension == ".dxf":
-        return _with_hybrid_structured_json(filename, _with_review_metadata(_extract_dxf(content)))
+        result = _extract_dxf(content)
+        result = validate_extraction_geometry(result)
+        return _with_hybrid_structured_json(filename, _with_review_metadata(result))
     raise ValueError("Upload a PDF or DXF blueprint.")

@@ -38,6 +38,9 @@ export interface DraftSegment {
   area_sqm: number;
   polygon_coords: [number, number][] | null;
   confidence_score: number | null;
+  geometry_flagged: boolean;
+  geometry_warnings: string[];
+  boundary_estimated: boolean;
   // Review-gate flag for the Blueprint path's "MUST VALIDATE" step — UI-only, never
   // submitted (no schema column, and not a Part-2 concern). Blueprint-detected segments
   // start unconfirmed (something a human has to actually look at); segments the user
@@ -110,6 +113,9 @@ export function createManualSegment(defaultName = ''): DraftSegment {
     area_sqm: 0,
     polygon_coords: null,
     confidence_score: null,
+    geometry_flagged: false,
+    geometry_warnings: [],
+    boundary_estimated: false,
     confirmed: true,
     included_in_quote: true,
     treatment_type: null,
@@ -131,6 +137,9 @@ export function createSegmentFromExtraction(extracted: ExtractedSegment, floorLe
     area_sqm: safeArea,
     polygon_coords: extracted.polygon_coords,
     confidence_score: extracted.confidence_score,
+    geometry_flagged: extracted.geometry_flagged,
+    geometry_warnings: extracted.geometry_warnings,
+    boundary_estimated: extracted.boundary_estimated,
     confirmed: false,
     included_in_quote: true,
     treatment_type: null,
@@ -155,6 +164,9 @@ export function mergeSegments(segments: DraftSegment[], newName: string): DraftS
     area_sqm: Math.round(segments.reduce((sum, s) => sum + s.area_sqm, 0) * 100) / 100,
     polygon_coords: null,
     confidence_score: confidences.length > 0 ? Math.min(...confidences) : null,
+    geometry_flagged: segments.some((segment) => segment.geometry_flagged),
+    geometry_warnings: [...new Set(segments.flatMap((segment) => segment.geometry_warnings))],
+    boundary_estimated: segments.some((segment) => segment.boundary_estimated),
     // Combining is itself a deliberate, reviewed action — nothing left to second-guess.
     confirmed: true,
     // Grouping only offers segments already in scope (see the Part F selection UI) — the

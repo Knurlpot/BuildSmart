@@ -76,6 +76,28 @@ def _line_from_circle(entity: Any, config: DxfExtractionConfig) -> LineString | 
     return LineString(points)
 
 
+def _should_infer_closed_wall(points: list[tuple[float, float]], layer: str) -> bool:
+    if len(points) < 3 or "wall" not in layer.lower():
+        return False
+    xs = [point[0] for point in points]
+    ys = [point[1] for point in points]
+    span = max(max(xs) - min(xs), max(ys) - min(ys), 1)
+    endpoint_gap = math.dist(points[0], points[-1])
+    if endpoint_gap <= max(span * 0.005, 0.001):
+        return True
+    if len(points) != 4:
+        return False
+    tolerance = max(span * 0.0001, 0.000001)
+
+    def axis_aligned(start: tuple[float, float], end: tuple[float, float]) -> bool:
+        return abs(start[0] - end[0]) <= tolerance or abs(start[1] - end[1]) <= tolerance
+
+    candidate = Polygon(points)
+    return candidate.is_valid and candidate.area > 0 and all(
+        axis_aligned(start, end) for start, end in zip(points, points[1:] + points[:1])
+    )
+
+
 def _geometry_from_entity(entity: Any, config: DxfExtractionConfig) -> Any | None:
     dxftype = entity.dxftype()
     try:
@@ -88,7 +110,7 @@ def _geometry_from_entity(entity: Any, config: DxfExtractionConfig) -> Any | Non
             points = [(float(point[0]), float(point[1])) for point in entity.get_points("xy")]
             if len(points) < 2:
                 return None
-            if entity.closed and len(points) >= 3:
+            if (entity.closed or _should_infer_closed_wall(points, _entity_layer(entity))) and len(points) >= 3:
                 polygon = Polygon(points)
                 return polygon if polygon.is_valid and polygon.area > 0 else LineString(points + [points[0]])
             return LineString(points)
@@ -97,7 +119,7 @@ def _geometry_from_entity(entity: Any, config: DxfExtractionConfig) -> Any | Non
             if len(points) < 2:
                 return None
             closed = bool(getattr(entity, "is_closed", False))
-            if closed and len(points) >= 3:
+            if (closed or _should_infer_closed_wall(points, _entity_layer(entity))) and len(points) >= 3:
                 polygon = Polygon(points)
                 return polygon if polygon.is_valid and polygon.area > 0 else LineString(points + [points[0]])
             return LineString(points)
@@ -155,7 +177,10 @@ def _text_from_entity(entity: Any) -> str | None:
     if entity.dxftype() in {"TEXT", "ATTRIB"}:
         return getattr(entity.dxf, "text", None)
     if entity.dxftype() == "MTEXT":
-        return entity.text
+        try:
+            return entity.plain_text()
+        except Exception:
+            return entity.text
     return None
 
 

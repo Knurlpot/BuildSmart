@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test:blueprint": "node --test tests/blueprintPersistence.test.mjs"
   },
   "dependencies": {
     "@tanstack/react-table": "^8.21.3",

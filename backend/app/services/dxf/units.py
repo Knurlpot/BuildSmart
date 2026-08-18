@@ -1,4 +1,4 @@
-from .labels import extract_dimension_only, extract_room_dimension
+from .labels import extract_dimension_only, extract_printed_area, extract_room_dimension
 from .schemas import TextLabel
 
 
@@ -22,7 +22,16 @@ def infer_unit_factor(insunits: int, drawing_bounds: tuple[float, float, float, 
     factor, name, confidence, warning = unit_factor_to_meters(insunits)
     warnings = [warning] if warning else []
     drawing_span = max(drawing_bounds[2] - drawing_bounds[0], drawing_bounds[3] - drawing_bounds[1], 1)
-    has_metric_dimensions = any(extract_room_dimension(label.text) or extract_dimension_only(label.text) for label in labels)
+    has_metric_dimensions = any(
+        extract_room_dimension(label.text) or extract_dimension_only(label.text) or extract_printed_area(label.text)
+        for label in labels
+    )
+
+    # Many simple ASCII exporters omit $INSUNITS while writing architectural coordinates
+    # such as 14000 for a 14 m wall. A multi-thousand-unit drawing span is substantially
+    # more plausible as millimetres than metres.
+    if insunits not in UNIT_FACTORS_TO_METERS and drawing_span >= 1000:
+        return 0.001, "millimeters", 0.75, ["DXF units were missing; drawing scale indicates millimeters."]
 
     # Some exported architectural DXFs incorrectly declare inches while coordinates and
     # printed dimensions are already metric. Preserve the old app behavior, but make it

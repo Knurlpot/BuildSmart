@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Check, CheckCheck, CheckCircle2, ChevronsUpDown, Circle, Pencil, Plus, Trash2, X } from "lucide-react";
+import { AlertTriangle, Check, CheckCheck, CheckCircle2, ChevronsUpDown, Circle, Pencil, Plus, Trash2, X } from "lucide-react";
 import {
   computeAreaFromDimensions,
   confidenceBand,
@@ -288,6 +288,12 @@ export function SegmentEditorList({
   };
 
   const allConfirmed = confirmSummary !== null && confirmSummary.includedCount > 0 && confirmSummary.confirmedCount === confirmSummary.includedCount;
+  const reviewSegments = showConfidence
+    ? [...segments].sort((left, right) => {
+        if (left.geometry_flagged !== right.geometry_flagged) return left.geometry_flagged ? -1 : 1;
+        return (left.confidence_score ?? 101) - (right.confidence_score ?? 101);
+      })
+    : segments;
 
   return (
     <div className="flex flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
@@ -368,7 +374,7 @@ export function SegmentEditorList({
         </div>
       ) : (
         <div className="flex max-h-130 flex-col divide-y divide-gray-100 overflow-y-auto">
-          {segments.map((seg) =>
+          {reviewSegments.map((seg) =>
             editingId === seg.draft_id ? (
               <div key={seg.draft_id} className="p-3">
                 <SegmentRowForm draft={seg} onSave={handleSaveRow} onCancel={() => handleCancelRow(seg.draft_id)} />
@@ -382,7 +388,7 @@ export function SegmentEditorList({
                 }}
                 onMouseEnter={() => onHoverChange?.(seg.draft_id)}
                 onMouseLeave={() => onHoverChange?.(null)}
-                className={`flex items-center gap-3 px-4 py-2.5 transition ${hoveredId === seg.draft_id ? "bg-orange-50/60" : ""} ${
+                className={`flex items-center gap-3 px-4 py-2.5 transition ${seg.geometry_flagged ? "bg-red-50/70 ring-1 ring-inset ring-red-200" : ""} ${hoveredId === seg.draft_id ? "bg-orange-50/60" : ""} ${
                   showIncludeToggle && !seg.included_in_quote ? "opacity-50" : ""
                 }`}
               >
@@ -416,6 +422,11 @@ export function SegmentEditorList({
                 {/* Part F — scope vs. confirm: a specialty contractor may only want SOME
                     detected rooms priced. Excluding never deletes the row (see
                     draftSegment.ts's included_in_quote doc). */}
+                {seg.geometry_flagged && (
+                  <span className="flex shrink-0 items-center gap-1 rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-bold text-red-700" title={seg.geometry_warnings.join(" ")}>
+                    <AlertTriangle className="h-3 w-3" /> Review
+                  </span>
+                )}
                 {showIncludeToggle && (
                   <button
                     type="button"

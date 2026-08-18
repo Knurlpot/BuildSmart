@@ -109,6 +109,10 @@ export function useSavedProjects() {
   return useSyncExternalStore(subscribe, snapshot, serverSnapshot);
 }
 
+export function deleteSavedProject(projectId: string) {
+  writeProjects(readProjects().filter((project) => project.project_id !== projectId));
+}
+
 export function saveFinalizedQuotation(input: FinalizedQuotationInput): SavedProjectRecord {
   const now = new Date().toISOString();
   const projectId = `proj-${Date.now()}`;

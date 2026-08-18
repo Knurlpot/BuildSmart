@@ -66,3 +66,12 @@ export function useSaveSegments() {
     resetSave: save.reset,
   };
 }
+export function useBlueprintRescan() {
+  const rescan = useMutation<BlueprintExtractionResult>();
+  return {
+    rescanBlueprint: (quoteId: number) => rescan.mutate(`/api/quotations/${quoteId}/blueprint-rescan`, {}, 'POST'),
+    isRescanning: rescan.isLoading,
+    rescanError: rescan.error,
+    resetRescan: rescan.reset,
+  };
+}

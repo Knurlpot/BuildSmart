@@ -1,0 +1,3 @@
+INFO:     127.0.0.1:58870 - "POST /blueprints/extract/999 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50539 - "GET /docs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59243 - "POST /blueprints/extract/18 HTTP/1.1" 200 OK
