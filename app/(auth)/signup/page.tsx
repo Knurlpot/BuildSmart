@@ -9,6 +9,7 @@ import { TermsModal } from "@/components/auth/TermsModal";
 import { SpecializationSelect } from "@/components/forms/SpecializationSelect";
 import { useAuth } from "@/providers/AuthProvider";
 import { useMutation } from "@/hooks/useMutation";
+import { checkCompany, type CompanyLookupResult } from "@/lib/api/auth";
 import { resolveOnboardingRoute } from "@/lib/onboarding";
 import { specializationsToColumns } from "@/lib/specializations";
 import { USER_ROLES, type Users } from "@/types/entities";
@@ -26,7 +27,8 @@ const MAX = {
 
 const PASSWORD_MIN_LENGTH = 8;
 
-type Step = 1 | 2;
+type Step = 1 | 2 | 3;
+type CompanyMode = "join" | "create";
 
 interface FormData {
   // Step 1 -> users
@@ -44,6 +46,7 @@ interface FormData {
   companyContactNumber: string;
   specializations: string[];
   companyLogo: string;
+  companyLookupEmail: string;
 }
 
 const INIT: FormData = {
@@ -60,6 +63,7 @@ const INIT: FormData = {
   companyContactNumber: "",
   specializations: [],
   companyLogo: "",
+  companyLookupEmail: "",
 };
 
 function isValidEmail(v: string) {
@@ -86,7 +90,7 @@ function formatPhDisplayNumber(digits: string): string {
   return national ? `+63 ${national}` : "";
 }
 
-const TOTAL_FIELD_CHECKS = 12;
+const TOTAL_FIELD_CHECKS = 13;
 
 function countValidFields(d: FormData, termsAccepted: boolean): number {
   const checks = [
@@ -95,6 +99,7 @@ function countValidFields(d: FormData, termsAccepted: boolean): number {
     d.middleName.trim().length > 0,
     isValidEmail(d.email),
     d.password.length >= PASSWORD_MIN_LENGTH && d.password === d.confirmPassword,
+    isValidEmail(d.companyLookupEmail),
     d.companyName.trim().length > 0,
     d.companyAddress.trim().length > 0,
     isValidEmail(d.companyContactEmail),
@@ -113,7 +118,8 @@ function fieldCountToFrame(count: number): number {
 function ProgressBar({ step }: { step: Step }) {
   const steps: { n: Step; label: string }[] = [
     { n: 1, label: "Your Account" },
-    { n: 2, label: "Company Details" },
+    { n: 2, label: "Company Lookup" },
+    { n: 3, label: "Verify & Join" },
   ];
   return (
     <div className="flex items-center gap-2">
@@ -157,6 +163,10 @@ export default function SignUpPage() {
   const router = useRouter();
   const [step, setStep] = useState<Step>(1);
   const [form, setForm] = useState<FormData>(INIT);
+  const [companyMode, setCompanyMode] = useState<CompanyMode>("join");
+  const [matchedCompany, setMatchedCompany] = useState<CompanyLookupResult | null>(null);
+  const [lookupLoading, setLookupLoading] = useState(false);
+  const [lookupMessage, setLookupMessage] = useState("");
   const [showPw, setShowPw] = useState(false);
   const [showCPw, setShowCPw] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -244,6 +254,11 @@ export default function SignUpPage() {
       delete n[field as string];
       return n;
     });
+    if (field === "companyLookupEmail") {
+      setMatchedCompany(null);
+      setLookupMessage("");
+      setCompanyMode("join");
+    }
   };
 
   const acceptTerms = () => {
@@ -296,9 +311,23 @@ export default function SignUpPage() {
 
   const validateStep2 = () => {
     const e: Record<string, string> = {};
+    if (!matchedCompany && companyMode === "join") e.companyLookupEmail = "Find a company or choose create new";
+    setErrors(e);
+    return Object.keys(e).length === 0;
+  };
+
+  const validateStep3 = () => {
+    if (companyMode === "join") {
+      const e: Record<string, string> = {};
+      if (!matchedCompany) e.companyLookupEmail = "Select a company to join";
+      if (!termsAccepted) e.terms = "You must agree to the Terms and Conditions to continue";
+      setErrors(e);
+      return Object.keys(e).length === 0;
+    }
+    const e: Record<string, string> = {};
     if (!form.companyName.trim()) e.companyName = "Company name is required";
     if (!form.companyAddress.trim()) e.companyAddress = "Company address is required";
-    if (!isValidEmail(form.companyContactEmail)) e.companyContactEmail = "Enter a valid company contact email";
+    if (!isValidEmail(form.companyContactEmail)) e.companyContactEmail = "Enter a company email";
     if (form.companyContactNumber.length !== PH_NATIONAL_NUMBER_LENGTH)
       e.companyContactNumber =
         form.companyContactNumber.length === 0
@@ -312,29 +341,62 @@ export default function SignUpPage() {
 
   const handleNext = () => {
     if (step === 1 && validateStep1()) setStep(2);
+    else if (step === 2 && validateStep2()) setStep(3);
+  };
+
+  const handleCompanyLookup = async () => {
+    const query = form.companyLookupEmail.trim();
+    if (!isValidEmail(query)) {
+      setErrors((e) => ({ ...e, companyLookupEmail: "Enter a valid company email" }));
+      return;
+    }
+    setLookupLoading(true);
+    setLookupMessage("");
+    setApiError("");
+    try {
+      const { company } = await checkCompany(query);
+      setMatchedCompany(company);
+      setCompanyMode(company ? "join" : "create");
+      setLookupMessage(company ? "Company found. Review it before joining." : "No company found. Continue by creating a new company.");
+    } catch (err) {
+      setMatchedCompany(null);
+      setLookupMessage("");
+      setErrors((e) => ({
+        ...e,
+        companyLookupEmail: err instanceof Error ? err.message : "Company lookup failed",
+      }));
+    } finally {
+      setLookupLoading(false);
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!validateStep2()) return;
+    if (!validateStep3()) return;
     setSubmitting(true);
     setApiError("");
     try {
+      const companyPayload =
+        companyMode === "join" && matchedCompany
+          ? { company_id: matchedCompany.company_id }
+          : {
+              company: {
+                company_name: form.companyName,
+                company_address: form.companyAddress,
+                contact_email: form.companyContactEmail,
+                contact_number: formatPhDisplayNumber(form.companyContactNumber),
+                ...specializationsToColumns(form.specializations),
+                company_logo: form.companyLogo || undefined,
+              },
+            };
       const user = await register({
         first_name: form.firstName,
         last_name: form.lastName,
         middle_name: form.middleName || undefined,
         email: form.email,
         password: form.password,
-        user_role: form.userRole,
-        company: {
-          company_name: form.companyName,
-          company_address: form.companyAddress,
-          contact_email: form.companyContactEmail,
-          contact_number: formatPhDisplayNumber(form.companyContactNumber),
-          ...specializationsToColumns(form.specializations),
-          company_logo: form.companyLogo || undefined,
-        },
+        user_role: companyMode === "join" ? form.userRole : "Owner",
+        ...companyPayload,
       });
       router.push(resolveOnboardingRoute(user.onboardingStep));
     } catch (err) {
@@ -382,7 +444,7 @@ export default function SignUpPage() {
               Create your account
             </h2>
             <p className="mt-1 text-sm text-gray-500">
-              Set up BuildSmart for your company in 2 steps
+              Set up BuildSmart for your company in 3 steps
             </p>
           </div>
 
@@ -593,8 +655,105 @@ export default function SignUpPage() {
             {step === 2 && (
               <>
                 <div>
-                  <h3 className="text-sm font-bold text-gray-900">Company Details</h3>
+                  <h3 className="text-sm font-bold text-gray-900">Company Lookup</h3>
+                  <p className="text-xs text-gray-400">
+                    Search by the company contact email.
+                  </p>
                 </div>
+
+                <div className="flex flex-col gap-1.5">
+                  <div className="flex gap-2">
+                    <div className="relative flex-1">
+                      <input
+                        id="signup-company-lookup"
+                        value={form.companyLookupEmail}
+                        onChange={(e) => set("companyLookupEmail", e.target.value)}
+                        placeholder=" "
+                        className={floatingInputCls("companyLookupEmail")}
+                        autoFocus
+                      />
+                      <label htmlFor="signup-company-lookup" className={floatingLabelCls}>
+                        Company Email <span className="text-red-500">*</span>
+                      </label>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleCompanyLookup}
+                      disabled={lookupLoading}
+                      className="shrink-0 rounded-xl bg-primary px-5 py-3 text-sm font-bold text-primary-foreground transition hover:bg-(--primary-hover) disabled:opacity-60"
+                    >
+                      {lookupLoading ? "Checking..." : "Check"}
+                    </button>
+                  </div>
+                  {errors.companyLookupEmail && <p className="text-xs text-red-500">{errors.companyLookupEmail}</p>}
+                  {lookupMessage && <p className="text-xs font-medium text-gray-500">{lookupMessage}</p>}
+                </div>
+
+                {matchedCompany && (
+                  <div className="rounded-xl border border-primary/20 bg-primary/5 p-4">
+                    <p className="text-sm font-bold text-gray-900">{matchedCompany.company_name}</p>
+                    <p className="mt-2 text-sm text-gray-600">{matchedCompany.company_address}</p>
+                    <p className="mt-1 text-sm text-gray-600">{matchedCompany.contact_email}</p>
+                    {matchedCompany.specializations.length > 0 && (
+                      <p className="mt-2 text-xs font-semibold text-primary">
+                        {matchedCompany.specializations.join(" / ")}
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                <div className="rounded-xl border border-gray-200 bg-gray-50 p-3">
+                  <label className="flex items-start gap-2.5 text-sm text-gray-700">
+                    <input
+                      type="radio"
+                      checked={companyMode === "create"}
+                      onChange={() => {
+                        setCompanyMode("create");
+                        setMatchedCompany(null);
+                      }}
+                      className="mt-0.5 h-4 w-4 shrink-0 border-gray-300 text-primary focus:ring-2 focus:ring-primary/30"
+                    />
+                    <span>Create a new company account.</span>
+                  </label>
+                </div>
+
+                <div className="mt-1 flex gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setStep(1)}
+                    className="flex-1 rounded-xl border border-gray-200 px-4 py-3.5 text-sm font-bold text-gray-600 transition hover:bg-gray-50"
+                  >
+                    Back
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleNext}
+                    className="flex flex-2 items-center justify-center gap-2 rounded-xl bg-primary px-6 py-3.5 text-sm font-bold text-primary-foreground shadow-sm transition hover:bg-(--primary-hover)"
+                  >
+                    Continue <ChevronRight className="h-4 w-4" />
+                  </button>
+                </div>
+              </>
+            )}
+
+            {step === 3 && (
+              <>
+                <div>
+                  <h3 className="text-sm font-bold text-gray-900">
+                    {companyMode === "join" ? "Verify & Join" : "Create Company"}
+                  </h3>
+                </div>
+
+                {companyMode === "join" && matchedCompany && (
+                  <div className="rounded-xl border border-primary/20 bg-primary/5 p-4">
+                    <p className="text-sm font-bold text-gray-900">{matchedCompany.company_name}</p>
+                    <p className="mt-2 text-sm text-gray-600">{matchedCompany.company_address}</p>
+                    <p className="mt-1 text-sm text-gray-600">{matchedCompany.contact_email}</p>
+                  </div>
+                )}
+
+                {companyMode === "create" && (
+                  <>
 
                 <div className="flex flex-col gap-1.5">
                   <div className="relative">
@@ -765,6 +924,9 @@ export default function SignUpPage() {
                   )}
                 </div>
 
+                  </>
+                )}
+
                 <div className="flex flex-col gap-1.5 border-t border-gray-100 pt-4">
                   <label className="flex items-start gap-2.5 text-sm text-gray-700">
                     <input
@@ -798,7 +960,7 @@ export default function SignUpPage() {
                 <div className="mt-1 flex gap-3">
                   <button
                     type="button"
-                    onClick={() => setStep(1)}
+                    onClick={() => setStep(2)}
                     className="flex-1 rounded-xl border border-gray-200 px-4 py-3.5 text-sm font-bold text-gray-600 transition hover:bg-gray-50"
                   >
                     Back

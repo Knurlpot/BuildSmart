@@ -12,6 +12,7 @@ type RegisterBody = {
   password?: string;
   user_role?: string;
   role?: string;
+  company_id?: number;
   company?: {
     company_name?: string;
     company_address?: string;
@@ -31,6 +32,8 @@ export async function POST(request: NextRequest) {
   const middleName = body.middle_name?.trim() || null;
   const email = body.email?.trim().toLowerCase();
   const password = body.password ?? "";
+  const requestedCompanyId = Number(body.company_id);
+  const companyIdToJoin = Number.isInteger(requestedCompanyId) && requestedCompanyId > 0 ? requestedCompanyId : null;
   const company = body.company;
   const allowedUserRoles = new Set(["Owner", "Admin", "Estimator", "Viewer"]);
   const requestedUserRole = (body.user_role ?? body.role ?? "Owner").toString().trim();
@@ -40,14 +43,20 @@ export async function POST(request: NextRequest) {
     !firstName ||
     !lastName ||
     !email ||
-    !password ||
-    !company?.company_name ||
-    !company.company_address ||
-    !company.contact_email ||
-    !company.contact_number ||
-    !company.specialization_1
+    !password
   ) {
     return NextResponse.json({ error: "Missing required registration fields" }, { status: 400 });
+  }
+
+  if (
+    !companyIdToJoin &&
+    (!company?.company_name ||
+      !company.company_address ||
+      !company.contact_email ||
+      !company.contact_number ||
+      !company.specialization_1)
+  ) {
+    return NextResponse.json({ error: "Missing required company fields" }, { status: 400 });
   }
 
   const hashedPassword = await hashPassword(password);
@@ -56,31 +65,42 @@ export async function POST(request: NextRequest) {
   try {
     await client.query("BEGIN");
 
-    const companyResult = await client.query<CompanyRow>(
-      `INSERT INTO company (
-        company_name,
-        company_address,
-        contact_email,
-        contact_number,
-        specialization_1,
-        specialization_2,
-        specialization_3,
-        company_logo
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-      RETURNING *`,
-      [
-        company.company_name,
-        company.company_address,
-        company.contact_email.toLowerCase(),
-        company.contact_number,
-        company.specialization_1,
-        company.specialization_2 || null,
-        company.specialization_3 || null,
-        company.company_logo || null,
-      ]
-    );
+    let companyId = companyIdToJoin;
+    if (companyId) {
+      const existingCompany = await client.query<CompanyRow>(
+        `SELECT * FROM company WHERE company_id = $1 AND status = 'Active' LIMIT 1`,
+        [companyId]
+      );
+      if (!existingCompany.rows[0]) {
+        throw new Error("Company not found");
+      }
+    } else {
+      const companyResult = await client.query<CompanyRow>(
+        `INSERT INTO company (
+          company_name,
+          company_address,
+          contact_email,
+          contact_number,
+          specialization_1,
+          specialization_2,
+          specialization_3,
+          company_logo
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        RETURNING *`,
+        [
+          company!.company_name,
+          company!.company_address,
+          company!.contact_email!.toLowerCase(),
+          company!.contact_number,
+          company!.specialization_1,
+          company!.specialization_2 || null,
+          company!.specialization_3 || null,
+          company!.company_logo || null,
+        ]
+      );
+      companyId = companyResult.rows[0].company_id;
+    }
 
-    const companyId = companyResult.rows[0].company_id;
     const userResult = await client.query<UserRow>(
       `INSERT INTO users (
         company_id,
