@@ -21,11 +21,7 @@ interface SegmentConfigFormProps {
   onSave: (patch: Partial<DraftSegment>) => void;
 }
 
-// Remounted via `key={segment.draft_id}` by the caller on every selection change, so the
-// treatment-type "Others" local state never leaks between segments. Every field commits
-// immediately (no per-segment Save button) — completeness is judged at the list level via
-// isSegmentConfigured, and the wizard's own "Save N Segments" action is the real commit
-// point.
+// 
 function SegmentConfigForm({ segment, onSave }: SegmentConfigFormProps) {
   const isKnownTreatment = segment.treatment_type !== null && (TREATMENT_TYPES as readonly string[]).includes(segment.treatment_type);
   const [treatmentChoice, setTreatmentChoice] = useState<string>(
@@ -121,7 +117,6 @@ function SegmentConfigForm({ segment, onSave }: SegmentConfigFormProps) {
           value={segment.site_notes}
           onChange={(e) => onSave({ site_notes: e.target.value })}
           rows={3}
-          placeholder="Anything worth flagging about this area's condition…"
           className={`${inputCls} resize-none`}
         />
       </div>
@@ -144,12 +139,8 @@ interface ApplyToAllPanelProps {
   onApply: (patch: Pick<DraftSegment, "treatment_type" | "condition_tags" | "is_rush">) => void;
 }
 
-// NEW — not part of the Replit prototype this feature otherwise follows; added as a
-// convenience since a job can have many similar areas (e.g. every room gets the same
-// waterproofing treatment). Sets treatment_type / conditions / rush ONCE across every
-// segment — it's a bulk starting point, not a lock: any segment can still be opened
-// afterward and overridden individually via SegmentConfigForm above.
-function ApplyToAllPanel({ segmentCount, onApply }: ApplyToAllPanelProps) {
+// 
+  function ApplyToAllPanel({ segmentCount, onApply }: ApplyToAllPanelProps) {
   const [open, setOpen] = useState(false);
   const [treatmentChoice, setTreatmentChoice] = useState("");
   const [customTreatment, setCustomTreatment] = useState("");
@@ -271,7 +262,6 @@ interface ConfigureSegmentsStepProps {
   segments: DraftSegment[];
   onChange: (next: DraftSegment[]) => void;
   onSaved: (savedCount: number) => void;
-  /** Part H — returns to whichever of Quick Measurement/Upload Blueprint this quotation used. */
   onBack: () => void;
 }
 
@@ -279,22 +269,9 @@ export function ConfigureSegmentsStep({ quoteId, segments, onChange, onSaved, on
   const { saveSegments, isSaving, saveError } = useSaveSegments();
   const { updateInputMethod } = useUpdateQuotationInputMethod();
   const [selectedId, setSelectedId] = useState<string | null>(segments[0]?.draft_id ?? null);
-  // Bumped by applyToAll — folded into SegmentConfigForm's key below so the currently-open
-  // segment's form remounts (and re-reads the freshly bulk-applied values) even though
-  // its OWN draft_id didn't change. Without this, a segment already selected when "Apply
-  // to All" runs keeps showing its stale pre-apply local state (e.g. Treatment Type still
-  // "Select…") despite the underlying segment already being configured — key={draft_id}
-  // alone only resets on switching BETWEEN segments, not on external bulk edits to the
-  // one already open.
   const [applyRevision, setApplyRevision] = useState(0);
 
-  // FIX 3/4 — excluded segments (Part F: included_in_quote=false) never have to be
-  // configured. Gating this on ALL segments (the previous behavior) silently reimposed
-  // "every detected room must be complete" right after the Blueprint review step had
-  // already let the user proceed with only a subset included — the exact regression this
-  // task calls out. Excluded segments still submit as real rows at Save time (see
-  // draftSegmentToPayload's UNSPECIFIED_TREATMENT_LABEL fallback below), they just never
-  // block it.
+  // 
   const includedSegments = segments.filter(isSegmentIncluded);
   const configuredCount = includedSegments.filter(isSegmentConfigured).length;
   const allConfigured = includedSegments.length > 0 && configuredCount === includedSegments.length;
@@ -314,8 +291,7 @@ export function ConfigureSegmentsStep({ quoteId, segments, onChange, onSaved, on
     try {
       const inputMethod = computeQuotationInputMethod(segments);
       if (inputMethod === "Hybrid") {
-        // Best-effort correction — the segments save below is what actually matters for
-        // Part 1's "done" state, so a failure here doesn't block it.
+          // 
         await updateInputMethod(quoteId, "Hybrid").catch(() => {});
       }
       const result = await saveSegments(quoteId, segments.map(draftSegmentToPayload));
@@ -346,10 +322,7 @@ export function ConfigureSegmentsStep({ quoteId, segments, onChange, onSaved, on
 
       <ApplyToAllPanel segmentCount={segments.length} onApply={applyToAll} />
 
-      {/* FIX 4 — a FIXED height (not just a minimum) on this box is what actually makes the
-          sidebar list's own overflow-y-auto engage: with only a min-height, a long segment
-          list simply grew the whole box (and the page under it) taller instead of scrolling
-          in place. 440px ≈ 7 rows visible before the list scrolls internally. */}
+
       <div className="flex overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm" style={{ height: 440 }}>
         <div className="flex w-80 shrink-0 flex-col border-r border-gray-100">
           <div className="border-b border-gray-100 px-4 py-3">

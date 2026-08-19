@@ -520,7 +520,7 @@ export function PublishedSourceTab({
                 </p>
               </div>
               <p className="text-xs text-indigo-400">
-                PSA values support market trend analysis and escalation reference, not exact material
+                PSA supports market trend analysis and escalation reference, not exact material
                 prices.
               </p>
               <QueryState

@@ -435,7 +435,7 @@ export function UnitRulesForm({ focusRuleId, onFocusHandled }: UnitRulesFormProp
             </div>
           ) : (
             <div className="flex h-full flex-col items-center justify-center gap-2 text-center text-gray-400">
-              <p className="text-sm">Select a unit rule to view it, or add a new one.</p>
+              <p className="text-sm">Select Unit Rule</p>
             </div>
           )
         }

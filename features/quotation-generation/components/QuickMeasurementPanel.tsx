@@ -11,12 +11,10 @@ interface QuickMeasurementPanelProps {
   segments: DraftSegment[];
   onChange: (next: DraftSegment[]) => void;
   onContinue: () => void;
-  /** Part H — returns to the input-method choice overlay. */
   onBack: () => void;
 }
 
-// Part E — every segment gets a name by construction; never "Segment 1" colliding with an
-// existing name (e.g. after renames/deletions leave gaps).
+// 
 function nextSegmentName(segments: DraftSegment[]): string {
   const existingNames = new Set(segments.map((s) => s.segment_name));
   let n = segments.length + 1;
@@ -24,14 +22,8 @@ function nextSegmentName(segments: DraftSegment[]): string {
   return `Segment ${n}`;
 }
 
-// Path A — the PRIMARY path: on-site measurement, entered after the fact. No extraction,
-// no overlay, no confidence UI (source_method is always 'Manual', confidence_score always
-// null) — see draftSegment.ts's createManualSegment.
-//
-// Simple by default, capable on demand: Total sqm is the default field for every new
-// segment (QuickSegmentEditor); Length×Width / L-Shaped / Running Meter are one click away
-// via "Measure it differently," never shown as four permanently-open panels.
-export function QuickMeasurementPanel({ segments, onChange, onContinue, onBack }: QuickMeasurementPanelProps) {
+// 
+  export function QuickMeasurementPanel({ segments, onChange, onContinue, onBack }: QuickMeasurementPanelProps) {
   const [editingId, setEditingId] = useState<string | null>(null);
 
   const validSegments = segments.filter(isSegmentAreaValid);
@@ -55,9 +47,6 @@ export function QuickMeasurementPanel({ segments, onChange, onContinue, onBack }
   };
 
   const handleCancelRow = (draftId: string) => {
-    // A freshly-added segment that was never actually saved (still sitting at its pristine
-    // 0-area default) is dropped entirely on cancel, rather than left behind as a phantom
-    // "Segment N — 0.00 sqm" row (Part E).
     const seg = segments.find((s) => s.draft_id === draftId);
     if (seg && seg.area_sqm === 0) {
       onChange(segments.filter((s) => s.draft_id !== draftId));
@@ -84,8 +73,7 @@ export function QuickMeasurementPanel({ segments, onChange, onContinue, onBack }
           <div>
             <h2 className="text-base font-bold text-gray-900">Quick Measurement</h2>
             <p className="text-sm text-gray-600">
-              Add each area you measured on-site. Most waterproofing jobs are a single total
-              area. Enter that value to continue.
+              Add each area you measured on-site.
             </p>
           </div>
         </div>
@@ -143,10 +131,7 @@ export function QuickMeasurementPanel({ segments, onChange, onContinue, onBack }
           )}
         </div>
       </div>
-
-      {/* Part B — fills the right-side dead space with a persistent running total; stacks
-          below the segment list on narrow screens (lg:w-80 lg:shrink-0 in the panel itself). */}
-      <SegmentCompilationPanel segments={segments} />
+        <SegmentCompilationPanel segments={segments} />
     </div>
   );
 }

@@ -150,7 +150,7 @@ export function ScopeTemplatesForm({ focusRuleId, onFocusHandled }: ScopeTemplat
           </span>
         </div>
         <p className="text-xs text-gray-500">
-          think of diff description
+          Set scope for work templates.
         </p>
       </div>
 
@@ -359,7 +359,7 @@ export function ScopeTemplatesForm({ focusRuleId, onFocusHandled }: ScopeTemplat
             </div>
           ) : (
             <div className="flex h-full flex-col items-center justify-center gap-2 text-center text-gray-400">
-              <p className="text-sm">Select a template to view it, or add a new one.</p>
+              <p className="text-sm">Select Scope Template</p>
             </div>
           )
         }

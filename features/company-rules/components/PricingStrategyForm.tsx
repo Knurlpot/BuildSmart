@@ -409,7 +409,7 @@ export function PricingStrategyForm({ focusRuleId, onFocusHandled }: PricingStra
             </div>
           ) : (
             <div className="flex h-full flex-col items-center justify-center gap-2 text-center text-gray-400">
-              <p className="text-sm">Select a pricing strategy to view it, or add a new one.</p>
+              <p className="text-sm">Select Pricing Strategy</p>
             </div>
           )
         }

@@ -577,9 +577,6 @@ function PasswordSection() {
       <div className="flex items-center justify-between">
         <div>
           <p className="font-bold text-gray-900">Password</p>
-          <p className="text-xs text-gray-400">
-            Handled by the authentication backend. It is never stored, forwarded, or logged here.
-          </p>
         </div>
         {!open && (
           <button
@@ -760,15 +757,12 @@ function DeactivateAccountSection() {
   const [dialogOpen, setDialogOpen] = useState(false);
 
   return (
-    <section className="rounded-2xl border border-red-200 bg-red-50/50 p-6">
-      <p className="font-bold text-red-900">Danger Zone</p>
-      <p className="mt-1 text-sm text-red-700/80">
-        Deleting your account is permanent and all data will be lost.
-      </p>
+    <section className="flex items-center justify-between rounded-2xl border border-red-200 bg-red-50/50 p-6">
+      <p className="font-bold text-red-900">Delete Account</p>
       <button
         type="button"
         onClick={() => setDialogOpen(true)}
-        className="mt-4 w-fit rounded-xl border border-red-300 bg-white px-4 py-2.5 text-sm font-bold text-red-600 transition hover:bg-red-100"
+        className="w-fit rounded-xl border border-red-300 bg-white px-4 py-2.5 text-sm font-bold text-red-600 transition hover:bg-red-100"
       >
         Delete Account
       </button>

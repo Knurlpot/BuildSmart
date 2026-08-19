@@ -391,7 +391,7 @@ export function PriceTrendsPanel({ compact = false }: PriceTrendsPanelProps) {
         <div className="mb-5">
           <p className="text-xs font-bold uppercase tracking-wider text-gray-400">Price Trends</p>
           <p className="mt-1 text-sm leading-relaxed text-gray-600">
-            Variance analysis compares uploaded Supplier rates against DPWH CMPD baseline rates adjusted
+            Compares uploaded Supplier rates against DPWH CMPD baseline rates adjusted
             by the latest PSA CMRPI commodity movement.
           </p>
         </div>
@@ -426,7 +426,7 @@ export function PriceTrendsPanel({ compact = false }: PriceTrendsPanelProps) {
         <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
           <div>
             <p className="font-bold text-gray-900">Category Variance Over Time: {region}</p>
-            <p className="text-xs text-gray-400">Average % difference between Supplier/Internal prices and raw DPWH rates</p>
+            <p className="text-xs text-gray-400">Average % difference between Supplier prices and raw DPWH rates</p>
           </div>
           {selectedVariance && (
             <button

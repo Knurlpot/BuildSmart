@@ -88,6 +88,15 @@ export function SupplierBenchmarkContent() {
   return (
     <div className="flex flex-col gap-5">
       <div className="flex shrink-0 flex-wrap items-center gap-3 rounded-2xl border border-gray-200 bg-white p-4">
+        <div className="relative min-w-64 flex-1">
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search material or supplier..."
+            className="w-full rounded-lg border border-gray-200 bg-gray-50 py-2 pl-9 pr-3 text-sm outline-none transition focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/20"
+          />
+        </div>
         <Filter className="h-4 w-4 shrink-0 text-gray-400" />
         <div className="flex items-center gap-2">
           <label className="text-xs font-semibold text-gray-500">Region</label>
@@ -113,15 +122,6 @@ export function SupplierBenchmarkContent() {
               <option key={option}>{option}</option>
             ))}
           </select>
-        </div>
-        <div className="relative min-w-64 flex-1">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-          <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search material or supplier..."
-            className="w-full rounded-lg border border-gray-200 bg-gray-50 py-2 pl-9 pr-3 text-sm outline-none transition focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/20"
-          />
         </div>
       </div>
 

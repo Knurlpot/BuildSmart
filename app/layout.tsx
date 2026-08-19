@@ -34,7 +34,7 @@ export default function RootLayout({
     <html
       lang="en"
       suppressHydrationWarning
-      className={`${montserrat.variable} h-full antialiased`}
+      className={`${montserrat.variable} ${montserrat.className} h-full antialiased`}
     >
       <body suppressHydrationWarning className="min-h-full flex flex-col">
         <AuthProvider>{children}</AuthProvider>

@@ -485,7 +485,7 @@ export function PriceCatalogTab() {
           <h2 className="text-base font-bold text-gray-900">Price Catalog</h2>
           <p className="text-xs text-gray-500">
             {subTab === "supplier"
-              ? "Supplier records - only you can modify these records."
+              ? "Supplier records, from the uploaded price lists."
               : "DPWH is externally published data."}
           </p>
         </div>
@@ -641,7 +641,7 @@ export function PriceCatalogTab() {
           error={active.error}
           isEmpty={!active.isLoading && !active.error && active.count === 0}
           onRetry={active.refetch}
-          emptyTitle={subTab === "dpwh" ? "No DPWH-sourced records yet" : "No supplier-sourced records yet"}
+          emptyTitle={subTab === "dpwh" ? "No DPWH Records Available" : "No Supplier Records Available"}
           emptyHint={undefined}
           minHeight={260}
         >
