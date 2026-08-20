@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { AlertTriangle, ZoomIn, ZoomOut, RotateCcw, ScanLine } from "lucide-react";
+import { AlertTriangle, Check, Minus, Move, PenLine, Plus, ZoomIn, ZoomOut, RotateCcw, ScanLine } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { CONFIDENCE_BAND_LABEL, confidenceBand, type DraftSegment } from "../lib/draftSegment";
 
@@ -22,6 +22,42 @@ const FLOOR_CROP_PADDING_RATIO = 0.04;
 const TOOLTIP_WIDTH = 210;
 const TOOLTIP_HEIGHT = 96;
 
+const pointsToSvg = (points: [number, number][]) => points.map(([x, y]) => `${x},${y}`).join(" ");
+
+const polygonCenterY = (points: [number, number][]) => {
+  if (points.length === 0) return 0;
+  return points.reduce((sum, [, y]) => sum + y, 0) / points.length;
+};
+
+const distanceToSegment = (point: [number, number], start: [number, number], end: [number, number]) => {
+  const [px, py] = point;
+  const [sx, sy] = start;
+  const [ex, ey] = end;
+  const dx = ex - sx;
+  const dy = ey - sy;
+  const lengthSquared = dx * dx + dy * dy;
+  if (lengthSquared === 0) return Math.hypot(px - sx, py - sy);
+  const t = Math.max(0, Math.min(1, ((px - sx) * dx + (py - sy) * dy) / lengthSquared));
+  return Math.hypot(px - (sx + t * dx), py - (sy + t * dy));
+};
+
+const insertPointOnNearestEdge = (points: [number, number][], point: [number, number]) => {
+  if (points.length < 2) return [...points, point];
+  let insertIndex = points.length;
+  let bestDistance = Number.POSITIVE_INFINITY;
+  for (let index = 0; index < points.length; index += 1) {
+    const nextIndex = (index + 1) % points.length;
+    const distance = distanceToSegment(point, points[index], points[nextIndex]);
+    if (distance < bestDistance) {
+      bestDistance = distance;
+      insertIndex = nextIndex;
+    }
+  }
+  return [...points.slice(0, insertIndex), point, ...points.slice(insertIndex)];
+};
+
+type HighlightEditTool = "move" | "add" | "remove";
+
 interface BlueprintOverlayProps {
   imageUrl: string;
   imageWidth: number;
@@ -32,6 +68,7 @@ interface BlueprintOverlayProps {
   segments: DraftSegment[];
   hoveredId: string | null;
   onHoverChange: (id: string | null) => void;
+  onSegmentPolygonChange?: (draftId: string, polygonCoords: [number, number][]) => void;
   /** Part E — the actual DATA reset (discarding edits/groupings/deletions/manual adds back
    * to the original extraction) lives in the parent (BlueprintUploadPanel), which is the
    * one holding the original extraction result. This component only owns the confirm
@@ -78,6 +115,8 @@ export function BlueprintOverlay({
   focusBounds,
   segments,
   hoveredId,
+  onHoverChange,
+  onSegmentPolygonChange,
   onResetConfirmed,
   onRescanConfirmed,
   canRescan = false,
@@ -86,7 +125,12 @@ export function BlueprintOverlay({
   readOnly = false,
 }: BlueprintOverlayProps) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const svgRef = useRef<SVGSVGElement>(null);
   const [rescanConfirmOpen, setRescanConfirmOpen] = useState(false);
+  const [editingHighlights, setEditingHighlights] = useState(false);
+  const [draggingPoint, setDraggingPoint] = useState<{ draftId: string; pointIndex: number } | null>(null);
+  const [selectedEditId, setSelectedEditId] = useState<string | null>(null);
+  const [highlightEditTool, setHighlightEditTool] = useState<HighlightEditTool>("move");
 
   // ── Scan animation — RAF-driven, not setInterval, per the task's explicit ask. ──
   // readOnly starts fully "scanned" (scanning=false) so a Segment Breakdown viewer sees
@@ -152,11 +196,57 @@ export function BlueprintOverlay({
   // size can't be read back out of containerRef at render time the way it's read here.
   const [cursor, setCursor] = useState<{ x: number; y: number; containerWidth: number; containerHeight: number } | null>(null);
   const hoveredSegment = segments.find((s) => s.draft_id === hoveredId) ?? null;
+  const editableSegment = segments.find((segment) => segment.draft_id === selectedEditId && segment.polygon_coords) ?? null;
+  const canEditHighlights = !readOnly && !!onSegmentPolygonChange;
 
   const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
     const rect = containerRef.current?.getBoundingClientRect();
     if (!rect) return;
     setCursor({ x: e.clientX - rect.left, y: e.clientY - rect.top, containerWidth: rect.width, containerHeight: rect.height });
+  };
+
+  const svgPointFromPointer = (e: React.PointerEvent<SVGElement>): [number, number] | null => {
+    const svg = svgRef.current;
+    const matrix = svg?.getScreenCTM();
+    if (!svg || !matrix) return null;
+    const point = svg.createSVGPoint();
+    point.x = e.clientX;
+    point.y = e.clientY;
+    const transformed = point.matrixTransform(matrix.inverse());
+    return [
+      Math.min(Math.max(transformed.x, 0), imageWidth),
+      Math.min(Math.max(transformed.y, 0), imageHeight),
+    ];
+  };
+
+  const updatePolygonPoint = (draftId: string, pointIndex: number, point: [number, number]) => {
+    const segment = segments.find((seg) => seg.draft_id === draftId);
+    const points = segment?.polygon_coords;
+    if (!points) return;
+    onSegmentPolygonChange?.(
+      draftId,
+      points.map((existing, index) => (index === pointIndex ? point : existing)),
+    );
+  };
+
+  const handleSvgPointerMove = (e: React.PointerEvent<SVGSVGElement>) => {
+    if (!draggingPoint) return;
+    const point = svgPointFromPointer(e);
+    if (!point) return;
+    updatePolygonPoint(draggingPoint.draftId, draggingPoint.pointIndex, point);
+  };
+
+  const handleSvgPointerUp = () => {
+    setDraggingPoint(null);
+  };
+
+  const handlePolygonDoubleClick = (e: React.MouseEvent<SVGPolygonElement>, segment: DraftSegment) => {
+    if (!editingHighlights || !segment.polygon_coords) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const point = svgPointFromPointer(e as unknown as React.PointerEvent<SVGElement>);
+    if (!point) return;
+    onSegmentPolygonChange?.(segment.draft_id, insertPointOnNearestEdge(segment.polygon_coords, point));
   };
 
   const tooltipLeft = cursor && cursor.x + TOOLTIP_WIDTH + 20 > cursor.containerWidth ? cursor.x - TOOLTIP_WIDTH - 14 : (cursor?.x ?? 0) + 14;
@@ -233,6 +323,26 @@ export function BlueprintOverlay({
               <ScanLine className="h-3.5 w-3.5" /> Scan Actions
             </button>
           )}
+          {canEditHighlights && (
+            <button
+              type="button"
+              onClick={() => {
+                setEditingHighlights((editing) => !editing);
+                setDraggingPoint(null);
+                setSelectedEditId(null);
+                setHighlightEditTool("move");
+              }}
+              title={editingHighlights ? "Finish editing highlights" : "Edit highlight placement"}
+              className={`flex items-center gap-1 rounded-lg border px-2 py-1 text-xs font-semibold transition ${
+                editingHighlights
+                  ? "border-primary bg-orange-50 text-primary"
+                  : "border-gray-200 bg-white text-gray-500 hover:border-primary hover:text-primary"
+              }`}
+            >
+              {editingHighlights ? <Check className="h-3.5 w-3.5" /> : <PenLine className="h-3.5 w-3.5" />}
+              {editingHighlights ? "Done" : "Edit Highlights"}
+            </button>
+          )}
           {zoom !== 1 && (
             <button type="button" onClick={zoomReset} title="Reset zoom" aria-label="Reset zoom" className="rounded-lg border border-gray-200 bg-white p-1.5 text-gray-400 transition hover:text-gray-600">
               <RotateCcw className="h-3.5 w-3.5" />
@@ -257,6 +367,38 @@ export function BlueprintOverlay({
         </div>
       </div>
 
+      {editingHighlights && editableSegment && (
+        <div className="flex flex-wrap items-center gap-2 rounded-lg border border-orange-200 bg-orange-50 px-3 py-2 text-xs text-gray-700">
+          <span className="max-w-48 truncate font-semibold text-gray-800">{editableSegment.segment_name || "Selected room"}</span>
+          <div className="flex overflow-hidden rounded-lg border border-orange-200 bg-white">
+            {[
+              { id: "move" as const, label: "Move Points", icon: Move, title: "Drag existing corners" },
+              { id: "add" as const, label: "Add Point", icon: Plus, title: "Click the selected shape to add a corner" },
+              { id: "remove" as const, label: "Remove Point", icon: Minus, title: "Click a corner to remove it" },
+            ].map((tool) => {
+              const Icon = tool.icon;
+              const active = highlightEditTool === tool.id;
+              return (
+                <button
+                  key={tool.id}
+                  type="button"
+                  title={tool.title}
+                  onClick={() => {
+                    setHighlightEditTool(tool.id);
+                    setDraggingPoint(null);
+                  }}
+                  className={`flex items-center gap-1 border-r border-orange-100 px-2.5 py-1.5 font-semibold last:border-r-0 ${
+                    active ? "bg-primary text-primary-foreground" : "text-gray-600 hover:bg-orange-50"
+                  }`}
+                >
+                  <Icon className="h-3.5 w-3.5" /> {tool.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {/* Part D — dark-blue canvas (copies Replit's look; the polygon/viewBox rendering
           underneath is unchanged, see the file header contract). */}
       <div
@@ -266,11 +408,92 @@ export function BlueprintOverlay({
         style={{ maxHeight: 560 }}
       >
         <svg
+          ref={svgRef}
           viewBox={croppedViewBox}
           className="block h-auto"
-          style={{ width: "100%", minWidth: "100%" }}
+          style={{ width: "100%", minWidth: "100%", touchAction: editingHighlights ? "none" : undefined }}
+          onPointerMove={handleSvgPointerMove}
+          onPointerUp={handleSvgPointerUp}
+          onPointerLeave={handleSvgPointerUp}
         >
           <image href={imageUrl} x={0} y={0} width={imageWidth} height={imageHeight} />
+          <g>
+            {segments.map((seg) => {
+              const points = seg.polygon_coords;
+              if (!points || points.length < 3) return null;
+
+              const band = confidenceBand(seg.confidence_score);
+              const color = BAND_COLOR[band];
+              const hovered = hoveredId === seg.draft_id;
+              const revealed = !scanning || polygonCenterY(points) <= scanLineY;
+              const estimated = seg.boundary_estimated;
+
+              return (
+                <polygon
+                  key={seg.draft_id}
+                  points={pointsToSvg(points)}
+                  onMouseEnter={() => onHoverChange(seg.draft_id)}
+                  onMouseLeave={() => {
+                    if (!editingHighlights) onHoverChange(null);
+                  }}
+                  onClick={() => {
+                    if (!editingHighlights) return;
+                    setSelectedEditId(seg.draft_id);
+                    onHoverChange(seg.draft_id);
+                  }}
+                  onPointerDown={(e) => {
+                    if (!editingHighlights || highlightEditTool !== "add" || selectedEditId !== seg.draft_id || !seg.polygon_coords) return;
+                    e.preventDefault();
+                    e.stopPropagation();
+                    const point = svgPointFromPointer(e);
+                    if (!point) return;
+                    onSegmentPolygonChange?.(seg.draft_id, insertPointOnNearestEdge(seg.polygon_coords, point));
+                  }}
+                  onDoubleClick={(e) => handlePolygonDoubleClick(e, seg)}
+                  fill={color}
+                  fillOpacity={hovered ? (estimated ? 0.18 : 0.24) : revealed ? (estimated ? 0.08 : 0.12) : editingHighlights ? 0.04 : 0}
+                  stroke={color}
+                  strokeWidth={hovered || editingHighlights ? (estimated ? 5 : 6) : revealed ? (estimated ? 2.5 : 3.5) : 0}
+                  strokeLinejoin="round"
+                  strokeOpacity={hovered ? 0.95 : revealed ? 0.8 : 0}
+                  strokeDasharray={estimated ? "12 8" : undefined}
+                  className="cursor-pointer transition-opacity"
+                />
+              );
+            })}
+          </g>
+          {editingHighlights && editableSegment?.polygon_coords && (
+            <g>
+              {editableSegment.polygon_coords.map(([x, y], index) => (
+                <circle
+                  key={`${editableSegment.draft_id}-${index}`}
+                  cx={x}
+                  cy={y}
+                  r={10}
+                  fill="#ffffff"
+                  stroke={BAND_COLOR[confidenceBand(editableSegment.confidence_score)]}
+                  strokeWidth={4}
+                  className="cursor-grab active:cursor-grabbing"
+                  onPointerDown={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    onHoverChange(editableSegment.draft_id);
+                    if (highlightEditTool === "remove") {
+                      if ((editableSegment.polygon_coords?.length ?? 0) <= 3) return;
+                      onSegmentPolygonChange?.(
+                        editableSegment.draft_id,
+                        editableSegment.polygon_coords.filter((_, pointIndex) => pointIndex !== index),
+                      );
+                      return;
+                    }
+                    if (highlightEditTool !== "move") return;
+                    setDraggingPoint({ draftId: editableSegment.draft_id, pointIndex: index });
+                    e.currentTarget.setPointerCapture(e.pointerId);
+                  }}
+                />
+              ))}
+            </g>
+          )}
           {scanning && (
             <g>
               <defs>
@@ -293,6 +516,12 @@ export function BlueprintOverlay({
               <div className="h-full rounded-full bg-primary transition-[width]" style={{ width: `${scanProgress}%` }} />
             </div>
             <span className="w-20 shrink-0 text-right text-xs font-bold text-white/90">Scanning… {Math.round(scanProgress)}%</span>
+          </div>
+        )}
+
+        {editingHighlights && !editableSegment && (
+          <div className="pointer-events-none absolute left-3 top-3 rounded-lg border border-orange-200 bg-white/95 px-3 py-2 text-xs font-semibold text-gray-700 shadow-sm">
+            Click a room highlight to edit its shape.
           </div>
         )}
 

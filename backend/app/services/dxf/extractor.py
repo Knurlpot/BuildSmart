@@ -1182,7 +1182,7 @@ def _printed_area_for(label: TextLabel, labels: list[TextLabel], drawing_span: f
             dimension_point = (float(dimension_label.point.x), float(dimension_label.point.y))
             dx = abs(dimension_point[0] - label_point[0])
             dy = abs(dimension_point[1] - label_point[1])
-            if dx <= drawing_span * 0.1 and dy <= drawing_span * 0.08:
+            if dx <= drawing_span * 0.16 and dy <= drawing_span * 0.16:
                 candidates.append((dx + dy * 1.5, None, printed_area))
         dimensions = extract_dimension_only(dimension_label.text)
         if not dimensions:
@@ -1190,7 +1190,7 @@ def _printed_area_for(label: TextLabel, labels: list[TextLabel], drawing_span: f
         dimension_point = (float(dimension_label.point.x), float(dimension_label.point.y))
         dx = abs(dimension_point[0] - label_point[0])
         dy = abs(dimension_point[1] - label_point[1])
-        if dx <= drawing_span * 0.1 and dy <= drawing_span * 0.08:
+        if dx <= drawing_span * 0.16 and dy <= drawing_span * 0.16:
             candidates.append((dx + dy * 1.5, dimensions, None))
     if not candidates:
         return None
@@ -1307,6 +1307,30 @@ def _dimension_fallback_polygon(
     return candidates[0]
 
 
+def _area_boundary_mismatch(area_sqm: float, printed_area: float | None) -> bool:
+    if printed_area is None:
+        return False
+    return abs(area_sqm - printed_area) > max(printed_area * 0.75, 12)
+
+
+def _printed_area_corrected_polygon(
+    label: TextLabel,
+    labels: list[TextLabel],
+    polygon: Polygon,
+    bounds: tuple[float, float, float, float],
+    drawing_span: float,
+    metre_factor: float,
+    printed_area: float | None,
+) -> tuple[Polygon, bool]:
+    area_sqm = round(polygon.area * metre_factor * metre_factor, 2)
+    if not _area_boundary_mismatch(area_sqm, printed_area):
+        return polygon, False
+    fallback = _dimension_fallback_polygon(label, labels, bounds, drawing_span, metre_factor)
+    if fallback is None:
+        return polygon, False
+    return fallback, True
+
+
 def _printed_area_dimensions_for(label: TextLabel, labels: list[TextLabel], drawing_span: float) -> tuple[float, float] | None:
     label_point = (float(label.point.x), float(label.point.y))
     candidates = []
@@ -1371,13 +1395,23 @@ def _candidate_spaces_for_floor(
             # High confidence: labeled hatch
             label = containing_labels[0]
             name = space_label_name(label.text) or label.text.strip() or f"Space {len(spaces) + 1}"
-            area_sqm = round(polygon.area * metre_factor * metre_factor, 2)
+            printed_area = _printed_area_for(label, floor_labels, drawing_span)
+            polygon, corrected_boundary = _printed_area_corrected_polygon(label, floor_labels, polygon, bounds, drawing_span, metre_factor, printed_area)
+            key = polygon_key(polygon)
+            if key in used_keys:
+                continue
+            area_sqm = printed_area or round(polygon.area * metre_factor * metre_factor, 2)
             
             # Door validation boost
             door_valid, door_count = _validate_space_with_doors(polygon, doors)
             confidence = _space_confidence_from_door_validation(door_count, hatch_confidence + 10)
             
-            spaces.append(CandidateSpace(polygon, label, name, canonical_name(name), confidence, False, (label.handle,), ()))
+            warnings = ()
+            if corrected_boundary:
+                warnings = ("Boundary estimated from the printed area; verify against the walls.",)
+            elif printed_area:
+                warnings = ("Area taken from printed blueprint label; verify boundary highlight.",)
+            spaces.append(CandidateSpace(polygon, label, name, canonical_name(name), confidence, corrected_boundary or printed_area is not None, (label.handle,), warnings, printed_area))
             used_keys.add(key)
             used_labels.add(label.handle)
             diagnostics.door_validated_spaces += 1 if door_count > 0 else 0
@@ -1501,6 +1535,11 @@ def _candidate_spaces_for_floor(
             used_fallback = True
         else:
             polygon = candidates[0]
+
+        corrected_polygon, corrected_boundary = _printed_area_corrected_polygon(label, floor_labels, polygon, fallback_bounds, drawing_span, metre_factor, printed_area)
+        if corrected_boundary:
+            polygon = corrected_polygon
+            used_fallback = True
         
         key = polygon_key(polygon)
         if key in used_keys:
@@ -1518,8 +1557,12 @@ def _candidate_spaces_for_floor(
         confidence = _confidence(label, polygon, printed_area, area_sqm, inferred=inferred)
         if used_fallback:
             confidence = min(confidence, 60)
-        warnings = ("Boundary estimated from the printed area; verify against the walls.",) if used_fallback else ()
-        spaces.append(CandidateSpace(polygon, label, name, canonical_name(name), confidence, inferred, (label.handle,), warnings, printed_area if used_fallback else None))
+        warnings = ()
+        if used_fallback:
+            warnings = ("Boundary estimated from the printed area; verify against the walls.",)
+        elif printed_area is not None:
+            warnings = ("Area taken from printed blueprint label; verify boundary highlight.",)
+        spaces.append(CandidateSpace(polygon, label, name, canonical_name(name), confidence, inferred, (label.handle,), warnings, printed_area))
         used_keys.add(key)
         used_labels.add(label.handle)
         _, door_count = _validate_space_with_doors(polygon, doors)
@@ -1567,11 +1610,14 @@ def _candidate_spaces_for_floor(
     for shell, group_labels in shared_groups.values():
         if len(group_labels) == 1:
             label = group_labels[0]
-            key = polygon_key(shell)
+            printed_area = _printed_area_for(label, floor_labels, drawing_span)
+            polygon, corrected_boundary = _printed_area_corrected_polygon(label, floor_labels, shell, fallback_bounds, drawing_span, metre_factor, printed_area)
+            key = polygon_key(polygon)
             if key in used_keys:
                 continue
             name = space_label_name(label.text) or "Unclassified Space"
-            spaces.append(CandidateSpace(shell, label, name, canonical_name(name), 72, False, (label.handle,), ()))
+            warnings = ("Boundary estimated from the printed area; verify against the walls.",) if corrected_boundary else ()
+            spaces.append(CandidateSpace(polygon, label, name, canonical_name(name), 72, corrected_boundary or printed_area is not None, (label.handle,), warnings, printed_area))
             used_keys.add(key)
             used_labels.add(label.handle)
             continue
@@ -1586,8 +1632,12 @@ def _candidate_spaces_for_floor(
             if piece is None or piece.area <= 0:
                 continue
             name = space_label_name(label.text) or "Unclassified Space"
-            area_sqm = round(piece.area * metre_factor * metre_factor, 2)
+            printed_area = _printed_area_for(label, floor_labels, drawing_span)
+            piece, corrected_boundary = _printed_area_corrected_polygon(label, floor_labels, piece, fallback_bounds, drawing_span, metre_factor, printed_area)
+            area_sqm = printed_area or round(piece.area * metre_factor * metre_factor, 2)
             warning = "Room label found inside a shared floor shell; verify the area and boundary."
+            if corrected_boundary:
+                warning = "Boundary estimated from the printed area; verify against the walls."
             spaces.append(CandidateSpace(piece, label, name, canonical_name(name), 60, True, (label.handle,), (warning,), area_sqm))
             used_labels.add(label.handle)
 
@@ -1606,12 +1656,16 @@ def _candidate_spaces_for_floor(
             if piece is None or piece.area <= 0:
                 continue
             name = space_label_name(label.text) or "Unclassified Space"
-            area_sqm = round(piece.area * metre_factor * metre_factor, 2)
+            printed_area = _printed_area_for(label, floor_labels, drawing_span)
+            piece, corrected_boundary = _printed_area_corrected_polygon(label, floor_labels, piece, fallback_bounds, drawing_span, metre_factor, printed_area)
+            area_sqm = printed_area or round(piece.area * metre_factor * metre_factor, 2)
             if area_sqm <= 0:
                 continue
-            if canonical_name(name) in {"bathroom", "wc"} and _printed_area_for(label, floor_labels, drawing_span) is None:
+            if canonical_name(name) in {"bathroom", "wc"} and printed_area is None:
                 area_sqm = 6.0
             warning = "Room walls are not closed in the DXF; verify the estimated boundary."
+            if corrected_boundary:
+                warning = "Boundary estimated from the printed area; verify against the walls."
             spaces.append(CandidateSpace(piece, label, name, canonical_name(name), 55, True, (label.handle,), (warning,), area_sqm))
             used_labels.add(label.handle)
 

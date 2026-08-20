@@ -553,6 +553,15 @@ export function BlueprintUploadPanel({
           segments={floorSegments}
           hoveredId={hoveredId}
           onHoverChange={setHoveredId}
+          onSegmentPolygonChange={(draftId, polygonCoords) => {
+            onChange(
+              segments.map((segment) =>
+                segment.draft_id === draftId
+                  ? { ...segment, polygon_coords: polygonCoords, boundary_estimated: false, geometry_flagged: true, geometry_warnings: ["Highlight adjusted manually; verify area before continuing."] }
+                  : segment,
+              ),
+            );
+          }}
           onResetConfirmed={handleRescanConfirmed}
           onRescanConfirmed={handleGenuineRescan}
           canRescan={Boolean(blueprintFilePath)}
