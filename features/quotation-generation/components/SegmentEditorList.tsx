@@ -230,6 +230,10 @@ export function SegmentEditorList({
     rowRefs.current.get(hoveredId)?.scrollIntoView({ behavior: "smooth", block: "nearest" });
   }, [hoveredId]);
 
+  const allConfirmed = confirmSummary !== null && confirmSummary.includedCount > 0 && confirmSummary.confirmedCount === confirmSummary.includedCount;
+  const canGroupSegments = !showConfirmToggle || allConfirmed;
+  const selectedCount = canGroupSegments ? selectedIds.size : 0;
+
   const startAdd = () => {
     const draft = createManualSegment();
     onChange([...segments, draft]);
@@ -270,6 +274,12 @@ export function SegmentEditorList({
   };
 
   const toggleConfirmed = (draftId: string) => {
+    const segment = segments.find((s) => s.draft_id === draftId);
+    if (segment?.confirmed) {
+      setSelectedIds(new Set());
+      setGrouping(false);
+      setGroupName("");
+    }
     onChange(segments.map((s) => (s.draft_id === draftId ? { ...s, confirmed: !s.confirmed } : s)));
   };
 
@@ -278,7 +288,7 @@ export function SegmentEditorList({
   };
 
   const handleGroup = () => {
-    if (selectedIds.size < 2 || !groupName.trim()) return;
+    if (!canGroupSegments || selectedIds.size < 2 || !groupName.trim()) return;
     const toMerge = segments.filter((s) => selectedIds.has(s.draft_id));
     const merged = mergeSegments(toMerge, groupName.trim());
     onChange([...segments.filter((s) => !selectedIds.has(s.draft_id)), merged]);
@@ -287,7 +297,6 @@ export function SegmentEditorList({
     setGrouping(false);
   };
 
-  const allConfirmed = confirmSummary !== null && confirmSummary.includedCount > 0 && confirmSummary.confirmedCount === confirmSummary.includedCount;
   const reviewSegments = showConfidence
     ? [...segments].sort((left, right) => {
         if (left.geometry_flagged !== right.geometry_flagged) return left.geometry_flagged ? -1 : 1;
@@ -298,11 +307,20 @@ export function SegmentEditorList({
   return (
     <div className="flex flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
       {confirmSummary && (
-        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-100 bg-gray-50/60 px-4 py-2.5">
-          <span className="text-xs font-semibold text-gray-500">
-            <span className={allConfirmed ? "text-green-600" : "text-gray-700"}>{confirmSummary.confirmedCount}</span> /{" "}
+        <div
+          className={`flex flex-wrap items-center justify-between gap-2 border-b px-4 py-2.5 ${
+            allConfirmed ? "border-green-100 bg-green-50" : "border-gray-100 bg-gray-50/60"
+          }`}
+        >
+          <span
+            className={`rounded-lg px-2.5 py-1 text-xs font-bold ${
+              allConfirmed ? "bg-green-100 text-green-700 ring-1 ring-green-200" : "text-gray-500"
+            }`}
+          >
+            <span className={allConfirmed ? "text-green-700" : "text-gray-700"}>{confirmSummary.confirmedCount}</span> /{" "}
             {confirmSummary.includedCount} included confirmed
           </span>
+          {allConfirmed && <span className="text-xs font-semibold text-green-700">Ready for grouping</span>}
           {!allConfirmed && confirmSummary.includedCount > 0 && (
             <button
               type="button"
@@ -319,13 +337,13 @@ export function SegmentEditorList({
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-100 px-4 py-3">
         <p className="text-xs font-bold uppercase tracking-wider text-gray-400">Segments ({segments.length})</p>
         <div className="flex items-center gap-2">
-          {selectedIds.size >= 2 && !grouping && (
+          {selectedCount >= 2 && !grouping && (
             <button
               type="button"
               onClick={() => setGrouping(true)}
               className="flex items-center gap-1 rounded-lg border border-gray-200 bg-white px-2.5 py-1 text-xs font-semibold text-gray-600 transition hover:border-primary hover:text-primary"
             >
-              <ChevronsUpDown className="h-3 w-3" /> Group {selectedIds.size} Selected
+              <ChevronsUpDown className="h-3 w-3" /> Group {selectedCount} Selected
             </button>
           )}
           <button
@@ -338,7 +356,7 @@ export function SegmentEditorList({
         </div>
       </div>
 
-      {grouping && (
+      {canGroupSegments && grouping && (
         <div className="flex items-center gap-2 border-b border-gray-100 bg-orange-50/50 px-4 py-2.5">
           <input
             value={groupName}
@@ -392,14 +410,7 @@ export function SegmentEditorList({
                   showIncludeToggle && !seg.included_in_quote ? "opacity-50" : ""
                 }`}
               >
-                <input
-                  type="checkbox"
-                  checked={selectedIds.has(seg.draft_id)}
-                  onChange={() => toggleSelect(seg.draft_id)}
-                  title="Select for grouping"
-                  className="h-4 w-4 shrink-0 rounded border-gray-300 text-primary focus:ring-2 focus:ring-primary/30"
-                />
-                {showConfirmToggle && (
+                {showConfirmToggle && !allConfirmed && (
                   <button
                     type="button"
                     onClick={() => toggleConfirmed(seg.draft_id)}
@@ -412,6 +423,15 @@ export function SegmentEditorList({
                       <Circle className="h-5 w-5 text-gray-300 transition hover:text-primary" />
                     )}
                   </button>
+                )}
+                {canGroupSegments && (
+                  <input
+                    type="checkbox"
+                    checked={selectedIds.has(seg.draft_id)}
+                    onChange={() => toggleSelect(seg.draft_id)}
+                    title="Select for grouping"
+                    className="h-4 w-4 shrink-0 rounded border-gray-300 text-primary focus:ring-2 focus:ring-primary/30"
+                  />
                 )}
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-semibold text-gray-800">{seg.segment_name || "Untitled segment"}</p>

@@ -189,6 +189,7 @@ export function PublishedSourceTab({
         ),
       },
       { accessorKey: "region", header: "Region", enableGlobalFilter: false },
+      { accessorKey: "location", header: "Location", enableGlobalFilter: false },
       {
         id: "period",
         header: "Period",

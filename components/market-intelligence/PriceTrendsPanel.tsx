@@ -580,8 +580,9 @@ export function PriceTrendsPanel({ compact = false }: PriceTrendsPanelProps) {
                     </td>
                     <td className="px-4 py-3">{row.unit}</td>
                     <td className="px-4 py-3">
-                      <p className="font-semibold text-gray-700">{row.psaCommodityGroup}</p>
-                      <p className="text-xs text-gray-400" title={row.psaMappingReason}>{row.psaMappingType}</p>
+                      <p className="font-semibold text-gray-700" title={row.psaMappingReason}>
+                        {row.psaCommodityGroup}
+                      </p>
                     </td>
                     <td className="px-4 py-3 text-right">{fmt(row.actualPrice)}</td>
                     <td className="px-4 py-3 text-right">{fmtMaybe(row.dpwhRate)}</td>
