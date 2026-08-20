@@ -5,7 +5,7 @@ import { AlertTriangle, ArrowLeft, CheckCircle2, FileText, FileWarning, Upload a
 import { useBlueprintExtraction, useBlueprintRescan } from "@/hooks/useQuotationGeneration";
 import { BlueprintOverlay } from "./BlueprintOverlay";
 import { SegmentEditorList } from "./SegmentEditorList";
-import { confidenceBand, createSegmentFromExtraction, isSegmentIncluded, type DraftSegment } from "../lib/draftSegment";
+import { confidenceBand, createSegmentFromExtraction, isSegmentIncluded, type DraftSegment, type SegmentPolygon } from "../lib/draftSegment";
 import { resetBlueprintReview, rescanBlueprintReview } from "../lib/blueprintReviewActions.mjs";
 import type { BlueprintFloor } from "@/lib/dev/provisional/quotationGenerationTypes";
 
@@ -29,6 +29,11 @@ function boundsForPoints(points: [number, number][]): [number, number, number, n
     ([minX, minY, maxX, maxY], [x, y]) => [Math.min(minX, x), Math.min(minY, y), Math.max(maxX, x), Math.max(maxY, y)],
     [points[0][0], points[0][1], points[0][0], points[0][1]],
   );
+}
+
+function segmentPolygons(segment: { polygon_coords: SegmentPolygon | null; polygon_groups?: SegmentPolygon[] | null }): SegmentPolygon[] {
+  if (segment.polygon_groups?.length) return segment.polygon_groups;
+  return segment.polygon_coords ? [segment.polygon_coords] : [];
 }
 
 function paddedBounds(
@@ -75,7 +80,7 @@ function splitSingleSheetFloorIntoTabs(floors: BlueprintFloor[]): BlueprintFloor
   const floor = floors[0];
   const segmentCenters = floor.segments
     .map((segment) => {
-      const bounds = segment.polygon_coords ? boundsForPoints(segment.polygon_coords) : null;
+      const bounds = boundsForPoints(segmentPolygons(segment).flat());
       if (!bounds) return null;
       return { segment, x: (bounds[0] + bounds[2]) / 2, y: (bounds[1] + bounds[3]) / 2 };
     })
@@ -114,7 +119,7 @@ function splitSingleSheetFloorIntoTabs(floors: BlueprintFloor[]): BlueprintFloor
   if (groups.length < 2) return floors;
 
   return groups.map((group, index) => {
-    const points = group.items.flatMap((item) => item.segment.polygon_coords ?? []);
+    const points = group.items.flatMap((item) => segmentPolygons(item.segment)).flat();
     const focusBounds = boundsForPoints(points);
     const floorLevel = group.name;
     return {
@@ -451,7 +456,7 @@ export function BlueprintUploadPanel({
     directlyTaggedFloorSegments.length > 0 || !filterBounds
       ? directlyTaggedFloorSegments
       : segments.filter((segment) => {
-          const bounds = segment.polygon_coords ? boundsForPoints(segment.polygon_coords) : null;
+          const bounds = boundsForPoints(segmentPolygons(segment).flat());
           if (!bounds) return false;
           const [minX, minY, maxX, maxY] = filterBounds;
           const centerX = (bounds[0] + bounds[2]) / 2;
@@ -459,7 +464,8 @@ export function BlueprintUploadPanel({
           return centerX >= minX && centerX <= maxX && centerY >= minY && centerY <= maxY;
         });
   const floorIncludedSegments = floorSegments.filter(isSegmentIncluded);
-  const floorConfidence = confidenceSummary(floorIncludedSegments);
+  const floorUnconfirmedIncludedSegments = floorIncludedSegments.filter((s) => !s.confirmed);
+  const floorConfidence = confidenceSummary(floorUnconfirmedIncludedSegments);
   const floorNeedsCloserReview = floorConfidence.medium + floorConfidence.low + floorConfidence.none;
   const floorConfirmedIncludedCount = floorIncludedSegments.filter((s) => s.confirmed).length;
   const manualAdds = segments.filter((s) => s.source_method === "Manual");
@@ -528,7 +534,11 @@ export function BlueprintUploadPanel({
           ) : (
             <>
               <CheckCircle2 className="h-4 w-4 shrink-0 text-green-600" />
-              <span className="font-semibold text-gray-800">All included segments are high confidence</span>
+              <span className="font-semibold text-gray-800">
+                {floorIncludedSegments.length > 0 && floorConfirmedIncludedCount === floorIncludedSegments.length
+                  ? "All included segments confirmed"
+                  : "All included segments are high confidence"}
+              </span>
             </>
           )}
         </div>
@@ -553,11 +563,22 @@ export function BlueprintUploadPanel({
           segments={floorSegments}
           hoveredId={hoveredId}
           onHoverChange={setHoveredId}
-          onSegmentPolygonChange={(draftId, polygonCoords) => {
+          onSegmentPolygonChange={(draftId, polygonCoords, polygonIndex = 0) => {
             onChange(
               segments.map((segment) =>
                 segment.draft_id === draftId
-                  ? { ...segment, polygon_coords: polygonCoords, boundary_estimated: false, geometry_flagged: true, geometry_warnings: ["Highlight adjusted manually; verify area before continuing."] }
+                  ? {
+                      ...segment,
+                      polygon_coords: polygonIndex === 0 ? polygonCoords : segment.polygon_coords,
+                      polygon_groups: segment.polygon_groups?.length
+                        ? segment.polygon_groups.map((polygon, index) => (index === polygonIndex ? polygonCoords : polygon))
+                        : polygonIndex === 0
+                          ? [polygonCoords]
+                          : segment.polygon_groups,
+                      boundary_estimated: false,
+                      geometry_flagged: true,
+                      geometry_warnings: ["Highlight adjusted manually; verify area before continuing."],
+                    }
                   : segment,
               ),
             );

@@ -18,6 +18,7 @@ export type SegmentEntryMode = 'dimensions' | 'total_sqm' | 'l_shape' | 'running
 // though the schema's CHECK on project_segments.source_method technically allows the value
 // per row too.
 export type DraftSourceMethod = Exclude<SegmentSourceMethod, 'Hybrid'>;
+export type SegmentPolygon = [number, number][];
 
 export interface DraftSegment {
   draft_id: string;
@@ -36,7 +37,11 @@ export interface DraftSegment {
   notch_length: number | null;
   notch_width: number | null;
   area_sqm: number;
-  polygon_coords: [number, number][] | null;
+  polygon_coords: SegmentPolygon | null;
+  // Grouped blueprint segments can contain several separate room outlines. The database
+  // currently accepts one polygon string, so this is staging/UI-only until persistence
+  // grows a real multi-polygon column.
+  polygon_groups: SegmentPolygon[] | null;
   confidence_score: number | null;
   geometry_flagged: boolean;
   geometry_warnings: string[];
@@ -112,6 +117,7 @@ export function createManualSegment(defaultName = ''): DraftSegment {
     ...SHAPE_FIELD_DEFAULTS,
     area_sqm: 0,
     polygon_coords: null,
+    polygon_groups: null,
     confidence_score: null,
     geometry_flagged: false,
     geometry_warnings: [],
@@ -136,6 +142,7 @@ export function createSegmentFromExtraction(extracted: ExtractedSegment, floorLe
     ...SHAPE_FIELD_DEFAULTS,
     area_sqm: safeArea,
     polygon_coords: extracted.polygon_coords,
+    polygon_groups: extracted.polygon_coords ? [extracted.polygon_coords] : null,
     confidence_score: extracted.confidence_score,
     geometry_flagged: extracted.geometry_flagged,
     geometry_warnings: extracted.geometry_warnings,
@@ -149,11 +156,17 @@ export function createSegmentFromExtraction(extracted: ExtractedSegment, floorLe
   };
 }
 
+function segmentPolygons(seg: DraftSegment): SegmentPolygon[] {
+  if (seg.polygon_groups?.length) return seg.polygon_groups;
+  return seg.polygon_coords ? [seg.polygon_coords] : [];
+}
+
 /** "Group multiple into one" — sums area, keeps the lowest confidence of the group (the
- * more conservative read), and drops polygon_coords: a merged multi-room shape has no
- * single clean polygon representation and the schema stores exactly one per row. */
+ * more conservative read), and preserves each source room outline as a multi-polygon
+ * staging shape so the blueprint highlight does not disappear after grouping. */
 export function mergeSegments(segments: DraftSegment[], newName: string): DraftSegment {
   const confidences = segments.map((s) => s.confidence_score).filter((c): c is number => c !== null);
+  const polygonGroups = segments.flatMap(segmentPolygons);
   return {
     draft_id: stagingId('seg'),
     segment_name: newName,
@@ -162,7 +175,8 @@ export function mergeSegments(segments: DraftSegment[], newName: string): DraftS
     entry_mode: 'total_sqm',
     ...SHAPE_FIELD_DEFAULTS,
     area_sqm: Math.round(segments.reduce((sum, s) => sum + s.area_sqm, 0) * 100) / 100,
-    polygon_coords: null,
+    polygon_coords: polygonGroups[0] ?? null,
+    polygon_groups: polygonGroups.length > 0 ? polygonGroups : null,
     confidence_score: confidences.length > 0 ? Math.min(...confidences) : null,
     geometry_flagged: segments.some((segment) => segment.geometry_flagged),
     geometry_warnings: [...new Set(segments.flatMap((segment) => segment.geometry_warnings))],
@@ -225,7 +239,7 @@ export function draftSegmentToPayload(seg: DraftSegment): ProjectSegmentPayload 
     length: seg.entry_mode === 'dimensions' ? (seg.length ?? 0) : seg.area_sqm,
     width: seg.entry_mode === 'dimensions' ? (seg.width ?? 0) : 1,
     area_sqm: seg.area_sqm,
-    polygon_coords: seg.polygon_coords ? JSON.stringify(seg.polygon_coords) : null,
+    polygon_coords: seg.polygon_groups?.[0] ? JSON.stringify(seg.polygon_groups[0]) : seg.polygon_coords ? JSON.stringify(seg.polygon_coords) : null,
     confidence_score: seg.confidence_score,
     // Part F — a specialty contractor may only want SOME detected rooms priced. Excluded
     // segments still submit as real rows (the room was genuinely detected/measured); this

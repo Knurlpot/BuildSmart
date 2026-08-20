@@ -21,7 +21,7 @@ interface SegmentBlueprintPreviewProps {
 export function SegmentBlueprintPreview({ floors, segments, hoveredId, onHoverChange }: SegmentBlueprintPreviewProps) {
   const [selectedFloor, setSelectedFloor] = useState(floors[0]?.floor_level ?? "");
   const currentFloor = floors.find((f) => f.floor_level === selectedFloor) ?? floors[0];
-  const floorSegments = segments.filter((s) => s.floor_level === currentFloor.floor_level && s.polygon_coords);
+  const floorSegments = segments.filter((s) => s.floor_level === currentFloor.floor_level && (s.polygon_coords || s.polygon_groups?.length));
 
   return (
     <div className="flex flex-col gap-3">

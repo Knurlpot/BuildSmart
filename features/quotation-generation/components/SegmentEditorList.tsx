@@ -406,9 +406,9 @@ export function SegmentEditorList({
                 }}
                 onMouseEnter={() => onHoverChange?.(seg.draft_id)}
                 onMouseLeave={() => onHoverChange?.(null)}
-                className={`flex items-center gap-3 px-4 py-2.5 transition ${seg.geometry_flagged ? "bg-red-50/70 ring-1 ring-inset ring-red-200" : ""} ${hoveredId === seg.draft_id ? "bg-orange-50/60" : ""} ${
-                  showIncludeToggle && !seg.included_in_quote ? "opacity-50" : ""
-                }`}
+                className={`flex items-center gap-3 px-4 py-2.5 transition ${seg.geometry_flagged && !seg.confirmed ? "bg-red-50/70 ring-1 ring-inset ring-red-200" : ""} ${
+                  hoveredId === seg.draft_id && !seg.confirmed ? "bg-orange-50/60" : ""
+                } ${showIncludeToggle && !seg.included_in_quote ? "opacity-50" : ""}`}
               >
                 {showConfirmToggle && !allConfirmed && (
                   <button
@@ -442,12 +442,12 @@ export function SegmentEditorList({
                 {/* Part F — scope vs. confirm: a specialty contractor may only want SOME
                     detected rooms priced. Excluding never deletes the row (see
                     draftSegment.ts's included_in_quote doc). */}
-                {seg.geometry_flagged && (
+                {seg.geometry_flagged && !seg.confirmed && (
                   <span className="flex shrink-0 items-center gap-1 rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-bold text-red-700" title={seg.geometry_warnings.join(" ")}>
                     <AlertTriangle className="h-3 w-3" /> Review
                   </span>
                 )}
-                {showIncludeToggle && (
+                {showIncludeToggle && !seg.confirmed && (
                   <button
                     type="button"
                     onClick={() => toggleIncluded(seg.draft_id)}
@@ -461,7 +461,7 @@ export function SegmentEditorList({
                     {seg.included_in_quote ? "Included" : "Excluded"}
                   </button>
                 )}
-                {showConfidence && <ConfidenceBadge score={seg.confidence_score} />}
+                {showConfidence && !seg.confirmed && <ConfidenceBadge score={seg.confidence_score} />}
                 <button
                   type="button"
                   onClick={() => setEditingId(seg.draft_id)}
