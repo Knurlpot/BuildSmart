@@ -41,6 +41,7 @@ function QuoteSummaryCard({
   const meta = TIER_META[tier];
   const snapshot = project.quotes[tier];
   const accepted = snapshot.is_selected === true;
+  const canChooseAcceptedTier = project.status !== "Final";
   const versions = snapshot.versions;
   const latest = versions[versions.length - 1];
 
@@ -49,12 +50,7 @@ function QuoteSummaryCard({
   const displayed = versions.find((v) => v.version_id === viewingVersionId) ?? latest;
   const { result } = displayed;
   const isOriginal = displayed.version_number === 1;
-  const isViewingLatest = displayed.version_id === latest.version_id;
-
-  const handleRefresh = () => {
-    refreshQuotePrices(project.project_id, tier);
-    setViewingVersionId(null); // jump to the new latest once it exists
-  };
+  const displayedVersionLabel = isOriginal && project.status === "Draft" ? "Draft estimate" : versionLabel(displayed);
 
   return (
     <div className={`flex flex-1 flex-col overflow-hidden rounded-2xl border-2 bg-white shadow-sm ${accepted ? "border-green-300" : "border-gray-100"}`}>
@@ -70,7 +66,9 @@ function QuoteSummaryCard({
           </div>
         </div>
         <div className="mt-3 border-t border-white/20 pt-3">
-          <p className="text-[10px] uppercase tracking-widest opacity-70">Total (incl. VAT): {isOriginal ? "as finalized" : `${versionLabel(displayed)}`}</p>
+          <p className="text-[10px] uppercase tracking-widest opacity-70">
+            Total (incl. VAT): {isOriginal ? (project.status === "Final" ? "as finalized" : "draft estimate") : displayedVersionLabel}
+          </p>
           <p className="text-2xl font-extrabold">{fmtPeso(result.grand_total)}</p>
         </div>
       </div>
@@ -92,7 +90,7 @@ function QuoteSummaryCard({
           ))}
         </div>
         <p className="text-[11px] text-gray-400">
-          Finalized {formatDateTime(snapshot.finalized_at)} · priced from {snapshot.pricelist_basis_at_finalize === "Uploaded" ? "Uploaded Pricelist" : "DPWH CMPD"}
+          {project.status === "Final" ? "Finalized" : "Saved as draft"} {formatDateTime(snapshot.finalized_at)}
         </p>
 
         {/* Price-reference date + version history. The ORIGINAL is always
@@ -107,7 +105,7 @@ function QuoteSummaryCard({
             )}
           </div>
           <p className="text-xs text-gray-600">
-            Viewing <strong>{versionLabel(displayed)}</strong> · prices as of {formatDateTime(displayed.price_reference_date)}
+            Viewing <strong>{displayedVersionLabel}</strong> · prices as of {formatDateTime(displayed.price_reference_date)}
           </p>
           {versions.length > 1 && (
             <select
@@ -131,33 +129,25 @@ function QuoteSummaryCard({
       </div>
 
       <div className="flex flex-col gap-2 border-t border-gray-100 bg-gray-50 px-5 py-3.5">
-        <div className="flex gap-2">
-          <button
-            type="button"
-            onClick={() => onViewBreakdown(displayed.version_id)}
-            className={`flex flex-1 items-center justify-center gap-2 rounded-xl py-2.5 text-sm font-bold text-white transition hover:opacity-90 ${meta.headerBg}`}
-          >
-            View Breakdown
-          </button>
-          <button
-            type="button"
-            onClick={handleRefresh}
-            title={isViewingLatest ? "Create a new re-priced version. The original stays untouched." : "Refresh from the latest version"}
-            className="flex shrink-0 items-center justify-center gap-1.5 rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-xs font-bold text-gray-600 transition hover:border-primary hover:text-primary"
-          >
-            <RefreshCw className="h-3.5 w-3.5" /> Refresh Prices
-          </button>
-        </div>
-
         <button
           type="button"
-          onClick={onToggleAccepted}
-          className={`flex w-full items-center justify-center gap-2 rounded-xl border py-2 text-xs font-bold transition ${
-            accepted ? "border-green-300 bg-green-50 text-green-700 hover:bg-green-100" : "border-gray-200 bg-white text-gray-500 hover:border-primary hover:text-primary"
-          }`}
+          onClick={() => onViewBreakdown(displayed.version_id)}
+          className={`flex w-full items-center justify-center gap-2 rounded-xl py-2.5 text-sm font-bold text-white transition hover:opacity-90 ${meta.headerBg}`}
         >
-          <CheckCircle2 className="h-3.5 w-3.5" /> {accepted ? "Accepted. Click to unmark" : "Mark as Accepted"}
+          View Breakdown
         </button>
+
+        {canChooseAcceptedTier && (
+          <button
+            type="button"
+            onClick={onToggleAccepted}
+            className={`flex w-full items-center justify-center gap-2 rounded-xl border py-2 text-xs font-bold transition ${
+              accepted ? "border-green-300 bg-green-50 text-green-700 hover:bg-green-100" : "border-gray-200 bg-white text-gray-500 hover:border-primary hover:text-primary"
+            }`}
+          >
+            <CheckCircle2 className="h-3.5 w-3.5" /> {accepted ? "Accepted. Click to unmark" : "Mark as Accepted"}
+          </button>
+        )}
       </div>
     </div>
   );
@@ -186,6 +176,11 @@ function ProjectDetailContent({ projectId }: { projectId: string }) {
     setAcceptedTier(project.project_id, alreadyAccepted ? null : tier);
   };
 
+  const handleRefresh = () => {
+    refreshQuotePrices(project.project_id, "Practical");
+    refreshQuotePrices(project.project_id, "Premium");
+  };
+
   return (
     <div className="flex flex-col gap-5">
       <div className="flex items-start gap-3">
@@ -206,17 +201,32 @@ function ProjectDetailContent({ projectId }: { projectId: string }) {
       </div>
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        {[
-          { label: "Status", value: project.status },
-          { label: "Region", value: project.project_region },
-          { label: "Created", value: formatDateTime(project.created_at) },
-          { label: "Last Updated", value: formatDateTime(project.updated_at) },
-        ].map(({ label, value }) => (
-          <div key={label} className="rounded-xl border border-gray-100 bg-white p-3 shadow-sm">
-            <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">{label}</p>
-            <p className="mt-0.5 text-sm font-bold text-gray-800">{value}</p>
+        <div className="rounded-xl border border-gray-100 bg-white p-3 shadow-sm">
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">Status</p>
+          <p className="mt-0.5 text-sm font-bold text-gray-800">{project.status}</p>
+        </div>
+        <div className="rounded-xl border border-gray-100 bg-white p-3 shadow-sm">
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">Region</p>
+          <p className="mt-0.5 text-sm font-bold text-gray-800">{project.project_region}</p>
+        </div>
+        <div className="rounded-xl border border-gray-100 bg-white p-3 shadow-sm">
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">Created</p>
+          <p className="mt-0.5 text-sm font-bold text-gray-800">{formatDateTime(project.created_at)}</p>
+        </div>
+        <div className="flex items-stretch gap-2">
+          <div className="min-w-0 flex-1 rounded-xl border border-gray-100 bg-white p-3 shadow-sm">
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">Last Updated</p>
+            <p className="mt-0.5 truncate text-sm font-bold text-gray-800">{formatDateTime(project.updated_at)}</p>
           </div>
-        ))}
+          <button
+            type="button"
+            onClick={handleRefresh}
+            title="Refresh Practical and Premium prices"
+            className="flex shrink-0 items-center gap-1 rounded-xl border border-gray-200 bg-white px-2.5 text-[10px] font-bold text-gray-600 shadow-sm transition hover:border-primary hover:text-primary"
+          >
+            <RefreshCw className="h-3 w-3" /> Refresh
+          </button>
+        </div>
       </div>
 
       <div className="flex flex-col gap-5 lg:flex-row">

@@ -113,20 +113,24 @@ export function deleteSavedProject(projectId: string) {
   writeProjects(readProjects().filter((project) => project.project_id !== projectId));
 }
 
-export function saveFinalizedQuotation(input: FinalizedQuotationInput): SavedProjectRecord {
+function saveQuotationSnapshot(input: FinalizedQuotationInput, status: SavedProjectRecord["status"]): SavedProjectRecord {
   const now = new Date().toISOString();
-  const projectId = `proj-${Date.now()}`;
+  const existing = input.quoteId
+    ? readProjects().find((project) => project.source_quote_id === input.quoteId)
+    : null;
+  const projectId = existing?.project_id ?? `${status === "Draft" ? "draft" : "proj"}-${Date.now()}`;
   const practicalResult = computeTierResult("Practical", input.tierItems.Practical);
   const premiumResult = computeTierResult("Premium", input.tierItems.Premium);
   const project: SavedProjectRecord = {
     project_id: projectId,
+    source_quote_id: input.quoteId ?? existing?.source_quote_id ?? null,
     client_id: input.clientId,
     client_name: input.clientName,
     project_name: input.projectName,
     project_location: input.projectLocation,
     project_region: input.projectRegion,
-    status: "Final",
-    created_at: now,
+    status,
+    created_at: existing?.created_at ?? now,
     updated_at: now,
     quotes: {
       Practical: {
@@ -135,7 +139,7 @@ export function saveFinalizedQuotation(input: FinalizedQuotationInput): SavedPro
         versions: [newVersion("Practical", practicalResult, 1, now)],
         pricelist_basis_at_finalize: input.pricelistBasis,
         finalized_at: now,
-        is_selected: false,
+        is_selected: existing?.quotes.Practical.is_selected ?? false,
       },
       Premium: {
         tier: "Premium",
@@ -143,14 +147,22 @@ export function saveFinalizedQuotation(input: FinalizedQuotationInput): SavedPro
         versions: [newVersion("Premium", premiumResult, 1, now)],
         pricelist_basis_at_finalize: input.pricelistBasis,
         finalized_at: now,
-        is_selected: false,
+        is_selected: existing?.quotes.Premium.is_selected ?? false,
       },
     },
     segmentsSnapshot: input.segments,
     blueprintFloors: input.blueprintFloors,
   };
-  writeProjects([project, ...readProjects()]);
+  writeProjects([project, ...readProjects().filter((saved) => saved.project_id !== projectId)]);
   return project;
+}
+
+export function saveDraftQuotation(input: FinalizedQuotationInput): SavedProjectRecord {
+  return saveQuotationSnapshot(input, "Draft");
+}
+
+export function saveFinalizedQuotation(input: FinalizedQuotationInput): SavedProjectRecord {
+  return saveQuotationSnapshot(input, "Final");
 }
 
 export function refreshQuotePrices(projectId: string, tier: ProvisionalTier) {

@@ -25,13 +25,7 @@ interface MaterialRulesFormProps {
   onFocusHandled?: () => void;
 }
 
-// v6 Correction 3 — REBUILT as a catalog picker. A category contains many materials used
-// TOGETHER (a waterproofing system needs primer AND membrane AND topcoat), not
-// alternatives chosen one-per-category from a dropdown — so this is now a flat,
-// standalone list of treatment-tagged material records, added by searching/checking
-// items straight from the catalog. Category is filtering metadata on the picker, not the
-// organizing structure of the list itself (see RuleListDetailPanel below, same
-// select+detail pattern every other rule type already uses).
+//
 export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRulesFormProps) {
   const {
     rules,

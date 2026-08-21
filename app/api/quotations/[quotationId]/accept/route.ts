@@ -92,7 +92,7 @@ export async function POST(request: NextRequest, { params }: Params) {
              total_cost_after, changed_reason, changed_by_user_id
            )
            VALUES ($1, $2, $2, $3, $3, $4, $5)`,
-          [quoteItem.quote_item_id, quoteItem.unit_cost, quoteItem.total_cost, `Accepted ${body.tier} quotation`, auth.userId]
+          [quoteItem.quote_item_id, quoteItem.unit_cost, quoteItem.total_cost, "Manual Override", auth.userId]
         );
       }
 

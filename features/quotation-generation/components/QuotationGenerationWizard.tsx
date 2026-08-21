@@ -104,8 +104,11 @@ export function QuotationGenerationWizard() {
     setStep("client");
   };
   const handleExitWizard = async () => {
-    await discardDraftQuotation();
-    router.push("/dashboard");
+    if (!quotation) {
+      router.push("/dashboard");
+      return;
+    }
+    router.push("/projects");
   };
 
   let body: React.ReactNode;
@@ -178,6 +181,7 @@ export function QuotationGenerationWizard() {
         // clears them; the user re-reviews/re-confirms from where they left off).
         onStructuralRevision={() => setStep(method ?? "method")}
         onFinalize={(projectId) => router.push(`/projects/${projectId}`)}
+        onSaveDraft={(projectId) => router.push(`/projects/${projectId}`)}
       />
     );
   } else {

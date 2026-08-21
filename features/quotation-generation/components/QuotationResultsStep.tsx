@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { Award, CheckCircle2, Clock, Database, FileText, PenLine, Shield, SlidersHorizontal, Star, TrendingDown } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Award, CheckCircle2, Clock, Database, FileText, PenLine, Save, Shield, SlidersHorizontal, Star, TrendingDown } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -15,7 +15,7 @@ import { RevisionTypeModal } from "./RevisionTypeModal";
 import { MinorRevisionPanel } from "./MinorRevisionPanel";
 import { computeTierResult, deriveCompanyRuleItemLines, deriveMockItemLines, fmtPeso, recomputeItemLine } from "@/lib/dev/provisional/quotationBreakdownFixtures";
 import { PROVISIONAL_TIERS, type PricelistBasis, type ProvisionalItemLine, type ProvisionalQuotationTierResult, type ProvisionalTier } from "@/lib/dev/provisional/quotationBreakdownTypes";
-import { saveFinalizedQuotation, setAcceptedTier } from "@/lib/dev/provisional/savedProjectsStore";
+import { saveDraftQuotation, saveFinalizedQuotation, setAcceptedTier } from "@/lib/dev/provisional/savedProjectsStore";
 import { useLaborRules, useMaterialRules, useUnitRules } from "@/lib/dev/provisional/useCompanyRulesProvisional";
 import { useItemsCatalog } from "@/hooks/useItemsCatalog";
 import { usePricelistCatalog } from "@/hooks/usePricelistCatalog";
@@ -37,15 +37,18 @@ interface QuotationResultsStepProps {
   /** Fires once the finalized project has actually been saved (P2-B) — caller only needs
    * to move the wizard on; the save itself already happened here. */
   onFinalize: (projectId: string) => void;
+  onSaveDraft?: (projectId: string) => void;
 }
 
-const TIER_META: Record<ProvisionalTier, { tagline: string; badge: string; accent: string; headerBg: string; accentBg: string }> = {
+const TIER_META: Record<ProvisionalTier, { tagline: string; badge: string; accent: string; headerBg: string; accentBg: string; acceptButton: string; breakdownButton: string }> = {
   Practical: {
     tagline: "Cost-effective solution with quality materials",
     badge: "Recommended",
     accent: "text-primary",
     headerBg: "bg-primary",
     accentBg: "bg-orange-50",
+    acceptButton: "border-primary text-primary hover:bg-orange-50",
+    breakdownButton: "hover:border-primary hover:text-primary",
   },
   Premium: {
     tagline: "High-spec materials with expedited delivery",
@@ -53,6 +56,8 @@ const TIER_META: Record<ProvisionalTier, { tagline: string; badge: string; accen
     accent: "text-indigo-600",
     headerBg: "bg-indigo-600",
     accentBg: "bg-indigo-50",
+    acceptButton: "border-indigo-600 text-indigo-600 hover:bg-indigo-50",
+    breakdownButton: "hover:border-indigo-600 hover:text-indigo-600",
   },
 };
 
@@ -219,7 +224,7 @@ function QuoteCard({
         <button
           type="button"
           onClick={onViewBreakdown}
-          className="flex w-full items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white py-2.5 text-sm font-bold text-gray-600 transition hover:border-primary hover:text-primary"
+          className={`flex w-full items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white py-2.5 text-sm font-bold text-gray-600 transition ${meta.breakdownButton}`}
         >
           View Detailed Breakdown
         </button>
@@ -228,10 +233,10 @@ function QuoteCard({
           onClick={onAccept}
           disabled={!canAccept || isAccepting}
           title={!canAccept ? "Resolve missing prices before accepting this quotation." : undefined}
-          className={`flex w-full items-center justify-center gap-2 rounded-xl py-2.5 text-sm font-bold text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-55 ${meta.headerBg}`}
+          className={`flex w-full items-center justify-center gap-2 rounded-xl border bg-white py-2 text-xs font-bold transition disabled:cursor-not-allowed disabled:opacity-55 ${meta.acceptButton}`}
         >
-          <CheckCircle2 className="h-4 w-4" />
-          {isAccepting ? "Accepting..." : `Accept ${tier}`}
+          <CheckCircle2 className="h-3.5 w-3.5" />
+          {isAccepting ? "Accepting..." : "Mark as Accepted"}
         </button>
       </div>
     </div>
@@ -243,7 +248,7 @@ function QuoteCard({
 // depends on that don't exist in the schema yet), the READ-ONLY detailed breakdown (Part A),
 // and the revision flow (editing lives only in Minor Revision, Part D). Everything
 // downstream of `segments` is mock-derived — see quotationBreakdownFixtures.ts.
-export function QuotationResultsStep({ client, quotation, segments, blueprintFloors, onStructuralRevision, onFinalize }: QuotationResultsStepProps) {
+export function QuotationResultsStep({ client, quotation, segments, blueprintFloors, onStructuralRevision, onFinalize, onSaveDraft }: QuotationResultsStepProps) {
   const { rules: materialRules, isLoading: materialRulesLoading } = useMaterialRules();
   const { rules: laborRules, isLoading: laborRulesLoading } = useLaborRules();
   const { rules: unitRules, isLoading: unitRulesLoading } = useUnitRules();
@@ -268,6 +273,9 @@ export function QuotationResultsStep({ client, quotation, segments, blueprintFlo
   const [acceptTier, setAcceptTier] = useState<ProvisionalTier | null>(null);
   const [acceptError, setAcceptError] = useState<string | null>(null);
   const [isAccepting, setIsAccepting] = useState(false);
+  const [isSavingDraft, setIsSavingDraft] = useState(false);
+  const finalizedOrSavedRef = useRef(false);
+  const latestDraftInputRef = useRef<Parameters<typeof saveDraftQuotation>[0] | null>(null);
 
   const includedSegments = segments.filter(isSegmentIncluded);
   const totalArea = includedSegments.reduce((sum, s) => sum + s.area_sqm, 0);
@@ -329,6 +337,33 @@ export function QuotationResultsStep({ client, quotation, segments, blueprintFlo
     Premium: computeTierResult("Premium", effectiveTierItems.Premium),
   };
 
+  const draftInput = useMemo(
+    () => ({
+      clientId: client.client_id,
+      clientName: client.client_name,
+      projectName: quotation.project_name,
+      projectLocation: quotation.project_location,
+      projectRegion: quotation.project_region,
+      tierItems: effectiveTierItems,
+      pricelistBasis,
+      segments,
+      blueprintFloors,
+      quoteId: quotation.quote_id,
+    }),
+    [blueprintFloors, client.client_id, client.client_name, effectiveTierItems, pricelistBasis, quotation.project_location, quotation.project_name, quotation.project_region, quotation.quote_id, segments]
+  );
+
+  useEffect(() => {
+    latestDraftInputRef.current = draftInput;
+  }, [draftInput]);
+
+  useEffect(() => {
+    return () => {
+      if (finalizedOrSavedRef.current || !latestDraftInputRef.current) return;
+      saveDraftQuotation(latestDraftInputRef.current);
+    };
+  }, []);
+
   const acceptSelectedTier = async () => {
     if (!acceptTier || isAccepting) return;
     const result = tierResults[acceptTier];
@@ -373,7 +408,9 @@ export function QuotationResultsStep({ client, quotation, segments, blueprintFlo
         pricelistBasis,
         segments,
         blueprintFloors,
+        quoteId: quotation.quote_id,
       });
+      finalizedOrSavedRef.current = true;
       setAcceptedTier(savedProject.project_id, acceptTier);
       onFinalize(savedProject.project_id);
     } catch (error) {
@@ -381,6 +418,14 @@ export function QuotationResultsStep({ client, quotation, segments, blueprintFlo
     } finally {
       setIsAccepting(false);
     }
+  };
+
+  const saveDraft = () => {
+    if (isSavingDraft) return;
+    setIsSavingDraft(true);
+    const savedProject = saveDraftQuotation(latestDraftInputRef.current!);
+    setIsSavingDraft(false);
+    onSaveDraft?.(savedProject.project_id);
   };
 
   return (
@@ -406,7 +451,15 @@ export function QuotationResultsStep({ client, quotation, segments, blueprintFlo
             onClick={() => setRevisionTypeOpen(true)}
             className="flex items-center gap-2 rounded-lg border border-primary/30 bg-orange-50/60 px-4 py-2 text-sm font-semibold text-primary transition hover:bg-orange-50"
           >
-            <PenLine className="h-4 w-4" /> Validate &amp; Edit
+            <PenLine className="h-4 w-4" /> Edit
+          </button>
+          <button
+            type="button"
+            onClick={saveDraft}
+            disabled={isSavingDraft}
+            className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-semibold text-gray-700 shadow-sm transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            <Save className="h-4 w-4" /> {isSavingDraft ? "Saving..." : "Save"}
           </button>
         </div>
       </div>
@@ -529,6 +582,7 @@ export function QuotationResultsStep({ client, quotation, segments, blueprintFlo
 
       {minorRevisionTier && (
         <MinorRevisionPanel
+          key={minorRevisionTier}
           tier={minorRevisionTier}
           originalItems={autoTierItems[minorRevisionTier]}
           items={effectiveTierItems[minorRevisionTier]}
@@ -577,6 +631,7 @@ export function QuotationResultsStep({ client, quotation, segments, blueprintFlo
           }}
           pricelistBasis={pricelistBasis}
           onBasisChange={handleBasisChange}
+          onTierChange={setMinorRevisionTier}
           onClose={() => setMinorRevisionTier(null)}
           onApply={() => setMinorRevisionTier(null)}
         />
@@ -621,10 +676,9 @@ export function QuotationResultsStep({ client, quotation, segments, blueprintFlo
       }}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Accept {acceptTier} quotation?</DialogTitle>
+            <DialogTitle>Accept {acceptTier} Quotation?</DialogTitle>
             <DialogDescription>
-              This marks the project as accepted and saves only the selected option to the
-              database quotation items. The other option remains a comparison only.
+              This would save the quotation as finalized project.
             </DialogDescription>
           </DialogHeader>
           {acceptError && (

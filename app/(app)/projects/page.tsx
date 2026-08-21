@@ -49,7 +49,7 @@ function StatusBadge({ status }: { status: OpenProjectRow["status"] }) {
 function acceptedTier(project: SavedProjectRecord | null): string {
   if (project?.quotes.Practical.is_selected) return "Practical";
   if (project?.quotes.Premium.is_selected) return "Premium";
-  return "Not chosen";
+  return "Not decided";
 }
 
 function clientInitials(name: string): string {
@@ -271,10 +271,17 @@ function OpenProjectsContent({ onMetaChange }: OpenProjectsContentProps) {
                     <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">Region</p>
                     <p className="mt-1 truncate text-xs font-medium text-gray-600">{project.project_region}</p>
                   </div>
-                  <div className="min-w-0">
-                    <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">Accepted Tier</p>
-                    <p className="mt-1 truncate text-xs font-medium text-gray-600">{acceptedTier(project.savedProject)}</p>
-                  </div>
+                  {project.status === "Final" ? (
+                    <div className="min-w-0">
+                      <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">Quotation</p>
+                      <p className="mt-1 truncate text-xs font-medium text-gray-600">{acceptedTier(project.savedProject)}</p>
+                    </div>
+                  ) : (
+                    <div className="min-w-0">
+                      <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">Decision</p>
+                      <p className="mt-1 truncate text-xs font-medium text-gray-600">{acceptedTier(project.savedProject)}</p>
+                    </div>
+                  )}
                   <div className="min-w-0">
                     <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">Created</p>
                     <p className="mt-1 truncate text-xs font-medium text-gray-600">{formatDate(project.created_at)}</p>

@@ -9,7 +9,7 @@
 import { stagingId } from './quotationGenerationTypes';
 import type { DraftSegment } from '@/features/quotation-generation/lib/draftSegment';
 import { isSegmentIncluded } from '@/features/quotation-generation/lib/draftSegment';
-import type { LaborRule, MaterialRuleEntry, UnitRule } from './companyRulesTypes';
+import { laborRuleScope, type LaborRule, type MaterialRuleEntry, type UnitRule } from './companyRulesTypes';
 import type {
   ItemCategory,
   PricelistBasis,
@@ -210,18 +210,20 @@ function round2(n: number): number {
 }
 
 function pricingReferenceFor(basis: PricelistBasis): ProvisionalPricingReference {
-  // DPWH publishes quarterly (quarter/year present, no recorded_at date); an uploaded/
-  // internal pricelist has an upload timestamp instead, no quarter — matches
+  // DPWH publishes quarterly (quarter/year present, no recorded_at date); an uploaded
+  // supplier pricelist has an upload timestamp instead, no quarter — matches
   // HistoricalPriceRecord's documented nullability semantics exactly.
   return basis === 'DPWH'
-    ? { price_source: 'DPWH', region: 'NCR', quarter: 'Q2', year: 2026, recorded_at: null, confidence: null }
-    : { price_source: 'Internal', region: null, quarter: null, year: null, recorded_at: '2026-06-01T09:00:00.000Z', confidence: null };
+    ? { price_source: 'DPWH', region: 'NCR', brand: null, quarter: 'Q2', year: 2026, recorded_at: null, confidence: null }
+    : { price_source: 'Supplier', region: null, brand: null, quarter: null, year: null, recorded_at: '2026-06-01T09:00:00.000Z', confidence: null };
 }
 
 function supplierOptionsFor(def: ItemFixtureDef, tier: ProvisionalTier, basis: PricelistBasis): ProvisionalSupplierOption[] {
   return def.suppliers.map((s) => ({
     supplier_id: s.supplier_id,
     supplier_name: s.supplier_name,
+    brand: null,
+    location: null,
     unit_price: tier === 'Practical' ? s.practical_price : s.premium_price,
     quantity_available: s.quantity_available,
     source_type: basis,
@@ -252,6 +254,10 @@ function buildLine(seg: DraftSegment, def: ItemFixtureDef, tier: ProvisionalTier
     source_type: basis,
     is_overridden: false,
     pricing_reference: pricingReferenceFor(basis),
+    labor_rule_scope: def.category === 'Labor' ? (seg.treatment_type ? 'Treatment' : 'General') : undefined,
+    labor_rule_label: def.category === 'Labor' ? seg.treatment_type?.trim() || 'General Labor Rule' : undefined,
+    rush_multiplier_percentage: null,
+    productivity_index: null,
     supplier_options: suppliers,
     selected_supplier_id: suppliers[0]?.supplier_id ?? null,
   };
@@ -327,10 +333,13 @@ function buildCompanyRuleLine(
     .sort((a, b) => a.price - b.price);
   const selectedUploadedPrice = matchingUploadedPrices[0] ?? null;
   const selectedDpwhPrice = matchingDpwhPrices[0] ?? null;
-  const selectedPrice = basis === 'DPWH' ? selectedDpwhPrice : selectedUploadedPrice;
+  const selectedPrice = basis === 'DPWH' ? selectedDpwhPrice : selectedUploadedPrice ?? selectedDpwhPrice;
+  const selectedBasis: PricelistBasis = selectedPrice && selectedPrice === selectedDpwhPrice ? 'DPWH' : 'Uploaded';
   const uploadedOptions: ProvisionalSupplierOption[] = matchingUploadedPrices.map((price) => ({
     supplier_id: price.historicalrec_id,
     supplier_name: price.supplier_name ?? 'Uploaded pricelist',
+    brand: price.brand || null,
+    location: null,
     unit_price: price.price,
     quantity_available: null,
     source_type: 'Uploaded',
@@ -338,6 +347,8 @@ function buildCompanyRuleLine(
   const dpwhOptions: ProvisionalSupplierOption[] = matchingDpwhPrices.map((price) => ({
     supplier_id: price.historicalrec_id,
     supplier_name: `DPWH CMPD${price.region ? ` - ${price.region}` : ''}`,
+    brand: null,
+    location: price.location ?? price.region ?? null,
     unit_price: price.price,
     quantity_available: null,
     source_type: 'DPWH',
@@ -360,9 +371,13 @@ function buildCompanyRuleLine(
     quantity: qty,
     unit_price: unitPrice,
     total_cost: unitPrice !== null ? round2(qty * unitPrice) : null,
-    source_type: basis,
+    source_type: selectedPrice ? selectedBasis : basis,
     is_overridden: false,
-    pricing_reference: pricingReferenceFor(basis),
+    pricing_reference: {
+      ...pricingReferenceFor(selectedPrice ? selectedBasis : basis),
+      region: selectedBasis === 'Uploaded' ? null : pricingReferenceFor('DPWH').region,
+      brand: selectedBasis === 'Uploaded' ? selectedUploadedPrice?.brand || item?.brand || null : null,
+    },
     supplier_options: [...uploadedOptions, ...dpwhOptions],
     selected_supplier_id: selectedPrice?.historicalrec_id ?? null,
   };
@@ -384,6 +399,7 @@ function buildCompanyLaborLine(seg: DraftSegment, rule: LaborRule, basis: Pricel
   const quantity = round2(seg.area_sqm);
   const rate = round2(rule.labor_rate * (rule.productivity_index ?? 1));
   const treatmentLabel = seg.treatment_type?.trim() || "General";
+  const scope = laborRuleScope(rule);
 
   return {
     line_id: stagingId('item'),
@@ -408,6 +424,10 @@ function buildCompanyLaborLine(seg: DraftSegment, rule: LaborRule, basis: Pricel
     source_type: basis,
     is_overridden: false,
     pricing_reference: pricingReferenceFor(basis),
+    labor_rule_scope: scope,
+    labor_rule_label: scope === 'Treatment' ? rule.treatment_type ?? treatmentLabel : scope === 'Trade' ? rule.labor_trade ?? 'Trade Labor Rule' : 'General Labor Rule',
+    rush_multiplier_percentage: rule.rush_multiplier_percentage,
+    productivity_index: rule.productivity_index,
     supplier_options: [],
     selected_supplier_id: null,
   };
@@ -515,10 +535,27 @@ export function recomputeItemLine(
   const next: ProvisionalItemLine = { ...line, ...patch };
   if ('selected_supplier_id' in patch && patch.selected_supplier_id !== null) {
     const sup = line.supplier_options.find((s) => s.supplier_id === patch.selected_supplier_id);
-    if (sup) next.unit_price = sup.unit_price;
+    if (sup) {
+      next.unit_price = sup.unit_price;
+      next.source_type = sup.source_type;
+      next.pricing_reference = {
+        ...next.pricing_reference,
+        price_source: sup.source_type === 'DPWH' ? 'DPWH' : 'Supplier',
+        region: sup.source_type === 'DPWH' ? next.pricing_reference.region : null,
+        brand: sup.source_type === 'Uploaded' ? sup.brand : null,
+      };
+    }
   }
   if ('quantity' in patch || 'unit_price' in patch || 'selected_supplier_id' in patch || 'item_name' in patch) {
     next.is_overridden = true;
+  }
+  if ('unit_price' in patch && patch.unit_price !== null && line.unit_price === null) {
+    next.pricing_reference = {
+      ...next.pricing_reference,
+      price_source: next.source_type === 'DPWH' ? 'DPWH' : 'Supplier',
+      region: next.source_type === 'DPWH' ? next.pricing_reference.region : null,
+      brand: next.source_type === 'Uploaded' ? next.pricing_reference.brand ?? 'Manual revision' : null,
+    };
   }
   next.total_cost = next.unit_price !== null ? round2(next.quantity * next.unit_price) : null;
   return next;
