@@ -18,6 +18,16 @@ interface UnitRulesFormProps {
   onFocusHandled?: () => void;
 }
 
+function unitRuleScopeLabel(rule: UnitRule): string {
+  return unitRuleTargetKind(rule) === "item" ? "Specific Item" : "Per Category";
+}
+
+function unitRuleDisplayName(rule: UnitRule): string {
+  return unitRuleTargetKind(rule) === "item"
+    ? (rule.item_name ?? "Specific Item")
+    : (rule.category ?? "Category not set");
+}
+
 export function UnitRulesForm({ focusRuleId, onFocusHandled }: UnitRulesFormProps) {
   const { rules, isLoading, error, refetch, save, isSaving, saveError, resetSave, update, supersede } = useUnitRules();
   const { checkUsage } = useCheckRuleUsage();
@@ -187,7 +197,7 @@ export function UnitRulesForm({ focusRuleId, onFocusHandled }: UnitRulesFormProp
         renderListItem={(r) => (
           <div className="flex flex-col gap-0.5">
             <div className="flex items-center justify-between gap-2">
-              <span className="truncate text-sm font-semibold text-gray-800">{r.item_name ?? r.category}</span>
+              <span className="truncate text-sm font-semibold text-gray-800">{unitRuleDisplayName(r)}</span>
               <span
                 className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold ${
                   r.is_active ? "bg-green-50 text-green-700" : "bg-gray-100 text-gray-400"
@@ -196,7 +206,7 @@ export function UnitRulesForm({ focusRuleId, onFocusHandled }: UnitRulesFormProp
                 {r.is_active ? "Active" : "Disabled"}
               </span>
             </div>
-            <span className="text-xs text-gray-400">{r.item_name ? `Item override: ${r.category ?? ""}` : "Category default"}</span>
+            <span className="text-xs text-gray-400">{unitRuleScopeLabel(r)}</span>
             <span className="text-[10px] text-gray-400">{r.wastage_allowance_percentage}% wastage</span>
           </div>
         )}
@@ -222,7 +232,7 @@ export function UnitRulesForm({ focusRuleId, onFocusHandled }: UnitRulesFormProp
                         : "border-gray-200 bg-white text-gray-500 hover:border-gray-300"
                     }`}
                   >
-                    A whole category
+                    Per Category
                   </button>
                   <button
                     type="button"
@@ -233,7 +243,7 @@ export function UnitRulesForm({ focusRuleId, onFocusHandled }: UnitRulesFormProp
                         : "border-gray-200 bg-white text-gray-500 hover:border-gray-300"
                     }`}
                   >
-                    One specific item
+                    Specific Item
                   </button>
                 </div>
                 <p className="text-[11px] text-gray-400">
@@ -401,7 +411,7 @@ export function UnitRulesForm({ focusRuleId, onFocusHandled }: UnitRulesFormProp
               )}
               <div className="flex items-start justify-between gap-3 rounded-xl border border-gray-100 bg-gray-50/60 p-4">
                 <div>
-                  <p className="text-lg font-bold text-gray-900">{selected.item_name ?? selected.category}</p>
+                  <p className="text-lg font-bold text-gray-900">{unitRuleDisplayName(selected)}</p>
                   <span
                     className={`mt-1 inline-flex rounded-full px-2 py-0.5 text-[10px] font-bold ${
                       selected.is_active ? "bg-green-50 text-green-700" : "bg-gray-100 text-gray-400"
@@ -410,7 +420,7 @@ export function UnitRulesForm({ focusRuleId, onFocusHandled }: UnitRulesFormProp
                     {selected.is_active ? "Active" : "Disabled"}
                   </span>
                   <p className="text-sm text-gray-500">
-                    {selected.item_name ? `Item-level override (${selected.category ?? "—"})` : "Category-level default"}
+                    {unitRuleScopeLabel(selected)}
                   </p>
                   <p className="mt-1 text-[11px] text-gray-400">Effective {selected.effective_date}</p>
                 </div>

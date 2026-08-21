@@ -42,7 +42,11 @@ export function RuleListDetailPanel<T>({
         className="flex min-h-10 items-center justify-between gap-4"
         aria-label={countLabel ?? `${items.length} configured`}
       >
-        <div className="w-full max-w-sm">{listHeader}</div>
+        <div className="w-full max-w-sm">
+          {listHeader ?? (
+            <p className="text-xs font-semibold text-gray-500">{countLabel ?? `${items.length} configured`}</p>
+          )}
+        </div>
         <button
           type="button"
           onClick={onAdd}

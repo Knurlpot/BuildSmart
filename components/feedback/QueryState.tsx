@@ -70,7 +70,7 @@ export function QueryState({
         {showEmptyIcon && (
           <Inbox
             className={`h-8 w-8 text-gray-200 ${
-              keepEmptyTextCentered ? "absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-12" : ""
+              keepEmptyTextCentered ? "absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-16" : ""
             }`}
           />
         )}

@@ -16,8 +16,8 @@ const inputCls =
   "w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm outline-none transition focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/20";
 
 const DEFAULT_MATERIAL_PRIORITY = 1;
-const DEFAULT_PRIORITY_SOURCE = "Supplier";
-const DEFAULT_FALLBACK_RULE = "Flag for manual review";
+const DEFAULT_PRIORITY_SOURCE = "Supplier" as const;
+const DEFAULT_FALLBACK_RULE = "Flag for manual review" as const;
 const TREATMENT_OPTIONS = [...TREATMENT_TYPES];
 
 interface MaterialRulesFormProps {
@@ -66,6 +66,7 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
   const [treatmentType, setTreatmentType] = useState("");
   const [touched, setTouched] = useState(false);
   const [savedMessage, setSavedMessage] = useState(false);
+  const [statusFilter, setStatusFilter] = useState<"active" | "disabled">("active");
 
   useEffect(() => {
     if (focusRuleId) onFocusHandled?.();
@@ -99,6 +100,7 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
 
   const startAdd = () => {
     resetCreate();
+    setStatusFilter("active");
     setMode("browse");
     setSelectedId(null);
     setEditingRuleId(null);
@@ -153,6 +155,7 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
           effective_date: new Date().toISOString().slice(0, 10),
         });
       }
+      setStatusFilter("active");
       setMode("idle");
       setSelectedId(treatmentType.trim());
       setSavedMessage(true);
@@ -203,6 +206,10 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
   );
   const selectedGroup = groupedRules.find((group) => group.id === selectedId) ?? null;
   const selected = allRules.find((r) => r.rule_id === editingRuleId) ?? null;
+  const visibleGroups = groupedRules.filter((group) => {
+    const isActive = group.materials.some((rule) => rule.is_active);
+    return isActive === (statusFilter === "active");
+  });
 
   return (
     <div className="flex flex-col gap-4">
@@ -215,7 +222,7 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
 
       <RuleListDetailPanel
         title="Material Rules"
-        items={groupedRules}
+        items={visibleGroups}
         isLoading={isLoading}
         error={error}
         onRetry={refetch}
@@ -229,6 +236,29 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
         onAdd={startAdd}
         emptyHint="Add materials from your catalog and tag them with a treatment type."
         countLabel={`${groupedRules.length} treatment group${groupedRules.length === 1 ? "" : "s"}`}
+        listHeader={
+          <div className="grid grid-cols-2 gap-2">
+            {(["active", "disabled"] as const).map((filter) => (
+              <button
+                key={filter}
+                type="button"
+                onClick={() => {
+                  setStatusFilter(filter);
+                  setMode("idle");
+                  setSelectedId(null);
+                  setEditingRuleId(null);
+                }}
+                className={`min-h-9 rounded-lg border px-3 py-2 text-center text-xs font-semibold capitalize transition ${
+                  statusFilter === filter
+                    ? "border-primary bg-orange-50 text-primary"
+                    : "border-gray-200 bg-white text-gray-500 hover:border-gray-300"
+                }`}
+              >
+                {filter}
+              </button>
+            ))}
+          </div>
+        }
         renderListItem={(group) => (
           <div className="flex flex-col gap-0.5">
             <span className="text-sm font-semibold text-gray-800">{group.treatmentType}</span>
@@ -250,7 +280,7 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
                 </button>
               </div>
 
-              <div className="flex gap-2">
+              <div className="flex flex-col gap-2 sm:flex-row">
                 <div className="relative flex-1">
                   <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
                   <input
@@ -263,7 +293,7 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
                 <select
                   value={categoryFilter}
                   onChange={(e) => setCategoryFilter(e.target.value as CategoryType | "")}
-                  className={`${inputCls} w-44 shrink-0`}
+                  className={`${inputCls} sm:w-44 sm:shrink-0`}
                 >
                   <option value="">All categories</option>
                   {CATEGORY_TYPES.map((c) => (
@@ -514,8 +544,8 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
               </div>
             </div>
           ) : (
-            <div className="flex h-full flex-col items-center justify-center gap-2 text-center text-gray-400">
-              <p className="text-sm">Select a material rule to view it, or add materials from your catalog.</p>
+            <div className="flex min-h-[26rem] w-full flex-col items-center justify-center gap-2 px-6 text-center text-gray-400">
+              <p className="text-sm">Select Material Rule</p>
             </div>
           )
         }

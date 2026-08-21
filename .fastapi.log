@@ -10,3 +10,5 @@ INFO:     127.0.0.1:59491 - "GET /pricelist/catalog/dpwh HTTP/1.1" 200 OK
 INFO:     127.0.0.1:58536 - "GET /pricelist/review?latest_upload_only=true&company_id=8 HTTP/1.1" 200 OK
 INFO:     127.0.0.1:58699 - "GET /pricelist/review?latest_upload_only=true&company_id=8 HTTP/1.1" 200 OK
 INFO:     127.0.0.1:55162 - "GET /pricelist/review?latest_upload_only=true&company_id=8 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63540 - "GET /pricelist/catalog/dpwh HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54231 - "GET /pricelist/review?latest_upload_only=true&company_id=8 HTTP/1.1" 200 OK

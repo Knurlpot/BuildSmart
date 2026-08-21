@@ -14,7 +14,7 @@ import type {
   ExistingRuleSummary,
   PriceSource,
 } from "@/lib/dev/provisional/companyRulesTypes";
-import type { CategoryType } from "@/types/entities/category";
+import { CATEGORY_TYPES, type CategoryType } from "@/types/entities/category";
 import type { PhRegion } from "@/types/entities/common";
 
 export type RuleKindParam = "scope-templates" | "material-rules" | "labor-rules" | "pricing-strategy" | "unit-rules" | "supplier-rules";
@@ -77,11 +77,22 @@ function quotationTierToStrategyType(tier: unknown) {
 
 async function categoryId(client: PoolClient, category: CategoryType | null) {
   if (!category) return null;
+  if (!CATEGORY_TYPES.includes(category)) {
+    throw new Error(`Unknown material category: ${category}`);
+  }
   const result = await client.query<{ category_id: number }>(
     "SELECT category_id FROM category WHERE category_type = $1 LIMIT 1",
     [category]
   );
-  return result.rows[0]?.category_id ?? null;
+  if (result.rows[0]) return result.rows[0].category_id;
+
+  const inserted = await client.query<{ category_id: number }>(
+    `INSERT INTO category (category_type, category_desc)
+     VALUES ($1, $2)
+     RETURNING category_id`,
+    [category, `${category} materials`]
+  );
+  return inserted.rows[0].category_id;
 }
 
 export async function fetchCompanyRules(companyId: number): Promise<CompanyRulesPayload> {
