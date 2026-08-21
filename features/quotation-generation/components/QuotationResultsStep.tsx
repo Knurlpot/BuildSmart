@@ -646,8 +646,7 @@ export function QuotationResultsStep({ client, quotation, segments, blueprintFlo
           <DialogHeader>
             <DialogTitle>Return to segmentation?</DialogTitle>
             <DialogDescription>
-              You return to review segments with your previous data. Any quotations generated here are discarded and
-              regenerated when you proceed.
+              All quotations will be discarded. 
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

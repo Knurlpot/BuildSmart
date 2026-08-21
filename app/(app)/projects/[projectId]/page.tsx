@@ -23,8 +23,21 @@ function formatDateTime(iso: string) {
   return d.toLocaleDateString("en-PH", { year: "numeric", month: "short", day: "numeric" });
 }
 
+function formatDateTimeWithTime(iso: string | null | undefined) {
+  const d = new Date(iso ?? "");
+  if (Number.isNaN(d.getTime())) return "—";
+  return d.toLocaleString("en-PH", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
 function versionLabel(v: SavedQuoteVersion): string {
-  return v.version_number === 1 ? "Original (as finalized)" : `Refreshed v${v.version_number}`;
+  const iso = v.price_reference_date ?? v.updated_at ?? v.created_at;
+  return iso ? formatDateTime(iso) : (v.version_number === 1 ? "Original" : `Version ${v.version_number}`);
 }
 
 function QuoteSummaryCard({
@@ -67,7 +80,7 @@ function QuoteSummaryCard({
         </div>
         <div className="mt-3 border-t border-white/20 pt-3">
           <p className="text-[10px] uppercase tracking-widest opacity-70">
-            Total (incl. VAT): {isOriginal ? (project.status === "Final" ? "as finalized" : "draft estimate") : displayedVersionLabel}
+            Total (incl. VAT): {isOriginal ? (project.status === "Final" ? formatDateTime(snapshot.finalized_at ?? displayed.price_reference_date ?? displayed.updated_at ?? displayed.created_at) : "Draft estimate") : displayedVersionLabel}
           </p>
           <p className="text-2xl font-extrabold">{fmtPeso(result.grand_total)}</p>
         </div>
@@ -105,7 +118,7 @@ function QuoteSummaryCard({
             )}
           </div>
           <p className="text-xs text-gray-600">
-            Viewing <strong>{displayedVersionLabel}</strong> · prices as of {formatDateTime(displayed.price_reference_date)}
+            Viewing prices as of <strong>{formatDateTime(displayed.price_reference_date)}</strong>
           </p>
           {versions.length > 1 && (
             <select
@@ -115,7 +128,7 @@ function QuoteSummaryCard({
             >
               {versions.map((v) => (
                 <option key={v.version_id} value={v.version_id}>
-                  {versionLabel(v)} — {formatDateTime(v.price_reference_date)} — {fmtPeso(v.result.grand_total)}
+                  {formatDateTimeWithTime(v.price_reference_date ?? v.updated_at ?? v.created_at)} — {fmtPeso(v.result.grand_total)}
                 </option>
               ))}
             </select>
