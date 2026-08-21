@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { ColumnDef } from "@tanstack/react-table";
 import { Loader2, Pencil, RefreshCw, Save, Search, Trash2 } from "lucide-react";
 import { QueryState } from "@/components/feedback/QueryState";
@@ -104,6 +104,7 @@ export function PriceCatalogTab() {
   const [search, setSearch] = useState("");
   const [region, setRegion] = useState("All");
   const [category, setCategory] = useState("All");
+  const [supplier, setSupplier] = useState("All");
 
   const { dpwhCatalog } = usePricelistPublishedSource();
   const supplierCatalog = usePricelistCatalog();
@@ -125,21 +126,18 @@ export function PriceCatalogTab() {
   const [isEditingAll, setIsEditingAll] = useState(false);
   const [editDrafts, setEditDrafts] = useState<Record<number, SupplierRowDraft>>({});
   const [isSavingAll, setIsSavingAll] = useState(false);
-  const [savingId, setSavingId] = useState<number | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
 
-  // 
-  const editDraftsRef = useRef(editDrafts);
-  editDraftsRef.current = editDrafts;
-
-  useEffect(() => {
+  const handleSubTabChange = (nextTab: "dpwh" | "supplier") => {
+    setSubTab(nextTab);
     setDeleteError(null);
     setSelectedIds(new Set());
     setIsEditingAll(false);
     setEditDrafts({});
     setSaveError(null);
     setCategory("All");
-  }, [subTab]);
+    setSupplier("All");
+  };
 
   const dpwhRows = useMemo(
     () =>
@@ -153,9 +151,15 @@ export function PriceCatalogTab() {
   const supplierRows = useMemo(
     () =>
       supplierCatalog.records.filter(
-        (r) => category === "All" || (r.category_type ?? "Uncategorized") === category
+        (r) =>
+          (category === "All" || (r.category_type ?? "Uncategorized") === category) &&
+          (supplier === "All" || (r.supplier_name ?? "Unassigned") === supplier)
       ),
-    [supplierCatalog.records, category]
+    [supplierCatalog.records, category, supplier]
+  );
+  const supplierOptions = useMemo(
+    () => Array.from(new Set(supplierCatalog.records.map((r) => r.supplier_name ?? "Unassigned"))).sort(),
+    [supplierCatalog.records]
   );
   const categoryOptions = useMemo(() => {
     const rows = subTab === "dpwh" ? dpwhCatalog.records : supplierCatalog.records;
@@ -265,15 +269,13 @@ export function PriceCatalogTab() {
     for (const row of supplierRows) {
       if (row.historicalrec_id === null) continue;
       const draft = editDrafts[row.historicalrec_id] ?? supplierRowToDraft(row);
-      setSavingId(row.historicalrec_id);
       try {
         await supplierCatalog.update(row.historicalrec_id, supplierDraftToPatch(draft));
-      } catch (err) {
+      } catch {
         failedNames.push(row.item_name);
       }
     }
 
-    setSavingId(null);
     setIsSavingAll(false);
     if (failedNames.length > 0) {
       setSaveError(`Failed to save: ${failedNames.join(", ")}`);
@@ -363,7 +365,7 @@ export function PriceCatalogTab() {
         cell: ({ row }) => {
           const rec = row.original;
           if (isEditingAll && rec.historicalrec_id !== null) {
-            const draft = editDraftsRef.current[rec.historicalrec_id] ?? supplierRowToDraft(rec);
+            const draft = editDrafts[rec.historicalrec_id] ?? supplierRowToDraft(rec);
             return (
               <EditableTextCell
                 value={draft.item_name}
@@ -386,7 +388,7 @@ export function PriceCatalogTab() {
         cell: ({ row }) => {
           const rec = row.original;
           if (isEditingAll && rec.historicalrec_id !== null) {
-            const draft = editDraftsRef.current[rec.historicalrec_id] ?? supplierRowToDraft(rec);
+            const draft = editDrafts[rec.historicalrec_id] ?? supplierRowToDraft(rec);
             return <EditableTextCell value={draft.brand} onChange={(value) => updateSupplierDraft(rec, { brand: value })} />;
           }
           return <span>{rec.brand}</span>;
@@ -403,7 +405,7 @@ export function PriceCatalogTab() {
         cell: ({ row }) => {
           const rec = row.original;
           if (isEditingAll && rec.historicalrec_id !== null) {
-            const draft = editDraftsRef.current[rec.historicalrec_id] ?? supplierRowToDraft(rec);
+            const draft = editDrafts[rec.historicalrec_id] ?? supplierRowToDraft(rec);
             return (
               <EditableTextCell
                 value={draft.description_material}
@@ -422,7 +424,7 @@ export function PriceCatalogTab() {
         cell: ({ row }) => {
           const rec = row.original;
           if (isEditingAll && rec.historicalrec_id !== null) {
-            const draft = editDraftsRef.current[rec.historicalrec_id] ?? supplierRowToDraft(rec);
+            const draft = editDrafts[rec.historicalrec_id] ?? supplierRowToDraft(rec);
             return (
               <EditableTextCell
                 value={draft.unit}
@@ -441,7 +443,7 @@ export function PriceCatalogTab() {
         cell: ({ row }) => {
           const rec = row.original;
           if (isEditingAll && rec.historicalrec_id !== null) {
-            const draft = editDraftsRef.current[rec.historicalrec_id] ?? supplierRowToDraft(rec);
+            const draft = editDrafts[rec.historicalrec_id] ?? supplierRowToDraft(rec);
             return (
               <input
                 type="number"
@@ -463,9 +465,7 @@ export function PriceCatalogTab() {
         cell: ({ getValue }) => <span className="text-gray-500">{formatDate(getValue<string>())}</span>,
       },
     ],
-    // editDrafts is deliberately NOT a dep — see editDraftsRef above.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [selectedIds, isBulkDeleting, isEditingAll]
+    [selectedIds, isBulkDeleting, isEditingAll, editDrafts]
   );
 
   const active = subTab === "dpwh"
@@ -499,7 +499,7 @@ export function PriceCatalogTab() {
             <button
               key={tab.id}
               type="button"
-              onClick={() => setSubTab(tab.id)}
+              onClick={() => handleSubTabChange(tab.id)}
               className={`rounded-lg px-5 py-1.5 text-xs font-bold transition ${
                 subTab === tab.id ? "bg-white text-primary shadow-sm" : "text-gray-500 hover:text-gray-700"
               }`}
@@ -517,47 +517,64 @@ export function PriceCatalogTab() {
       )}
 
       <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
-        <div className="flex flex-wrap items-center gap-3 border-b border-gray-100 px-4 py-4">
-          <div className="relative min-w-64 flex-1">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-            <input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search by material…"
-              className="w-full rounded-lg border border-gray-200 bg-gray-50 py-2 pl-9 pr-3 text-sm outline-none transition focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/20"
-            />
-          </div>
-          <div className="flex items-center gap-2">
-            <label className="text-xs font-semibold text-gray-500">Category</label>
-            <select
-              value={category}
-              onChange={(e) => setCategory(e.target.value)}
-              className="min-w-40 rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-primary focus:outline-none"
-            >
-              <option>All</option>
-              {categoryOptions.map((option) => (
-                <option key={option}>{option}</option>
-              ))}
-            </select>
-          </div>
-          {subTab === "dpwh" && (
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-100 px-4 py-4">
+          <div className="flex min-w-0 flex-1 flex-wrap items-center gap-3">
+            <div className="relative min-w-48 flex-1">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+              <input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search by material…"
+                className="w-full rounded-lg border border-gray-200 bg-gray-50 py-2 pl-9 pr-3 text-sm outline-none transition focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/20"
+              />
+            </div>
             <div className="flex items-center gap-2">
-              <label className="text-xs font-semibold text-gray-500">Region</label>
+              <label className="text-xs font-semibold text-gray-500">Category</label>
               <select
-                value={region}
-                onChange={(e) => setRegion(e.target.value)}
-                className="min-w-36 rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-primary focus:outline-none"
+                value={category}
+                onChange={(e) => setCategory(e.target.value)}
+                className="w-32 rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-primary focus:outline-none"
               >
-                {REGIONS.map((r) => (
-                  <option key={r}>{r}</option>
+                <option>All</option>
+                {categoryOptions.map((option) => (
+                  <option key={option}>{option}</option>
                 ))}
               </select>
             </div>
-          )}
-          <span className="ml-auto text-xs text-gray-400">
-            {active.count} record{active.count !== 1 ? "s" : ""}
-          </span>
-          <div className="flex flex-wrap items-center justify-end gap-2">
+            {subTab === "supplier" && (
+              <div className="flex items-center gap-2">
+                <label className="text-xs font-semibold text-gray-500">Supplier</label>
+                <select
+                  value={supplier}
+                  onChange={(e) => setSupplier(e.target.value)}
+                  className="w-32 rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-primary focus:outline-none"
+                >
+                  <option>All</option>
+                  {supplierOptions.map((option) => (
+                    <option key={option}>{option}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+            {subTab === "dpwh" && (
+              <div className="flex items-center gap-2">
+                <label className="text-xs font-semibold text-gray-500">Region</label>
+                <select
+                  value={region}
+                  onChange={(e) => setRegion(e.target.value)}
+                  className="min-w-36 rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-primary focus:outline-none"
+                >
+                  {REGIONS.map((r) => (
+                    <option key={r}>{r}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+            <span className="text-xs text-gray-400">
+              {active.count} record{active.count !== 1 ? "s" : ""}
+            </span>
+          </div>
+          <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
             {!isEditingAll && (
               <>
                 <button

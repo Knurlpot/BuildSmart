@@ -155,6 +155,7 @@ export async function fetchCompanyRules(companyId: number): Promise<CompanyRules
     const parsed = meta(row.description);
     return {
       rule_id: `st-${row.scope_template_id}`,
+      treatment_type: typeof parsed.treatment_type === "string" ? parsed.treatment_type : row.template_name,
       template_name: row.template_name,
       service_specialization: row.specialization,
       material_categories: row.categories,
@@ -169,6 +170,7 @@ export async function fetchCompanyRules(companyId: number): Promise<CompanyRules
     const prioritySource = (parsed.priority_source as PriceSource | undefined) ?? "Supplier";
     return {
       rule_id: `mr-${row.rule_id}`,
+      treatment_type: typeof parsed.treatment_type === "string" ? parsed.treatment_type : null,
       category: row.category_type,
       preferred_item_code: String(parsed.preferred_item_code ?? ""),
       preferred_item_name: row.item_name ?? row.rule_name,
@@ -323,7 +325,7 @@ export async function createRule(companyId: number, kind: RuleKindParam, body: R
           body.service_specialization,
           body.template_name,
           "Scope Template",
-          JSON.stringify({ others_description: body.others_description ?? null }),
+          JSON.stringify({ others_description: body.others_description ?? null, treatment_type: body.treatment_type }),
         ]
       );
       for (const category of (body.material_categories as CategoryType[]) ?? []) {
@@ -347,7 +349,7 @@ export async function createRule(companyId: number, kind: RuleKindParam, body: R
           body.preferred_item_name,
           body.category,
           body.category,
-          JSON.stringify({ preferred_item_code: body.preferred_item_code, priority_source: source }),
+          JSON.stringify({ preferred_item_code: body.preferred_item_code, priority_source: source, treatment_type: body.treatment_type ?? null }),
           sourceToCompanyRuleSource(source),
           materialFallbackToCompanyRuleFallback(body.fallback_rule),
         ]
@@ -502,7 +504,7 @@ export async function updateRule(companyId: number, kind: RuleKindParam, ruleId:
         [
           body.template_name,
           body.service_specialization,
-          JSON.stringify({ others_description: body.others_description ?? null }),
+          JSON.stringify({ others_description: body.others_description ?? null, treatment_type: body.treatment_type }),
           companyId,
           id,
         ]
@@ -604,6 +606,43 @@ export async function updateRule(companyId: number, kind: RuleKindParam, ruleId:
           body.profit_margin_percentage,
           id,
         ]
+      );
+    } else if (kind === "material-rules" && prefix === "mr") {
+      const idForCategory = await categoryId(client, body.category as CategoryType);
+      const source = body.priority_source as PriceSource;
+      const updatedRule = await client.query(
+        `UPDATE company_rule
+         SET rule_name = $1,
+             specialization = $2,
+             scope_of_work = $2,
+             checklist_items = $3,
+             primary_source = $4,
+             fallback_rule = $5
+         WHERE company_id = $6 AND rule_id = $7 AND work_type = 'Material Rule'`,
+        [
+          body.preferred_item_name,
+          body.category,
+          JSON.stringify({
+            preferred_item_code: body.preferred_item_code,
+            priority_source: source,
+            treatment_type: body.treatment_type ?? null,
+          }),
+          sourceToCompanyRuleSource(source),
+          materialFallbackToCompanyRuleFallback(body.fallback_rule),
+          companyId,
+          id,
+        ]
+      );
+      if (updatedRule.rowCount === 0) throw new Error("Material rule not found");
+
+      await client.query(
+        `UPDATE rule_category_detail
+         SET category_id = $1,
+             preferred_item_code = $2,
+             material_priority = $3,
+             fallback_rule = $4
+         WHERE rule_id = $5`,
+        [idForCategory, Number(body.preferred_item_code), body.material_priority, body.fallback_rule, id]
       );
     } else if (kind === "labor-rules" && prefix === "lr") {
       const metaBody = {

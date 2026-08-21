@@ -37,13 +37,11 @@ export function envelopeStatus(e: Pick<RuleEnvelope, 'is_active'>): RuleStatus {
 }
 
 // ── 1. Scope Templates (rule_scope + rule_scope_category) ───────────────────
-// v6 CORRECTION 2: ADVISORY ONLY, not an enforced package. Client: "No packages as no two
-// areas are the same" — every job starts from a site assessment, treatment chosen per-area
-// by severity. But also: "there can be suggested materials used but not instantly put in
-// system." So this stays a saved, optional reference a user can create for their own
-// memory ("here's what I usually spec for a roof retrofit") — it does NOT drive, gate, or
-// pre-populate Material/Unit Rules. There is no wizard and no forced next step.
+// Required treatment/scope definitions. These provide the treatment-type vocabulary used by
+// quotation segments and treatment-scoped Labor Rules, plus the suggested material
+// categories usually involved in that scope.
 export interface ScopeTemplate extends RuleEnvelope {
+  treatment_type: string;
   template_name: string; // -> company_rule.rule_name
   service_specialization: string; // -> rule_scope.service_specialization
   material_categories: CategoryType[]; // -> rule_scope_category junction rows — SUGGESTED categories, not enforced
@@ -75,6 +73,7 @@ export const PRICE_SOURCES = ['DPWH', 'PSA', 'Supplier', 'Internal'] as const;
 export type PriceSource = (typeof PRICE_SOURCES)[number];
 
 export interface MaterialRuleEntry extends RuleEnvelope {
+  treatment_type: string | null;
   category: CategoryType; // -> rule_material.category_id. Filtering metadata, not the organizing key.
   // -> rule_material.preferred_item_code (FK to items, nullable in the schema). The catalog
   // picker always sets this in practice; stays nullable in the type to be honest about

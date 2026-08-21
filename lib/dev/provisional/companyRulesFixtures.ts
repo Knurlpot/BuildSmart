@@ -29,12 +29,11 @@ export const laborTradeOptionsFixture: string[] = [
   'General Laborer',
 ];
 
-// v6 Correction 2 — ADVISORY only: a saved reference of suggested categories for a kind of
-// job, not an enforced package and not linked to anything else. Creating/editing one has
-// no side effects on Material or Unit Rules.
+// Required treatment/scope definitions used by quotation segments and Labor Rules.
 export const scopeTemplatesFixture: ScopeTemplate[] = [
   {
     rule_id: 'st-1',
+    treatment_type: 'Roofing',
     template_name: 'Standard Roof Retrofit',
     service_specialization: 'Roofing Installation',
     material_categories: ['Structural', 'Hardware', 'Finishing'],
@@ -43,6 +42,7 @@ export const scopeTemplatesFixture: ScopeTemplate[] = [
   },
   {
     rule_id: 'st-2',
+    treatment_type: 'Waterproofing',
     template_name: 'Interior Waterproofing Package',
     service_specialization: 'Waterproofing Systems',
     material_categories: ['Structural', 'Finishing'],
@@ -51,6 +51,7 @@ export const scopeTemplatesFixture: ScopeTemplate[] = [
   },
   {
     rule_id: 'st-3',
+    treatment_type: 'Electrical Works',
     template_name: 'Full Electrical Rewire',
     service_specialization: 'Electrical Works',
     material_categories: ['Electrical', 'Hardware'],
@@ -66,40 +67,48 @@ export const scopeTemplatesFixture: ScopeTemplate[] = [
 export const materialRulesFixture: MaterialRuleEntry[] = [
   {
     rule_id: 'mr-1',
+    treatment_type: null,
     category: 'Structural',
     preferred_item_code: '5001',
     preferred_item_name: 'Deformed Steel Rebar, 12mm',
     material_priority: 1,
+    priority_source: 'Supplier',
     fallback_rule: 'Use next priority material',
     is_active: true,
     effective_date: '2025-01-16',
   },
   {
     rule_id: 'mr-2',
+    treatment_type: null,
     category: 'Structural',
     preferred_item_code: '5002',
     preferred_item_name: 'Portland Cement, Type 1',
     material_priority: 1,
+    priority_source: 'Supplier',
     fallback_rule: 'Use cheapest available',
     is_active: true,
     effective_date: '2025-02-02',
   },
   {
     rule_id: 'mr-3',
+    treatment_type: 'Painting',
     category: 'Finishing',
     preferred_item_code: '5011',
     preferred_item_name: 'Exterior Acrylic Paint, Weatherproof',
     material_priority: 1,
+    priority_source: 'Supplier',
     fallback_rule: 'Flag for manual review',
     is_active: true,
     effective_date: '2025-02-02',
   },
   {
     rule_id: 'mr-4',
+    treatment_type: 'Painting',
     category: 'Finishing',
     preferred_item_code: '5012',
     preferred_item_name: 'Interior Latex Paint',
     material_priority: 2,
+    priority_source: 'Supplier',
     fallback_rule: 'Use cheapest available',
     is_active: true,
     effective_date: '2025-02-02',

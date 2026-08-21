@@ -135,11 +135,13 @@ function SupplierPicker({ line, onSelect }: { line: ProvisionalItemLine; onSelec
   );
 }
 
-function MissingRuleRow({ line, onResolve }: { line: ProvisionalItemLine; onResolve: (unitPrice: number, saveAsRule: boolean) => void }) {
+function MissingRuleRow({ line, onResolve }: { line: ProvisionalItemLine; onResolve: (unitPrice: number) => void }) {
   const [value, setValue] = useState("");
-  const [saveAsRule, setSaveAsRule] = useState(true);
   const parsed = Number(value);
   const valid = value.trim() !== "" && parsed > 0;
+  const commit = () => {
+    if (valid) onResolve(parsed);
+  };
   return (
     <div className="flex flex-col gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3">
       <p className="flex items-start gap-1.5 text-xs font-semibold text-amber-700">
@@ -153,6 +155,12 @@ function MissingRuleRow({ line, onResolve }: { line: ProvisionalItemLine; onReso
           <input
             value={value}
             onChange={(e) => setValue(e.target.value)}
+            onBlur={commit}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.currentTarget.blur();
+              }
+            }}
             type="number"
             min={0}
             step="0.01"
@@ -160,25 +168,10 @@ function MissingRuleRow({ line, onResolve }: { line: ProvisionalItemLine; onReso
             className="w-32 rounded-lg border border-gray-200 bg-white py-1.5 pl-6 pr-2 text-xs outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
           />
         </div>
-        <label className="flex items-center gap-1.5 text-xs text-gray-600">
-          <input type="checkbox" checked={saveAsRule} onChange={(e) => setSaveAsRule(e.target.checked)} className="h-3.5 w-3.5 rounded border-gray-300 text-primary focus:ring-2 focus:ring-primary/30" />
-          Save as company rule for next time
-        </label>
-        <button
-          type="button"
-          disabled={!valid}
-          onClick={() => onResolve(parsed, saveAsRule)}
-          className="ml-auto flex items-center gap-1 rounded-lg bg-primary px-3 py-1.5 text-xs font-bold text-primary-foreground transition hover:bg-(--primary-hover) disabled:opacity-50"
-        >
-          <Check className="h-3.5 w-3.5" /> Continue
-        </button>
       </div>
-      {saveAsRule && (
-        <p className="text-[11px] text-amber-600">
-          Mock only. No company_rule row is created yet. This previews the pattern the real save flow
-          will use once rule creation is wired.
-        </p>
-      )}
+      <p className="text-[11px] text-amber-600">
+        This saves the price to this quotation option. Add or update CPRM Material/Unit Rules separately if this should become a reusable company rule.
+      </p>
     </div>
   );
 }
@@ -189,12 +182,13 @@ function MissingRuleRow({ line, onResolve }: { line: ProvisionalItemLine; onReso
 // (computeTierResult) against edited qty/price/supplier — there is no backend endpoint to
 // regenerate against yet.
 export function MinorRevisionPanel({ tier, originalItems, items, onItemsChange, pricelistBasis, onBasisChange, onClose, onApply }: MinorRevisionPanelProps) {
+  const [workingItems, setWorkingItems] = useState(items);
   const originalTotal = computeTierResult(tier, originalItems).grand_total;
-  const revisedTotal = computeTierResult(tier, items).grand_total;
+  const revisedTotal = computeTierResult(tier, workingItems).grand_total;
   const diff = revisedTotal - originalTotal;
 
   const patchLine = (lineId: string, patch: Parameters<typeof recomputeItemLine>[1]) => {
-    onItemsChange(items.map((l) => (l.line_id === lineId ? recomputeItemLine(l, patch) : l)));
+    setWorkingItems((current) => current.map((l) => (l.line_id === lineId ? recomputeItemLine(l, patch) : l)));
   };
 
   return (
@@ -205,8 +199,10 @@ export function MinorRevisionPanel({ tier, originalItems, items, onItemsChange, 
       <DialogContent className="flex h-[92vh] w-[97vw] max-w-400 sm:max-w-400 flex-col p-0" showCloseButton={false}>
         <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-gray-200 bg-gray-50 px-6 py-4">
           <div>
-            <h2 className="text-base font-bold text-gray-900">Minor Revision: {tier}</h2>
-            <p className="text-xs text-gray-500">Edit materials, quantities, prices, and suppliers without restarting the process.</p>
+            <h2 className="text-base font-bold text-gray-900">Minor Revision: Shared Price Updates</h2>
+            <p className="text-xs text-gray-500">
+              Edit unit prices once; matching material prices update in both Practical and Premium.
+            </p>
           </div>
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-2">
@@ -247,7 +243,7 @@ export function MinorRevisionPanel({ tier, originalItems, items, onItemsChange, 
               </tr>
             </thead>
             <tbody>
-              {items.map((line) => {
+              {workingItems.map((line) => {
                 const original = originalItems.find((o) => o.line_id === line.line_id);
                 const changed = original && Math.abs((line.total_cost ?? 0) - (original.total_cost ?? 0)) > 1;
                 if (line.unit_price === null) {
@@ -305,13 +301,20 @@ export function MinorRevisionPanel({ tier, originalItems, items, onItemsChange, 
             )}
           </div>
           <div className="flex items-center gap-3">
-            <button type="button" onClick={() => onItemsChange(originalItems)} className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-600 transition hover:bg-gray-50">
+            <button type="button" onClick={() => setWorkingItems(originalItems)} className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-600 transition hover:bg-gray-50">
               <RefreshCw className="h-3.5 w-3.5" /> Reset
             </button>
             <button type="button" onClick={onClose} className="rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-600 transition hover:bg-gray-50">
               Cancel
             </button>
-            <button type="button" onClick={onApply} className="flex items-center gap-2 rounded-lg bg-primary px-5 py-2 text-sm font-semibold text-primary-foreground transition hover:bg-(--primary-hover)">
+            <button
+              type="button"
+              onClick={() => {
+                onItemsChange(workingItems);
+                onApply();
+              }}
+              className="flex items-center gap-2 rounded-lg bg-primary px-5 py-2 text-sm font-semibold text-primary-foreground transition hover:bg-(--primary-hover)"
+            >
               <Check className="h-4 w-4" /> Apply Revisions
             </button>
           </div>

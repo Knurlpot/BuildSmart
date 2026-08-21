@@ -177,7 +177,7 @@ export function QuotationGenerationWizard() {
         // whichever path this quotation actually used, segments intact (nothing here
         // clears them; the user re-reviews/re-confirms from where they left off).
         onStructuralRevision={() => setStep(method ?? "method")}
-        onFinalize={() => router.push("/projects")}
+        onFinalize={(projectId) => router.push(`/projects/${projectId}`)}
       />
     );
   } else {

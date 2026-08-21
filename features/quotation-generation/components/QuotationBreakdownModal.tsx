@@ -234,7 +234,7 @@ function BoqTab({ items }: { items: ProvisionalItemLine[] }) {
                 <td className="px-3 py-2.5 text-gray-500">{line.segment_name}</td>
                 <td className="px-3 py-2.5 text-right text-gray-700">{line.quantity.toFixed(1)}</td>
                 <td className="px-3 py-2.5 text-gray-500">{line.unit}</td>
-                <td className="px-3 py-2.5 text-right text-gray-700">{line.unit_price !== null ? fmtPeso(line.unit_price) : <span className="font-semibold text-amber-600">Missing rule</span>}</td>
+                <td className="px-3 py-2.5 text-right text-gray-700">{line.unit_price !== null ? fmtPeso(line.unit_price) : <span className="font-semibold text-amber-600">Missing price</span>}</td>
                 <td className="px-3 py-2.5">
                   <div className="flex items-center gap-1.5">
                     <SourceBadge source={line.pricing_reference.price_source} />
