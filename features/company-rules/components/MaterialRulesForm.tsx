@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { AlertTriangle, CheckCircle2, Pencil, Search, X } from "lucide-react";
 import { RuleListDetailPanel } from "./RuleListDetailPanel";
 import { useMaterialRules, useCheckRuleUsage, stagingId } from "@/lib/dev/provisional/useCompanyRulesProvisional";
@@ -58,6 +58,7 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
   // Seeded from the prop at construction, not synced via effect: a jump always remounts
   // this component fresh through CompanyRulesShell.
   const [selectedId, setSelectedId] = useState<string | null>(focusRuleId ?? null);
+  const [editingRuleId, setEditingRuleId] = useState<string | null>(null);
   const [mode, setMode] = useState<"idle" | "browse" | "configure" | "edit">("idle");
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState<CategoryType | "">("");
@@ -100,6 +101,7 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
     resetCreate();
     setMode("browse");
     setSelectedId(null);
+    setEditingRuleId(null);
     setSearch("");
     setCategoryFilter("");
     setCheckedItemCodes(new Set());
@@ -115,6 +117,7 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
 
   const startEdit = (r: MaterialRuleEntry) => {
     setMode("edit");
+    setEditingRuleId(r.rule_id);
     setTreatmentType(r.treatment_type ?? "");
     setTouched(false);
     setSavedMessage(false);
@@ -151,6 +154,7 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
         });
       }
       setMode("idle");
+      setSelectedId(treatmentType.trim());
       setSavedMessage(true);
     } catch {
       // surfaced via editable.saveError below — no fabricated success
@@ -159,8 +163,8 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
 
   const handleSaveEdit = async () => {
     setTouched(true);
-    if (!selectedId || !TREATMENT_OPTIONS.includes(treatmentType as (typeof TREATMENT_OPTIONS)[number])) return;
-    const current = allRules.find((r) => r.rule_id === selectedId);
+    if (!editingRuleId || !TREATMENT_OPTIONS.includes(treatmentType as (typeof TREATMENT_OPTIONS)[number])) return;
+    const current = allRules.find((r) => r.rule_id === editingRuleId);
     if (!current) return;
     const payload = {
       treatment_type: treatmentType.trim(),
@@ -171,15 +175,34 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
       priority_source: current.priority_source || DEFAULT_PRIORITY_SOURCE,
       fallback_rule: current.fallback_rule || DEFAULT_FALLBACK_RULE,
     };
-    const resultId = await editable.saveEdit(selectedId, payload);
+    const resultId = await editable.saveEdit(editingRuleId, payload);
     if (resultId) {
       setMode("idle");
-      setSelectedId(resultId);
+      setEditingRuleId(null);
+      setSelectedId(payload.treatment_type);
       setSavedMessage(true);
     }
   };
 
-  const selected = allRules.find((r) => r.rule_id === selectedId) ?? null;
+  const groupedRules = useMemo(
+    () =>
+      Array.from(
+        allRules.reduce((groups, rule) => {
+          const treatment = rule.treatment_type?.trim() || "No treatment type";
+          groups.set(treatment, [...(groups.get(treatment) ?? []), rule]);
+          return groups;
+        }, new Map<string, MaterialRuleEntry[]>())
+      )
+        .map(([treatmentType, materials]) => ({
+          id: treatmentType,
+          treatmentType,
+          materials: materials.sort((a, b) => a.preferred_item_name.localeCompare(b.preferred_item_name)),
+        }))
+        .sort((a, b) => a.treatmentType.localeCompare(b.treatmentType)),
+    [allRules]
+  );
+  const selectedGroup = groupedRules.find((group) => group.id === selectedId) ?? null;
+  const selected = allRules.find((r) => r.rule_id === editingRuleId) ?? null;
 
   return (
     <div className="flex flex-col gap-4">
@@ -192,23 +215,29 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
 
       <RuleListDetailPanel
         title="Material Rules"
-        items={allRules}
+        items={groupedRules}
         isLoading={isLoading}
         error={error}
         onRetry={refetch}
-        getId={(r) => r.rule_id}
+        getId={(group) => group.id}
         selectedId={selectedId}
         onSelect={(id) => {
           setSelectedId(id);
+          setEditingRuleId(null);
           setMode("idle");
         }}
         onAdd={startAdd}
         emptyHint="Add materials from your catalog and tag them with a treatment type."
-        renderListItem={(r) => (
+        countLabel={`${groupedRules.length} treatment group${groupedRules.length === 1 ? "" : "s"}`}
+        renderListItem={(group) => (
           <div className="flex flex-col gap-0.5">
-            <span className="text-sm font-semibold text-gray-800">{r.preferred_item_name}</span>
-            <span className="text-xs text-gray-400">{r.category}</span>
-            {r.treatment_type && <span className="text-[10px] font-semibold text-primary">{r.treatment_type}</span>}
+            <span className="text-sm font-semibold text-gray-800">{group.treatmentType}</span>
+            <span className="text-xs text-gray-400">
+              {group.materials.length} material{group.materials.length === 1 ? "" : "s"}
+            </span>
+            <span className="text-[10px] font-semibold text-primary">
+              {Array.from(new Set(group.materials.map((rule) => rule.category))).join(", ")}
+            </span>
           </div>
         )}
         detail={
@@ -425,7 +454,7 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
                 {editable.isSaving ? "Saving…" : "Save Changes"}
               </button>
             </div>
-          ) : selected ? (
+          ) : selectedGroup ? (
             <div className="flex flex-col gap-4">
               {savedMessage && (
                 <div className="flex items-center gap-2 rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-xs text-green-700">
@@ -435,6 +464,39 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
                     : "Company preferences updated successfully."}
                 </div>
               )}
+              <div className="rounded-xl border border-gray-100 bg-gray-50/60 p-4">
+                <p className="text-lg font-bold text-gray-900">{selectedGroup.treatmentType}</p>
+                <p className="text-sm text-gray-500">
+                  {selectedGroup.materials.length} selected material{selectedGroup.materials.length === 1 ? "" : "s"} for this treatment.
+                </p>
+              </div>
+
+              <div className="overflow-hidden rounded-xl border border-gray-100 bg-white">
+                <div className="border-b border-gray-100 bg-gray-50 px-4 py-2">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Materials Under This Treatment</p>
+                </div>
+                <div className="divide-y divide-gray-100">
+                  {selectedGroup.materials.map((rule) => (
+                    <div key={rule.rule_id} className="flex items-start justify-between gap-3 px-4 py-3">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-semibold text-gray-900">{rule.preferred_item_name}</p>
+                        <p className="text-xs text-gray-500">{rule.category}</p>
+                        <p className="mt-1 text-[11px] text-gray-400">Effective {rule.effective_date}</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => startEdit(rule)}
+                        className="flex shrink-0 items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-gray-600 transition hover:border-primary hover:text-primary"
+                      >
+                        <Pencil className="h-3.5 w-3.5" /> Edit
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          ) : selected ? (
+            <div className="flex flex-col gap-4">
               <div className="flex items-start justify-between gap-3 rounded-xl border border-gray-100 bg-gray-50/60 p-4">
                 <div>
                   <p className="text-lg font-bold text-gray-900">{selected.preferred_item_name}</p>

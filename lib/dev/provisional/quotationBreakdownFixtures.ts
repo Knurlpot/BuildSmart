@@ -9,7 +9,7 @@
 import { stagingId } from './quotationGenerationTypes';
 import type { DraftSegment } from '@/features/quotation-generation/lib/draftSegment';
 import { isSegmentIncluded } from '@/features/quotation-generation/lib/draftSegment';
-import type { MaterialRuleEntry, UnitRule } from './companyRulesTypes';
+import type { LaborRule, MaterialRuleEntry, UnitRule } from './companyRulesTypes';
 import type {
   ItemCategory,
   PricelistBasis,
@@ -368,9 +368,55 @@ function buildCompanyRuleLine(
   };
 }
 
+function matchingLaborRule(seg: DraftSegment, laborRules: LaborRule[]): LaborRule | null {
+  const activeRules = laborRules.filter((rule) => rule.is_active);
+  const treatment = seg.treatment_type?.trim().toLowerCase();
+  if (treatment) {
+    const treatmentMatch = activeRules.find(
+      (rule) => rule.treatment_type?.trim().toLowerCase() === treatment
+    );
+    if (treatmentMatch) return treatmentMatch;
+  }
+  return activeRules.find((rule) => rule.treatment_type === null && rule.labor_trade === null) ?? null;
+}
+
+function buildCompanyLaborLine(seg: DraftSegment, rule: LaborRule, basis: PricelistBasis): ProvisionalItemLine {
+  const quantity = round2(seg.area_sqm);
+  const rate = round2(rule.labor_rate * (rule.productivity_index ?? 1));
+  const treatmentLabel = seg.treatment_type?.trim() || "General";
+
+  return {
+    line_id: stagingId('item'),
+    segment_draft_id: seg.draft_id,
+    segment_name: seg.segment_name,
+    floor_level: seg.floor_level,
+    treatment_type: seg.treatment_type,
+    category: 'Labor',
+    item_code: `LABOR-${rule.rule_id}`,
+    item_name: rule.treatment_type
+      ? `Labor - ${treatmentLabel}`
+      : rule.labor_trade
+        ? `Labor - ${rule.labor_trade}`
+        : 'Labor - General',
+    unit: 'sqm',
+    derived_area_sqm: seg.area_sqm,
+    derived_coverage_per_sqm: 1,
+    derived_wastage_percentage: 0,
+    quantity,
+    unit_price: rate,
+    total_cost: round2(quantity * rate),
+    source_type: basis,
+    is_overridden: false,
+    pricing_reference: pricingReferenceFor(basis),
+    supplier_options: [],
+    selected_supplier_id: null,
+  };
+}
+
 export function deriveCompanyRuleItemLines(
   segments: DraftSegment[],
   materialRules: MaterialRuleEntry[],
+  laborRules: LaborRule[],
   unitRules: UnitRule[],
   items: Items[],
   basis: PricelistBasis,
@@ -383,6 +429,7 @@ export function deriveCompanyRuleItemLines(
   const itemByCode = new Map(items.map((item) => [String(item.item_code), item]));
   const lines: ProvisionalItemLine[] = [];
   let matchedAnyTreatment = false;
+  let matchedAnyLabor = false;
 
   for (const seg of segments.filter(isSegmentIncluded)) {
     const treatment = seg.treatment_type?.trim().toLowerCase();
@@ -394,6 +441,11 @@ export function deriveCompanyRuleItemLines(
 
     if (rulesForTreatment.length === 0) {
       lines.push(buildMissingRuleLine(seg, basis));
+      const laborRule = matchingLaborRule(seg, laborRules);
+      if (laborRule) {
+        matchedAnyLabor = true;
+        lines.push(buildCompanyLaborLine(seg, laborRule, basis));
+      }
       continue;
     }
 
@@ -401,9 +453,15 @@ export function deriveCompanyRuleItemLines(
     for (const rule of rulesForTreatment) {
       lines.push(buildCompanyRuleLine(seg, rule, itemByCode.get(String(rule.preferred_item_code)), matchingUnitRule(rule, unitRules), basis, uploadedPrices, dpwhPrices));
     }
+
+    const laborRule = matchingLaborRule(seg, laborRules);
+    if (laborRule) {
+      matchedAnyLabor = true;
+      lines.push(buildCompanyLaborLine(seg, laborRule, basis));
+    }
   }
 
-  return matchedAnyTreatment ? lines : null;
+  return matchedAnyTreatment || matchedAnyLabor ? lines : null;
 }
 
 /** Part B/D — re-prices the CURRENT line set to a new pricelist basis (Uploaded <-> DPWH).
@@ -452,7 +510,7 @@ function deriveMockServiceCost(items: ProvisionalItemLine[], materialsSubtotal: 
  * never mutates lines (Part A). */
 export function recomputeItemLine(
   line: ProvisionalItemLine,
-  patch: Partial<Pick<ProvisionalItemLine, 'quantity' | 'unit_price' | 'selected_supplier_id' | 'item_name'>>
+  patch: Partial<Pick<ProvisionalItemLine, 'quantity' | 'unit_price' | 'selected_supplier_id' | 'item_name' | 'source_type'>>
 ): ProvisionalItemLine {
   const next: ProvisionalItemLine = { ...line, ...patch };
   if ('selected_supplier_id' in patch && patch.selected_supplier_id !== null) {

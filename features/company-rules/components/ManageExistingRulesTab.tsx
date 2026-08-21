@@ -5,7 +5,7 @@ import type { ColumnDef } from "@tanstack/react-table";
 import { AlertTriangle, Ban, CheckCircle2, Eye, Pencil, Search } from "lucide-react";
 import { QueryState } from "@/components/feedback/QueryState";
 import { DataTable } from "@/components/data-table/DataTable";
-import { useExistingRules } from "@/lib/dev/provisional/useCompanyRulesProvisional";
+import { useExistingRules, useMaterialRules } from "@/lib/dev/provisional/useCompanyRulesProvisional";
 import { RULE_KIND_LABEL, RULE_KINDS, type ExistingRuleSummary, type RuleKind } from "@/lib/dev/provisional/companyRulesTypes";
 
 function StatusBadge({ status }: { status: ExistingRuleSummary["status"] }) {
@@ -26,11 +26,17 @@ interface ManageExistingRulesTabProps {
 }
 
 type RuleFilter = "all" | RuleKind;
-const RULE_FILTER_KINDS = RULE_KINDS.filter((kind) => kind !== "material-rule");
+const RULE_FILTER_KINDS = RULE_KINDS.filter((kind) => kind !== "scope-template");
 
 export function ManageExistingRulesTab({ onViewRule }: ManageExistingRulesTabProps) {
   const { rules, isLoading, error, refetch, checkUsage, isCheckingUsage, disable, isDisabling, disableError } =
     useExistingRules();
+  const {
+    rules: materialRules,
+    isLoading: materialRulesLoading,
+    error: materialRulesError,
+    refetch: refetchMaterialRules,
+  } = useMaterialRules();
 
   // Local-only overlays, since the dev mock has no real persistence — mirrors the same
   // "optimistic local state on top of a static mock" pattern used by the five rule forms.
@@ -40,9 +46,39 @@ export function ManageExistingRulesTab({ onViewRule }: ManageExistingRulesTabPro
   const [ruleFilter, setRuleFilter] = useState<RuleFilter>("all");
   const [search, setSearch] = useState("");
 
+  const materialRuleGroups = useMemo<ExistingRuleSummary[]>(() => {
+    const grouped = materialRules.reduce((groups, rule) => {
+      const treatment = rule.treatment_type?.trim() || "No treatment type";
+      groups.set(treatment, [...(groups.get(treatment) ?? []), rule]);
+      return groups;
+    }, new Map<string, typeof materialRules>());
+
+    return Array.from(grouped, ([treatmentType, materials]) => {
+      const itemNames = materials.map((rule) => rule.preferred_item_name).sort((a, b) => a.localeCompare(b));
+      const latestEffective = materials
+        .map((rule) => rule.effective_date)
+        .sort()
+        .at(-1) ?? "";
+
+      return {
+        rule_id: treatmentType,
+        rule_kind: "material-rule" as const,
+        label: treatmentType,
+        detail: `${materials.length} material${materials.length === 1 ? "" : "s"} · ${itemNames.join(", ")}`,
+        status: materials.some((rule) => rule.is_active) ? "Active" as const : "Disabled" as const,
+        effective_date: latestEffective,
+      };
+    }).sort((a, b) => a.label.localeCompare(b.label));
+  }, [materialRules]);
+
   const displayRules = useMemo(
-    () => rules.map((r) => (disabledIds.has(r.rule_id) ? { ...r, status: "Disabled" as const } : r)),
-    [rules, disabledIds]
+    () => [
+      ...materialRuleGroups,
+      ...rules
+        .filter((rule) => rule.rule_kind !== "scope-template" && rule.rule_kind !== "material-rule")
+        .map((r) => (disabledIds.has(r.rule_id) ? { ...r, status: "Disabled" as const } : r)),
+    ],
+    [disabledIds, materialRuleGroups, rules]
   );
   const filteredRules = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -108,6 +144,7 @@ export function ManageExistingRulesTab({ onViewRule }: ManageExistingRulesTabPro
         enableGlobalFilter: false,
         cell: ({ row }) => {
           const rule = row.original;
+          const isMaterialGroup = rule.rule_kind === "material-rule";
           const busy = activeRuleId === rule.rule_id && (isCheckingUsage || isDisabling);
           if (rule.status === "Disabled") return null;
           return (
@@ -136,20 +173,22 @@ export function ManageExistingRulesTab({ onViewRule }: ManageExistingRulesTabPro
               >
                 <Pencil className="h-3.5 w-3.5" />
               </button>
-              <button
-                type="button"
-                disabled={busy}
-                title="Disable rule"
-                aria-label={`Disable ${rule.label}`}
-                onClick={(e) => {
-                  // Don't also trigger the row's own "open in owning tab" click.
-                  e.stopPropagation();
-                  handleDisable(rule);
-                }}
-                className="flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-500 transition hover:border-red-300 hover:text-red-600 disabled:opacity-50"
-              >
-                <Ban className="h-3.5 w-3.5" />
-              </button>
+              {!isMaterialGroup && (
+                <button
+                  type="button"
+                  disabled={busy}
+                  title="Disable rule"
+                  aria-label={`Disable ${rule.label}`}
+                  onClick={(e) => {
+                    // Don't also trigger the row's own "open in owning tab" click.
+                    e.stopPropagation();
+                    handleDisable(rule);
+                  }}
+                  className="flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-500 transition hover:border-red-300 hover:text-red-600 disabled:opacity-50"
+                >
+                  <Ban className="h-3.5 w-3.5" />
+                </button>
+              )}
             </div>
           );
         },
@@ -224,10 +263,13 @@ export function ManageExistingRulesTab({ onViewRule }: ManageExistingRulesTabPro
           </div>
         </div>
         <QueryState
-          isLoading={isLoading}
-          error={error}
+          isLoading={isLoading || materialRulesLoading}
+          error={error ?? materialRulesError}
           isEmpty={filteredRules.length === 0}
-          onRetry={refetch}
+          onRetry={() => {
+            refetch();
+            refetchMaterialRules();
+          }}
           emptyTitle={search.trim() ? "No matching rules" : ruleFilter === "all" ? "No rules configured" : `No ${RULE_KIND_LABEL[ruleFilter]} rules`}
           emptyHint={
             search.trim()

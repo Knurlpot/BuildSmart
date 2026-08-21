@@ -22,7 +22,7 @@ interface ProjectListQuotation extends Quotation {
 
 interface OpenProjectRow {
   id: string;
-  quote_id: number;
+  quote_id: number | null;
   client_name: string;
   project_name: string;
   project_location: string;
@@ -88,8 +88,9 @@ function OpenProjectsContent({ onMetaChange }: OpenProjectsContentProps) {
         project,
       ])
     );
+    const matchedSavedProjectIds = new Set<string>();
 
-    return (quotations ?? []).map((quote) => {
+    const backendRows = (quotations ?? []).map((quote) => {
       const clientName = quote.client_name ?? "No client";
       const savedProject =
         quote.client_id == null
@@ -102,6 +103,7 @@ function OpenProjectsContent({ onMetaChange }: OpenProjectsContentProps) {
                 quote.project_region,
               ].join("\u0000")
             ) ?? null;
+      if (savedProject) matchedSavedProjectIds.add(savedProject.project_id);
 
       return {
         id: `quote-${quote.quote_id}`,
@@ -115,6 +117,22 @@ function OpenProjectsContent({ onMetaChange }: OpenProjectsContentProps) {
         savedProject,
       };
     });
+
+    const savedOnlyRows: OpenProjectRow[] = savedProjects
+      .filter((project) => !matchedSavedProjectIds.has(project.project_id))
+      .map((project) => ({
+        id: `saved-${project.project_id}`,
+        quote_id: null,
+        client_name: project.client_name,
+        project_name: project.project_name,
+        project_location: project.project_location,
+        project_region: project.project_region,
+        status: project.status,
+        created_at: project.created_at,
+        savedProject: project,
+      }));
+
+    return [...savedOnlyRows, ...backendRows];
   }, [quotations, savedProjects]);
 
   const filteredRows = useMemo(() => {
@@ -136,10 +154,12 @@ function OpenProjectsContent({ onMetaChange }: OpenProjectsContentProps) {
     setIsDeleting(true);
     setDeleteError(null);
     try {
-      await apiClient<void>(`/api/quotations/${deleteTarget.quote_id}`, {
-        method: "DELETE",
-        credentials: "include",
-      });
+      if (deleteTarget.quote_id !== null) {
+        await apiClient<void>(`/api/quotations/${deleteTarget.quote_id}`, {
+          method: "DELETE",
+          credentials: "include",
+        });
+      }
       if (deleteTarget.savedProject) deleteSavedProject(deleteTarget.savedProject.project_id);
       setDeleteTarget(null);
       refetch();
