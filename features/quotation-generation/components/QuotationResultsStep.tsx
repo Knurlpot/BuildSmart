@@ -441,25 +441,31 @@ export function QuotationResultsStep({ client, quotation, segments, blueprintFlo
         <div className="flex flex-wrap items-center gap-2">
           <button
             type="button"
+            aria-label="Source & Fallback"
+            title="Source & Fallback Rules"
             onClick={() => setRuleDialogOpen(true)}
-            className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-semibold text-gray-700 shadow-sm transition hover:bg-gray-50"
+            className="flex items-center justify-center rounded-lg border border-gray-200 bg-white p-2 text-gray-700 shadow-sm transition hover:bg-gray-50"
           >
-            <SlidersHorizontal className="h-4 w-4" /> Source &amp; Fallback
+            <SlidersHorizontal className="h-4 w-4" />
           </button>
           <button
             type="button"
+            aria-label="Edit Quotation"
+            title="Edit"
             onClick={() => setRevisionTypeOpen(true)}
-            className="flex items-center gap-2 rounded-lg border border-primary/30 bg-orange-50/60 px-4 py-2 text-sm font-semibold text-primary transition hover:bg-orange-50"
+            className="flex items-center justify-center rounded-lg border border-primary/30 bg-orange-50/60 p-2 text-primary transition hover:bg-orange-50"
           >
-            <PenLine className="h-4 w-4" /> Edit
+            <PenLine className="h-4 w-4" />
           </button>
           <button
             type="button"
+            aria-label={isSavingDraft ? "Saving Draft" : "Save Quotation"}
+            title={isSavingDraft ? "Saving Draft" : "Save Quotation"}
             onClick={saveDraft}
             disabled={isSavingDraft}
-            className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-semibold text-gray-700 shadow-sm transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
+            className="flex items-center justify-center rounded-lg border border-gray-200 bg-white p-2 text-gray-700 shadow-sm transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
           >
-            <Save className="h-4 w-4" /> {isSavingDraft ? "Saving..." : "Save"}
+            <Save className="h-4 w-4" />
           </button>
         </div>
       </div>
@@ -629,8 +635,6 @@ export function QuotationResultsStep({ client, quotation, segments, blueprintFlo
               };
             });
           }}
-          pricelistBasis={pricelistBasis}
-          onBasisChange={handleBasisChange}
           onTierChange={setMinorRevisionTier}
           onClose={() => setMinorRevisionTier(null)}
           onApply={() => setMinorRevisionTier(null)}

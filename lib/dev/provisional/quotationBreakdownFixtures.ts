@@ -397,7 +397,9 @@ function matchingLaborRule(seg: DraftSegment, laborRules: LaborRule[]): LaborRul
 
 function buildCompanyLaborLine(seg: DraftSegment, rule: LaborRule, basis: PricelistBasis): ProvisionalItemLine {
   const quantity = round2(seg.area_sqm);
-  const rate = round2(rule.labor_rate * (rule.productivity_index ?? 1));
+  const productivityFactor = rule.productivity_index ?? 1;
+  const rushFactor = 1 + ((rule.rush_multiplier_percentage ?? 0) / 100);
+  const rate = round2(rule.labor_rate * productivityFactor * rushFactor);
   const treatmentLabel = seg.treatment_type?.trim() || "General";
   const scope = laborRuleScope(rule);
 

@@ -2,18 +2,16 @@
 
 import { useState } from "react";
 import { flushSync } from "react-dom";
-import { AlertTriangle, Check, ChevronDown, Database, Edit2, FileText, RefreshCw, X } from "lucide-react";
+import { AlertTriangle, Check, ChevronDown, Edit2, RefreshCw, X } from "lucide-react";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { computeTierResult, fmtPeso, recomputeItemLine } from "@/lib/dev/provisional/quotationBreakdownFixtures";
-import { PROVISIONAL_TIERS, type PricelistBasis, type ProvisionalItemLine, type ProvisionalTier } from "@/lib/dev/provisional/quotationBreakdownTypes";
+import { PROVISIONAL_TIERS, type ProvisionalItemLine, type ProvisionalTier } from "@/lib/dev/provisional/quotationBreakdownTypes";
 
 interface MinorRevisionPanelProps {
   tier: ProvisionalTier;
   originalItems: ProvisionalItemLine[];
   items: ProvisionalItemLine[];
   onItemsChange: (next: ProvisionalItemLine[]) => void;
-  pricelistBasis: PricelistBasis;
-  onBasisChange: (basis: PricelistBasis) => void;
   onTierChange?: (tier: ProvisionalTier) => void;
   onClose: () => void;
   onApply: () => void;
@@ -211,7 +209,7 @@ function MissingRuleRow({ line, onResolve }: { line: ProvisionalItemLine; onReso
 // prototype). "Regenerate" here means re-running the same mock formula
 // (computeTierResult) against edited qty/price/supplier — there is no backend endpoint to
 // regenerate against yet.
-export function MinorRevisionPanel({ tier, originalItems, items, onItemsChange, pricelistBasis, onBasisChange, onTierChange, onClose, onApply }: MinorRevisionPanelProps) {
+export function MinorRevisionPanel({ tier, originalItems, items, onItemsChange, onTierChange, onClose, onApply }: MinorRevisionPanelProps) {
   const [workingItems, setWorkingItems] = useState(items);
   const originalTotal = computeTierResult(tier, originalItems).grand_total;
   const revisedTotal = computeTierResult(tier, workingItems).grand_total;
@@ -262,25 +260,6 @@ export function MinorRevisionPanel({ tier, originalItems, items, onItemsChange, 
                   {option}
                 </button>
               ))}
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-semibold text-gray-500">Pricelist Basis:</span>
-              <div className="flex overflow-hidden rounded-lg border border-gray-200 bg-white text-xs">
-                <button
-                  type="button"
-                  onClick={() => onBasisChange("Uploaded")}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 font-semibold transition-colors ${pricelistBasis === "Uploaded" ? "bg-primary text-primary-foreground" : "text-gray-500 hover:bg-gray-50"}`}
-                >
-                  <FileText className="h-3 w-3" /> Supplier
-                </button>
-                <button
-                  type="button"
-                  onClick={() => onBasisChange("DPWH")}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 font-semibold transition-colors ${pricelistBasis === "DPWH" ? "bg-blue-600 text-white" : "text-gray-500 hover:bg-gray-50"}`}
-                >
-                  <Database className="h-3 w-3" /> DPWH
-                </button>
-              </div>
             </div>
             <button type="button" onClick={onClose} className="flex h-8 w-8 items-center justify-center rounded-full hover:bg-gray-200">
               <X className="h-4 w-4 text-gray-600" />
