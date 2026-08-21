@@ -7,7 +7,7 @@
 // Reuses RuleListDetailPanel (fully generic, no changes needed) for the shared
 // list+detail layout.
 import { type Dispatch, type KeyboardEvent, type SetStateAction, useEffect, useState } from "react";
-import { AlertTriangle, CheckCircle2, Info, Pencil, X, XCircle } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Pencil, X, XCircle } from "lucide-react";
 import { RuleListDetailPanel } from "./RuleListDetailPanel";
 import { useSupplierRules } from "@/lib/dev/provisional/useCompanyRulesProvisional";
 import { useSuppliers } from "@/hooks/useSuppliers";
@@ -362,7 +362,7 @@ export function SupplierRulesForm({ focusRuleId, onFocusHandled }: SupplierRules
         onAdd={startAdd}
         countLabel={`${allRules.length} configured`}
         listHeader={
-          <div className="grid grid-cols-2 gap-2 border-b border-gray-100 px-4 py-3">
+          <div className="grid grid-cols-2 gap-2">
             {(["active", "disabled"] as const).map((filter) => (
               <button
                 key={filter}
@@ -627,7 +627,7 @@ export function SupplierRulesForm({ focusRuleId, onFocusHandled }: SupplierRules
 
               {deactivateError && <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">Couldn&apos;t deactivate: {deactivateError.message}</div>}
 
-              <dl className="grid grid-cols-2 gap-4 text-sm">
+              <dl className="grid grid-cols-2 gap-4 px-4 text-sm">
                 {selected.minimum_order_amount !== null && (
                   <div>
                     <dt className="text-xs font-semibold uppercase tracking-wide text-gray-400">{selected.rule_type === "Minimum Order" ? "Minimum Order" : "Order Threshold"}</dt>
@@ -661,7 +661,7 @@ export function SupplierRulesForm({ focusRuleId, onFocusHandled }: SupplierRules
               </dl>
             </div>
           ) : (
-            <div className="flex h-full flex-col items-center justify-center gap-2 text-center text-gray-400">
+            <div className="flex min-h-[26rem] w-full flex-col items-center justify-center gap-2 text-center text-gray-400">
               <p className="text-sm">Select Supplier Rule</p>
             </div>
           )

@@ -181,7 +181,7 @@ export function LaborRulesForm({ focusRuleId, onFocusHandled }: LaborRulesFormPr
         onAdd={startAdd}
         countLabel={`${allRules.length} configured`}
         listHeader={
-          <div className="grid grid-cols-2 gap-2 border-b border-gray-100 px-4 py-3">
+          <div className="grid grid-cols-2 gap-2">
             {(["active", "disabled"] as const).map((filter) => (
               <button
                 key={filter}
@@ -463,7 +463,7 @@ export function LaborRulesForm({ focusRuleId, onFocusHandled }: LaborRulesFormPr
                   <Pencil className="h-3.5 w-3.5" /> Edit
                 </button>
               </div>
-              <dl className="grid grid-cols-2 gap-4 text-sm">
+              <dl className="grid grid-cols-2 gap-4 px-4 text-sm">
                 <div>
                   <dt className="text-xs font-semibold uppercase tracking-wide text-gray-400">Rate</dt>
                   <dd className="text-gray-700">
@@ -486,7 +486,7 @@ export function LaborRulesForm({ focusRuleId, onFocusHandled }: LaborRulesFormPr
               </dl>
             </div>
           ) : (
-            <div className="flex h-full flex-col items-center justify-center gap-2 text-center text-gray-400">
+            <div className="flex min-h-[26rem] w-full flex-col items-center justify-center gap-2 text-center text-gray-400">
               <p className="text-sm">Select Labor Rule</p>
             </div>
           )

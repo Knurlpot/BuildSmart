@@ -10,6 +10,8 @@ interface QueryStateProps {
   emptyTitle: string;
   emptyHint?: string;
   minHeight?: number;
+  showEmptyIcon?: boolean;
+  keepEmptyTextCentered?: boolean;
   children: React.ReactNode;
 }
 
@@ -21,6 +23,8 @@ export function QueryState({
   emptyTitle,
   emptyHint,
   minHeight = 200,
+  showEmptyIcon = true,
+  keepEmptyTextCentered = false,
   children,
 }: QueryStateProps) {
   if (isLoading) {
@@ -60,10 +64,16 @@ export function QueryState({
   if (isEmpty) {
     return (
       <div
-        className="flex flex-col items-center justify-center gap-2 px-6 text-center"
+        className={`flex flex-col items-center justify-center gap-2 px-6 text-center ${keepEmptyTextCentered ? "relative" : ""}`}
         style={{ minHeight }}
       >
-        <Inbox className="h-8 w-8 text-gray-200" />
+        {showEmptyIcon && (
+          <Inbox
+            className={`h-8 w-8 text-gray-200 ${
+              keepEmptyTextCentered ? "absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-12" : ""
+            }`}
+          />
+        )}
         <p className="text-sm text-gray-400">{emptyTitle}</p>
         {emptyHint && <p className="max-w-sm text-xs text-gray-300">{emptyHint}</p>}
       </div>

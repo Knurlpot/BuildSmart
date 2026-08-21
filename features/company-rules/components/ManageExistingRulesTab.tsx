@@ -1,8 +1,23 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useState, type ReactNode } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import type { ColumnDef } from "@tanstack/react-table";
-import { AlertTriangle, Ban, CheckCircle2, Eye, Pencil, Search } from "lucide-react";
+import {
+  AlertTriangle,
+  Ban,
+  CheckCircle2,
+  ClipboardList,
+  Eye,
+  Package,
+  Pencil,
+  Percent,
+  Ruler,
+  Search,
+  Truck,
+  Users,
+  type LucideIcon,
+} from "lucide-react";
 import { QueryState } from "@/components/feedback/QueryState";
 import { DataTable } from "@/components/data-table/DataTable";
 import { useExistingRules } from "@/lib/dev/provisional/useCompanyRulesProvisional";
@@ -20,15 +35,91 @@ function StatusBadge({ status }: { status: ExistingRuleSummary["status"] }) {
   );
 }
 
+const RULE_TYPE_STYLE: Record<RuleKind, { icon: LucideIcon; className: string }> = {
+  "scope-template": { icon: ClipboardList, className: "bg-orange-50 text-primary" },
+  "material-rule": { icon: Package, className: "bg-blue-50 text-blue-700" },
+  "supplier-rule": { icon: Truck, className: "bg-emerald-50 text-emerald-700" },
+  "labor-rule": { icon: Users, className: "bg-amber-50 text-amber-700" },
+  "pricing-strategy": { icon: Percent, className: "bg-violet-50 text-violet-700" },
+  "unit-rule": { icon: Ruler, className: "bg-cyan-50 text-cyan-700" },
+};
+
+function RuleTypeBadge({ kind, onClick }: { kind: RuleKind; onClick?: () => void }) {
+  const style = RULE_TYPE_STYLE[kind];
+  const Icon = style.icon;
+  return (
+    <button
+      type="button"
+      onClick={(event) => {
+        event.stopPropagation();
+        onClick?.();
+      }}
+      className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold transition hover:ring-2 hover:ring-primary/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 ${style.className}`}
+      aria-label={`Filter by ${RULE_KIND_LABEL[kind]}`}
+      title={`Filter by ${RULE_KIND_LABEL[kind]}`}
+    >
+      <Icon className="h-3.5 w-3.5" />
+      {RULE_KIND_LABEL[kind]}
+    </button>
+  );
+}
+
+function RuleDetail({ rule }: { rule: ExistingRuleSummary }) {
+  const parts = rule.detail.split(/\s*[·]\s*/).filter(Boolean);
+  let primary = rule.detail;
+  let secondary: string | null = null;
+
+  if (rule.rule_kind === "material-rule" && parts.length > 1) {
+    primary = parts.at(-1) ?? rule.detail;
+    secondary = parts.slice(0, -1).join(" · ");
+  } else if (rule.rule_kind === "supplier-rule" && parts.length > 1) {
+    primary = parts[0];
+    secondary = parts.slice(1).join(" · ");
+  } else if (rule.rule_kind === "scope-template") {
+    primary = "Template";
+    secondary = rule.detail;
+  }
+
+  return (
+    <div className="min-w-0">
+      <span className="inline-flex max-w-full rounded-md bg-gray-100 px-2 py-1 text-xs font-semibold text-gray-700">
+        <span className="truncate">{primary}</span>
+      </span>
+      {secondary && <p className="mt-1 max-w-xs truncate text-[11px] text-gray-500" title={secondary}>{secondary}</p>}
+    </div>
+  );
+}
+
+function ActionTooltip({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <span className="group/tooltip relative inline-flex">
+      {children}
+      <span
+        role="tooltip"
+        className="pointer-events-none absolute bottom-full left-1/2 z-20 mb-2 -translate-x-1/2 whitespace-nowrap rounded-md bg-gray-900 px-2 py-1 text-[10px] font-medium text-white opacity-0 shadow-sm transition-opacity group-hover/tooltip:opacity-100 group-focus-within/tooltip:opacity-100"
+      >
+        {label}
+      </span>
+    </span>
+  );
+}
+
 interface ManageExistingRulesTabProps {
   /** Opens the rule's owning tab with this rule pre-selected so its detail panel is visible. */
   onViewRule: (rule: ExistingRuleSummary) => void;
 }
 
 type RuleFilter = "all" | RuleKind;
-const RULE_FILTER_KINDS = RULE_KINDS.filter((kind) => kind !== "material-rule");
+const RULE_FILTER_KINDS = RULE_KINDS;
+
+function isRuleFilter(value: string | null): value is RuleKind {
+  return value !== null && RULE_KINDS.includes(value as RuleKind);
+}
 
 export function ManageExistingRulesTab({ onViewRule }: ManageExistingRulesTabProps) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const { rules, isLoading, error, refetch, checkUsage, isCheckingUsage, disable, isDisabling, disableError } =
     useExistingRules();
 
@@ -37,8 +128,17 @@ export function ManageExistingRulesTab({ onViewRule }: ManageExistingRulesTabPro
   const [disabledIds, setDisabledIds] = useState<Set<string>>(new Set());
   const [warningFor, setWarningFor] = useState<ExistingRuleSummary | null>(null);
   const [activeRuleId, setActiveRuleId] = useState<string | null>(null);
-  const [ruleFilter, setRuleFilter] = useState<RuleFilter>("all");
+  const urlType = searchParams.get("type");
+  const ruleFilter: RuleFilter = isRuleFilter(urlType) ? urlType : "all";
   const [search, setSearch] = useState("");
+
+  const selectRuleFilter = useCallback((filter: RuleFilter) => {
+    const params = new URLSearchParams(searchParams.toString());
+    if (filter === "all") params.delete("type");
+    else params.set("type", filter);
+    const query = params.toString();
+    router.push(query ? `${pathname}?${query}` : pathname, { scroll: false });
+  }, [pathname, router, searchParams]);
 
   const displayRules = useMemo(
     () => rules.map((r) => (disabledIds.has(r.rule_id) ? { ...r, status: "Disabled" as const } : r)),
@@ -87,10 +187,17 @@ export function ManageExistingRulesTab({ onViewRule }: ManageExistingRulesTabPro
         accessorKey: "rule_kind",
         header: "Rule Type",
         enableGlobalFilter: false,
-        cell: ({ row }) => RULE_KIND_LABEL[row.original.rule_kind],
+        cell: ({ row }) => (
+          <RuleTypeBadge kind={row.original.rule_kind} onClick={() => selectRuleFilter(row.original.rule_kind)} />
+        ),
       },
       { accessorKey: "label", header: "Rule" },
-      { accessorKey: "detail", header: "Detail", enableGlobalFilter: false },
+      {
+        accessorKey: "detail",
+        header: "Detail",
+        enableGlobalFilter: false,
+        cell: ({ row }) => <RuleDetail rule={row.original} />,
+      },
       { accessorKey: "effective_date", header: "Effective", enableGlobalFilter: false },
       {
         accessorKey: "status",
@@ -112,9 +219,9 @@ export function ManageExistingRulesTab({ onViewRule }: ManageExistingRulesTabPro
           if (rule.status === "Disabled") return null;
           return (
             <div className="flex items-center justify-end gap-1.5">
+              <ActionTooltip label="View">
               <button
                 type="button"
-                title="View rule"
                 aria-label={`View ${rule.label}`}
                 onClick={(e) => {
                   e.stopPropagation();
@@ -124,9 +231,10 @@ export function ManageExistingRulesTab({ onViewRule }: ManageExistingRulesTabPro
               >
                 <Eye className="h-3.5 w-3.5" />
               </button>
+              </ActionTooltip>
+              <ActionTooltip label="Edit">
               <button
                 type="button"
-                title="Edit rule"
                 aria-label={`Edit ${rule.label}`}
                 onClick={(e) => {
                   e.stopPropagation();
@@ -136,10 +244,11 @@ export function ManageExistingRulesTab({ onViewRule }: ManageExistingRulesTabPro
               >
                 <Pencil className="h-3.5 w-3.5" />
               </button>
+              </ActionTooltip>
+              <ActionTooltip label="Disable">
               <button
                 type="button"
                 disabled={busy}
-                title="Disable rule"
                 aria-label={`Disable ${rule.label}`}
                 onClick={(e) => {
                   // Don't also trigger the row's own "open in owning tab" click.
@@ -150,12 +259,13 @@ export function ManageExistingRulesTab({ onViewRule }: ManageExistingRulesTabPro
               >
                 <Ban className="h-3.5 w-3.5" />
               </button>
+              </ActionTooltip>
             </div>
           );
         },
       },
     ],
-    [activeRuleId, handleDisable, isCheckingUsage, isDisabling, onViewRule]
+    [activeRuleId, handleDisable, isCheckingUsage, isDisabling, onViewRule, selectRuleFilter]
   );
 
   return (
@@ -191,14 +301,14 @@ export function ManageExistingRulesTab({ onViewRule }: ManageExistingRulesTabPro
               type="search"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search rules..."
+              placeholder="Search by rule name, type, detail, status, or date..."
               className="w-full rounded-full border border-gray-200 bg-white py-1.5 pl-9 pr-3 text-xs font-medium text-gray-700 outline-none transition placeholder:text-gray-400 focus:border-primary focus:ring-2 focus:ring-primary/15"
             />
           </div>
           <div className="flex min-w-0 flex-wrap items-center gap-2 xl:justify-end">
             <button
               type="button"
-              onClick={() => setRuleFilter("all")}
+              onClick={() => selectRuleFilter("all")}
               className={`w-fit whitespace-nowrap rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
                 ruleFilter === "all"
                   ? "border-primary bg-primary text-primary-foreground"
@@ -211,7 +321,7 @@ export function ManageExistingRulesTab({ onViewRule }: ManageExistingRulesTabPro
               <button
                 key={kind}
                 type="button"
-                onClick={() => setRuleFilter(kind)}
+                onClick={() => selectRuleFilter(kind)}
                 className={`w-fit whitespace-nowrap rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
                   ruleFilter === kind
                     ? "border-primary bg-primary text-primary-foreground"
