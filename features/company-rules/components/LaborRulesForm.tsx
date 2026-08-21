@@ -6,6 +6,7 @@ import { RuleListDetailPanel } from "./RuleListDetailPanel";
 import {
   useLaborRules,
   useLaborTradeOptions,
+  useMaterialRules,
   useCheckRuleUsage,
   stagingId,
 } from "@/lib/dev/provisional/useCompanyRulesProvisional";
@@ -40,12 +41,25 @@ export function LaborRulesForm({ focusRuleId, onFocusHandled }: LaborRulesFormPr
   const { checkUsage } = useCheckRuleUsage();
   const editable = useEditableRuleList<LaborRule>({ checkUsage, update, supersede, idPrefix: "lr" });
   const { options: laborTradeOptions } = useLaborTradeOptions();
+  const { rules: materialRules } = useMaterialRules();
   const allRules = editable.applyOverrides([...editable.localExtra, ...rules]);
+  const treatmentOptions = Array.from(
+    new Set(
+      [
+        ...materialRules
+          .map((rule) => rule.treatment_type?.trim())
+          .filter((value): value is string => !!value),
+        ...allRules
+          .map((rule) => rule.treatment_type?.trim())
+          .filter((value): value is string => !!value),
+      ]
+    )
+  ).sort();
   const [statusFilter, setStatusFilter] = useState<"active" | "disabled">("active");
   const visibleRules = allRules.filter((rule) => rule.is_active === (statusFilter === "active"));
 
-  // seeded from the prop at construction, not synced via effect: a jump always remounts
-  // this component fresh (see ScopeTemplatesForm for the full reasoning).
+  // Seeded from the prop at construction, not synced via effect: a jump always remounts
+  // this component fresh through CompanyRulesShell.
   const [selectedId, setSelectedId] = useState<string | null>(focusRuleId ?? null);
   const [mode, setMode] = useState<"idle" | "add" | "edit">("idle");
   // v6 Correction 1: THREE scopes, not two — a specialty subcontractor keys on the
@@ -53,6 +67,7 @@ export function LaborRulesForm({ focusRuleId, onFocusHandled }: LaborRulesFormPr
   // (+ optional region). Exactly one of the three is ever set (matches the schema's
   // chk_rule_labor_scope CHECK).
   const [scope, setScope] = useState<LaborRuleScope>("Treatment");
+  const [treatmentChoice, setTreatmentChoice] = useState("");
   const [treatmentType, setTreatmentType] = useState("");
   const [region, setRegion] = useState<PhRegion | "">("");
   const [trade, setTrade] = useState("");
@@ -76,6 +91,7 @@ export function LaborRulesForm({ focusRuleId, onFocusHandled }: LaborRulesFormPr
 
   const resetForm = () => {
     setScope("Treatment");
+    setTreatmentChoice("");
     setTreatmentType("");
     setRegion("");
     setTrade("");
@@ -96,6 +112,8 @@ export function LaborRulesForm({ focusRuleId, onFocusHandled }: LaborRulesFormPr
   const startEdit = (r: LaborRule) => {
     setMode("edit");
     setScope(laborRuleScope(r));
+    const isKnownTreatment = !!r.treatment_type && treatmentOptions.includes(r.treatment_type);
+    setTreatmentChoice(isKnownTreatment ? r.treatment_type! : r.treatment_type ? "Other" : "");
     setTreatmentType(r.treatment_type ?? "");
     setRegion(r.region ?? "");
     setTrade(r.labor_trade ?? "");
@@ -290,21 +308,38 @@ export function LaborRulesForm({ focusRuleId, onFocusHandled }: LaborRulesFormPr
 
               {scope === "Treatment" && (
                 <div className="flex flex-col gap-1.5">
-                  <div className="relative">
+                  <label htmlFor="labor-treatment-type" className="text-xs font-semibold text-gray-600">
+                    Treatment Type <span className="text-red-500">*</span>
+                  </label>
+                  <select
+                    id="labor-treatment-type"
+                    value={treatmentChoice}
+                    onChange={(e) => {
+                      const next = e.target.value;
+                      setTreatmentChoice(next);
+                      setTreatmentType(next === "Other" ? "" : next);
+                    }}
+                    className={inputCls}
+                  >
+                    <option value="">Select…</option>
+                    {treatmentOptions.map((treatment) => (
+                      <option key={treatment}>{treatment}</option>
+                    ))}
+                    <option value="Other">Others</option>
+                  </select>
+                  {treatmentChoice === "Other" && (
                     <input
-                      id="labor-treatment-type"
                       value={treatmentType}
                       onChange={(e) => setTreatmentType(e.target.value)}
-                      placeholder=" "
-                      className="peer w-full rounded-lg border border-gray-200 bg-gray-50 px-3 pb-2 pt-5 text-sm outline-none transition focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/20"
+                      placeholder="Enter treatment type"
+                      className={inputCls}
                     />
-                    <label
-                      htmlFor="labor-treatment-type"
-                      className="pointer-events-none absolute left-3 top-1.5 text-[10px] font-semibold text-gray-500 transition-all peer-placeholder-shown:top-1/2 peer-placeholder-shown:-translate-y-1/2 peer-placeholder-shown:text-sm peer-placeholder-shown:font-medium peer-focus:top-1.5 peer-focus:translate-y-0 peer-focus:text-[10px] peer-focus:font-semibold peer-focus:text-primary"
-                    >
-                      Treatment Type <span className="text-red-500">*</span>
-                    </label>
-                  </div>
+                  )}
+                  {treatmentOptions.length === 0 && (
+                    <p className="text-[11px] text-amber-600">
+                      Add treatment-tagged Material Rules first, or choose Others.
+                    </p>
+                  )}
                   {touched && !treatmentValid && <p className="text-xs text-red-500">Treatment type is required.</p>}
                 </div>
               )}

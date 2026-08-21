@@ -1206,8 +1206,6 @@ export function AiNormalizationPanel({ companyId, defaultSupplierMode = "existin
           <div className="flex flex-col gap-5">
             {reviewGroups.map(([sourceKey, sourceItems]) => {
               const useDpwhColumns = sourceKey === "DPWH";
-              const selectedCount = sourceItems.filter((item) => selectedReviewIds.has(item.review_id)).length;
-              const allSourceItemsSelected = sourceItems.length > 0 && selectedCount === sourceItems.length;
               const pageCount = Math.max(1, Math.ceil(sourceItems.length / REVIEW_PAGE_SIZE));
               const currentPage = Math.min(Math.max(1, reviewPagesBySource[sourceKey] ?? 1), pageCount);
               const showPagination = sourceItems.length > REVIEW_PAGE_SIZE;
@@ -1215,6 +1213,8 @@ export function AiNormalizationPanel({ companyId, defaultSupplierMode = "existin
               const pagedItems = showPagination
                 ? sourceItems.slice(pageStart, pageStart + REVIEW_PAGE_SIZE)
                 : sourceItems;
+              const selectedCount = pagedItems.filter((item) => selectedReviewIds.has(item.review_id)).length;
+              const allDisplayedItemsSelected = pagedItems.length > 0 && selectedCount === pagedItems.length;
               const showingStart = sourceItems.length === 0 ? 0 : pageStart + 1;
               const showingEnd = Math.min(pageStart + pagedItems.length, sourceItems.length);
 
@@ -1229,7 +1229,7 @@ export function AiNormalizationPanel({ companyId, defaultSupplierMode = "existin
                       {!isEditingAll && (
                         <button
                           type="button"
-                          onClick={() => approveSelectedReviewItems(sourceItems)}
+                          onClick={() => approveSelectedReviewItems(pagedItems)}
                           disabled={selectedCount === 0 || isBulkApproving || isBulkDeleting}
                           className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-bold text-primary-foreground shadow-sm transition hover:bg-(--primary-hover) disabled:cursor-not-allowed disabled:opacity-50"
                         >
@@ -1240,17 +1240,17 @@ export function AiNormalizationPanel({ companyId, defaultSupplierMode = "existin
                       {!isEditingAll && (
                         <button
                           type="button"
-                          onClick={() => toggleSelectAllReviewItems(sourceItems)}
-                          disabled={sourceItems.length === 0 || isBulkApproving || isBulkDeleting}
+                          onClick={() => toggleSelectAllReviewItems(pagedItems)}
+                          disabled={pagedItems.length === 0 || isBulkApproving || isBulkDeleting}
                           className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-600 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
                         >
-                          {allSourceItemsSelected ? "Deselect All" : "Select All"}
+                          {allDisplayedItemsSelected ? "Deselect All" : "Select All"}
                         </button>
                       )}
                       {!isEditingAll && (
                         <button
                           type="button"
-                          onClick={() => handleDeleteReview(sourceItems)}
+                          onClick={() => handleDeleteReview(pagedItems)}
                           disabled={selectedCount === 0 || isBulkDeleting || isBulkApproving}
                           aria-label={isBulkDeleting ? "Deleting…" : selectedCount > 0 ? `Delete selected (${selectedCount})` : "Delete"}
                           title={isBulkDeleting ? "Deleting…" : selectedCount > 0 ? `Delete selected (${selectedCount})` : "Delete"}

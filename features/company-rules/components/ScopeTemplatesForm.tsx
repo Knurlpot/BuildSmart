@@ -19,6 +19,28 @@ import type { Company } from "@/types/entities";
 const inputCls =
   "w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm outline-none transition focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/20";
 
+const DEFAULT_TREATMENT_TYPES = [
+  "Waterproofing",
+  "Painting",
+  "Plastering",
+  "Tile Work",
+  "Flooring",
+  "Roofing",
+  "Ceiling Works",
+  "Partition Works",
+  "Masonry Works",
+  "Concrete Works",
+  "Carpentry Works",
+  "Glass and Aluminum Works",
+  "Electrical Works",
+  "Plumbing Works",
+  "HVAC / Air-Conditioning Works",
+  "Fire Protection Works",
+  "Insulation Works",
+  "Rendering",
+  "Skim Coating",
+] as const;
+
 function useCompanySpecializations(): string[] {
   const { currentUser } = useAuth();
   const companyId = currentUser?.companyId;
@@ -50,6 +72,8 @@ export function ScopeTemplatesForm({ focusRuleId, onFocusHandled }: ScopeTemplat
   // allTemplates naturally resolves once the list finishes loading, on its own re-render.
   const [selectedId, setSelectedId] = useState<string | null>(focusRuleId ?? null);
   const [mode, setMode] = useState<"idle" | "add" | "edit">("idle");
+  const [treatmentChoice, setTreatmentChoice] = useState("");
+  const [treatmentType, setTreatmentType] = useState("");
   const [name, setName] = useState("");
   const [specialization, setSpecialization] = useState("");
   const [categories, setCategories] = useState<CategoryType[]>([]);
@@ -66,15 +90,25 @@ export function ScopeTemplatesForm({ focusRuleId, onFocusHandled }: ScopeTemplat
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const treatmentOptions = Array.from(
+    new Set([
+      ...DEFAULT_TREATMENT_TYPES,
+      ...allTemplates.map((template) => template.treatment_type?.trim()).filter((value): value is string => !!value),
+    ])
+  ).sort();
+
   const nameValid = isNonEmpty(name);
+  const treatmentValid = isNonEmpty(treatmentType);
   const specializationValid = isNonEmpty(specialization);
   const categoriesValid = categories.length > 0;
   const othersValid = !categories.includes("Others") || isNonEmpty(othersDescription);
-  const formValid = nameValid && specializationValid && categoriesValid && othersValid;
+  const formValid = nameValid && treatmentValid && specializationValid && categoriesValid && othersValid;
 
   const startAdd = () => {
     setMode("add");
     setSelectedId(null);
+    setTreatmentChoice("");
+    setTreatmentType("");
     setName("");
     setSpecialization("");
     setCategories([]);
@@ -86,6 +120,9 @@ export function ScopeTemplatesForm({ focusRuleId, onFocusHandled }: ScopeTemplat
 
   const startEdit = (t: ScopeTemplate) => {
     setMode("edit");
+    const isKnownTreatment = treatmentOptions.includes(t.treatment_type);
+    setTreatmentChoice(isKnownTreatment ? t.treatment_type : "Other");
+    setTreatmentType(t.treatment_type);
     setName(t.template_name);
     setSpecialization(t.service_specialization);
     setCategories(t.material_categories);
@@ -99,6 +136,7 @@ export function ScopeTemplatesForm({ focusRuleId, onFocusHandled }: ScopeTemplat
   };
 
   const buildPayload = () => ({
+    treatment_type: treatmentType,
     template_name: name,
     service_specialization: specialization,
     material_categories: categories,
@@ -143,12 +181,7 @@ export function ScopeTemplatesForm({ focusRuleId, onFocusHandled }: ScopeTemplat
   return (
     <div className="flex flex-col gap-4">
       <div>
-        <div className="flex items-center gap-2">
-          <h2 className="text-base font-bold text-gray-900">Scope Templates</h2>
-          <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-gray-500">
-            Optional · Advisory
-          </span>
-        </div>
+        <h2 className="text-base font-bold text-gray-900">Scope Templates</h2>
         <p className="text-xs text-gray-500">
           Set scope for work templates.
         </p>
@@ -203,6 +236,7 @@ export function ScopeTemplatesForm({ focusRuleId, onFocusHandled }: ScopeTemplat
               </span>
             </div>
             <span className="text-xs text-gray-400">{t.service_specialization}</span>
+            <span className="text-[10px] font-semibold text-primary">{t.treatment_type}</span>
             <span className="text-[10px] text-gray-400">{t.material_categories.length} categories</span>
           </div>
         )}
@@ -237,22 +271,54 @@ export function ScopeTemplatesForm({ focusRuleId, onFocusHandled }: ScopeTemplat
                 {touched && !nameValid && <p className="text-xs text-red-500">Template name is required.</p>}
               </div>
 
-              <div className="flex flex-col gap-1.5">
-                <label className="text-xs font-semibold text-gray-600">
-                  Service Specialization <span className="text-red-500">*</span>
-                </label>
-                <select value={specialization} onChange={(e) => setSpecialization(e.target.value)} className={inputCls}>
-                  <option value="">Select…</option>
-                  {specializationOptions.map((s) => (
-                    <option key={s}>{s}</option>
-                  ))}
-                </select>
-                {specializationOptions.length === 0 && (
-                  <p className="text-xs text-gray-400">
-                    No specializations found on your company profile. Add one under Account &amp; Company Profile.
-                  </p>
-                )}
-                {touched && !specializationValid && <p className="text-xs text-red-500">Select a specialization.</p>}
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-xs font-semibold text-gray-600">
+                    Treatment Type <span className="text-red-500">*</span>
+                  </label>
+                  <select
+                    value={treatmentChoice}
+                    onChange={(e) => {
+                      const next = e.target.value;
+                      setTreatmentChoice(next);
+                      setTreatmentType(next === "Other" ? "" : next);
+                    }}
+                    className={inputCls}
+                  >
+                    <option value="">Select…</option>
+                    {treatmentOptions.map((treatment) => (
+                      <option key={treatment}>{treatment}</option>
+                    ))}
+                    <option value="Other">Others</option>
+                  </select>
+                  {treatmentChoice === "Other" && (
+                    <input
+                      value={treatmentType}
+                      onChange={(e) => setTreatmentType(e.target.value)}
+                      placeholder="Enter treatment type"
+                      className={inputCls}
+                    />
+                  )}
+                  {touched && !treatmentValid && <p className="text-xs text-red-500">Treatment type is required.</p>}
+                </div>
+
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-xs font-semibold text-gray-600">
+                    Service Specialization <span className="text-red-500">*</span>
+                  </label>
+                  <select value={specialization} onChange={(e) => setSpecialization(e.target.value)} className={inputCls}>
+                    <option value="">Select…</option>
+                    {specializationOptions.map((s) => (
+                      <option key={s}>{s}</option>
+                    ))}
+                  </select>
+                  {specializationOptions.length === 0 && (
+                    <p className="text-xs text-gray-400">
+                      No specializations found on your company profile. Add one under Account &amp; Company Profile.
+                    </p>
+                  )}
+                  {touched && !specializationValid && <p className="text-xs text-red-500">Select a specialization.</p>}
+                </div>
               </div>
 
               <div className="flex flex-col gap-1.5">
@@ -323,6 +389,7 @@ export function ScopeTemplatesForm({ focusRuleId, onFocusHandled }: ScopeTemplat
               <div className="flex items-start justify-between gap-3 rounded-xl border border-gray-100 bg-gray-50/60 p-4">
                 <div>
                   <p className="text-lg font-bold text-gray-900">{selected.template_name}</p>
+                  <p className="text-sm font-semibold text-primary">{selected.treatment_type}</p>
                   <span
                     className={`mt-1 inline-flex rounded-full px-2 py-0.5 text-[10px] font-bold ${
                       selected.is_active ? "bg-green-50 text-green-700" : "bg-gray-100 text-gray-400"

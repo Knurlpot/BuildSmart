@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Award, CheckCircle2, Clock, Database, FileText, PenLine, Shield, SlidersHorizontal, Star, TrendingDown } from "lucide-react";
 import {
   Dialog,
@@ -13,9 +13,13 @@ import {
 import { QuotationBreakdownModal } from "./QuotationBreakdownModal";
 import { RevisionTypeModal } from "./RevisionTypeModal";
 import { MinorRevisionPanel } from "./MinorRevisionPanel";
-import { computeTierResult, deriveMockItemLines, fmtPeso, recomputeItemLine, retargetItemLinesBasis } from "@/lib/dev/provisional/quotationBreakdownFixtures";
+import { computeTierResult, deriveCompanyRuleItemLines, deriveMockItemLines, fmtPeso, recomputeItemLine } from "@/lib/dev/provisional/quotationBreakdownFixtures";
 import { PROVISIONAL_TIERS, type PricelistBasis, type ProvisionalItemLine, type ProvisionalQuotationTierResult, type ProvisionalTier } from "@/lib/dev/provisional/quotationBreakdownTypes";
 import { saveFinalizedQuotation } from "@/lib/dev/provisional/savedProjectsStore";
+import { useMaterialRules, useUnitRules } from "@/lib/dev/provisional/useCompanyRulesProvisional";
+import { useItemsCatalog } from "@/hooks/useItemsCatalog";
+import { usePricelistCatalog } from "@/hooks/usePricelistCatalog";
+import { usePricelistPublishedSource } from "@/hooks/usePricelistPublishedSource";
 import { isSegmentIncluded, type DraftSegment } from "../lib/draftSegment";
 import type { Client, Quotation } from "@/types/entities";
 import type { BlueprintFloor } from "@/lib/dev/provisional/quotationGenerationTypes";
@@ -74,24 +78,54 @@ function initTierItems(segments: DraftSegment[], basis: PricelistBasis): Record<
   };
 }
 
+function deriveTierItemsFromRules(
+  segments: DraftSegment[],
+  basis: PricelistBasis,
+  materialRules: ReturnType<typeof useMaterialRules>["rules"],
+  unitRules: ReturnType<typeof useUnitRules>["rules"],
+  items: ReturnType<typeof useItemsCatalog>["items"],
+  uploadedPrices: ReturnType<typeof usePricelistCatalog>["records"] = [],
+  dpwhPrices: ReturnType<typeof usePricelistPublishedSource>["dpwhCatalog"]["records"] = []
+): Record<ProvisionalTier, ProvisionalItemLine[]> {
+  const companyRuleLines = deriveCompanyRuleItemLines(segments, materialRules, unitRules, items, basis, uploadedPrices, dpwhPrices);
+  if (companyRuleLines) {
+    return {
+      Practical: companyRuleLines,
+      Premium: companyRuleLines.map((line) => ({
+        ...line,
+        line_id: `${line.line_id}-premium`,
+      })),
+    };
+  }
+  return initTierItems(segments, basis);
+}
+
 function applyQuotationRuleToLines(
   lines: ProvisionalItemLine[],
   prioritySource: QuotationPrioritySource,
   fallbackRule: QuotationFallbackRule
 ): ProvisionalItemLine[] {
   return lines.map((line) => {
-    const cheapestSupplier = line.supplier_options.length > 0
-      ? [...line.supplier_options].sort((a, b) => a.unit_price - b.unit_price)[0]
+    const uploadedOptions = line.supplier_options.filter((option) => option.source_type === "Uploaded");
+    const dpwhOptions = line.supplier_options.filter((option) => option.source_type === "DPWH");
+    const cheapestUploaded = uploadedOptions.length > 0
+      ? [...uploadedOptions].sort((a, b) => a.unit_price - b.unit_price)[0]
       : null;
-    const shouldUseSupplier =
-      prioritySource === "Uploaded" ||
-      fallbackRule === "Use lowest uploaded rate" ||
-      (fallbackRule === "Use next available source" && line.unit_price === null);
+    const cheapestDpwh = dpwhOptions.length > 0
+      ? [...dpwhOptions].sort((a, b) => a.unit_price - b.unit_price)[0]
+      : null;
+    const nextAvailable = prioritySource === "Uploaded" ? cheapestDpwh : cheapestUploaded;
+    const chosenOption =
+      fallbackRule === "Use lowest uploaded rate"
+        ? cheapestUploaded
+        : fallbackRule === "Use next available source" && line.unit_price === null
+          ? nextAvailable
+          : null;
 
-    if (shouldUseSupplier && cheapestSupplier) {
+    if (chosenOption) {
       return recomputeItemLine(line, {
-        selected_supplier_id: cheapestSupplier.supplier_id,
-        unit_price: cheapestSupplier.unit_price,
+        selected_supplier_id: chosenOption.supplier_id,
+        unit_price: chosenOption.unit_price,
       });
     }
 
@@ -185,9 +219,19 @@ function QuoteCard({ tier, result, onViewBreakdown }: { tier: ProvisionalTier; r
 // and the revision flow (editing lives only in Minor Revision, Part D). Everything
 // downstream of `segments` is mock-derived — see quotationBreakdownFixtures.ts.
 export function QuotationResultsStep({ client, quotation, segments, blueprintFloors, onStructuralRevision, onFinalize }: QuotationResultsStepProps) {
+  const { rules: materialRules, isLoading: materialRulesLoading } = useMaterialRules();
+  const { rules: unitRules, isLoading: unitRulesLoading } = useUnitRules();
+  const { items, isLoading: itemsLoading } = useItemsCatalog();
+  const { records: uploadedPrices, isLoading: uploadedPricesLoading, load: loadUploadedPrices } = usePricelistCatalog();
+  const { dpwhCatalog } = usePricelistPublishedSource();
+  const {
+    records: dpwhPrices,
+    isLoading: dpwhPricesLoading,
+    load: loadDpwhPrices,
+  } = dpwhCatalog;
   const [pricelistBasis, setPricelistBasis] = useState<PricelistBasis>(DEFAULT_BASIS);
-  const [originalTierItems] = useState(() => initTierItems(segments, DEFAULT_BASIS));
   const [tierItems, setTierItems] = useState(() => initTierItems(segments, DEFAULT_BASIS));
+  const [hasManualLineEdits, setHasManualLineEdits] = useState(false);
   const [breakdownTier, setBreakdownTier] = useState<ProvisionalTier | null>(null);
   const [ruleDialogOpen, setRuleDialogOpen] = useState(false);
   const [prioritySource, setPrioritySource] = useState<QuotationPrioritySource>("Uploaded");
@@ -200,28 +244,51 @@ export function QuotationResultsStep({ client, quotation, segments, blueprintFlo
   const includedSegments = segments.filter(isSegmentIncluded);
   const totalArea = includedSegments.reduce((sum, s) => sum + s.area_sqm, 0);
   const floors = new Set(includedSegments.map((s) => s.floor_level || "—")).size;
+  useEffect(() => {
+    loadUploadedPrices();
+    loadDpwhPrices();
+  }, [loadDpwhPrices, loadUploadedPrices]);
+
+  const cprmLoading = materialRulesLoading || unitRulesLoading || itemsLoading || uploadedPricesLoading || dpwhPricesLoading;
+  const cprmHasTreatmentMatches = useMemo(
+    () =>
+      segments.some((seg) =>
+        materialRules.some(
+          (rule) =>
+            rule.is_active &&
+            !!rule.treatment_type &&
+            rule.treatment_type.trim().toLowerCase() === seg.treatment_type?.trim().toLowerCase()
+        )
+      ),
+    [materialRules, segments]
+  );
+
+  const autoTierItems = useMemo(
+    () => deriveTierItemsFromRules(segments, pricelistBasis, materialRules, unitRules, items, uploadedPrices, dpwhPrices),
+    [items, materialRules, pricelistBasis, segments, unitRules, uploadedPrices, dpwhPrices]
+  );
+  const effectiveTierItems = hasManualLineEdits ? tierItems : autoTierItems;
 
   // Part B/D — the Uploaded/DPWH toggle is shared by the read-only Breakdown view AND
   // Minor Revision; switching it re-prices every NON-overridden line to the new basis for
   // BOTH tiers at once (see retargetItemLinesBasis's doc — a manual override always wins).
   const handleBasisChange = (basis: PricelistBasis) => {
     setPricelistBasis(basis);
-    setTierItems((prev) => ({
-      Practical: retargetItemLinesBasis(segments, prev.Practical, "Practical", basis),
-      Premium: retargetItemLinesBasis(segments, prev.Premium, "Premium", basis),
-    }));
+    setHasManualLineEdits(true);
+    setTierItems(deriveTierItemsFromRules(segments, basis, materialRules, unitRules, items, uploadedPrices, dpwhPrices));
   };
 
   const handleApplyQuotationRules = () => {
+    setHasManualLineEdits(true);
     handleBasisChange(prioritySource);
-    setTierItems((prev) => ({
+    setTierItems(() => ({
       Practical: applyQuotationRuleToLines(
-        retargetItemLinesBasis(segments, prev.Practical, "Practical", prioritySource),
+        deriveTierItemsFromRules(segments, prioritySource, materialRules, unitRules, items, uploadedPrices, dpwhPrices).Practical,
         prioritySource,
         fallbackRule
       ),
       Premium: applyQuotationRuleToLines(
-        retargetItemLinesBasis(segments, prev.Premium, "Premium", prioritySource),
+        deriveTierItemsFromRules(segments, prioritySource, materialRules, unitRules, items, uploadedPrices, dpwhPrices).Premium,
         prioritySource,
         fallbackRule
       ),
@@ -230,8 +297,8 @@ export function QuotationResultsStep({ client, quotation, segments, blueprintFlo
   };
 
   const tierResults: Record<ProvisionalTier, ProvisionalQuotationTierResult> = {
-    Practical: computeTierResult("Practical", tierItems.Practical),
-    Premium: computeTierResult("Premium", tierItems.Premium),
+    Practical: computeTierResult("Practical", effectiveTierItems.Practical),
+    Premium: computeTierResult("Premium", effectiveTierItems.Premium),
   };
 
   return (
@@ -264,6 +331,9 @@ export function QuotationResultsStep({ client, quotation, segments, blueprintFlo
 
       <div className="flex flex-wrap items-center gap-2 rounded-xl border border-gray-100 bg-white px-4 py-3 text-xs text-gray-500 shadow-sm">
         <span className="font-bold uppercase tracking-wide text-gray-400">Active material rule</span>
+        <span className={`rounded-full px-2 py-1 font-semibold ${cprmHasTreatmentMatches ? "bg-green-50 text-green-700" : "bg-amber-50 text-amber-700"}`}>
+          {cprmLoading ? "Checking CPRM..." : cprmHasTreatmentMatches ? "CPRM treatment match" : "Mock fallback"}
+        </span>
         <span className="rounded-full bg-orange-50 px-2 py-1 font-semibold text-primary">
           Priority: {SOURCE_OPTIONS.find((o) => o.value === prioritySource)?.label}
         </span>
@@ -381,9 +451,12 @@ export function QuotationResultsStep({ client, quotation, segments, blueprintFlo
       {minorRevisionTier && (
         <MinorRevisionPanel
           tier={minorRevisionTier}
-          originalItems={originalTierItems[minorRevisionTier]}
-          items={tierItems[minorRevisionTier]}
-          onItemsChange={(next) => setTierItems((prev) => ({ ...prev, [minorRevisionTier]: next }))}
+          originalItems={autoTierItems[minorRevisionTier]}
+          items={effectiveTierItems[minorRevisionTier]}
+          onItemsChange={(next) => {
+            setHasManualLineEdits(true);
+            setTierItems((prev) => ({ ...prev, [minorRevisionTier]: next }));
+          }}
           pricelistBasis={pricelistBasis}
           onBasisChange={handleBasisChange}
           onClose={() => setMinorRevisionTier(null)}
@@ -453,7 +526,7 @@ export function QuotationResultsStep({ client, quotation, segments, blueprintFlo
                   projectName: quotation.project_name,
                   projectLocation: quotation.project_location,
                   projectRegion: quotation.project_region,
-                  tierItems,
+                  tierItems: effectiveTierItems,
                   pricelistBasis,
                   segments,
                   blueprintFloors,

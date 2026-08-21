@@ -10,7 +10,7 @@ export async function resolvePersistedOnboardingStep(companyId: number): Promise
   const [
     supplierCatalogResult,
     dpwhCatalogResult,
-    scopeTemplateResult,
+    materialRuleResult,
     laborRuleResult,
     pricingStrategyResult,
     unitRuleResult,
@@ -37,8 +37,11 @@ export async function resolvePersistedOnboardingStep(companyId: number): Promise
     ),
     pool.query<CountRow>(
       `SELECT COUNT(*)::text AS count
-       FROM scope_template
-       WHERE company_id = $1`,
+       FROM company_rule cr
+       JOIN rule_category_detail rcd ON rcd.rule_id = cr.rule_id
+       WHERE cr.company_id = $1
+         AND cr.work_type = 'Material Rule'
+         AND cr.status = 'Active'`,
       [companyId]
     ),
     pool.query<CountRow>(
@@ -68,7 +71,7 @@ export async function resolvePersistedOnboardingStep(companyId: number): Promise
 
   const supplierCatalogCount = Number(supplierCatalogResult.rows[0]?.count ?? 0);
   const dpwhCatalogCount = Number(dpwhCatalogResult.rows[0]?.count ?? 0);
-  const scopeTemplateCount = Number(scopeTemplateResult.rows[0]?.count ?? 0);
+  const materialRuleCount = Number(materialRuleResult.rows[0]?.count ?? 0);
   const laborRuleCount = Number(laborRuleResult.rows[0]?.count ?? 0);
   const pricingStrategyCount = Number(pricingStrategyResult.rows[0]?.count ?? 0);
   const unitRuleCount = Number(unitRuleResult.rows[0]?.count ?? 0);
@@ -77,7 +80,7 @@ export async function resolvePersistedOnboardingStep(companyId: number): Promise
   if (!hasPricelist) return 0;
 
   const hasCompanyRules =
-    scopeTemplateCount > 0 &&
+    materialRuleCount > 0 &&
     laborRuleCount > 0 &&
     pricingStrategyCount > 0 &&
     unitRuleCount > 0;

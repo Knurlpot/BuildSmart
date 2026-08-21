@@ -9,6 +9,7 @@
 import { stagingId } from './quotationGenerationTypes';
 import type { DraftSegment } from '@/features/quotation-generation/lib/draftSegment';
 import { isSegmentIncluded } from '@/features/quotation-generation/lib/draftSegment';
+import type { MaterialRuleEntry, UnitRule } from './companyRulesTypes';
 import type {
   ItemCategory,
   PricelistBasis,
@@ -19,6 +20,9 @@ import type {
   ProvisionalSupplierOption,
   ProvisionalTier,
 } from './quotationBreakdownTypes';
+import type { Items } from '@/types/entities/items';
+import type { SavedPriceRecord } from '@/hooks/usePricelistCatalog';
+import type { DpwhCatalogRow } from '@/hooks/usePricelistPublishedSource';
 
 interface SupplierFixture {
   supplier_id: number;
@@ -295,6 +299,111 @@ export function deriveMockItemLines(segments: DraftSegment[], tier: ProvisionalT
     for (const def of defs) lines.push(buildLine(seg, def, tier, basis));
   }
   return lines;
+}
+
+function matchingUnitRule(rule: MaterialRuleEntry, unitRules: UnitRule[]): UnitRule | null {
+  const itemMatch = unitRules.find((unitRule) => unitRule.is_active && unitRule.item_code === rule.preferred_item_code);
+  if (itemMatch) return itemMatch;
+  return unitRules.find((unitRule) => unitRule.is_active && unitRule.item_code === null && unitRule.category === rule.category) ?? null;
+}
+
+function buildCompanyRuleLine(
+  seg: DraftSegment,
+  rule: MaterialRuleEntry,
+  item: Items | undefined,
+  unitRule: UnitRule | null,
+  basis: PricelistBasis,
+  uploadedPrices: SavedPriceRecord[] = [],
+  dpwhPrices: DpwhCatalogRow[] = []
+): ProvisionalItemLine {
+  const coverage = unitRule?.conversion_factor ?? 1;
+  const wastage = unitRule?.wastage_allowance_percentage ?? 0;
+  const qty = round2(seg.area_sqm * coverage * (1 + wastage / 100));
+  const matchingUploadedPrices = uploadedPrices
+    .filter((price) => String(price.item_code) === String(rule.preferred_item_code))
+    .sort((a, b) => a.price - b.price);
+  const matchingDpwhPrices = dpwhPrices
+    .filter((price) => String(price.item_code) === String(rule.preferred_item_code))
+    .sort((a, b) => a.price - b.price);
+  const selectedUploadedPrice = matchingUploadedPrices[0] ?? null;
+  const selectedDpwhPrice = matchingDpwhPrices[0] ?? null;
+  const selectedPrice = basis === 'DPWH' ? selectedDpwhPrice : selectedUploadedPrice;
+  const uploadedOptions: ProvisionalSupplierOption[] = matchingUploadedPrices.map((price) => ({
+    supplier_id: price.historicalrec_id,
+    supplier_name: price.supplier_name ?? 'Uploaded pricelist',
+    unit_price: price.price,
+    quantity_available: null,
+    source_type: 'Uploaded',
+  }));
+  const dpwhOptions: ProvisionalSupplierOption[] = matchingDpwhPrices.map((price) => ({
+    supplier_id: price.historicalrec_id,
+    supplier_name: `DPWH CMPD${price.region ? ` - ${price.region}` : ''}`,
+    unit_price: price.price,
+    quantity_available: null,
+    source_type: 'DPWH',
+  }));
+  const unitPrice = selectedPrice?.price ?? null;
+
+  return {
+    line_id: stagingId('item'),
+    segment_draft_id: seg.draft_id,
+    segment_name: seg.segment_name,
+    floor_level: seg.floor_level,
+    treatment_type: seg.treatment_type,
+    category: 'Material',
+    item_code: rule.preferred_item_code ?? 'UNRATED',
+    item_name: rule.preferred_item_name,
+    unit: item?.unit ?? 'unit',
+    derived_area_sqm: seg.area_sqm,
+    derived_coverage_per_sqm: coverage,
+    derived_wastage_percentage: wastage,
+    quantity: qty,
+    unit_price: unitPrice,
+    total_cost: unitPrice !== null ? round2(qty * unitPrice) : null,
+    source_type: basis,
+    is_overridden: false,
+    pricing_reference: pricingReferenceFor(basis),
+    supplier_options: [...uploadedOptions, ...dpwhOptions],
+    selected_supplier_id: selectedPrice?.historicalrec_id ?? null,
+  };
+}
+
+export function deriveCompanyRuleItemLines(
+  segments: DraftSegment[],
+  materialRules: MaterialRuleEntry[],
+  unitRules: UnitRule[],
+  items: Items[],
+  basis: PricelistBasis,
+  uploadedPrices: SavedPriceRecord[] = [],
+  dpwhPrices: DpwhCatalogRow[] = []
+): ProvisionalItemLine[] | null {
+  const activeRules = materialRules.filter((rule) => rule.is_active && rule.treatment_type?.trim());
+  if (activeRules.length === 0) return null;
+
+  const itemByCode = new Map(items.map((item) => [String(item.item_code), item]));
+  const lines: ProvisionalItemLine[] = [];
+  let matchedAnyTreatment = false;
+
+  for (const seg of segments.filter(isSegmentIncluded)) {
+    const treatment = seg.treatment_type?.trim().toLowerCase();
+    const rulesForTreatment = treatment
+      ? activeRules
+          .filter((rule) => rule.treatment_type?.trim().toLowerCase() === treatment)
+          .sort((a, b) => a.material_priority - b.material_priority)
+      : [];
+
+    if (rulesForTreatment.length === 0) {
+      lines.push(buildMissingRuleLine(seg, basis));
+      continue;
+    }
+
+    matchedAnyTreatment = true;
+    for (const rule of rulesForTreatment) {
+      lines.push(buildCompanyRuleLine(seg, rule, itemByCode.get(String(rule.preferred_item_code)), matchingUnitRule(rule, unitRules), basis, uploadedPrices, dpwhPrices));
+    }
+  }
+
+  return matchedAnyTreatment ? lines : null;
 }
 
 /** Part B/D — re-prices the CURRENT line set to a new pricelist basis (Uploaded <-> DPWH).

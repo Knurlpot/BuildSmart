@@ -5,28 +5,20 @@ import { AlertTriangle, CheckCircle2, Pencil, Search, X } from "lucide-react";
 import { RuleListDetailPanel } from "./RuleListDetailPanel";
 import { useMaterialRules, useCheckRuleUsage, stagingId } from "@/lib/dev/provisional/useCompanyRulesProvisional";
 import { useEditableRuleList } from "@/lib/dev/provisional/useEditableRuleList";
-import {
-  MATERIAL_FALLBACK_RULES,
-  type MaterialFallbackRule,
-  type MaterialRuleEntry,
-  type PriceSource,
-} from "@/lib/dev/provisional/companyRulesTypes";
+import type { MaterialRuleEntry } from "@/lib/dev/provisional/companyRulesTypes";
 import { useItemsCatalog } from "@/hooks/useItemsCatalog";
 import { useCategories } from "@/hooks/useCategories";
-import { usePricelistSourcePriority, type SourcePriorityEntry } from "@/hooks/usePricelistSourcePriority";
-import { useAuth } from "@/providers/AuthProvider";
+import { TREATMENT_TYPES } from "@/lib/dev/provisional/quotationGenerationTypes";
 import { CATEGORY_TYPES, type CategoryType } from "@/types/entities/category";
 import type { Items } from "@/types/entities/items";
 
 const inputCls =
   "w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm outline-none transition focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/20";
 
-const MATERIAL_PRIORITY_SOURCES: PriceSource[] = ["Supplier", "DPWH"];
-
-interface ItemConfig {
-  priority: SourcePriorityEntry | null;
-  fallback: MaterialFallbackRule | "";
-}
+const DEFAULT_MATERIAL_PRIORITY = 1;
+const DEFAULT_PRIORITY_SOURCE = "Supplier";
+const DEFAULT_FALLBACK_RULE = "Flag for manual review";
+const TREATMENT_OPTIONS = [...TREATMENT_TYPES];
 
 interface MaterialRulesFormProps {
   focusRuleId?: string | null;
@@ -36,7 +28,7 @@ interface MaterialRulesFormProps {
 // v6 Correction 3 — REBUILT as a catalog picker. A category contains many materials used
 // TOGETHER (a waterproofing system needs primer AND membrane AND topcoat), not
 // alternatives chosen one-per-category from a dropdown — so this is now a flat,
-// standalone list of "preferred item + fallback" records, added by searching/checking
+// standalone list of treatment-tagged material records, added by searching/checking
 // items straight from the catalog. Category is filtering metadata on the picker, not the
 // organizing structure of the list itself (see RuleListDetailPanel below, same
 // select+detail pattern every other rule type already uses).
@@ -57,31 +49,20 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
   const editable = useEditableRuleList<MaterialRuleEntry>({ checkUsage, update, supersede, idPrefix: "mr" });
   const { items, isLoading: itemsLoading, error: itemsError } = useItemsCatalog();
   const { categories, isLoading: categoriesLoading, error: categoriesError } = useCategories();
-  const { currentUser } = useAuth();
-  const companyId =
-    typeof currentUser?.companyId === "number"
-      ? currentUser.companyId
-      : Number.isFinite(Number(currentUser?.companyId))
-        ? Number(currentUser?.companyId)
-        : undefined;
-  const { list: sourcePriority, isLoading: sourcePriorityLoading } = usePricelistSourcePriority(companyId);
-  const sourcePriorityReady = companyId !== undefined && !sourcePriorityLoading;
 
   const allRules = editable.applyOverrides([...editable.localExtra, ...rules]);
 
   const categoryTypeOf = (item: Items): CategoryType | undefined =>
     categories.find((c) => c.category_id === item.category_id)?.category_type;
 
-  // seeded from the prop at construction, not synced via effect: a jump always remounts
-  // this component fresh (see ScopeTemplatesForm for the full reasoning).
+  // Seeded from the prop at construction, not synced via effect: a jump always remounts
+  // this component fresh through CompanyRulesShell.
   const [selectedId, setSelectedId] = useState<string | null>(focusRuleId ?? null);
   const [mode, setMode] = useState<"idle" | "browse" | "configure" | "edit">("idle");
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState<CategoryType | "">("");
   const [checkedItemCodes, setCheckedItemCodes] = useState<Set<string>>(new Set());
-  const [perItemConfig, setPerItemConfig] = useState<Record<string, ItemConfig>>({});
-  const [editPriority, setEditPriority] = useState<SourcePriorityEntry | null>(null);
-  const [editFallback, setEditFallback] = useState<MaterialFallbackRule | "">("");
+  const [treatmentType, setTreatmentType] = useState("");
   const [touched, setTouched] = useState(false);
   const [savedMessage, setSavedMessage] = useState(false);
 
@@ -104,42 +85,6 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
       item.unit,
     ].filter(Boolean).join(" · ");
 
-  const priorityForSource = (source: PriceSource): SourcePriorityEntry | null =>
-    sourcePriority.find((entry) => entry.price_source === source) ?? null;
-
-  const materialPriorityOptions: SourcePriorityEntry[] = MATERIAL_PRIORITY_SOURCES.map((source, i) =>
-    priorityForSource(source) ?? { price_source: source, priority_rank: i + 1 }
-  );
-
-  const defaultMaterialPriority = (source: PriceSource): SourcePriorityEntry | null =>
-    MATERIAL_PRIORITY_SOURCES.includes(source)
-      ? priorityForSource(source) ?? materialPriorityOptions.find((entry) => entry.price_source === source) ?? null
-      : priorityForSource("Supplier") ?? materialPriorityOptions[0] ?? null;
-
-  const priorityLabel = (priority: SourcePriorityEntry | null) =>
-    priority ? `${priority.priority_rank} - ${priority.price_source}` : "Source priority not set";
-
-  const sourcePriorityValue = (priority: SourcePriorityEntry | null) =>
-    priority ? priority.price_source : "";
-
-  const priorityFromValue = (value: string): SourcePriorityEntry | null =>
-    value === "" || !MATERIAL_PRIORITY_SOURCES.includes(value as PriceSource)
-      ? null
-      : priorityForSource(value as PriceSource) ??
-        materialPriorityOptions.find((entry) => entry.price_source === value) ??
-        null;
-
-  const rulePriority = (rule: MaterialRuleEntry): SourcePriorityEntry =>
-    MATERIAL_PRIORITY_SOURCES.includes(rule.priority_source)
-      ? priorityForSource(rule.priority_source) ?? {
-          price_source: rule.priority_source,
-          priority_rank: rule.material_priority,
-        }
-      : defaultMaterialPriority("Supplier") ?? {
-          price_source: "Supplier",
-          priority_rank: rule.material_priority,
-        };
-
   const checkedItems = items.filter((i) => checkedItemCodes.has(String(i.item_code)));
 
   const toggleChecked = (itemCode: string) => {
@@ -158,39 +103,27 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
     setSearch("");
     setCategoryFilter("");
     setCheckedItemCodes(new Set());
-    setPerItemConfig({});
+    setTreatmentType("");
     setTouched(false);
     setSavedMessage(false);
   };
 
   const goToConfigure = () => {
-    setPerItemConfig((prev) => {
-      const next = { ...prev };
-      for (const item of checkedItems) {
-        const code = String(item.item_code);
-        if (!next[code]) next[code] = { priority: defaultMaterialPriority(item.item_source), fallback: "" };
-      }
-      return next;
-    });
     setTouched(false);
     setMode("configure");
   };
 
   const startEdit = (r: MaterialRuleEntry) => {
     setMode("edit");
-    setEditPriority(rulePriority(r));
-    setEditFallback(r.fallback_rule);
+    setTreatmentType(r.treatment_type ?? "");
     setTouched(false);
     setSavedMessage(false);
   };
 
-  const configValid = (code: string) => {
-    const cfg = perItemConfig[code];
-    return !!cfg && cfg.priority !== null && cfg.fallback !== "";
-  };
   const allConfigValid =
     checkedItems.length > 0 &&
-    checkedItems.every((i) => categoryTypeOf(i) !== undefined && configValid(String(i.item_code)));
+    TREATMENT_OPTIONS.includes(treatmentType as (typeof TREATMENT_OPTIONS)[number]) &&
+    checkedItems.every((i) => categoryTypeOf(i) !== undefined);
 
   const handleSaveAll = async () => {
     setTouched(true);
@@ -200,15 +133,14 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
         const code = String(item.item_code);
         const category = categoryTypeOf(item);
         if (!category) throw new Error(`Could not resolve the category for ${item.item_name}.`);
-        const cfg = perItemConfig[code];
-        if (!cfg.priority) continue;
         const payload = {
+          treatment_type: treatmentType.trim() || null,
           category,
           preferred_item_code: code,
           preferred_item_name: item.item_name,
-          material_priority: cfg.priority.priority_rank,
-          priority_source: cfg.priority.price_source,
-          fallback_rule: cfg.fallback as MaterialFallbackRule,
+          material_priority: DEFAULT_MATERIAL_PRIORITY,
+          priority_source: DEFAULT_PRIORITY_SOURCE,
+          fallback_rule: DEFAULT_FALLBACK_RULE,
         };
         await save(payload);
         editable.addCreated({
@@ -227,16 +159,17 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
 
   const handleSaveEdit = async () => {
     setTouched(true);
-    if (!selectedId || editPriority === null || editFallback === "") return;
+    if (!selectedId || !TREATMENT_OPTIONS.includes(treatmentType as (typeof TREATMENT_OPTIONS)[number])) return;
     const current = allRules.find((r) => r.rule_id === selectedId);
     if (!current) return;
     const payload = {
+      treatment_type: treatmentType.trim(),
       category: current.category,
       preferred_item_code: current.preferred_item_code,
       preferred_item_name: current.preferred_item_name,
-      material_priority: editPriority.priority_rank,
-      priority_source: editPriority.price_source,
-      fallback_rule: editFallback as MaterialFallbackRule,
+      material_priority: current.material_priority || DEFAULT_MATERIAL_PRIORITY,
+      priority_source: current.priority_source || DEFAULT_PRIORITY_SOURCE,
+      fallback_rule: current.fallback_rule || DEFAULT_FALLBACK_RULE,
     };
     const resultId = await editable.saveEdit(selectedId, payload);
     if (resultId) {
@@ -253,7 +186,7 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
       <div>
         <h2 className="text-base font-bold text-gray-900">Material Rules</h2>
         <p className="text-xs text-gray-500">
-          Set each material&apos;s source priority and fallback.
+          Link materials from your catalog to each treatment type.
         </p>
       </div>
 
@@ -270,14 +203,12 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
           setMode("idle");
         }}
         onAdd={startAdd}
-        emptyHint="Add materials from your catalog to set a preference and fallback for each."
+        emptyHint="Add materials from your catalog and tag them with a treatment type."
         renderListItem={(r) => (
           <div className="flex flex-col gap-0.5">
             <span className="text-sm font-semibold text-gray-800">{r.preferred_item_name}</span>
             <span className="text-xs text-gray-400">{r.category}</span>
-            <span className="text-[10px] text-gray-400">
-              Priority source {priorityLabel(rulePriority(r))}
-            </span>
+            {r.treatment_type && <span className="text-[10px] font-semibold text-primary">{r.treatment_type}</span>}
           </div>
         )}
         detail={
@@ -347,15 +278,13 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
 
               <button
                 type="button"
-                disabled={checkedItems.length === 0 || categoriesLoading || !!categoriesError || !sourcePriorityReady}
+                disabled={checkedItems.length === 0 || categoriesLoading || !!categoriesError}
                 onClick={goToConfigure}
                 className="w-fit rounded-xl bg-primary px-5 py-2.5 text-sm font-bold text-primary-foreground shadow-sm transition hover:bg-(--primary-hover) disabled:opacity-60"
               >
                 {categoriesLoading
                   ? "Loading categories..."
-                  : !sourcePriorityReady
-                    ? "Loading source priority..."
-                    : `Continue with ${checkedItems.length} selected`}
+                  : `Continue with ${checkedItems.length} selected`}
               </button>
               {categoriesError && (
                 <p className="text-xs text-red-500">Couldn&apos;t load material categories: {categoriesError.message}</p>
@@ -364,73 +293,52 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
           ) : mode === "configure" ? (
             <div className="flex flex-col gap-3">
               <div className="flex items-center justify-between">
-                <p className="text-sm font-bold text-gray-900">Set Priority &amp; Fallback</p>
+                <p className="text-sm font-bold text-gray-900">Set Treatment Type</p>
                 <button type="button" onClick={() => setMode("idle")} className="text-gray-300 hover:text-gray-500">
                   <X className="h-4 w-4" />
                 </button>
               </div>
 
-              <div className="flex flex-col gap-3">
-                {checkedItems.map((item) => {
-                  const code = String(item.item_code);
-                  const cfg = perItemConfig[code] ?? { priority: defaultMaterialPriority(item.item_source), fallback: "" };
-                  const invalid = touched && !configValid(code);
-                  return (
-                    <div key={code} className="rounded-xl border border-gray-100 bg-gray-50/60 p-3">
-                      <p className="mb-2 text-sm font-semibold text-gray-800">{item.item_name}</p>
-	                      <div className="grid grid-cols-2 gap-3">
-	                        <div className="flex flex-col gap-1">
-                          <label className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">
-                            Priority Source
-                          </label>
-                          <select
-                            value={sourcePriorityValue(cfg.priority)}
-                            disabled={sourcePriorityLoading}
-                            onChange={(e) =>
-                              setPerItemConfig((prev) => ({
-                                ...prev,
-                                [code]: { ...cfg, priority: priorityFromValue(e.target.value) },
-                              }))
-                            }
-                            className={inputCls}
-                          >
-                            <option value="">Select…</option>
-                            {materialPriorityOptions.map((priority) => (
-                              <option key={priority.price_source} value={priority.price_source}>
-                                {priorityLabel(priority)}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-                        <div className="flex flex-col gap-1">
-                          <label className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">
-                            Fallback Rule
-                          </label>
-                          <select
-                            value={cfg.fallback}
-                            onChange={(e) =>
-                              setPerItemConfig((prev) => ({
-                                ...prev,
-                                [code]: { ...cfg, fallback: e.target.value as MaterialFallbackRule },
-                              }))
-                            }
-                            className={inputCls}
-                          >
-                            <option value="">Select…</option>
-                            {MATERIAL_FALLBACK_RULES.map((f) => (
-                              <option key={f}>{f}</option>
-                            ))}
-                          </select>
-                        </div>
+              <div className="flex flex-col gap-1.5">
+                <label htmlFor="material-treatment-type" className="text-xs font-semibold text-gray-600">
+                  Treatment Type <span className="text-red-500">*</span>
+                </label>
+                <select
+                  id="material-treatment-type"
+                  value={treatmentType}
+                  onChange={(e) => setTreatmentType(e.target.value)}
+                  className={inputCls}
+                >
+                  <option value="">Select treatment type...</option>
+                  {TREATMENT_OPTIONS.map((type) => (
+                    <option key={type} value={type}>
+                      {type}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-[11px] text-gray-400">
+                  Quick quotation uses this to match a segment&apos;s treatment to these materials.
+                </p>
+                {touched && !TREATMENT_OPTIONS.includes(treatmentType as (typeof TREATMENT_OPTIONS)[number]) && (
+                  <p className="text-xs text-red-500">Choose one of BuildSmart&apos;s treatment types.</p>
+                )}
+              </div>
+
+              <div className="rounded-xl border border-gray-100 bg-gray-50/60 p-3">
+                <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Selected Materials</p>
+                <div className="mt-2 divide-y divide-gray-100 overflow-hidden rounded-lg border border-gray-100 bg-white">
+                  {checkedItems.map((item) => (
+                    <div key={item.item_code} className="flex items-center justify-between gap-3 px-3 py-2">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-semibold text-gray-800">{item.item_name}</p>
+                        <p className="truncate text-[11px] text-gray-400">{itemMeta(item)}</p>
                       </div>
-                      {invalid && (
-                        <p className="mt-1.5 text-[11px] text-red-500">
-                          Set both a priority source and a fallback rule.
-                        </p>
-                      )}
+                      <span className="shrink-0 rounded-full bg-gray-50 px-2 py-0.5 text-[10px] font-bold text-gray-500">
+                        {categoryTypeOf(item) ?? "Uncategorized"}
+                      </span>
                     </div>
-                  );
-                })}
+                  ))}
+                </div>
               </div>
 
               {createError && (
@@ -477,44 +385,29 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
                 <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Material</p>
                 <p className="text-sm font-semibold text-gray-800">{selected.preferred_item_name}</p>
                 <p className="text-xs text-gray-400">{selected.category}</p>
+                {selected.treatment_type && <p className="text-xs font-semibold text-primary">{selected.treatment_type}</p>}
               </div>
 
-	              <div className="grid grid-cols-2 gap-4">
-	                <div className="flex flex-col gap-1.5">
-                  <label className="text-xs font-semibold text-gray-600">
-                    Priority Source <span className="text-red-500">*</span>
-                  </label>
-                  <select
-                    value={sourcePriorityValue(editPriority)}
-                    disabled={sourcePriorityLoading}
-                    onChange={(e) => setEditPriority(priorityFromValue(e.target.value))}
-                    className={inputCls}
-                  >
-                    <option value="">Select…</option>
-                    {materialPriorityOptions.map((priority) => (
-                      <option key={priority.price_source} value={priority.price_source}>
-                        {priorityLabel(priority)}
-                      </option>
-                    ))}
-                  </select>
-	                  {touched && editPriority === null && <p className="text-xs text-red-500">Required.</p>}
-	                </div>
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-xs font-semibold text-gray-600">
-                    Fallback Rule <span className="text-red-500">*</span>
-                  </label>
-                  <select
-                    value={editFallback}
-                    onChange={(e) => setEditFallback(e.target.value as MaterialFallbackRule)}
-                    className={inputCls}
-                  >
-                    <option value="">Select…</option>
-                    {MATERIAL_FALLBACK_RULES.map((f) => (
-                      <option key={f}>{f}</option>
-                    ))}
-                  </select>
-                  {touched && editFallback === "" && <p className="text-xs text-red-500">Required.</p>}
-                </div>
+              <div className="flex flex-col gap-1.5">
+                <label htmlFor="edit-material-treatment-type" className="text-xs font-semibold text-gray-600">
+                  Treatment Type <span className="text-red-500">*</span>
+                </label>
+                <select
+                  id="edit-material-treatment-type"
+                  value={treatmentType}
+                  onChange={(e) => setTreatmentType(e.target.value)}
+                  className={inputCls}
+                >
+                  <option value="">Select treatment type...</option>
+                  {TREATMENT_OPTIONS.map((type) => (
+                    <option key={type} value={type}>
+                      {type}
+                    </option>
+                  ))}
+                </select>
+                {touched && !TREATMENT_OPTIONS.includes(treatmentType as (typeof TREATMENT_OPTIONS)[number]) && (
+                  <p className="text-xs text-red-500">Choose one of BuildSmart&apos;s treatment types.</p>
+                )}
               </div>
 
               {editable.saveError && (
@@ -546,6 +439,7 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
                 <div>
                   <p className="text-lg font-bold text-gray-900">{selected.preferred_item_name}</p>
                   <p className="text-sm text-gray-500">{selected.category}</p>
+                  {selected.treatment_type && <p className="mt-0.5 text-xs font-semibold text-primary">{selected.treatment_type}</p>}
                   <p className="mt-1 text-[11px] text-gray-400">Effective {selected.effective_date}</p>
                 </div>
                 <button
@@ -556,16 +450,6 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
                   <Pencil className="h-3.5 w-3.5" /> Edit
                 </button>
               </div>
-              <dl className="grid grid-cols-2 gap-4 text-sm">
-                <div>
-                  <dt className="text-xs font-semibold uppercase tracking-wide text-gray-400">Priority Source</dt>
-                  <dd className="text-gray-700">{priorityLabel(rulePriority(selected))}</dd>
-                </div>
-                <div>
-                  <dt className="text-xs font-semibold uppercase tracking-wide text-gray-400">Fallback Rule</dt>
-                  <dd className="text-gray-700">{selected.fallback_rule}</dd>
-                </div>
-              </dl>
             </div>
           ) : (
             <div className="flex h-full flex-col items-center justify-center gap-2 text-center text-gray-400">

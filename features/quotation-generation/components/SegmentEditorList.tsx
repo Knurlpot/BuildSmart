@@ -188,7 +188,7 @@ interface SegmentEditorListProps {
   addLabel?: string;
   hoveredId?: string | null;
   onHoverChange?: (id: string | null) => void;
-  /** Part D — the "X / N included confirmed" + "Confirm All Included" control, rendered at
+  /** Part D — the "X / N included confirmed" + "Confirm All" control, rendered at
    * the TOP of this panel (above the segment list) rather than in the page header above
    * it, so it's visible without scrolling a long list. Counts are supplied by the caller
    * (not derived from `segments` here) because during blueprint review `segments` is only
@@ -328,7 +328,7 @@ export function SegmentEditorList({
               disabled={confirmSummary.disabled}
               className="flex items-center gap-1 rounded-lg bg-gray-100 px-2.5 py-1 text-xs font-bold text-gray-600 transition hover:bg-gray-200 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              <CheckCheck className="h-3.5 w-3.5" /> Confirm All Included
+              <CheckCheck className="h-3.5 w-3.5" /> Confirm All
             </button>
           )}
         </div>

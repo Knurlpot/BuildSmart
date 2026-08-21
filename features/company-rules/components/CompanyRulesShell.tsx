@@ -2,14 +2,14 @@
 
 import { useEffect, useState } from "react";
 import {
-  ClipboardList,
+  Package,
   Percent,
   Ruler,
   Truck,
   Users,
   Wrench,
 } from "lucide-react";
-import { ScopeTemplatesForm } from "./ScopeTemplatesForm";
+import { MaterialRulesForm } from "./MaterialRulesForm";
 import { SupplierRulesForm } from "./SupplierRulesForm";
 import { LaborRulesForm } from "./LaborRulesForm";
 import { PricingStrategyForm } from "./PricingStrategyForm";
@@ -17,7 +17,7 @@ import { UnitRulesForm } from "./UnitRulesForm";
 import { ManageExistingRulesTab } from "./ManageExistingRulesTab";
 import { RULE_KIND_TAB, type ExistingRuleSummary } from "@/lib/dev/provisional/companyRulesTypes";
 import {
-  useScopeTemplates,
+  useMaterialRules,
   useLaborRules,
   usePricingStrategies,
   useSupplierRules,
@@ -28,7 +28,7 @@ import { advanceOnboardingStep, hasCompletedCompanyRulesStep } from "@/lib/onboa
 
 // 
 const TABS = [
-  { id: "scope-templates", label: "Scope Templates", icon: ClipboardList },
+  { id: "material-rules", label: "Material Rules", icon: Package },
   { id: "supplier-rules", label: "Supplier Rules", icon: Truck },
   { id: "labor-rules", label: "Labor Rules", icon: Users },
   { id: "pricing-strategy", label: "Pricing Strategy", icon: Percent },
@@ -39,43 +39,36 @@ const TABS = [
 type TabId = (typeof TABS)[number]["id"];
 
 export default function CompanyRulesShell() {
-  const [activeTab, setActiveTab] = useState<TabId>("scope-templates");
+  const [activeTab, setActiveTab] = useState<TabId>("material-rules");
   // "Manage Existing Rules" rows jump to the rule's owning tab with that rule
   // pre-selected, instead of dumping the user on the tab with no idea what to look for.
   const [focusRuleId, setFocusRuleId] = useState<string | null>(null);
 
   const openExistingRule = (rule: ExistingRuleSummary) => {
-    if (rule.rule_kind === "material-rule") {
-      setActiveTab("manage-existing");
-      setFocusRuleId(null);
-      return;
-    }
     setActiveTab(RULE_KIND_TAB[rule.rule_kind] as TabId);
     setFocusRuleId(rule.rule_id);
   };
 
   // 
   const { currentUser, updateOnboardingStep } = useAuth();
-  const { templates, refetch: refetchScopeTemplates } = useScopeTemplates();
+  const { rules: materialRules, refetch: refetchMaterialRules } = useMaterialRules();
   const { rules: laborRules, refetch: refetchLaborRules } = useLaborRules();
   const { strategies, refetch: refetchPricingStrategies } = usePricingStrategies();
   const { rules: unitRules, refetch: refetchUnitRules } = useUnitRules();
   const { rules: supplierRules, refetch: refetchSupplierRules } = useSupplierRules();
 
   const needsAttention: Partial<Record<TabId, boolean>> = {
-    "scope-templates": templates.length === 0,
+    "material-rules": materialRules.length === 0,
     "supplier-rules": supplierRules.length === 0,
     "labor-rules": laborRules.length === 0,
     "pricing-strategy": strategies.length === 0,
     "unit-rules": unitRules.length === 0,
   };
 
-  // Step 1 -> 2 onboarding gate (see lib/onboarding.ts's hasCompletedCompanyRulesStep for
-  // the flagged decision this reads). Correction 2: deliberately does NOT factor in
-  // scopeTemplateCount — a specialty contractor may never create one, and Scope Templates
-  // must not gate anything.
+  // Step 1 -> 2 onboarding gate: Material Rules are required because they define the
+  // treatment-to-material mapping used by quotation and labor rules.
   const rulesConfigured = hasCompletedCompanyRulesStep({
-    scopeTemplateCount: templates.length,
+    materialRuleCount: materialRules.length,
     laborRuleCount: laborRules.length,
     pricingStrategyCount: strategies.length,
     unitRuleCount: unitRules.length,
@@ -92,7 +85,7 @@ export default function CompanyRulesShell() {
 
   useEffect(() => {
     const refetchByKind: Record<string, () => void> = {
-      "scope-templates": refetchScopeTemplates,
+      "material-rules": refetchMaterialRules,
       "supplier-rules": refetchSupplierRules,
       "labor-rules": refetchLaborRules,
       "pricing-strategy": refetchPricingStrategies,
@@ -107,7 +100,7 @@ export default function CompanyRulesShell() {
     window.addEventListener("buildsmart:company-rules-changed", handleRulesChanged);
     return () => window.removeEventListener("buildsmart:company-rules-changed", handleRulesChanged);
   }, [
-    refetchScopeTemplates,
+    refetchMaterialRules,
     refetchSupplierRules,
     refetchLaborRules,
     refetchPricingStrategies,
@@ -140,8 +133,8 @@ export default function CompanyRulesShell() {
         })}
       </div>
 
-      {activeTab === "scope-templates" && (
-        <ScopeTemplatesForm focusRuleId={focusRuleId} onFocusHandled={() => setFocusRuleId(null)} />
+      {activeTab === "material-rules" && (
+        <MaterialRulesForm focusRuleId={focusRuleId} onFocusHandled={() => setFocusRuleId(null)} />
       )}
       {activeTab === "supplier-rules" && (
         <SupplierRulesForm focusRuleId={focusRuleId} onFocusHandled={() => setFocusRuleId(null)} />
