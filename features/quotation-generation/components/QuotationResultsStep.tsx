@@ -40,7 +40,7 @@ interface QuotationResultsStepProps {
   onSaveDraft?: (projectId: string) => void;
 }
 
-const TIER_META: Record<ProvisionalTier, { tagline: string; badge: string; accent: string; headerBg: string; accentBg: string; acceptButton: string; breakdownButton: string }> = {
+const TIER_META: Record<ProvisionalTier, { tagline: string; badge: string; accent: string; headerBg: string; accentBg: string; acceptButton: string }> = {
   Practical: {
     tagline: "Cost-effective solution with quality materials",
     badge: "Recommended",
@@ -48,7 +48,6 @@ const TIER_META: Record<ProvisionalTier, { tagline: string; badge: string; accen
     headerBg: "bg-primary",
     accentBg: "bg-orange-50",
     acceptButton: "border-primary text-primary hover:bg-orange-50",
-    breakdownButton: "hover:border-primary hover:text-primary",
   },
   Premium: {
     tagline: "High-spec materials with expedited delivery",
@@ -57,7 +56,6 @@ const TIER_META: Record<ProvisionalTier, { tagline: string; badge: string; accen
     headerBg: "bg-indigo-600",
     accentBg: "bg-indigo-50",
     acceptButton: "border-indigo-600 text-indigo-600 hover:bg-indigo-50",
-    breakdownButton: "hover:border-indigo-600 hover:text-indigo-600",
   },
 };
 
@@ -224,9 +222,9 @@ function QuoteCard({
         <button
           type="button"
           onClick={onViewBreakdown}
-          className={`flex w-full items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white py-2.5 text-sm font-bold text-gray-600 transition ${meta.breakdownButton}`}
+          className={`flex w-full items-center justify-center gap-2 rounded-xl py-2.5 text-sm font-bold text-white transition hover:opacity-90 ${meta.headerBg}`}
         >
-          Detailed Breakdown
+          View Breakdown
         </button>
         <button
           type="button"
