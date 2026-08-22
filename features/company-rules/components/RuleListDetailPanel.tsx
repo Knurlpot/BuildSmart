@@ -1,6 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
+import { Plus } from "lucide-react";
 import { QueryState } from "@/components/feedback/QueryState";
 
 interface RuleListDetailPanelProps<T> {
@@ -54,7 +55,9 @@ export function RuleListDetailPanel<T>({
           onClick={onAdd}
           className="shrink-0 rounded-xl bg-primary px-7 py-2 text-sm font-bold text-primary-foreground shadow-sm transition hover:bg-(--primary-hover)"
         >
-          Add
+          <span className="inline-flex items-center gap-1.5">
+            <Plus className="h-4 w-4" /> Add
+          </span>
         </button>
       </div>
 

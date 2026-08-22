@@ -403,10 +403,10 @@ export function UnitRulesForm({ focusRuleId, onFocusHandled }: UnitRulesFormProp
             </div>
           ) : selected ? (
             <div className="flex flex-col gap-4">
-              {savedMessage && (
+              {savedMessage && editable.supersededNotice && (
                 <div className="flex items-center gap-2 rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-xs text-green-700">
                   <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
-                  Company preferences updated successfully.
+                  A new version of this rule was created. The previous version is preserved for existing quotations.
                 </div>
               )}
               <div className="flex items-start justify-between gap-3 rounded-xl border border-gray-100 bg-gray-50/60 p-4">
