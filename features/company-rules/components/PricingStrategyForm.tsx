@@ -125,14 +125,15 @@ function StrategyPanel({ tier, strategy, isBusy, error, onSave }: StrategyPanelP
 
   return (
     <section
-      className={`flex min-w-0 flex-col gap-4 rounded-xl border-2 bg-white p-4 shadow-sm ${
-        tier === "Practical" ? "border-orange-300" : "border-purple-300"
+      className={`flex min-w-0 flex-col gap-2 rounded-xl border-2 p-4 shadow-sm ${
+        tier === "Practical" ? "border-orange-300 bg-orange-50" : "border-purple-300 bg-purple-50"
       }`}
     >
-      <div className="flex items-start justify-between gap-3">
+      <div className="flex items-center justify-between gap-3">
         <div>
-          <h3 className="text-sm font-bold text-gray-900">{tier} Pricing</h3>
-          <p className="text-xs text-gray-500">{strategy ? `Effective ${strategy.effective_date}` : "Not configured yet"}</p>
+          <h3 className="text-sm font-bold text-gray-900">
+            {tier} Pricing - <span className="font-normal text-gray-500">Effective Date: {strategy?.effective_date ?? "Not configured yet"}</span>
+          </h3>
         </div>
         <div className="flex shrink-0 items-center gap-2">
           <span
@@ -206,7 +207,7 @@ function StrategyPanel({ tier, strategy, isBusy, error, onSave }: StrategyPanelP
             />
           </div>
 
-          <div className="flex flex-col gap-2 rounded-xl border border-gray-100 bg-gray-50/60 p-3.5">
+          <div className="flex flex-col gap-2 rounded-xl border border-gray-100 bg-white p-3.5">
             <label className="flex items-center gap-2.5 text-sm text-gray-700">
               <input
                 type="checkbox"
@@ -229,7 +230,7 @@ function StrategyPanel({ tier, strategy, isBusy, error, onSave }: StrategyPanelP
           </div>
         </>
       ) : strategy ? (
-        <dl className="grid gap-4 rounded-xl border border-gray-100 bg-gray-50/60 p-4 text-sm md:grid-cols-2">
+        <dl className="grid gap-4 rounded-xl border border-gray-100 bg-white p-4 text-sm md:grid-cols-2">
           <div>
             <dt className="text-xs font-semibold uppercase tracking-wide text-gray-400">Markup</dt>
             <dd className="text-gray-700">{strategy.markup_percentage}%</dd>
