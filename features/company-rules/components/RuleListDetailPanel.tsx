@@ -56,7 +56,7 @@ export function RuleListDetailPanel<T>({
           className="shrink-0 rounded-xl bg-primary px-7 py-2 text-sm font-bold text-primary-foreground shadow-sm transition hover:bg-(--primary-hover)"
         >
           <span className="inline-flex items-center gap-1.5">
-            <Plus className="h-4 w-4" /> Add
+            Add <Plus className="h-4 w-4" />
           </span>
         </button>
       </div>

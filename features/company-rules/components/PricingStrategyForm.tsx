@@ -124,7 +124,11 @@ function StrategyPanel({ tier, strategy, isBusy, error, onSave }: StrategyPanelP
   };
 
   return (
-    <section className="flex min-w-0 flex-col gap-4 rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+    <section
+      className={`flex min-w-0 flex-col gap-4 rounded-xl border-2 bg-white p-4 shadow-sm ${
+        tier === "Practical" ? "border-orange-300" : "border-purple-300"
+      }`}
+    >
       <div className="flex items-start justify-between gap-3">
         <div>
           <h3 className="text-sm font-bold text-gray-900">{tier} Pricing</h3>
