@@ -8,6 +8,7 @@ import { useEditableRuleList } from "@/lib/dev/provisional/useEditableRuleList";
 import type { MaterialRuleEntry } from "@/lib/dev/provisional/companyRulesTypes";
 import { useItemsCatalog } from "@/hooks/useItemsCatalog";
 import { useCategories } from "@/hooks/useCategories";
+import { usePricelistCatalog } from "@/hooks/usePricelistCatalog";
 import { TREATMENT_TYPES } from "@/lib/dev/provisional/quotationGenerationTypes";
 import { CATEGORY_TYPES, type CategoryType } from "@/types/entities/category";
 import type { Items } from "@/types/entities/items";
@@ -43,6 +44,7 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
   const editable = useEditableRuleList<MaterialRuleEntry>({ checkUsage, update, supersede, idPrefix: "mr" });
   const { items, isLoading: itemsLoading, error: itemsError } = useItemsCatalog();
   const { categories, isLoading: categoriesLoading, error: categoriesError } = useCategories();
+  const { records: supplierPriceRecords, isLoading: supplierPricesLoading, load: loadSupplierPrices } = usePricelistCatalog();
 
   const allRules = editable.applyOverrides([...editable.localExtra, ...rules]);
 
@@ -56,6 +58,7 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
   const [mode, setMode] = useState<"idle" | "browse" | "configure" | "edit">("idle");
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState<CategoryType | "">("");
+  const [supplierFilter, setSupplierFilter] = useState("");
   const [checkedItemCodes, setCheckedItemCodes] = useState<Set<string>>(new Set());
   const [treatmentType, setTreatmentType] = useState("");
   const [touched, setTouched] = useState(false);
@@ -67,10 +70,23 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  useEffect(() => {
+    loadSupplierPrices();
+  }, [loadSupplierPrices]);
+
+  const supplierOptions = Array.from(
+    new Set(supplierPriceRecords.map((record) => record.supplier_name?.trim()).filter((value): value is string => !!value))
+  ).sort((a, b) => a.localeCompare(b));
+
   const filteredItems = items.filter((item) => {
     const matchesSearch = search.trim() === "" || item.item_name.toLowerCase().includes(search.trim().toLowerCase());
     const matchesCategory = categoryFilter === "" || categoryTypeOf(item) === categoryFilter;
-    return matchesSearch && matchesCategory;
+    const matchesSupplier =
+      supplierFilter === "" ||
+      supplierPriceRecords.some(
+        (record) => String(record.item_code) === String(item.item_code) && record.supplier_name === supplierFilter
+      );
+    return matchesSearch && matchesCategory && matchesSupplier;
   });
 
   const itemMeta = (item: Items) =>
@@ -100,6 +116,7 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
     setEditingRuleId(null);
     setSearch("");
     setCategoryFilter("");
+    setSupplierFilter("");
     setCheckedItemCodes(new Set());
     setTreatmentType("");
     setTouched(false);
@@ -230,6 +247,7 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
         onAdd={startAdd}
         emptyHint="Add materials from your catalog and tag them with a treatment type."
         countLabel={`${groupedRules.length} treatment group${groupedRules.length === 1 ? "" : "s"}`}
+        contentClassName="grid items-start gap-5 xl:grid-cols-[minmax(18rem,0.8fr)_minmax(34rem,1.2fr)]"
         listHeader={
           <div className="grid grid-cols-2 gap-2">
             {(["active", "disabled"] as const).map((filter) => (
@@ -274,8 +292,8 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
                 </button>
               </div>
 
-              <div className="flex flex-col gap-2 sm:flex-row">
-                <div className="relative flex-1">
+              <div className="grid min-w-0 gap-2 md:grid-cols-[minmax(12rem,1fr)_minmax(9rem,11rem)_minmax(10rem,12rem)]">
+                <div className="relative min-w-0">
                   <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
                   <input
                     value={search}
@@ -287,14 +305,27 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
                 <select
                   value={categoryFilter}
                   onChange={(e) => setCategoryFilter(e.target.value as CategoryType | "")}
-                  className={`${inputCls} sm:w-44 sm:shrink-0`}
+                  className={inputCls}
                 >
                   <option value="">All categories</option>
                   {CATEGORY_TYPES.map((c) => (
                     <option key={c}>{c}</option>
                   ))}
                 </select>
+                <select
+                  value={supplierFilter}
+                  onChange={(e) => setSupplierFilter(e.target.value)}
+                  className={`${inputCls} min-w-0`}
+                >
+                  <option value="">All suppliers</option>
+                  {supplierOptions.map((supplier) => (
+                    <option key={supplier} value={supplier}>
+                      {supplier}
+                    </option>
+                  ))}
+                </select>
               </div>
+              {supplierPricesLoading && <p className="text-[11px] text-gray-400">Loading supplier filters...</p>}
 
               {itemsLoading ? (
                 <p className="text-xs text-gray-400">Loading catalog…</p>

@@ -45,14 +45,10 @@ export function LaborRulesForm({ focusRuleId, onFocusHandled }: LaborRulesFormPr
   const allRules = editable.applyOverrides([...editable.localExtra, ...rules]);
   const treatmentOptions = Array.from(
     new Set(
-      [
-        ...materialRules
-          .map((rule) => rule.treatment_type?.trim())
-          .filter((value): value is string => !!value),
-        ...allRules
-          .map((rule) => rule.treatment_type?.trim())
-          .filter((value): value is string => !!value),
-      ]
+      materialRules
+        .filter((rule) => rule.is_active)
+        .map((rule) => rule.treatment_type?.trim())
+        .filter((value): value is string => !!value)
     )
   ).sort();
   const [statusFilter, setStatusFilter] = useState<"active" | "disabled">("active");
@@ -82,7 +78,7 @@ export function LaborRulesForm({ focusRuleId, onFocusHandled }: LaborRulesFormPr
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const treatmentValid = scope !== "Treatment" || isNonEmpty(treatmentType);
+  const treatmentValid = scope !== "Treatment" || (isNonEmpty(treatmentType) && treatmentOptions.includes(treatmentType));
   const tradeValid = scope !== "Trade" || isNonEmpty(trade);
   const rateValid = rate !== "" && isPositiveNumber(Number(rate));
   const rushValid = rushMultiplier === "" || isPercent(Number(rushMultiplier));
@@ -113,7 +109,7 @@ export function LaborRulesForm({ focusRuleId, onFocusHandled }: LaborRulesFormPr
     setMode("edit");
     setScope(laborRuleScope(r));
     const isKnownTreatment = !!r.treatment_type && treatmentOptions.includes(r.treatment_type);
-    setTreatmentChoice(isKnownTreatment ? r.treatment_type! : r.treatment_type ? "Other" : "");
+    setTreatmentChoice(isKnownTreatment ? r.treatment_type! : "");
     setTreatmentType(r.treatment_type ?? "");
     setRegion(r.region ?? "");
     setTrade(r.labor_trade ?? "");
@@ -317,7 +313,7 @@ export function LaborRulesForm({ focusRuleId, onFocusHandled }: LaborRulesFormPr
                     onChange={(e) => {
                       const next = e.target.value;
                       setTreatmentChoice(next);
-                      setTreatmentType(next === "Other" ? "" : next);
+                      setTreatmentType(next);
                     }}
                     className={inputCls}
                   >
@@ -325,19 +321,10 @@ export function LaborRulesForm({ focusRuleId, onFocusHandled }: LaborRulesFormPr
                     {treatmentOptions.map((treatment) => (
                       <option key={treatment}>{treatment}</option>
                     ))}
-                    <option value="Other">Others</option>
                   </select>
-                  {treatmentChoice === "Other" && (
-                    <input
-                      value={treatmentType}
-                      onChange={(e) => setTreatmentType(e.target.value)}
-                      placeholder="Enter treatment type"
-                      className={inputCls}
-                    />
-                  )}
                   {treatmentOptions.length === 0 && (
                     <p className="text-[11px] text-amber-600">
-                      Add treatment-tagged Material Rules first, or choose Others.
+                      Add treatment-tagged Material Rules first.
                     </p>
                   )}
                   {touched && !treatmentValid && <p className="text-xs text-red-500">Treatment type is required.</p>}

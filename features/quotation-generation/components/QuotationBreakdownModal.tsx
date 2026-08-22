@@ -1,9 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { AlertTriangle, BarChart2, BookOpen, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Layers, ShoppingBag, X } from "lucide-react";
+import { AlertTriangle, BarChart2, BookOpen, Check, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Layers, Pencil, ShoppingBag, X } from "lucide-react";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
-import { fmtPeso } from "@/lib/dev/provisional/quotationBreakdownFixtures";
+import { fmtPeso, recomputeItemLine } from "@/lib/dev/provisional/quotationBreakdownFixtures";
 import type { ItemCategory, PricelistBasis, ProvisionalItemLine, ProvisionalQuotationTierResult, ProvisionalTier } from "@/lib/dev/provisional/quotationBreakdownTypes";
 import type { BlueprintFloor } from "@/lib/dev/provisional/quotationGenerationTypes";
 import type { DraftSegment } from "../lib/draftSegment";
@@ -22,6 +22,7 @@ interface QuotationBreakdownModalProps {
   // point of a snapshot. The live wizard (QuotationResultsStep, pre-finalize) still passes
   // this and gets the real interactive toggle.
   onBasisChange?: (basis: PricelistBasis) => void;
+  onItemsChange?: (items: ProvisionalItemLine[]) => void;
   onClose: () => void;
   // Task 7, Part B — Segment Breakdown's split-view blueprint preview (left half). null/
   // undefined = this quote wasn't blueprint-sourced (Quick Measurement/Manual), OR (some
@@ -388,18 +389,43 @@ function CostSummaryTab({ result }: { result: ProvisionalQuotationTierResult }) 
 // stock/availability at all (out of scope — a quoting tool, not inventory), so there is no
 // "Available"/"Can Fulfil?" column here anymore. Comparing suppliers by price, plus the
 // Uploaded-Pricelist-vs-DPWH toggle in the header above, is the whole of this tab.
-function BenchmarkingTab({ tier, items }: { tier: ProvisionalTier; items: ProvisionalItemLine[] }) {
+function BenchmarkingTab({ tier, items, onItemsChange }: { tier: ProvisionalTier; items: ProvisionalItemLine[]; onItemsChange?: (items: ProvisionalItemLine[]) => void }) {
   const withSuppliers = items.filter((l) => l.supplier_options.length > 0);
+  const updateLineSupplier = (line: ProvisionalItemLine, supplierId: number) => {
+    const option = line.supplier_options.find((supplier) => supplier.supplier_id === supplierId);
+    if (!option || !onItemsChange) return;
+    onItemsChange(
+      items.map((item) =>
+        item.line_id === line.line_id
+          ? recomputeItemLine(item, {
+              selected_supplier_id: option.supplier_id,
+              unit_price: option.unit_price,
+              source_type: option.source_type,
+            })
+          : item
+      )
+    );
+  };
+
   return (
     <div className="flex flex-col gap-4">
-      {withSuppliers.map((line) => <BenchmarkingMaterialCard key={line.line_id} tier={tier} line={line} />)}
+      {withSuppliers.map((line) => (
+        <BenchmarkingMaterialCard
+          key={line.line_id}
+          tier={tier}
+          line={line}
+          editable={Boolean(onItemsChange)}
+          onSelectSupplier={(supplierId) => updateLineSupplier(line, supplierId)}
+        />
+      ))}
       {withSuppliers.length === 0 && <p className="text-sm text-gray-400">No priced items with supplier options to compare yet.</p>}
     </div>
   );
 }
 
-function BenchmarkingMaterialCard({ tier, line }: { tier: ProvisionalTier; line: ProvisionalItemLine }) {
+function BenchmarkingMaterialCard({ tier, line, editable, onSelectSupplier }: { tier: ProvisionalTier; line: ProvisionalItemLine; editable: boolean; onSelectSupplier: (supplierId: number) => void }) {
   const [page, setPage] = useState(0);
+  const [editing, setEditing] = useState(false);
   const pageSize = 5;
   const sortedOptions = [...line.supplier_options].sort((a, b) => a.unit_price - b.unit_price);
   const selectedOption =
@@ -424,16 +450,48 @@ function BenchmarkingMaterialCard({ tier, line }: { tier: ProvisionalTier; line:
           </p>
         </div>
         {selectedOption && (
-          <div className="flex max-w-full items-center gap-3 rounded-lg border border-gray-100 bg-gray-50 px-3 py-2 text-xs md:max-w-[55%]">
+          <div className="flex max-w-full items-center gap-2 rounded-lg border border-gray-100 bg-gray-50 px-3 py-2 text-xs md:max-w-[55%]">
             <span className="shrink-0 font-semibold text-gray-500">Chosen option</span>
             <span className="min-w-0 flex-1 truncate font-bold text-gray-900">
               {selectedOption.supplier_name}
               {selectedOption.source_type === "DPWH" && selectedOption.location ? ` · ${selectedOption.location}` : ""}
             </span>
             <span className={`shrink-0 font-bold ${TIER_HIGHLIGHT[tier].text}`}>{fmtPeso(selectedOption.unit_price)}</span>
+            {editable && (
+              <button
+                type="button"
+                onClick={() => setEditing((open) => !open)}
+                title="Edit selected supplier"
+                aria-label="Edit selected supplier"
+                className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-500 transition hover:border-primary/40 hover:text-primary"
+              >
+                <Pencil className="h-3.5 w-3.5" />
+              </button>
+            )}
           </div>
         )}
       </div>
+      {editing && (
+        <div className="mb-3 rounded-lg border border-primary/20 bg-orange-50/40 p-3">
+          <label className="mb-1.5 block text-xs font-semibold text-gray-600">Supplier</label>
+          <select
+            value={selectedOption?.supplier_id ?? ""}
+            onChange={(e) => {
+              const supplierId = Number(e.target.value);
+              if (!Number.isFinite(supplierId)) return;
+              onSelectSupplier(supplierId);
+              setEditing(false);
+            }}
+            className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20"
+          >
+            {sortedOptions.map((sup) => (
+              <option key={sup.supplier_id} value={sup.supplier_id}>
+                {sup.supplier_name} - {fmtPeso(sup.unit_price)}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
       <div className="overflow-x-auto rounded-lg border border-gray-100">
         <table className="w-full text-xs">
           <thead>
@@ -455,7 +513,29 @@ function BenchmarkingMaterialCard({ tier, line }: { tier: ProvisionalTier; line:
                       {sup.source_type === "DPWH" && <span className="text-[10px] font-normal text-gray-400">Location: {sup.location ?? "—"}</span>}
                     </div>
                   </td>
-                  <td className="px-3 py-2 text-right text-gray-700">{fmtPeso(sup.unit_price)}</td>
+                  <td className="px-3 py-2 text-right text-gray-700">
+                    <div className="flex items-center justify-end gap-2">
+                      <span>{fmtPeso(sup.unit_price)}</span>
+                      {editing && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            onSelectSupplier(sup.supplier_id);
+                            setEditing(false);
+                          }}
+                          title="Select supplier"
+                          aria-label={`Select ${sup.supplier_name}`}
+                          className={`flex h-7 w-7 items-center justify-center rounded-lg border transition ${
+                            isSelected
+                              ? `${TIER_HIGHLIGHT[tier].border} ${TIER_HIGHLIGHT[tier].text} bg-white`
+                              : "border-gray-200 bg-white text-gray-500 hover:border-primary/40 hover:text-primary"
+                          }`}
+                        >
+                          <Check className="h-3.5 w-3.5" />
+                        </button>
+                      )}
+                    </div>
+                  </td>
                 </tr>
               );
             })}
@@ -491,7 +571,7 @@ function BenchmarkingMaterialCard({ tier, line }: { tier: ProvisionalTier; line:
   );
 }
 
-export function QuotationBreakdownModal({ tier, result, onClose, blueprintFloors, segments }: QuotationBreakdownModalProps) {
+export function QuotationBreakdownModal({ tier, result, onClose, blueprintFloors, segments, onItemsChange }: QuotationBreakdownModalProps) {
   const [activeTab, setActiveTab] = useState<TabId>("segments");
   const TABS: { id: TabId; label: string; icon: typeof BookOpen }[] = [
     { id: "segments", label: "Segment Breakdown", icon: Layers },
@@ -515,7 +595,6 @@ export function QuotationBreakdownModal({ tier, result, onClose, blueprintFloors
           <div>
             <h2 className="text-base font-bold text-gray-900">
               Detailed Breakdown: <span className={TIER_ACCENT[tier]}>{tier}</span>
-              <span className="ml-2 rounded-full bg-gray-200 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-gray-500">View only</span>
             </h2>
             <p className="text-xs text-gray-500">Full cost transparency · all prices in Philippine Pesos (₱) · mock fixture values</p>
           </div>
@@ -549,7 +628,7 @@ export function QuotationBreakdownModal({ tier, result, onClose, blueprintFloors
           {activeTab === "segments" && <SegmentBreakdownTab tier={tier} items={result.items} segments={segments} blueprintFloors={blueprintFloors} />}
           {activeTab === "boq" && <BoqTab items={result.items} />}
           {activeTab === "cost-summary" && <CostSummaryTab result={result} />}
-          {activeTab === "benchmarking" && <BenchmarkingTab tier={tier} items={result.items} />}
+          {activeTab === "benchmarking" && <BenchmarkingTab tier={tier} items={result.items} onItemsChange={onItemsChange} />}
         </div>
       </DialogContent>
     </Dialog>

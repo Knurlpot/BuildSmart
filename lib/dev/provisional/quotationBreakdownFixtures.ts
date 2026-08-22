@@ -23,6 +23,7 @@ import type {
 import type { Items } from '@/types/entities/items';
 import type { SavedPriceRecord } from '@/hooks/usePricelistCatalog';
 import type { DpwhCatalogRow } from '@/hooks/usePricelistPublishedSource';
+import type { PricingStrategyRule } from './companyRulesTypes';
 
 interface SupplierFixture {
   supplier_id: number;
@@ -572,9 +573,12 @@ export function recomputeItemLine(
 export function computeTierResult(
   tier: ProvisionalTier,
   items: ProvisionalItemLine[],
-  options?: { vatInclusive?: boolean; downpaymentPercentage?: number }
+  options?: { vatInclusive?: boolean; downpaymentPercentage?: number; pricingStrategy?: PricingStrategyRule | null }
 ): ProvisionalQuotationTierResult {
   const pricingFixture = TIER_PRICING_FIXTURE[tier];
+  const overheadPercentage = options?.pricingStrategy?.overhead_percentage ?? pricingFixture.ocm_percentage;
+  const profitMarginPercentage = options?.pricingStrategy?.profit_margin_percentage ?? pricingFixture.profit_margin_percentage;
+  const vatRatePercentage = options?.pricingStrategy?.vat_percentage ?? VAT_RATE_PERCENTAGE;
   const vatInclusive = options?.vatInclusive ?? true;
   const downpaymentPercentage = options?.downpaymentPercentage ?? DEFAULT_DOWNPAYMENT_PERCENTAGE;
 
@@ -582,11 +586,11 @@ export function computeTierResult(
   const serviceCost = deriveMockServiceCost(items, materialsSubtotal, tier);
 
   const baseForMarkup = materialsSubtotal + serviceCost.subtotal;
-  const ocmAmount = round2(baseForMarkup * (pricingFixture.ocm_percentage / 100));
-  const profitAmount = round2(baseForMarkup * (pricingFixture.profit_margin_percentage / 100));
+  const ocmAmount = round2(baseForMarkup * (overheadPercentage / 100));
+  const profitAmount = round2(baseForMarkup * (profitMarginPercentage / 100));
   const subtotalBeforeVat = round2(baseForMarkup + ocmAmount + profitAmount);
 
-  const vatAmount = vatInclusive ? round2(subtotalBeforeVat * (VAT_RATE_PERCENTAGE / 100)) : 0;
+  const vatAmount = vatInclusive ? round2(subtotalBeforeVat * (vatRatePercentage / 100)) : 0;
   const grandTotal = round2(subtotalBeforeVat + vatAmount);
   const downpaymentAmount = round2(grandTotal * (downpaymentPercentage / 100));
 
@@ -595,12 +599,12 @@ export function computeTierResult(
     items,
     materials_subtotal: materialsSubtotal,
     service_cost: serviceCost,
-    ocm_percentage: pricingFixture.ocm_percentage,
+    ocm_percentage: overheadPercentage,
     ocm_amount: ocmAmount,
-    profit_margin_percentage: pricingFixture.profit_margin_percentage,
+    profit_margin_percentage: profitMarginPercentage,
     profit_amount: profitAmount,
     subtotal_before_vat: subtotalBeforeVat,
-    vat: { rate_percentage: VAT_RATE_PERCENTAGE, taxable_base: subtotalBeforeVat, amount: vatAmount },
+    vat: { rate_percentage: vatRatePercentage, taxable_base: subtotalBeforeVat, amount: vatAmount },
     vat_inclusive: vatInclusive,
     downpayment_percentage: downpaymentPercentage,
     downpayment_amount: downpaymentAmount,

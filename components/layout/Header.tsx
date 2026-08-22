@@ -1,10 +1,9 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
-import { ChevronDown, LogOut, User } from "lucide-react";
+import { User } from "lucide-react";
 import { useAuth } from "@/providers/AuthProvider";
 import { useFetch } from "@/hooks/useFetch";
 import type { Company, Users } from "@/types/entities";
@@ -39,8 +38,7 @@ interface HeaderProps {
 
 export default function Header({ workflow }: HeaderProps) {
   const pathname = usePathname();
-  const router = useRouter();
-  const { currentUser, logout } = useAuth();
+  const { currentUser } = useAuth();
   const { title, subtitle } = resolveTitle(pathname);
   const isDashboard = pathname === "/dashboard";
   const lightHeaderContent = Boolean(workflow) || isDashboard;
@@ -55,23 +53,6 @@ export default function Header({ workflow }: HeaderProps) {
   const fullName = profile
     ? [profile.first_name, profile.middle_name, profile.last_name].filter(Boolean).join(" ")
     : (currentUser?.email?.split("@")[0] ?? "User");
-
-  const [menuOpen, setMenuOpen] = useState(false);
-  const menuRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!menuOpen) return;
-    const handleClickOutside = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuOpen(false);
-    };
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, [menuOpen]);
-
-  const handleLogout = async () => {
-    await logout();
-    router.push("/login");
-  };
 
   return (
     <header
@@ -101,13 +82,14 @@ export default function Header({ workflow }: HeaderProps) {
         )}
       </div>
 
-      <div ref={menuRef} className="relative shrink-0">
-        <button
-          type="button"
-          onClick={() => setMenuOpen((v) => !v)}
+      <div className="relative shrink-0">
+        <Link
+          href="/account"
           className={`flex items-center gap-2 rounded-xl px-2 py-1.5 transition ${
             lightHeaderContent ? "hover:bg-white/10" : "hover:bg-gray-50"
           }`}
+          title="Profile"
+          aria-label="Open profile"
         >
           {company?.company_logo ? (
             // eslint-disable-next-line @next/next/no-img-element -- arbitrary external URL, not a static asset
@@ -129,29 +111,8 @@ export default function Header({ workflow }: HeaderProps) {
             <p className={`text-xs font-semibold leading-tight ${lightHeaderContent ? "text-white" : "text-gray-800"}`}>{fullName}</p>
             <p className={`text-[10px] ${lightHeaderContent ? "text-white/70" : "text-gray-500"}`}>{companyName}</p>
           </div>
-          <ChevronDown
-            className={`h-3.5 w-3.5 shrink-0 transition-transform ${lightHeaderContent ? "text-white/70" : "text-gray-400"} ${menuOpen ? "rotate-180" : ""}`}
-          />
-        </button>
-
-        {menuOpen && (
-          <div className="absolute right-0 top-full z-10 mt-2 w-44 overflow-hidden rounded-xl border border-gray-200 bg-white shadow-lg">
-            <Link
-              href="/account"
-              onClick={() => setMenuOpen(false)}
-              className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm text-gray-600 transition hover:bg-gray-50 hover:text-primary"
-            >
-              <User className="h-4 w-4" /> Profile
-            </Link>
-            <button
-              type="button"
-              onClick={handleLogout}
-              className="flex w-full items-center gap-2 border-t border-gray-100 px-4 py-2.5 text-left text-sm text-gray-600 transition hover:bg-red-50 hover:text-red-600"
-            >
-              <LogOut className="h-4 w-4" /> Log out
-            </button>
-          </div>
-        )}
+          <User className={`h-3.5 w-3.5 shrink-0 ${lightHeaderContent ? "text-white/70" : "text-gray-400"}`} />
+        </Link>
       </div>
     </header>
   );

@@ -16,7 +16,7 @@ import { MinorRevisionPanel } from "./MinorRevisionPanel";
 import { computeTierResult, deriveCompanyRuleItemLines, deriveMockItemLines, fmtPeso, recomputeItemLine } from "@/lib/dev/provisional/quotationBreakdownFixtures";
 import { PROVISIONAL_TIERS, type PricelistBasis, type ProvisionalItemLine, type ProvisionalQuotationTierResult, type ProvisionalTier } from "@/lib/dev/provisional/quotationBreakdownTypes";
 import { saveDraftQuotation, saveFinalizedQuotation, setAcceptedTier } from "@/lib/dev/provisional/savedProjectsStore";
-import { useLaborRules, useMaterialRules, useUnitRules } from "@/lib/dev/provisional/useCompanyRulesProvisional";
+import { useLaborRules, useMaterialRules, usePricingStrategies, useUnitRules } from "@/lib/dev/provisional/useCompanyRulesProvisional";
 import { useItemsCatalog } from "@/hooks/useItemsCatalog";
 import { usePricelistCatalog } from "@/hooks/usePricelistCatalog";
 import { usePricelistPublishedSource } from "@/hooks/usePricelistPublishedSource";
@@ -226,7 +226,7 @@ function QuoteCard({
           onClick={onViewBreakdown}
           className={`flex w-full items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white py-2.5 text-sm font-bold text-gray-600 transition ${meta.breakdownButton}`}
         >
-          View Detailed Breakdown
+          Detailed Breakdown
         </button>
         <button
           type="button"
@@ -252,6 +252,7 @@ export function QuotationResultsStep({ client, quotation, segments, blueprintFlo
   const { rules: materialRules, isLoading: materialRulesLoading } = useMaterialRules();
   const { rules: laborRules, isLoading: laborRulesLoading } = useLaborRules();
   const { rules: unitRules, isLoading: unitRulesLoading } = useUnitRules();
+  const { strategies: pricingStrategies, isLoading: pricingStrategiesLoading } = usePricingStrategies();
   const { items, isLoading: itemsLoading } = useItemsCatalog();
   const { records: uploadedPrices, isLoading: uploadedPricesLoading, load: loadUploadedPrices } = usePricelistCatalog();
   const { dpwhCatalog } = usePricelistPublishedSource();
@@ -285,7 +286,7 @@ export function QuotationResultsStep({ client, quotation, segments, blueprintFlo
     loadDpwhPrices();
   }, [loadDpwhPrices, loadUploadedPrices]);
 
-  const cprmLoading = materialRulesLoading || laborRulesLoading || unitRulesLoading || itemsLoading || uploadedPricesLoading || dpwhPricesLoading;
+  const cprmLoading = materialRulesLoading || laborRulesLoading || unitRulesLoading || pricingStrategiesLoading || itemsLoading || uploadedPricesLoading || dpwhPricesLoading;
   const cprmHasTreatmentMatches = useMemo(
     () =>
       segments.some((seg) =>
@@ -332,9 +333,22 @@ export function QuotationResultsStep({ client, quotation, segments, blueprintFlo
     setRuleDialogOpen(false);
   };
 
+  const activePricingStrategyFor = (tier: ProvisionalTier) =>
+    pricingStrategies.find((strategy) => strategy.quotation_tier === tier && strategy.is_active) ??
+    pricingStrategies.find((strategy) => strategy.quotation_tier === tier) ??
+    null;
+
   const tierResults: Record<ProvisionalTier, ProvisionalQuotationTierResult> = {
-    Practical: computeTierResult("Practical", effectiveTierItems.Practical),
-    Premium: computeTierResult("Premium", effectiveTierItems.Premium),
+    Practical: computeTierResult("Practical", effectiveTierItems.Practical, { pricingStrategy: activePricingStrategyFor("Practical") }),
+    Premium: computeTierResult("Premium", effectiveTierItems.Premium, { pricingStrategy: activePricingStrategyFor("Premium") }),
+  };
+
+  const handleBreakdownItemsChange = (tier: ProvisionalTier, next: ProvisionalItemLine[]) => {
+    setHasManualLineEdits(true);
+    setTierItems((prev) => {
+      const base = hasManualLineEdits ? prev : autoTierItems;
+      return { ...base, [tier]: next };
+    });
   };
 
   const draftInput = useMemo(
@@ -497,13 +511,12 @@ export function QuotationResultsStep({ client, quotation, segments, blueprintFlo
       </div>
 
       {breakdownTier && (
-        // Part A — strictly read-only: no onItemsChange/onLinesChange prop exists on this
-        // component at all anymore. See QuotationBreakdownModal.tsx.
         <QuotationBreakdownModal
           tier={breakdownTier}
           result={tierResults[breakdownTier]}
           pricelistBasis={pricelistBasis}
           onBasisChange={handleBasisChange}
+          onItemsChange={(next) => handleBreakdownItemsChange(breakdownTier, next)}
           onClose={() => setBreakdownTier(null)}
           segments={segments}
           blueprintFloors={blueprintFloors}

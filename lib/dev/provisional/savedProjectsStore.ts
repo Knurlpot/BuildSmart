@@ -4,6 +4,7 @@ import { useSyncExternalStore } from "react";
 import { computeTierResult } from "./quotationBreakdownFixtures";
 import {
   PROVISIONAL_TIERS,
+  type ProvisionalItemLine,
   type FinalizedQuotationInput,
   type ProvisionalTier,
   type SavedQuoteSnapshot,
@@ -206,6 +207,48 @@ export function setAcceptedTier(projectId: string, tier: ProvisionalTier | null)
             },
           ])
         ) as SavedProjectRecord["quotes"],
+      };
+    })
+  );
+}
+
+export function updateSavedQuoteVersionItems(
+  projectId: string,
+  tier: ProvisionalTier,
+  versionId: string,
+  items: ProvisionalItemLine[]
+) {
+  const now = new Date().toISOString();
+  writeProjects(
+    readProjects().map((project) => {
+      if (project.project_id !== projectId) return project;
+
+      const quote = project.quotes[tier];
+      const versions = quote.versions.map((version) => {
+        if (version.version_id !== versionId) return version;
+        return {
+          ...version,
+          result: computeTierResult(tier, items, {
+            vatInclusive: version.result.vat_inclusive,
+            downpaymentPercentage: version.result.downpayment_percentage,
+          }),
+          price_reference_date: now,
+        };
+      });
+      const updatedResult = versions.find((version) => version.version_id === versionId)?.result ?? quote.result;
+      const updatesPrimarySnapshot = quote.versions[0]?.version_id === versionId;
+
+      return {
+        ...project,
+        updated_at: now,
+        quotes: {
+          ...project.quotes,
+          [tier]: {
+            ...quote,
+            result: updatesPrimarySnapshot ? updatedResult : quote.result,
+            versions,
+          },
+        },
       };
     })
   );

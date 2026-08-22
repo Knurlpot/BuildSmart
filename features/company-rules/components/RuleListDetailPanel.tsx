@@ -16,6 +16,7 @@ interface RuleListDetailPanelProps<T> {
   emptyHint?: string;
   countLabel?: string;
   listHeader?: ReactNode;
+  contentClassName?: string;
   renderListItem: (item: T) => ReactNode;
   detail: ReactNode;
 }
@@ -33,6 +34,7 @@ export function RuleListDetailPanel<T>({
   emptyHint,
   countLabel,
   listHeader,
+  contentClassName,
   renderListItem,
   detail,
 }: RuleListDetailPanelProps<T>) {
@@ -56,7 +58,7 @@ export function RuleListDetailPanel<T>({
         </button>
       </div>
 
-      <div className="grid items-start gap-5 lg:grid-cols-2">
+      <div className={contentClassName ?? "grid items-start gap-5 lg:grid-cols-2"}>
         <div className="min-w-0">
         <QueryState
           isLoading={isLoading}

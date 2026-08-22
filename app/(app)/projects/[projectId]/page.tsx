@@ -6,7 +6,7 @@ import { ArrowLeft, Award, CheckCircle2, Clock, History, RefreshCw, Shield, Star
 import { RequireOnboardingStep } from "@/components/auth/RequireOnboardingStep";
 import { QuotationBreakdownModal } from "@/features/quotation-generation/components/QuotationBreakdownModal";
 import { fmtPeso } from "@/lib/dev/provisional/quotationBreakdownFixtures";
-import { refreshQuotePrices, setAcceptedTier, useSavedProjects } from "@/lib/dev/provisional/savedProjectsStore";
+import { refreshQuotePrices, setAcceptedTier, updateSavedQuoteVersionItems, useSavedProjects } from "@/lib/dev/provisional/savedProjectsStore";
 import type { SavedProjectRecord, SavedQuoteVersion } from "@/lib/dev/provisional/savedProjectsTypes";
 import type { ProvisionalTier } from "@/lib/dev/provisional/quotationBreakdownTypes";
 
@@ -272,6 +272,7 @@ function ProjectDetailContent({ projectId }: { projectId: string }) {
               tier={breakdown.tier}
               result={version.result}
               pricelistBasis={snapshot.pricelist_basis_at_finalize}
+              onItemsChange={(items) => updateSavedQuoteVersionItems(project.project_id, breakdown.tier, version.version_id, items)}
               onClose={() => setBreakdown(null)}
               // Same split-view Segment Breakdown preview the live wizard
               // shows, sourced from what was frozen at Finalize. null blueprintFloors
