@@ -182,7 +182,7 @@ export const laborRulesFixture: LaborRule[] = [
 export const pricingStrategyFixture: PricingStrategyRule[] = [
   {
     rule_id: 'ps-1',
-    quotation_tier: 'Economic',
+    quotation_tier: 'Practical',
     markup_percentage: 12,
     contingency_percentage: 5,
     overhead_percentage: 8,

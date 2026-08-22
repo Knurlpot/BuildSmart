@@ -398,7 +398,8 @@ function matchingLaborRule(seg: DraftSegment, laborRules: LaborRule[]): LaborRul
 function buildCompanyLaborLine(seg: DraftSegment, rule: LaborRule, basis: PricelistBasis): ProvisionalItemLine {
   const quantity = round2(seg.area_sqm);
   const productivityFactor = rule.productivity_index ?? 1;
-  const rushFactor = 1 + ((rule.rush_multiplier_percentage ?? 0) / 100);
+  const appliedRushMultiplier = seg.is_rush ? rule.rush_multiplier_percentage : null;
+  const rushFactor = 1 + ((appliedRushMultiplier ?? 0) / 100);
   const rate = round2(rule.labor_rate * productivityFactor * rushFactor);
   const treatmentLabel = seg.treatment_type?.trim() || "General";
   const scope = laborRuleScope(rule);
@@ -428,7 +429,7 @@ function buildCompanyLaborLine(seg: DraftSegment, rule: LaborRule, basis: Pricel
     pricing_reference: pricingReferenceFor(basis),
     labor_rule_scope: scope,
     labor_rule_label: scope === 'Treatment' ? rule.treatment_type ?? treatmentLabel : scope === 'Trade' ? rule.labor_trade ?? 'Trade Labor Rule' : 'General Labor Rule',
-    rush_multiplier_percentage: rule.rush_multiplier_percentage,
+    rush_multiplier_percentage: appliedRushMultiplier,
     productivity_index: rule.productivity_index,
     supplier_options: [],
     selected_supplier_id: null,

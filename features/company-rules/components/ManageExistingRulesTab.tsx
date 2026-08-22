@@ -68,10 +68,13 @@ function RuleDetail({ rule }: { rule: ExistingRuleSummary }) {
   const parts = rule.detail.split(/\s*[·]\s*/).filter(Boolean);
   let primary = rule.detail;
   let secondary: string | null = null;
+  let secondaryTitle: string | undefined;
 
   if (rule.rule_kind === "material-rule" && parts.length > 1) {
-    primary = parts.at(-1) ?? rule.detail;
-    secondary = parts.slice(0, -1).join(" · ");
+    const materials = (parts.at(-1) ?? "").split(",").map((item) => item.trim()).filter(Boolean);
+    primary = parts[0];
+    secondary = materials.length > 2 ? `${materials.slice(0, 2).join(", ")}...` : materials.join(", ");
+    secondaryTitle = materials.join(", ");
   } else if (rule.rule_kind === "supplier-rule" && parts.length > 1) {
     primary = parts[0];
     secondary = parts.slice(1).join(" · ");
@@ -85,7 +88,7 @@ function RuleDetail({ rule }: { rule: ExistingRuleSummary }) {
       <span className="inline-flex max-w-full rounded-md bg-gray-100 px-2 py-1 text-xs font-semibold text-gray-700">
         <span className="truncate">{primary}</span>
       </span>
-      {secondary && <p className="mt-1 max-w-xs truncate text-[11px] text-gray-500" title={secondary}>{secondary}</p>}
+      {secondary && <p className="mt-1 max-w-xs truncate text-[11px] text-gray-500" title={secondaryTitle ?? secondary}>{secondary}</p>}
     </div>
   );
 }

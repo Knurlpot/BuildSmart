@@ -31,8 +31,8 @@ const TABS = [
   { id: "material-rules", label: "Material Rules", icon: Package },
   { id: "supplier-rules", label: "Supplier Rules", icon: Truck },
   { id: "labor-rules", label: "Labor Rules", icon: Users },
-  { id: "pricing-strategy", label: "Pricing Strategy", icon: Percent },
   { id: "unit-rules", label: "Unit Rules", icon: Ruler },
+  { id: "pricing-strategy", label: "Pricing Strategy", icon: Percent },
   { id: "manage-existing", label: "Manage Existing Rules", icon: ListFilter },
 ] as const;
 
@@ -56,16 +56,6 @@ export default function CompanyRulesShell() {
   const { strategies, refetch: refetchPricingStrategies } = usePricingStrategies();
   const { rules: unitRules, refetch: refetchUnitRules } = useUnitRules();
   const { rules: supplierRules, refetch: refetchSupplierRules } = useSupplierRules();
-  const tabCounts: Record<TabId, number> = {
-    "material-rules": materialRules.length,
-    "supplier-rules": supplierRules.length,
-    "labor-rules": laborRules.length,
-    "pricing-strategy": strategies.length,
-    "unit-rules": unitRules.length,
-    "manage-existing":
-      materialRules.length + supplierRules.length + laborRules.length + strategies.length + unitRules.length,
-  };
-
   const needsAttention: Partial<Record<TabId, boolean>> = {
     "material-rules": materialRules.length === 0,
     "supplier-rules": supplierRules.length === 0,
@@ -137,14 +127,6 @@ export default function CompanyRulesShell() {
             >
               <Icon className="h-4 w-4 shrink-0" />
               <span>{tab.label}</span>
-              <span
-                className={`min-w-6 rounded-full px-1.5 py-0.5 text-center text-[10px] font-bold tabular-nums ${
-                  active ? "bg-primary text-primary-foreground" : "bg-gray-100 text-gray-500"
-                }`}
-                aria-label={`${tabCounts[tab.id]} configured`}
-              >
-                {tabCounts[tab.id]}
-              </span>
               {needsAttention[tab.id] && (
                 <span className="h-1.5 w-1.5 rounded-full bg-amber-500" aria-label="Needs configuration" />
               )}
