@@ -52,6 +52,17 @@ function acceptedTier(project: SavedProjectRecord | null): string {
   return "Not decided";
 }
 
+function isResumableDraft(project: SavedProjectRecord | null): project is SavedProjectRecord {
+  return project?.status === "Draft";
+}
+
+function projectHref(row: OpenProjectRow): string {
+  if (isResumableDraft(row.savedProject)) {
+    return `/quotations/new?resumeProjectId=${encodeURIComponent(row.savedProject.project_id)}`;
+  }
+  return row.savedProject ? `/projects/${row.savedProject.project_id}` : `/quotations/${row.quote_id}`;
+}
+
 function clientInitials(name: string): string {
   const initials = name
     .split(/\s+/)
@@ -77,6 +88,11 @@ function OpenProjectsContent({ onMetaChange }: OpenProjectsContentProps) {
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const rows = useMemo<OpenProjectRow[]>(() => {
+    const savedByQuoteId = new Map(
+      savedProjects
+        .filter((project) => project.source_quote_id != null)
+        .map((project) => [project.source_quote_id, project])
+    );
     const savedByProject = new Map(
       savedProjects.map((project) => [
         [
@@ -93,7 +109,8 @@ function OpenProjectsContent({ onMetaChange }: OpenProjectsContentProps) {
     const backendRows = (quotations ?? []).map((quote) => {
       const clientName = quote.client_name ?? "No client";
       const savedProject =
-        quote.client_id == null
+        savedByQuoteId.get(quote.quote_id) ??
+        (quote.client_id == null
           ? null
           : savedByProject.get(
               [
@@ -102,7 +119,7 @@ function OpenProjectsContent({ onMetaChange }: OpenProjectsContentProps) {
                 quote.project_location,
                 quote.project_region,
               ].join("\u0000")
-            ) ?? null;
+            ) ?? null);
       if (savedProject) matchedSavedProjectIds.add(savedProject.project_id);
 
       return {
@@ -112,7 +129,7 @@ function OpenProjectsContent({ onMetaChange }: OpenProjectsContentProps) {
         project_name: quote.project_name,
         project_location: quote.project_location,
         project_region: quote.project_region,
-        status: quote.status,
+        status: savedProject?.status === "Draft" ? "Draft" : quote.status,
         created_at: quote.created_at,
         savedProject,
       };
@@ -145,7 +162,7 @@ function OpenProjectsContent({ onMetaChange }: OpenProjectsContentProps) {
   }, [region, rows, search]);
 
   const openRow = (row: OpenProjectRow) => {
-    router.push(row.savedProject ? `/projects/${row.savedProject.project_id}` : `/quotations/${row.quote_id}`);
+    router.push(projectHref(row));
   };
   const createNew = useCallback(() => router.push("/quotations/new"), [router]);
 
@@ -236,7 +253,7 @@ function OpenProjectsContent({ onMetaChange }: OpenProjectsContentProps) {
       ) : (
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
           {filteredRows.map((project) => {
-            const href = project.savedProject ? `/projects/${project.savedProject.project_id}` : `/quotations/${project.quote_id}`;
+            const href = projectHref(project);
             return (
               <article
                 key={project.id}

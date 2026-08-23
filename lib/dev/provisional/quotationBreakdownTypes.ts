@@ -34,7 +34,9 @@
 
 import type { HistoricalPriceRecord } from '@/types/entities/historical-price-record';
 import type { PhRegion } from '@/types/entities/common';
+import type { Client, Quotation } from '@/types/entities';
 import type { DraftSegment } from '@/features/quotation-generation/lib/draftSegment';
+import type { InputMethod, WizardPhase } from '@/features/quotation-generation/lib/workflowSteps';
 import type { BlueprintFloor } from './quotationGenerationTypes';
 
 export type ProvisionalTier = 'Practical' | 'Premium';
@@ -193,6 +195,11 @@ export interface SavedProjectRecord {
   quotes: Record<ProvisionalTier, SavedQuoteSnapshot>;
   segmentsSnapshot: DraftSegment[];
   blueprintFloors: BlueprintFloor[] | null;
+  resume_step?: WizardPhase;
+  resume_method?: InputMethod;
+  quotationSnapshot?: Quotation;
+  clientSnapshot?: Client;
+  blueprintFilePath?: string | null;
 }
 
 export interface FinalizedQuotationInput {

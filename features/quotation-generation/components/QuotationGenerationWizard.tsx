@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useWorkflowHeader } from "@/providers/WorkflowHeaderProvider";
 import { AmbientBackground } from "./AmbientBackground";
 import { ClientAndProjectStep } from "./ClientAndProjectStep";
@@ -12,6 +12,7 @@ import { ConfigureSegmentsStep } from "./ConfigureSegmentsStep";
 import { GeneratingQuotationAnimation } from "./GeneratingQuotationAnimation";
 import { QuotationResultsStep } from "./QuotationResultsStep";
 import { useDeleteDraftQuotation, useUpdateQuotationInputMethod } from "@/hooks/useQuotationGeneration";
+import { getSavedProject, saveInProgressQuotation } from "@/lib/dev/provisional/savedProjectsStore";
 import { buildWorkflowSteps, type InputMethod, type WizardPhase } from "../lib/workflowSteps";
 import type { Quotation, Client } from "@/types/entities";
 import type { DraftSegment } from "../lib/draftSegment";
@@ -24,6 +25,7 @@ import type { BlueprintFloor } from "@/lib/dev/provisional/quotationGenerationTy
 // quotationBreakdownTypes.ts for the full list of what's provisional.
 export function QuotationGenerationWizard() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { updateInputMethod } = useUpdateQuotationInputMethod();
   const { deleteDraftQuotation } = useDeleteDraftQuotation();
 
@@ -39,6 +41,102 @@ export function QuotationGenerationWizard() {
   const [blueprintFloors, setBlueprintFloors] = useState<BlueprintFloor[] | null>(null);
   const [blueprintFilePath, setBlueprintFilePath] = useState<string | null>(null);
   const [originalBlueprintFloors, setOriginalBlueprintFloors] = useState<BlueprintFloor[] | null>(null);
+  const draftStateRef = useRef({ quotation, client, step, method, segments, blueprintFloors, blueprintFilePath });
+  useEffect(() => {
+    draftStateRef.current = { quotation, client, step, method, segments, blueprintFloors, blueprintFilePath };
+  }, [blueprintFilePath, blueprintFloors, client, method, quotation, segments, step]);
+
+  const lastAutosavedDraftRef = useRef<string | null>(null);
+  useEffect(() => {
+    const resumable = ["method", "quick", "blueprint", "configure"].includes(step);
+    if (!resumable || !quotation || !client) return;
+
+    const draftSignature = JSON.stringify({
+      quotation,
+      client,
+      step,
+      method,
+      segments,
+      blueprintFloors,
+      blueprintFilePath,
+    });
+    if (draftSignature === lastAutosavedDraftRef.current) return;
+
+    const timeout = window.setTimeout(() => {
+      saveInProgressQuotation({
+        quotation,
+        client,
+        step,
+        method,
+        segments,
+        blueprintFloors,
+        blueprintFilePath,
+      });
+      lastAutosavedDraftRef.current = draftSignature;
+    }, 500);
+
+    return () => window.clearTimeout(timeout);
+  }, [blueprintFilePath, blueprintFloors, client, method, quotation, segments, step]);
+
+  /* eslint-disable react-hooks/set-state-in-effect */
+  useEffect(() => {
+    const projectId = searchParams.get("resumeProjectId");
+    if (!projectId) return;
+    const savedProject = getSavedProject(projectId);
+    if (!savedProject) return;
+
+    const quotation = savedProject.quotationSnapshot ?? {
+      quote_id: savedProject.source_quote_id ?? 0,
+      company_id: 0,
+      user_id: 0,
+      client_id: savedProject.client_id,
+      project_name: savedProject.project_name,
+      project_location: savedProject.project_location,
+      project_region: savedProject.project_region as Quotation["project_region"],
+      input_method: "Manual",
+      status: "Draft",
+      total_material_cost: 0,
+      total_service_cost: 0,
+      grand_total: 0,
+      created_at: savedProject.created_at,
+      updated_at: savedProject.updated_at,
+    } satisfies Quotation;
+    const client = savedProject.clientSnapshot ?? {
+      client_id: savedProject.client_id,
+      company_id: 0,
+      client_name: savedProject.client_name,
+      client_type: "Returning",
+      status: "Active",
+      created_at: savedProject.created_at,
+    } satisfies Client;
+
+    setQuotation(quotation);
+    setClient(client);
+    setSegments(savedProject.segmentsSnapshot ?? []);
+    setMethod(savedProject.resume_method ?? null);
+    setStep(savedProject.resume_step ?? "configure");
+    setBlueprintFloors(savedProject.blueprintFloors ?? null);
+    setBlueprintFilePath(savedProject.blueprintFilePath ?? null);
+    setOriginalBlueprintFloors(savedProject.blueprintFloors ?? null);
+  }, [searchParams]);
+  /* eslint-enable react-hooks/set-state-in-effect */
+
+  useEffect(() => {
+    return () => {
+      const current = draftStateRef.current;
+      const resumable = ["client", "method", "quick", "blueprint", "configure"].includes(current.step);
+      if (!resumable || !current.quotation || !current.client) return;
+      saveInProgressQuotation({
+        quotation: current.quotation,
+        client: current.client,
+        step: current.step,
+        method: current.method,
+        segments: current.segments,
+        blueprintFloors: current.blueprintFloors,
+        blueprintFilePath: current.blueprintFilePath,
+      });
+    };
+  }, []);
 
   // Registers the path-aware step sequence on the GLOBAL header (components/layout/
   // Header.tsx's `workflow` prop) for as long as this wizard stays mounted — see
@@ -107,6 +205,17 @@ export function QuotationGenerationWizard() {
     if (!quotation) {
       router.push("/dashboard");
       return;
+    }
+    if (client) {
+      saveInProgressQuotation({
+        quotation,
+        client,
+        step,
+        method,
+        segments,
+        blueprintFloors,
+        blueprintFilePath,
+      });
     }
     router.push("/projects");
   };

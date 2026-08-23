@@ -11,6 +11,10 @@ import {
   type SavedQuoteVersion,
   type SavedProjectRecord,
 } from "./quotationBreakdownTypes";
+import type { Client, Quotation } from "@/types/entities";
+import type { DraftSegment } from "@/features/quotation-generation/lib/draftSegment";
+import type { InputMethod, WizardPhase } from "@/features/quotation-generation/lib/workflowSteps";
+import type { BlueprintFloor } from "./quotationGenerationTypes";
 
 const STORAGE_KEY = "buildsmart_saved_projects_v1";
 const listeners = new Set<() => void>();
@@ -114,6 +118,10 @@ export function deleteSavedProject(projectId: string) {
   writeProjects(readProjects().filter((project) => project.project_id !== projectId));
 }
 
+export function getSavedProject(projectId: string) {
+  return readProjects().find((project) => project.project_id === projectId) ?? null;
+}
+
 function saveQuotationSnapshot(input: FinalizedQuotationInput, status: SavedProjectRecord["status"]): SavedProjectRecord {
   const now = new Date().toISOString();
   const existing = input.quoteId
@@ -160,6 +168,42 @@ function saveQuotationSnapshot(input: FinalizedQuotationInput, status: SavedProj
 
 export function saveDraftQuotation(input: FinalizedQuotationInput): SavedProjectRecord {
   return saveQuotationSnapshot(input, "Draft");
+}
+
+export function saveInProgressQuotation(input: {
+  quotation: Quotation;
+  client: Client;
+  step: WizardPhase;
+  method: InputMethod;
+  segments: DraftSegment[];
+  blueprintFloors: BlueprintFloor[] | null;
+  blueprintFilePath: string | null;
+}) {
+  const project = saveQuotationSnapshot(
+    {
+      quoteId: input.quotation.quote_id,
+      clientId: input.client.client_id,
+      clientName: input.client.client_name,
+      projectName: input.quotation.project_name,
+      projectLocation: input.quotation.project_location,
+      projectRegion: input.quotation.project_region,
+      tierItems: { Practical: [], Premium: [] },
+      pricelistBasis: "Uploaded",
+      segments: input.segments,
+      blueprintFloors: input.blueprintFloors,
+    },
+    "Draft"
+  );
+  const updated = {
+    ...project,
+    resume_step: input.step,
+    resume_method: input.method,
+    quotationSnapshot: input.quotation,
+    clientSnapshot: input.client,
+    blueprintFilePath: input.blueprintFilePath,
+  };
+  writeProjects([updated, ...readProjects().filter((saved) => saved.project_id !== project.project_id)]);
+  return updated;
 }
 
 export function saveFinalizedQuotation(input: FinalizedQuotationInput): SavedProjectRecord {
