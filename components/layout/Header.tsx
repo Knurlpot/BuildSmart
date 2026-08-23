@@ -3,7 +3,6 @@
 import { usePathname } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
-import { User } from "lucide-react";
 import { useAuth } from "@/providers/AuthProvider";
 import { useFetch } from "@/hooks/useFetch";
 import type { Company, Users } from "@/types/entities";
@@ -111,7 +110,6 @@ export default function Header({ workflow }: HeaderProps) {
             <p className={`text-xs font-semibold leading-tight ${lightHeaderContent ? "text-white" : "text-gray-800"}`}>{fullName}</p>
             <p className={`text-[10px] ${lightHeaderContent ? "text-white/70" : "text-gray-500"}`}>{companyName}</p>
           </div>
-          <User className={`h-3.5 w-3.5 shrink-0 ${lightHeaderContent ? "text-white/70" : "text-gray-400"}`} />
         </Link>
       </div>
     </header>
