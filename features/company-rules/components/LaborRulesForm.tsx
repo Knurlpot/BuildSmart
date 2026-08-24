@@ -449,36 +449,72 @@ export function LaborRulesForm({ focusRuleId, onFocusHandled }: LaborRulesFormPr
 
               <div className="grid grid-cols-3 gap-3">
                 <div className="flex flex-col gap-1.5">
-                  <label className="text-xs font-semibold text-gray-600">Productivity sqm/day</label>
-                  <input
-                    type="number"
-                    min={0}
-                    value={productivitySqmPerDay}
-                    onChange={(e) => setProductivitySqmPerDay(e.target.value === "" ? "" : Number(e.target.value))}
-                    className={inputCls}
-                  />
+                  <div className="relative">
+                    <input
+                      id="labor-productivity-sqm-per-day"
+                      type="text"
+                      inputMode="decimal"
+                      value={productivitySqmPerDay}
+                      onChange={(e) => {
+                        const next = e.target.value.replace(/[^\d.]/g, "");
+                        setProductivitySqmPerDay(next === "" ? "" : Number(next));
+                      }}
+                      placeholder=" "
+                      className="peer w-full rounded-lg border border-gray-200 bg-gray-50 px-3 pb-2 pt-5 text-sm outline-none transition focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/20"
+                    />
+                    <label
+                      htmlFor="labor-productivity-sqm-per-day"
+                      className="pointer-events-none absolute left-3 top-1.5 text-[10px] font-semibold text-gray-500 transition-all peer-placeholder-shown:top-1/2 peer-placeholder-shown:-translate-y-1/2 peer-placeholder-shown:text-sm peer-placeholder-shown:font-medium peer-focus:top-1.5 peer-focus:translate-y-0 peer-focus:text-[10px] peer-focus:font-semibold peer-focus:text-primary"
+                    >
+                      Productivity sqm/day <span className="font-normal normal-case text-gray-400">(optional)</span>
+                    </label>
+                  </div>
                   {touched && !productivitySqmValid && <p className="text-xs text-red-500">Must be greater than 0.</p>}
                 </div>
                 <div className="flex flex-col gap-1.5">
-                  <label className="text-xs font-semibold text-gray-600">Minimum Duration Days</label>
-                  <input
-                    type="number"
-                    min={0}
-                    value={minDurationDays}
-                    onChange={(e) => setMinDurationDays(e.target.value === "" ? "" : Number(e.target.value))}
-                    className={inputCls}
-                  />
+                  <div className="relative">
+                    <input
+                      id="labor-min-duration-days"
+                      type="text"
+                      inputMode="decimal"
+                      value={minDurationDays}
+                      onChange={(e) => {
+                        const next = e.target.value.replace(/[^\d.]/g, "");
+                        setMinDurationDays(next === "" ? "" : Number(next));
+                      }}
+                      placeholder=" "
+                      className="peer w-full rounded-lg border border-gray-200 bg-gray-50 px-3 pb-2 pt-5 text-sm outline-none transition focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/20"
+                    />
+                    <label
+                      htmlFor="labor-min-duration-days"
+                      className="pointer-events-none absolute left-3 top-1.5 text-[10px] font-semibold text-gray-500 transition-all peer-placeholder-shown:top-1/2 peer-placeholder-shown:-translate-y-1/2 peer-placeholder-shown:text-sm peer-placeholder-shown:font-medium peer-focus:top-1.5 peer-focus:translate-y-0 peer-focus:text-[10px] peer-focus:font-semibold peer-focus:text-primary"
+                    >
+                      Minimum Duration Days <span className="font-normal normal-case text-gray-400">(optional)</span>
+                    </label>
+                  </div>
                   {touched && !minDurationValid && <p className="text-xs text-red-500">Must be greater than 0.</p>}
                 </div>
                 <div className="flex flex-col gap-1.5">
-                  <label className="text-xs font-semibold text-gray-600">Safety Buffer Days</label>
-                  <input
-                    type="number"
-                    min={0}
-                    value={safetyBufferDays}
-                    onChange={(e) => setSafetyBufferDays(e.target.value === "" ? "" : Number(e.target.value))}
-                    className={inputCls}
-                  />
+                  <div className="relative">
+                    <input
+                      id="labor-safety-buffer-days"
+                      type="text"
+                      inputMode="decimal"
+                      value={safetyBufferDays}
+                      onChange={(e) => {
+                        const next = e.target.value.replace(/[^\d.]/g, "");
+                        setSafetyBufferDays(next === "" ? "" : Number(next));
+                      }}
+                      placeholder=" "
+                      className="peer w-full rounded-lg border border-gray-200 bg-gray-50 px-3 pb-2 pt-5 text-sm outline-none transition focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/20"
+                    />
+                    <label
+                      htmlFor="labor-safety-buffer-days"
+                      className="pointer-events-none absolute left-3 top-1.5 text-[10px] font-semibold text-gray-500 transition-all peer-placeholder-shown:top-1/2 peer-placeholder-shown:-translate-y-1/2 peer-placeholder-shown:text-sm peer-placeholder-shown:font-medium peer-focus:top-1.5 peer-focus:translate-y-0 peer-focus:text-[10px] peer-focus:font-semibold peer-focus:text-primary"
+                    >
+                      Safety Buffer Days <span className="font-normal normal-case text-gray-400">(optional)</span>
+                    </label>
+                  </div>
                   {touched && !safetyBufferValid && <p className="text-xs text-red-500">Must be greater than 0.</p>}
                 </div>
               </div>

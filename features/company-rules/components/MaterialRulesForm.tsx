@@ -149,8 +149,8 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
         if (!category) throw new Error(`Could not resolve the category for ${item.item_name}.`);
         const payload = {
           treatment_type: treatmentType.trim() || null,
-          warranty_years: null,
-          lifespan_years: null,
+          warranty_years: warrantyYears === "" ? null : Number(warrantyYears),
+          lifespan_years: lifespanYears === "" ? null : Number(lifespanYears),
           category,
           preferred_item_code: code,
           preferred_item_name: item.item_name,
@@ -391,6 +391,53 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
                 )}
               </div>
 
+              <div className="grid grid-cols-2 gap-3">
+                <div className="flex flex-col gap-1.5">
+                  <div className="relative">
+                    <input
+                      id="material-warranty-years"
+                      type="text"
+                      inputMode="decimal"
+                      value={warrantyYears}
+                      onChange={(e) => {
+                        const next = e.target.value.replace(/[^\d.]/g, "");
+                        setWarrantyYears(next === "" ? "" : Number(next));
+                      }}
+                      placeholder=" "
+                      className="peer w-full rounded-lg border border-gray-200 bg-gray-50 px-3 pb-2 pt-5 text-sm outline-none transition focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/20"
+                    />
+                    <label
+                      htmlFor="material-warranty-years"
+                      className="pointer-events-none absolute left-3 top-1.5 text-[10px] font-semibold text-gray-500 transition-all peer-placeholder-shown:top-1/2 peer-placeholder-shown:-translate-y-1/2 peer-placeholder-shown:text-sm peer-placeholder-shown:font-medium peer-focus:top-1.5 peer-focus:translate-y-0 peer-focus:text-[10px] peer-focus:font-semibold peer-focus:text-primary"
+                    >
+                      Warranty Years <span className="font-normal normal-case text-gray-400">(optional)</span>
+                    </label>
+                  </div>
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <div className="relative">
+                    <input
+                      id="material-lifespan-years"
+                      type="text"
+                      inputMode="decimal"
+                      value={lifespanYears}
+                      onChange={(e) => {
+                        const next = e.target.value.replace(/[^\d.]/g, "");
+                        setLifespanYears(next === "" ? "" : Number(next));
+                      }}
+                      placeholder=" "
+                      className="peer w-full rounded-lg border border-gray-200 bg-gray-50 px-3 pb-2 pt-5 text-sm outline-none transition focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/20"
+                    />
+                    <label
+                      htmlFor="material-lifespan-years"
+                      className="pointer-events-none absolute left-3 top-1.5 text-[10px] font-semibold text-gray-500 transition-all peer-placeholder-shown:top-1/2 peer-placeholder-shown:-translate-y-1/2 peer-placeholder-shown:text-sm peer-placeholder-shown:font-medium peer-focus:top-1.5 peer-focus:translate-y-0 peer-focus:text-[10px] peer-focus:font-semibold peer-focus:text-primary"
+                    >
+                      Expected Lifespan Years <span className="font-normal normal-case text-gray-400">(optional)</span>
+                    </label>
+                  </div>
+                </div>
+              </div>
+
               <div className="rounded-xl border border-gray-100 bg-gray-50/60 p-3">
                 <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Selected Materials</p>
                 <div className="mt-2 divide-y divide-gray-100 overflow-hidden rounded-lg border border-gray-100 bg-white">
@@ -480,26 +527,48 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
 
               <div className="grid grid-cols-2 gap-3">
                 <div className="flex flex-col gap-1.5">
-                  <label htmlFor="edit-material-warranty-years" className="text-xs font-semibold text-gray-600">Warranty Years</label>
-                  <input
-                    id="edit-material-warranty-years"
-                    type="number"
-                    min={0}
-                    value={warrantyYears}
-                    onChange={(e) => setWarrantyYears(e.target.value === "" ? "" : Number(e.target.value))}
-                    className={inputCls}
-                  />
+                  <div className="relative">
+                    <input
+                      id="edit-material-warranty-years"
+                      type="text"
+                      inputMode="decimal"
+                      value={warrantyYears}
+                      onChange={(e) => {
+                        const next = e.target.value.replace(/[^\d.]/g, "");
+                        setWarrantyYears(next === "" ? "" : Number(next));
+                      }}
+                      placeholder=" "
+                      className="peer w-full rounded-lg border border-gray-200 bg-gray-50 px-3 pb-2 pt-5 text-sm outline-none transition focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/20"
+                    />
+                    <label
+                      htmlFor="edit-material-warranty-years"
+                      className="pointer-events-none absolute left-3 top-1.5 text-[10px] font-semibold text-gray-500 transition-all peer-placeholder-shown:top-1/2 peer-placeholder-shown:-translate-y-1/2 peer-placeholder-shown:text-sm peer-placeholder-shown:font-medium peer-focus:top-1.5 peer-focus:translate-y-0 peer-focus:text-[10px] peer-focus:font-semibold peer-focus:text-primary"
+                    >
+                      Warranty Years <span className="font-normal normal-case text-gray-400">(optional)</span>
+                    </label>
+                  </div>
                 </div>
                 <div className="flex flex-col gap-1.5">
-                  <label htmlFor="edit-material-lifespan-years" className="text-xs font-semibold text-gray-600">Expected Lifespan Years</label>
-                  <input
-                    id="edit-material-lifespan-years"
-                    type="number"
-                    min={0}
-                    value={lifespanYears}
-                    onChange={(e) => setLifespanYears(e.target.value === "" ? "" : Number(e.target.value))}
-                    className={inputCls}
-                  />
+                  <div className="relative">
+                    <input
+                      id="edit-material-lifespan-years"
+                      type="text"
+                      inputMode="decimal"
+                      value={lifespanYears}
+                      onChange={(e) => {
+                        const next = e.target.value.replace(/[^\d.]/g, "");
+                        setLifespanYears(next === "" ? "" : Number(next));
+                      }}
+                      placeholder=" "
+                      className="peer w-full rounded-lg border border-gray-200 bg-gray-50 px-3 pb-2 pt-5 text-sm outline-none transition focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/20"
+                    />
+                    <label
+                      htmlFor="edit-material-lifespan-years"
+                      className="pointer-events-none absolute left-3 top-1.5 text-[10px] font-semibold text-gray-500 transition-all peer-placeholder-shown:top-1/2 peer-placeholder-shown:-translate-y-1/2 peer-placeholder-shown:text-sm peer-placeholder-shown:font-medium peer-focus:top-1.5 peer-focus:translate-y-0 peer-focus:text-[10px] peer-focus:font-semibold peer-focus:text-primary"
+                    >
+                      Expected Lifespan Years <span className="font-normal normal-case text-gray-400">(optional)</span>
+                    </label>
+                  </div>
                 </div>
               </div>
 
@@ -574,7 +643,7 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
                 <div className="mt-4 divide-y divide-gray-100 overflow-hidden rounded-xl border border-gray-100 bg-white">
                   {selectedGroupRules
                     .slice()
-                    .sort((a, b) => a.material_priority - b.material_priority || a.preferred_item_name.localeCompare(b.preferred_item_name))
+                    .sort((a, b) => a.preferred_item_name.localeCompare(b.preferred_item_name))
                     .map((rule) => (
                       <div key={rule.rule_id} className="flex items-center justify-between gap-4 px-4 py-3">
                         <div className="min-w-0">
@@ -582,9 +651,6 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
                           <p className="truncate text-xs text-gray-400">{rule.category}</p>
                           <p className="mt-0.5 text-[11px] text-gray-400">Effective {rule.effective_date}</p>
                         </div>
-                        <span className="shrink-0 rounded-full bg-gray-50 px-2 py-0.5 text-[10px] font-bold text-gray-500">
-                          Priority {rule.material_priority}
-                        </span>
                       </div>
                     ))}
                 </div>
