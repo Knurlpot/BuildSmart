@@ -808,21 +808,11 @@ export function AiNormalizationPanel({ companyId, defaultSupplierMode = "existin
             />
           </div>
         ) : (
-          <div className="mx-auto flex w-full max-w-5xl flex-col gap-5">
+          <div className="flex w-full flex-col gap-5">
             <div>
               <p className="text-base font-bold text-gray-900">Upload Pricelist</p>
               <p className="text-xs text-gray-500">Pick the supplier and period, then upload the file.</p>
             </div>
-
-            <details className="group rounded-2xl border border-gray-200 bg-white">
-              <summary className="flex cursor-pointer list-none items-center justify-between px-4 py-3 text-sm font-bold text-gray-700">
-                Need help?
-                <ChevronRight className="h-4 w-4 text-gray-400 transition group-open:rotate-90" />
-              </summary>
-              <div className="border-t border-gray-100 p-4">
-                <QuickUploadGuide />
-              </div>
-            </details>
 
             <div className="grid gap-3 md:grid-cols-[minmax(12rem,1fr)_8rem_8rem]">
               <div className="flex flex-col gap-1.5">
@@ -1077,6 +1067,16 @@ export function AiNormalizationPanel({ companyId, defaultSupplierMode = "existin
               </div>
             </div>
             {fileTypeError && <p className="text-xs text-red-500">{fileTypeError}</p>}
+
+            <details className="group rounded-2xl border border-gray-200 bg-white">
+              <summary className="flex cursor-pointer list-none items-center justify-between px-4 py-3 text-sm font-bold text-gray-700">
+                Need help?
+                <ChevronRight className="h-4 w-4 text-gray-400 transition group-open:rotate-90" />
+              </summary>
+              <div className="border-t border-gray-100 p-4">
+                <QuickUploadGuide />
+              </div>
+            </details>
 
             {pendingFiles.length > 0 && (
               <div className="flex flex-col gap-2 rounded-2xl border border-gray-200 bg-white p-4">

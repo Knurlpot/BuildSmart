@@ -4,12 +4,17 @@ import { useSyncExternalStore } from "react";
 import { computeTierResult } from "./quotationBreakdownFixtures";
 import {
   PROVISIONAL_TIERS,
+  type ProvisionalItemLine,
   type FinalizedQuotationInput,
   type ProvisionalTier,
   type SavedQuoteSnapshot,
   type SavedQuoteVersion,
   type SavedProjectRecord,
 } from "./quotationBreakdownTypes";
+import type { Client, Quotation } from "@/types/entities";
+import type { DraftSegment } from "@/features/quotation-generation/lib/draftSegment";
+import type { InputMethod, WizardPhase } from "@/features/quotation-generation/lib/workflowSteps";
+import type { BlueprintFloor } from "./quotationGenerationTypes";
 
 const STORAGE_KEY = "buildsmart_saved_projects_v1";
 const listeners = new Set<() => void>();
@@ -113,20 +118,28 @@ export function deleteSavedProject(projectId: string) {
   writeProjects(readProjects().filter((project) => project.project_id !== projectId));
 }
 
-export function saveFinalizedQuotation(input: FinalizedQuotationInput): SavedProjectRecord {
+export function getSavedProject(projectId: string) {
+  return readProjects().find((project) => project.project_id === projectId) ?? null;
+}
+
+function saveQuotationSnapshot(input: FinalizedQuotationInput, status: SavedProjectRecord["status"]): SavedProjectRecord {
   const now = new Date().toISOString();
-  const projectId = `proj-${Date.now()}`;
+  const existing = input.quoteId
+    ? readProjects().find((project) => project.source_quote_id === input.quoteId)
+    : null;
+  const projectId = existing?.project_id ?? `${status === "Draft" ? "draft" : "proj"}-${Date.now()}`;
   const practicalResult = computeTierResult("Practical", input.tierItems.Practical);
   const premiumResult = computeTierResult("Premium", input.tierItems.Premium);
   const project: SavedProjectRecord = {
     project_id: projectId,
+    source_quote_id: input.quoteId ?? existing?.source_quote_id ?? null,
     client_id: input.clientId,
     client_name: input.clientName,
     project_name: input.projectName,
     project_location: input.projectLocation,
     project_region: input.projectRegion,
-    status: "Final",
-    created_at: now,
+    status,
+    created_at: existing?.created_at ?? now,
     updated_at: now,
     quotes: {
       Practical: {
@@ -135,7 +148,7 @@ export function saveFinalizedQuotation(input: FinalizedQuotationInput): SavedPro
         versions: [newVersion("Practical", practicalResult, 1, now)],
         pricelist_basis_at_finalize: input.pricelistBasis,
         finalized_at: now,
-        is_selected: false,
+        is_selected: existing?.quotes.Practical.is_selected ?? false,
       },
       Premium: {
         tier: "Premium",
@@ -143,14 +156,58 @@ export function saveFinalizedQuotation(input: FinalizedQuotationInput): SavedPro
         versions: [newVersion("Premium", premiumResult, 1, now)],
         pricelist_basis_at_finalize: input.pricelistBasis,
         finalized_at: now,
-        is_selected: false,
+        is_selected: existing?.quotes.Premium.is_selected ?? false,
       },
     },
     segmentsSnapshot: input.segments,
     blueprintFloors: input.blueprintFloors,
   };
-  writeProjects([project, ...readProjects()]);
+  writeProjects([project, ...readProjects().filter((saved) => saved.project_id !== projectId)]);
   return project;
+}
+
+export function saveDraftQuotation(input: FinalizedQuotationInput): SavedProjectRecord {
+  return saveQuotationSnapshot(input, "Draft");
+}
+
+export function saveInProgressQuotation(input: {
+  quotation: Quotation;
+  client: Client;
+  step: WizardPhase;
+  method: InputMethod;
+  segments: DraftSegment[];
+  blueprintFloors: BlueprintFloor[] | null;
+  blueprintFilePath: string | null;
+}) {
+  const project = saveQuotationSnapshot(
+    {
+      quoteId: input.quotation.quote_id,
+      clientId: input.client.client_id,
+      clientName: input.client.client_name,
+      projectName: input.quotation.project_name,
+      projectLocation: input.quotation.project_location,
+      projectRegion: input.quotation.project_region,
+      tierItems: { Practical: [], Premium: [] },
+      pricelistBasis: "Uploaded",
+      segments: input.segments,
+      blueprintFloors: input.blueprintFloors,
+    },
+    "Draft"
+  );
+  const updated = {
+    ...project,
+    resume_step: input.step,
+    resume_method: input.method,
+    quotationSnapshot: input.quotation,
+    clientSnapshot: input.client,
+    blueprintFilePath: input.blueprintFilePath,
+  };
+  writeProjects([updated, ...readProjects().filter((saved) => saved.project_id !== project.project_id)]);
+  return updated;
+}
+
+export function saveFinalizedQuotation(input: FinalizedQuotationInput): SavedProjectRecord {
+  return saveQuotationSnapshot(input, "Final");
 }
 
 export function refreshQuotePrices(projectId: string, tier: ProvisionalTier) {
@@ -194,6 +251,48 @@ export function setAcceptedTier(projectId: string, tier: ProvisionalTier | null)
             },
           ])
         ) as SavedProjectRecord["quotes"],
+      };
+    })
+  );
+}
+
+export function updateSavedQuoteVersionItems(
+  projectId: string,
+  tier: ProvisionalTier,
+  versionId: string,
+  items: ProvisionalItemLine[]
+) {
+  const now = new Date().toISOString();
+  writeProjects(
+    readProjects().map((project) => {
+      if (project.project_id !== projectId) return project;
+
+      const quote = project.quotes[tier];
+      const versions = quote.versions.map((version) => {
+        if (version.version_id !== versionId) return version;
+        return {
+          ...version,
+          result: computeTierResult(tier, items, {
+            vatInclusive: version.result.vat_inclusive,
+            downpaymentPercentage: version.result.downpayment_percentage,
+          }),
+          price_reference_date: now,
+        };
+      });
+      const updatedResult = versions.find((version) => version.version_id === versionId)?.result ?? quote.result;
+      const updatesPrimarySnapshot = quote.versions[0]?.version_id === versionId;
+
+      return {
+        ...project,
+        updated_at: now,
+        quotes: {
+          ...project.quotes,
+          [tier]: {
+            ...quote,
+            result: updatesPrimarySnapshot ? updatedResult : quote.result,
+            versions,
+          },
+        },
       };
     })
   );

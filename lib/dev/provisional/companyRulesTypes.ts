@@ -118,10 +118,10 @@ export function laborRuleScope(r: Pick<LaborRule, 'treatment_type' | 'labor_trad
 }
 
 // ── 4. Pricing Strategy (rule_pricing) ───────────────────────────────────────
-// 'Economic' | 'Premium' are CLAUDE.md-documented product concepts, not fabricated — but
+// 'Practical' | 'Premium' are the two quotation options shown during generation, but
 // rule_pricing.quotation_tier has no CHECK constraint in the schema, so the DB itself
 // doesn't enforce this set; kept here as the client-side input constraint regardless.
-export const QUOTATION_TIERS = ['Economic', 'Premium'] as const;
+export const QUOTATION_TIERS = ['Practical', 'Premium'] as const;
 export type QuotationTier = (typeof QUOTATION_TIERS)[number];
 
 export interface PricingStrategyRule extends RuleEnvelope {

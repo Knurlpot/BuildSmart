@@ -10,16 +10,11 @@ import {
   type SegmentEntryMode,
 } from "../lib/draftSegment";
 
-// Part D — darker, larger, higher-contrast than the shared SegmentEditorList's compact
-// styling (that one stays as-is for blueprint validation's denser review table). This
-// screen is a different audience/context: an estimator on a laptop in a site office,
-// typically 40-60, not design-savvy — labels are dark, inputs are big.
+//
 const qLabelCls = "text-sm font-bold text-gray-800";
 const qHintCls = "text-sm font-normal normal-case text-gray-500";
 const qInputCls =
-  "w-full rounded-xl border-2 border-gray-300 bg-white px-4 py-3 text-lg font-semibold text-gray-900 outline-none transition focus:border-primary focus:ring-4 focus:ring-primary/15";
-const qTextInputCls =
-  "w-full rounded-xl border-2 border-gray-300 bg-white px-4 py-3 text-base font-medium text-gray-900 outline-none transition focus:border-primary focus:ring-4 focus:ring-primary/15";
+  "peer w-full rounded-lg border border-gray-200 bg-gray-50 px-3 pb-2 pt-5 text-sm outline-none transition focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/20";
 
 const MODES: { mode: SegmentEntryMode; icon: ComponentType<{ className?: string }> }[] = [
   { mode: "total_sqm", icon: Square },
@@ -34,16 +29,12 @@ interface QuickSegmentEditorProps {
   onCancel: () => void;
 }
 
-// Part B — one mode, one set of fields, at a time. Starts on Total sqm (the common case for
-// a single validated area) with everything else tucked behind "Measure it differently";
-// choosing another mode SWAPS the visible fields rather than stacking a second panel next
-// to the first. Never four live input panels at once (see the task's guardrail).
-export function QuickSegmentEditor({ draft, onSave, onCancel }: QuickSegmentEditorProps) {
+//
+  export function QuickSegmentEditor({ draft, onSave, onCancel }: QuickSegmentEditorProps) {
   const [name, setName] = useState(draft.segment_name);
   const [floor, setFloor] = useState(draft.floor_level);
   const [entryMode, setEntryMode] = useState<SegmentEntryMode>(draft.entry_mode);
-  // A segment already saved in a non-default mode shows its fields right away — no reason
-  // to re-hide them behind the "measure differently" affordance when editing it back.
+  
   const [modeChooserOpen, setModeChooserOpen] = useState(draft.entry_mode !== "total_sqm");
   const [touched, setTouched] = useState(false);
 
@@ -118,36 +109,59 @@ export function QuickSegmentEditor({ draft, onSave, onCancel }: QuickSegmentEdit
     <div className="flex flex-col gap-4 rounded-2xl border-2 border-gray-200 bg-gray-50/70 p-5">
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <div className="flex flex-col gap-1.5">
-          <label className={qLabelCls}>
-            Segment Name <span className="text-red-500">*</span>
-          </label>
-          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Living Room" className={qTextInputCls} autoFocus />
+          <div className="relative">
+            <input
+              id="segment-name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder=" "
+              className={qInputCls}
+              autoFocus
+            />
+            <label
+              htmlFor="segment-name"
+              className="pointer-events-none absolute left-3 top-1.5 text-[10px] font-semibold text-gray-500 transition-all peer-placeholder-shown:top-1/2 peer-placeholder-shown:-translate-y-1/2 peer-placeholder-shown:text-sm peer-placeholder-shown:font-medium peer-focus:top-1.5 peer-focus:translate-y-0 peer-focus:text-[10px] peer-focus:font-semibold peer-focus:text-primary"
+            >
+              Segment Name <span className="text-red-500">*</span>
+            </label>
+          </div>
           {touched && !nameValid && <p className="text-sm font-semibold text-red-600">Required.</p>}
         </div>
         <div className="flex flex-col gap-1.5">
-          <label className={qLabelCls}>
-            Floor Level <span className={qHintCls}>(optional)</span>
-          </label>
-          <input value={floor} onChange={(e) => setFloor(e.target.value)} placeholder="e.g. Ground Floor" className={qTextInputCls} />
+          <div className="relative">
+            <input id="segment-floor-level" value={floor} onChange={(e) => setFloor(e.target.value)} placeholder=" " className={qInputCls} />
+            <label
+              htmlFor="segment-floor-level"
+              className="pointer-events-none absolute left-3 top-1.5 text-[10px] font-semibold text-gray-500 transition-all peer-placeholder-shown:top-1/2 peer-placeholder-shown:-translate-y-1/2 peer-placeholder-shown:text-sm peer-placeholder-shown:font-medium peer-focus:top-1.5 peer-focus:translate-y-0 peer-focus:text-[10px] peer-focus:font-semibold peer-focus:text-primary"
+            >
+              Floor Level <span className="font-normal normal-case text-gray-400">(optional)</span>
+            </label>
+          </div>
         </div>
       </div>
 
       {!modeChooserOpen ? (
         <>
           <div className="flex flex-col gap-1.5">
-            <label className={qLabelCls}>
-              Total Area <span className="text-red-500">*</span>
-            </label>
             <div className="relative">
               <input
-                type="number"
-                min={0}
-                step="0.01"
+                id="segment-total-area"
+                type="text"
+                inputMode="decimal"
                 value={totalSqm}
-                onChange={(e) => setTotalSqm(e.target.value === "" ? "" : Number(e.target.value))}
-                placeholder="0.00"
+                onChange={(e) => {
+                  const next = e.target.value.replace(/[^\d.]/g, "");
+                  setTotalSqm(next === "" ? "" : Number(next));
+                }}
+                placeholder=" "
                 className={`${qInputCls} pr-16`}
               />
+              <label
+                htmlFor="segment-total-area"
+                className="pointer-events-none absolute left-3 top-1.5 text-[10px] font-semibold text-gray-500 transition-all peer-placeholder-shown:top-1/2 peer-placeholder-shown:-translate-y-1/2 peer-placeholder-shown:text-sm peer-placeholder-shown:font-medium peer-focus:top-1.5 peer-focus:translate-y-0 peer-focus:text-[10px] peer-focus:font-semibold peer-focus:text-primary"
+              >
+                Total Area <span className="text-red-500">*</span>
+              </label>
               <span className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-base font-semibold text-gray-400">
                 sqm
               </span>
@@ -189,19 +203,25 @@ export function QuickSegmentEditor({ draft, onSave, onCancel }: QuickSegmentEdit
               never stacks a second block alongside it. */}
           {entryMode === "total_sqm" && (
             <div className="flex flex-col gap-1.5">
-              <label className={qLabelCls}>
-                Total Area <span className="text-red-500">*</span>
-              </label>
               <div className="relative">
                 <input
-                  type="number"
-                  min={0}
-                  step="0.01"
+                  id="alternate-total-area"
+                  type="text"
+                  inputMode="decimal"
                   value={totalSqm}
-                  onChange={(e) => setTotalSqm(e.target.value === "" ? "" : Number(e.target.value))}
-                  placeholder="0.00"
+                  onChange={(e) => {
+                    const next = e.target.value.replace(/[^\d.]/g, "");
+                    setTotalSqm(next === "" ? "" : Number(next));
+                  }}
+                  placeholder=" "
                   className={`${qInputCls} pr-16`}
                 />
+                <label
+                  htmlFor="alternate-total-area"
+                  className="pointer-events-none absolute left-3 top-1.5 text-[10px] font-semibold text-gray-500 transition-all peer-placeholder-shown:top-1/2 peer-placeholder-shown:-translate-y-1/2 peer-placeholder-shown:text-sm peer-placeholder-shown:font-medium peer-focus:top-1.5 peer-focus:translate-y-0 peer-focus:text-[10px] peer-focus:font-semibold peer-focus:text-primary"
+                >
+                  Total Area <span className="text-red-500">*</span>
+                </label>
                 <span className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-base font-semibold text-gray-400">
                   sqm
                 </span>
@@ -214,28 +234,16 @@ export function QuickSegmentEditor({ draft, onSave, onCancel }: QuickSegmentEdit
             <div className="flex flex-col gap-1.5">
               <div className="grid grid-cols-2 gap-3">
                 <div className="flex flex-col gap-1.5">
-                  <label className={qLabelCls}>Length (m)</label>
-                  <input
-                    type="number"
-                    min={0}
-                    step="0.01"
-                    value={length}
-                    onChange={(e) => setLength(e.target.value === "" ? "" : Number(e.target.value))}
-                    placeholder="0.00"
-                    className={qInputCls}
-                  />
+                  <div className="relative">
+                    <input id="segment-length" type="text" inputMode="decimal" value={length} onChange={(e) => setLength(e.target.value.replace(/[^\d.]/g, "") === "" ? "" : Number(e.target.value.replace(/[^\d.]/g, "")))} placeholder=" " className={qInputCls} />
+                    <label htmlFor="segment-length" className="pointer-events-none absolute left-3 top-1.5 text-[10px] font-semibold text-gray-500 transition-all peer-placeholder-shown:top-1/2 peer-placeholder-shown:-translate-y-1/2 peer-placeholder-shown:text-sm peer-placeholder-shown:font-medium peer-focus:top-1.5 peer-focus:translate-y-0 peer-focus:text-[10px] peer-focus:font-semibold peer-focus:text-primary">Length (m)</label>
+                  </div>
                 </div>
                 <div className="flex flex-col gap-1.5">
-                  <label className={qLabelCls}>Width (m)</label>
-                  <input
-                    type="number"
-                    min={0}
-                    step="0.01"
-                    value={width}
-                    onChange={(e) => setWidth(e.target.value === "" ? "" : Number(e.target.value))}
-                    placeholder="0.00"
-                    className={qInputCls}
-                  />
+                  <div className="relative">
+                    <input id="segment-width" type="text" inputMode="decimal" value={width} onChange={(e) => setWidth(e.target.value.replace(/[^\d.]/g, "") === "" ? "" : Number(e.target.value.replace(/[^\d.]/g, "")))} placeholder=" " className={qInputCls} />
+                    <label htmlFor="segment-width" className="pointer-events-none absolute left-3 top-1.5 text-[10px] font-semibold text-gray-500 transition-all peer-placeholder-shown:top-1/2 peer-placeholder-shown:-translate-y-1/2 peer-placeholder-shown:text-sm peer-placeholder-shown:font-medium peer-focus:top-1.5 peer-focus:translate-y-0 peer-focus:text-[10px] peer-focus:font-semibold peer-focus:text-primary">Width (m)</label>
+                  </div>
                 </div>
               </div>
               {computedArea !== null && (
@@ -247,59 +255,75 @@ export function QuickSegmentEditor({ draft, onSave, onCancel }: QuickSegmentEdit
 
           {entryMode === "l_shape" && (
             <div className="flex flex-col gap-1.5">
-              <p className={qHintCls}>Overall rectangle, minus the notch that&apos;s cut out of it.</p>
+              <p className={qHintCls}>Overall rectangle, minus the notch that&apos;s cut out.</p>
               <div className="grid grid-cols-2 gap-3">
                 <div className="flex flex-col gap-1.5">
-                  <label className={qLabelCls}>Overall Length (m)</label>
-                  <input
-                    type="number"
-                    min={0}
-                    step="0.01"
-                    value={overallLength}
-                    onChange={(e) => setOverallLength(e.target.value === "" ? "" : Number(e.target.value))}
-                    placeholder="0.00"
-                    className={qInputCls}
-                  />
+                  <div className="relative">
+                    <input
+                      id="segment-overall-length"
+                      type="text"
+                      inputMode="decimal"
+                      value={overallLength}
+                      onChange={(e) => {
+                        const next = e.target.value.replace(/[^\d.]/g, "");
+                        setOverallLength(next === "" ? "" : Number(next));
+                      }}
+                      placeholder=" "
+                      className={qInputCls}
+                    />
+                    <label htmlFor="segment-overall-length" className="pointer-events-none absolute left-3 top-1.5 text-[10px] font-semibold text-gray-500 transition-all peer-placeholder-shown:top-1/2 peer-placeholder-shown:-translate-y-1/2 peer-placeholder-shown:text-sm peer-placeholder-shown:font-medium peer-focus:top-1.5 peer-focus:translate-y-0 peer-focus:text-[10px] peer-focus:font-semibold peer-focus:text-primary">Overall Length (m)</label>
+                  </div>
                 </div>
                 <div className="flex flex-col gap-1.5">
-                  <label className={qLabelCls}>Overall Width (m)</label>
-                  <input
-                    type="number"
-                    min={0}
-                    step="0.01"
-                    value={overallWidth}
-                    onChange={(e) => setOverallWidth(e.target.value === "" ? "" : Number(e.target.value))}
-                    placeholder="0.00"
-                    className={qInputCls}
-                  />
+                  <div className="relative">
+                    <input
+                      id="segment-overall-width"
+                      type="text"
+                      inputMode="decimal"
+                      value={overallWidth}
+                      onChange={(e) => {
+                        const next = e.target.value.replace(/[^\d.]/g, "");
+                        setOverallWidth(next === "" ? "" : Number(next));
+                      }}
+                      placeholder=" "
+                      className={qInputCls}
+                    />
+                    <label htmlFor="segment-overall-width" className="pointer-events-none absolute left-3 top-1.5 text-[10px] font-semibold text-gray-500 transition-all peer-placeholder-shown:top-1/2 peer-placeholder-shown:-translate-y-1/2 peer-placeholder-shown:text-sm peer-placeholder-shown:font-medium peer-focus:top-1.5 peer-focus:translate-y-0 peer-focus:text-[10px] peer-focus:font-semibold peer-focus:text-primary">Overall Width (m)</label>
+                  </div>
                 </div>
                 <div className="flex flex-col gap-1.5">
-                  <label className={qLabelCls}>
-                    Notch Length (m) <span className={qHintCls}>(optional)</span>
-                  </label>
-                  <input
-                    type="number"
-                    min={0}
-                    step="0.01"
-                    value={notchLength}
-                    onChange={(e) => setNotchLength(e.target.value === "" ? "" : Number(e.target.value))}
-                    placeholder="0.00"
-                    className={qInputCls}
-                  />
+                  <div className="relative">
+                    <input
+                      id="segment-notch-length"
+                      type="text"
+                      inputMode="decimal"
+                      value={notchLength}
+                      onChange={(e) => {
+                        const next = e.target.value.replace(/[^\d.]/g, "");
+                        setNotchLength(next === "" ? "" : Number(next));
+                      }}
+                      placeholder=" "
+                      className={qInputCls}
+                    />
+                    <label htmlFor="segment-notch-length" className="pointer-events-none absolute left-3 top-1.5 text-[10px] font-semibold text-gray-500 transition-all peer-placeholder-shown:top-1/2 peer-placeholder-shown:-translate-y-1/2 peer-placeholder-shown:text-sm peer-placeholder-shown:font-medium peer-focus:top-1.5 peer-focus:translate-y-0 peer-focus:text-[10px] peer-focus:font-semibold peer-focus:text-primary">Notch Length (m) <span className="font-normal normal-case text-gray-400">(optional)</span></label>
+                  </div>
                 </div>
                 <div className="flex flex-col gap-1.5">
-                  <label className={qLabelCls}>
-                    Notch Width (m) <span className={qHintCls}>(optional)</span>
-                  </label>
-                  <input
-                    type="number"
-                    min={0}
-                    step="0.01"
-                    value={notchWidth}
-                    onChange={(e) => setNotchWidth(e.target.value === "" ? "" : Number(e.target.value))}
-                    placeholder="0.00"
-                    className={qInputCls}
-                  />
+                  <div className="relative">
+                    <input
+                      id="segment-notch-width"
+                      type="text"
+                      inputMode="decimal"
+                      value={notchWidth}
+                      onChange={(e) => {
+                        const next = e.target.value.replace(/[^\d.]/g, "");
+                        setNotchWidth(next === "" ? "" : Number(next));
+                      }}
+                      placeholder=" "
+                      className={qInputCls}
+                    />
+                    <label htmlFor="segment-notch-width" className="pointer-events-none absolute left-3 top-1.5 text-[10px] font-semibold text-gray-500 transition-all peer-placeholder-shown:top-1/2 peer-placeholder-shown:-translate-y-1/2 peer-placeholder-shown:text-sm peer-placeholder-shown:font-medium peer-focus:top-1.5 peer-focus:translate-y-0 peer-focus:text-[10px] peer-focus:font-semibold peer-focus:text-primary">Notch Width (m) <span className="font-normal normal-case text-gray-400">(optional)</span></label>
+                  </div>
                 </div>
               </div>
               {computedArea !== null && (
@@ -311,19 +335,25 @@ export function QuickSegmentEditor({ draft, onSave, onCancel }: QuickSegmentEdit
 
           {entryMode === "running_meter" && (
             <div className="flex flex-col gap-1.5">
-              <label className={qLabelCls}>
-                Length (m) <span className={qHintCls}>(parapets, edges, linear runs)</span>
-              </label>
               <div className="relative">
                 <input
-                  type="number"
-                  min={0}
-                  step="0.01"
+                  id="segment-running-length"
+                  type="text"
+                  inputMode="decimal"
                   value={runningLength}
-                  onChange={(e) => setRunningLength(e.target.value === "" ? "" : Number(e.target.value))}
-                  placeholder="0.00"
+                  onChange={(e) => {
+                    const next = e.target.value.replace(/[^\d.]/g, "");
+                    setRunningLength(next === "" ? "" : Number(next));
+                  }}
+                  placeholder=" "
                   className={`${qInputCls} pr-14`}
                 />
+                <label
+                  htmlFor="segment-running-length"
+                  className="pointer-events-none absolute left-3 top-1.5 text-[10px] font-semibold text-gray-500 transition-all peer-placeholder-shown:top-1/2 peer-placeholder-shown:-translate-y-1/2 peer-placeholder-shown:text-sm peer-placeholder-shown:font-medium peer-focus:top-1.5 peer-focus:translate-y-0 peer-focus:text-[10px] peer-focus:font-semibold peer-focus:text-primary"
+                >
+                  Length (m) <span className="font-normal normal-case text-gray-400">(parapets, edges, linear runs)</span>
+                </label>
                 <span className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-base font-semibold text-gray-400">
                   m
                 </span>

@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { Award, CheckCircle2, Clock, Database, FileText, PenLine, Shield, SlidersHorizontal, Star, TrendingDown } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Award, CheckCircle2, Clock, Database, FileText, PenLine, Save, Shield, SlidersHorizontal, Star, TrendingDown } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -15,8 +15,8 @@ import { RevisionTypeModal } from "./RevisionTypeModal";
 import { MinorRevisionPanel } from "./MinorRevisionPanel";
 import { computeTierResult, deriveCompanyRuleItemLines, deriveMockItemLines, fmtPeso, recomputeItemLine } from "@/lib/dev/provisional/quotationBreakdownFixtures";
 import { PROVISIONAL_TIERS, type PricelistBasis, type ProvisionalItemLine, type ProvisionalQuotationTierResult, type ProvisionalTier } from "@/lib/dev/provisional/quotationBreakdownTypes";
-import { saveFinalizedQuotation } from "@/lib/dev/provisional/savedProjectsStore";
-import { useMaterialRules, useUnitRules } from "@/lib/dev/provisional/useCompanyRulesProvisional";
+import { saveDraftQuotation, saveFinalizedQuotation, setAcceptedTier } from "@/lib/dev/provisional/savedProjectsStore";
+import { useLaborRules, useMaterialRules, usePricingStrategies, useUnitRules } from "@/lib/dev/provisional/useCompanyRulesProvisional";
 import { useItemsCatalog } from "@/hooks/useItemsCatalog";
 import { usePricelistCatalog } from "@/hooks/usePricelistCatalog";
 import { usePricelistPublishedSource } from "@/hooks/usePricelistPublishedSource";
@@ -36,16 +36,18 @@ interface QuotationResultsStepProps {
   onStructuralRevision: () => void;
   /** Fires once the finalized project has actually been saved (P2-B) — caller only needs
    * to move the wizard on; the save itself already happened here. */
-  onFinalize: () => void;
+  onFinalize: (projectId: string) => void;
+  onSaveDraft?: (projectId: string) => void;
 }
 
-const TIER_META: Record<ProvisionalTier, { tagline: string; badge: string; accent: string; headerBg: string; accentBg: string }> = {
+const TIER_META: Record<ProvisionalTier, { tagline: string; badge: string; accent: string; headerBg: string; accentBg: string; acceptButton: string }> = {
   Practical: {
     tagline: "Cost-effective solution with quality materials",
     badge: "Recommended",
     accent: "text-primary",
     headerBg: "bg-primary",
     accentBg: "bg-orange-50",
+    acceptButton: "border-primary text-primary hover:bg-orange-50",
   },
   Premium: {
     tagline: "High-spec materials with expedited delivery",
@@ -53,6 +55,7 @@ const TIER_META: Record<ProvisionalTier, { tagline: string; badge: string; accen
     accent: "text-indigo-600",
     headerBg: "bg-indigo-600",
     accentBg: "bg-indigo-50",
+    acceptButton: "border-indigo-600 text-indigo-600 hover:bg-indigo-50",
   },
 };
 
@@ -82,12 +85,13 @@ function deriveTierItemsFromRules(
   segments: DraftSegment[],
   basis: PricelistBasis,
   materialRules: ReturnType<typeof useMaterialRules>["rules"],
+  laborRules: ReturnType<typeof useLaborRules>["rules"],
   unitRules: ReturnType<typeof useUnitRules>["rules"],
   items: ReturnType<typeof useItemsCatalog>["items"],
   uploadedPrices: ReturnType<typeof usePricelistCatalog>["records"] = [],
   dpwhPrices: ReturnType<typeof usePricelistPublishedSource>["dpwhCatalog"]["records"] = []
 ): Record<ProvisionalTier, ProvisionalItemLine[]> {
-  const companyRuleLines = deriveCompanyRuleItemLines(segments, materialRules, unitRules, items, basis, uploadedPrices, dpwhPrices);
+  const companyRuleLines = deriveCompanyRuleItemLines(segments, materialRules, laborRules, unitRules, items, basis, uploadedPrices, dpwhPrices);
   if (companyRuleLines) {
     return {
       Practical: companyRuleLines,
@@ -126,6 +130,7 @@ function applyQuotationRuleToLines(
       return recomputeItemLine(line, {
         selected_supplier_id: chosenOption.supplier_id,
         unit_price: chosenOption.unit_price,
+        source_type: chosenOption.source_type,
       });
     }
 
@@ -133,9 +138,22 @@ function applyQuotationRuleToLines(
   });
 }
 
-function QuoteCard({ tier, result, onViewBreakdown }: { tier: ProvisionalTier; result: ProvisionalQuotationTierResult; onViewBreakdown: () => void }) {
+function QuoteCard({
+  tier,
+  result,
+  onViewBreakdown,
+  onAccept,
+  isAccepting,
+}: {
+  tier: ProvisionalTier;
+  result: ProvisionalQuotationTierResult;
+  onViewBreakdown: () => void;
+  onAccept: () => void;
+  isAccepting: boolean;
+}) {
   const meta = TIER_META[tier];
   const unresolvedCount = result.items.filter((l) => l.unit_price === null).length;
+  const canAccept = unresolvedCount === 0;
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden rounded-2xl border-2 border-gray-100 bg-white shadow-sm">
@@ -200,13 +218,23 @@ function QuoteCard({ tier, result, onViewBreakdown }: { tier: ProvisionalTier; r
         </div>
       </div>
 
-      <div className="border-t border-gray-100 bg-gray-50 px-5 py-3.5">
+      <div className="flex flex-col gap-2 border-t border-gray-100 bg-gray-50 px-5 py-3.5">
         <button
           type="button"
           onClick={onViewBreakdown}
           className={`flex w-full items-center justify-center gap-2 rounded-xl py-2.5 text-sm font-bold text-white transition hover:opacity-90 ${meta.headerBg}`}
         >
-          View Detailed Breakdown
+          View Breakdown
+        </button>
+        <button
+          type="button"
+          onClick={onAccept}
+          disabled={!canAccept || isAccepting}
+          title={!canAccept ? "Resolve missing prices before accepting this quotation." : undefined}
+          className={`flex w-full items-center justify-center gap-2 rounded-xl border bg-white py-2 text-xs font-bold transition disabled:cursor-not-allowed disabled:opacity-55 ${meta.acceptButton}`}
+        >
+          <CheckCircle2 className="h-3.5 w-3.5" />
+          {isAccepting ? "Accepting..." : "Mark as Accepted"}
         </button>
       </div>
     </div>
@@ -218,9 +246,11 @@ function QuoteCard({ tier, result, onViewBreakdown }: { tier: ProvisionalTier; r
 // depends on that don't exist in the schema yet), the READ-ONLY detailed breakdown (Part A),
 // and the revision flow (editing lives only in Minor Revision, Part D). Everything
 // downstream of `segments` is mock-derived — see quotationBreakdownFixtures.ts.
-export function QuotationResultsStep({ client, quotation, segments, blueprintFloors, onStructuralRevision, onFinalize }: QuotationResultsStepProps) {
+export function QuotationResultsStep({ client, quotation, segments, blueprintFloors, onStructuralRevision, onFinalize, onSaveDraft }: QuotationResultsStepProps) {
   const { rules: materialRules, isLoading: materialRulesLoading } = useMaterialRules();
+  const { rules: laborRules, isLoading: laborRulesLoading } = useLaborRules();
   const { rules: unitRules, isLoading: unitRulesLoading } = useUnitRules();
+  const { strategies: pricingStrategies, isLoading: pricingStrategiesLoading } = usePricingStrategies();
   const { items, isLoading: itemsLoading } = useItemsCatalog();
   const { records: uploadedPrices, isLoading: uploadedPricesLoading, load: loadUploadedPrices } = usePricelistCatalog();
   const { dpwhCatalog } = usePricelistPublishedSource();
@@ -239,7 +269,12 @@ export function QuotationResultsStep({ client, quotation, segments, blueprintFlo
   const [revisionTypeOpen, setRevisionTypeOpen] = useState(false);
   const [minorRevisionTier, setMinorRevisionTier] = useState<ProvisionalTier | null>(null);
   const [structuralConfirmOpen, setStructuralConfirmOpen] = useState(false);
-  const [finalizeConfirmOpen, setFinalizeConfirmOpen] = useState(false);
+  const [acceptTier, setAcceptTier] = useState<ProvisionalTier | null>(null);
+  const [acceptError, setAcceptError] = useState<string | null>(null);
+  const [isAccepting, setIsAccepting] = useState(false);
+  const [isSavingDraft, setIsSavingDraft] = useState(false);
+  const finalizedOrSavedRef = useRef(false);
+  const latestDraftInputRef = useRef<Parameters<typeof saveDraftQuotation>[0] | null>(null);
 
   const includedSegments = segments.filter(isSegmentIncluded);
   const totalArea = includedSegments.reduce((sum, s) => sum + s.area_sqm, 0);
@@ -249,7 +284,7 @@ export function QuotationResultsStep({ client, quotation, segments, blueprintFlo
     loadDpwhPrices();
   }, [loadDpwhPrices, loadUploadedPrices]);
 
-  const cprmLoading = materialRulesLoading || unitRulesLoading || itemsLoading || uploadedPricesLoading || dpwhPricesLoading;
+  const cprmLoading = materialRulesLoading || laborRulesLoading || unitRulesLoading || pricingStrategiesLoading || itemsLoading || uploadedPricesLoading || dpwhPricesLoading;
   const cprmHasTreatmentMatches = useMemo(
     () =>
       segments.some((seg) =>
@@ -264,8 +299,8 @@ export function QuotationResultsStep({ client, quotation, segments, blueprintFlo
   );
 
   const autoTierItems = useMemo(
-    () => deriveTierItemsFromRules(segments, pricelistBasis, materialRules, unitRules, items, uploadedPrices, dpwhPrices),
-    [items, materialRules, pricelistBasis, segments, unitRules, uploadedPrices, dpwhPrices]
+    () => deriveTierItemsFromRules(segments, pricelistBasis, materialRules, laborRules, unitRules, items, uploadedPrices, dpwhPrices),
+    [items, laborRules, materialRules, pricelistBasis, segments, unitRules, uploadedPrices, dpwhPrices]
   );
   const effectiveTierItems = hasManualLineEdits ? tierItems : autoTierItems;
 
@@ -275,7 +310,7 @@ export function QuotationResultsStep({ client, quotation, segments, blueprintFlo
   const handleBasisChange = (basis: PricelistBasis) => {
     setPricelistBasis(basis);
     setHasManualLineEdits(true);
-    setTierItems(deriveTierItemsFromRules(segments, basis, materialRules, unitRules, items, uploadedPrices, dpwhPrices));
+    setTierItems(deriveTierItemsFromRules(segments, basis, materialRules, laborRules, unitRules, items, uploadedPrices, dpwhPrices));
   };
 
   const handleApplyQuotationRules = () => {
@@ -283,12 +318,12 @@ export function QuotationResultsStep({ client, quotation, segments, blueprintFlo
     handleBasisChange(prioritySource);
     setTierItems(() => ({
       Practical: applyQuotationRuleToLines(
-        deriveTierItemsFromRules(segments, prioritySource, materialRules, unitRules, items, uploadedPrices, dpwhPrices).Practical,
+        deriveTierItemsFromRules(segments, prioritySource, materialRules, laborRules, unitRules, items, uploadedPrices, dpwhPrices).Practical,
         prioritySource,
         fallbackRule
       ),
       Premium: applyQuotationRuleToLines(
-        deriveTierItemsFromRules(segments, prioritySource, materialRules, unitRules, items, uploadedPrices, dpwhPrices).Premium,
+        deriveTierItemsFromRules(segments, prioritySource, materialRules, laborRules, unitRules, items, uploadedPrices, dpwhPrices).Premium,
         prioritySource,
         fallbackRule
       ),
@@ -296,9 +331,113 @@ export function QuotationResultsStep({ client, quotation, segments, blueprintFlo
     setRuleDialogOpen(false);
   };
 
+  const activePricingStrategyFor = (tier: ProvisionalTier) =>
+    pricingStrategies.find((strategy) => strategy.quotation_tier === tier && strategy.is_active) ??
+    pricingStrategies.find((strategy) => strategy.quotation_tier === tier) ??
+    null;
+
   const tierResults: Record<ProvisionalTier, ProvisionalQuotationTierResult> = {
-    Practical: computeTierResult("Practical", effectiveTierItems.Practical),
-    Premium: computeTierResult("Premium", effectiveTierItems.Premium),
+    Practical: computeTierResult("Practical", effectiveTierItems.Practical, { pricingStrategy: activePricingStrategyFor("Practical") }),
+    Premium: computeTierResult("Premium", effectiveTierItems.Premium, { pricingStrategy: activePricingStrategyFor("Premium") }),
+  };
+
+  const handleBreakdownItemsChange = (tier: ProvisionalTier, next: ProvisionalItemLine[]) => {
+    setHasManualLineEdits(true);
+    setTierItems((prev) => {
+      const base = hasManualLineEdits ? prev : autoTierItems;
+      return { ...base, [tier]: next };
+    });
+  };
+
+  const draftInput = useMemo(
+    () => ({
+      clientId: client.client_id,
+      clientName: client.client_name,
+      projectName: quotation.project_name,
+      projectLocation: quotation.project_location,
+      projectRegion: quotation.project_region,
+      tierItems: effectiveTierItems,
+      pricelistBasis,
+      segments,
+      blueprintFloors,
+      quoteId: quotation.quote_id,
+    }),
+    [blueprintFloors, client.client_id, client.client_name, effectiveTierItems, pricelistBasis, quotation.project_location, quotation.project_name, quotation.project_region, quotation.quote_id, segments]
+  );
+
+  useEffect(() => {
+    latestDraftInputRef.current = draftInput;
+  }, [draftInput]);
+
+  useEffect(() => {
+    return () => {
+      if (finalizedOrSavedRef.current || !latestDraftInputRef.current) return;
+      saveDraftQuotation(latestDraftInputRef.current);
+    };
+  }, []);
+
+  const acceptSelectedTier = async () => {
+    if (!acceptTier || isAccepting) return;
+    const result = tierResults[acceptTier];
+    const unresolvedCount = result.items.filter((line) => line.unit_price === null).length;
+    if (unresolvedCount > 0) {
+      setAcceptError("Resolve all missing prices before accepting this quotation.");
+      return;
+    }
+
+    setIsAccepting(true);
+    setAcceptError(null);
+    try {
+      const response = await fetch(`/api/quotations/${quotation.quote_id}/accept`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          tier: acceptTier,
+          items: result.items.map((line) => ({
+            item_code: line.item_code,
+            category: line.category,
+            quantity: line.quantity,
+            unit_price: line.unit_price,
+            total_cost: line.total_cost,
+            source_type: line.source_type,
+            source_price_id: line.selected_supplier_id,
+          })),
+          total_material_cost: result.materials_subtotal,
+          total_service_cost: result.service_cost.subtotal,
+          grand_total: result.grand_total,
+        }),
+      });
+      const data = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(data?.error ?? "Could not accept quotation.");
+
+      const savedProject = saveFinalizedQuotation({
+        clientId: client.client_id,
+        clientName: client.client_name,
+        projectName: quotation.project_name,
+        projectLocation: quotation.project_location,
+        projectRegion: quotation.project_region,
+        tierItems: effectiveTierItems,
+        pricelistBasis,
+        segments,
+        blueprintFloors,
+        quoteId: quotation.quote_id,
+      });
+      finalizedOrSavedRef.current = true;
+      setAcceptedTier(savedProject.project_id, acceptTier);
+      onFinalize(savedProject.project_id);
+    } catch (error) {
+      setAcceptError(error instanceof Error ? error.message : "Could not accept quotation.");
+    } finally {
+      setIsAccepting(false);
+    }
+  };
+
+  const saveDraft = () => {
+    if (isSavingDraft) return;
+    setIsSavingDraft(true);
+    const savedProject = saveDraftQuotation(latestDraftInputRef.current!);
+    setIsSavingDraft(false);
+    onSaveDraft?.(savedProject.project_id);
   };
 
   return (
@@ -314,17 +453,31 @@ export function QuotationResultsStep({ client, quotation, segments, blueprintFlo
         <div className="flex flex-wrap items-center gap-2">
           <button
             type="button"
+            aria-label="Source & Fallback"
+            title="Source & Fallback Rules"
             onClick={() => setRuleDialogOpen(true)}
-            className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-semibold text-gray-700 shadow-sm transition hover:bg-gray-50"
+            className="flex items-center justify-center rounded-lg border border-gray-200 bg-white p-2 text-gray-700 shadow-sm transition hover:bg-gray-50"
           >
-            <SlidersHorizontal className="h-4 w-4" /> Source &amp; Fallback
+            <SlidersHorizontal className="h-4 w-4" />
           </button>
           <button
             type="button"
+            aria-label="Edit Quotation"
+            title="Edit"
             onClick={() => setRevisionTypeOpen(true)}
-            className="flex items-center gap-2 rounded-lg border border-primary/30 bg-orange-50/60 px-4 py-2 text-sm font-semibold text-primary transition hover:bg-orange-50"
+            className="flex items-center justify-center rounded-lg border border-primary/30 bg-orange-50/60 p-2 text-primary transition hover:bg-orange-50"
           >
-            <PenLine className="h-4 w-4" /> Validate &amp; Edit
+            <PenLine className="h-4 w-4" />
+          </button>
+          <button
+            type="button"
+            aria-label={isSavingDraft ? "Saving Draft" : "Save Quotation"}
+            title={isSavingDraft ? "Saving Draft" : "Save Quotation"}
+            onClick={saveDraft}
+            disabled={isSavingDraft}
+            className="flex items-center justify-center rounded-lg border border-gray-200 bg-white p-2 text-gray-700 shadow-sm transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            <Save className="h-4 w-4" />
           </button>
         </div>
       </div>
@@ -344,28 +497,24 @@ export function QuotationResultsStep({ client, quotation, segments, blueprintFlo
 
       <div className="flex flex-col gap-5 lg:flex-row">
         {PROVISIONAL_TIERS.map((tier) => (
-          <QuoteCard key={tier} tier={tier} result={tierResults[tier]} onViewBreakdown={() => setBreakdownTier(tier)} />
+          <QuoteCard
+            key={tier}
+            tier={tier}
+            result={tierResults[tier]}
+            onViewBreakdown={() => setBreakdownTier(tier)}
+            onAccept={() => setAcceptTier(tier)}
+            isAccepting={isAccepting && acceptTier === tier}
+          />
         ))}
       </div>
 
-      <div className="flex items-center justify-end gap-3 border-t border-gray-100 pt-4">
-        <button
-          type="button"
-          onClick={() => setFinalizeConfirmOpen(true)}
-          className="flex items-center gap-2 rounded-xl bg-primary px-6 py-3 text-sm font-bold text-primary-foreground shadow-sm transition hover:bg-(--primary-hover)"
-        >
-          <CheckCircle2 className="h-4 w-4" /> Finalize Quotation
-        </button>
-      </div>
-
       {breakdownTier && (
-        // Part A — strictly read-only: no onItemsChange/onLinesChange prop exists on this
-        // component at all anymore. See QuotationBreakdownModal.tsx.
         <QuotationBreakdownModal
           tier={breakdownTier}
           result={tierResults[breakdownTier]}
           pricelistBasis={pricelistBasis}
           onBasisChange={handleBasisChange}
+          onItemsChange={(next) => handleBreakdownItemsChange(breakdownTier, next)}
           onClose={() => setBreakdownTier(null)}
           segments={segments}
           blueprintFloors={blueprintFloors}
@@ -450,15 +599,54 @@ export function QuotationResultsStep({ client, quotation, segments, blueprintFlo
 
       {minorRevisionTier && (
         <MinorRevisionPanel
+          key={minorRevisionTier}
           tier={minorRevisionTier}
           originalItems={autoTierItems[minorRevisionTier]}
           items={effectiveTierItems[minorRevisionTier]}
           onItemsChange={(next) => {
             setHasManualLineEdits(true);
-            setTierItems((prev) => ({ ...prev, [minorRevisionTier]: next }));
+            const otherTier: ProvisionalTier = minorRevisionTier === "Practical" ? "Premium" : "Practical";
+            const currentItems = effectiveTierItems[minorRevisionTier];
+            const sharedRevisions = new Map(
+              next
+                .map((line) => {
+                  const previous = currentItems.find((item) => item.line_id === line.line_id);
+                  const lineChanged =
+                    previous &&
+                    (previous.item_name !== line.item_name ||
+                      previous.quantity !== line.quantity ||
+                      previous.unit_price !== line.unit_price ||
+                      previous.selected_supplier_id !== line.selected_supplier_id ||
+                      previous.source_type !== line.source_type);
+                  return lineChanged
+                    ? [
+                        `${line.segment_draft_id}:${line.item_code}`,
+                        {
+                          item_name: line.item_name,
+                          quantity: line.quantity,
+                          unit_price: line.unit_price,
+                          selected_supplier_id: line.selected_supplier_id,
+                          source_type: line.source_type,
+                        },
+                      ] as const
+                    : null;
+                })
+                .filter((change): change is NonNullable<typeof change> => change !== null)
+            );
+
+            setTierItems((prev) => {
+              const base = hasManualLineEdits ? prev : autoTierItems;
+              return {
+                ...base,
+                [minorRevisionTier]: next,
+                [otherTier]: base[otherTier].map((line) => {
+                  const revision = sharedRevisions.get(`${line.segment_draft_id}:${line.item_code}`);
+                  return revision ? recomputeItemLine(line, revision) : line;
+                }),
+              };
+            });
           }}
-          pricelistBasis={pricelistBasis}
-          onBasisChange={handleBasisChange}
+          onTierChange={setMinorRevisionTier}
           onClose={() => setMinorRevisionTier(null)}
           onApply={() => setMinorRevisionTier(null)}
         />
@@ -469,8 +657,7 @@ export function QuotationResultsStep({ client, quotation, segments, blueprintFlo
           <DialogHeader>
             <DialogTitle>Return to segmentation?</DialogTitle>
             <DialogDescription>
-              You return to review segments with your previous data. Any quotations generated here are discarded and
-              regenerated when you proceed.
+              All quotations will be discarded. 
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -495,47 +682,43 @@ export function QuotationResultsStep({ client, quotation, segments, blueprintFlo
         </DialogContent>
       </Dialog>
 
-      <Dialog open={finalizeConfirmOpen} onOpenChange={setFinalizeConfirmOpen}>
+      <Dialog open={acceptTier !== null} onOpenChange={(open) => {
+        if (!open && !isAccepting) {
+          setAcceptTier(null);
+          setAcceptError(null);
+        }
+      }}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Finalize this quotation?</DialogTitle>
+            <DialogTitle>Accept {acceptTier} Quotation?</DialogTitle>
             <DialogDescription>
-              Practical and Premium are saved as a linked pair. Neither is marked as the
-              client&apos;s choice yet (that happens later, from Open Projects). This is a mock save (Part 2 shell):
-              no real pricing engine or backend persistence is wired yet.
+              This would save the quotation as finalized project.
             </DialogDescription>
           </DialogHeader>
+          {acceptError && (
+            <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+              {acceptError}
+            </div>
+          )}
           <DialogFooter>
             <button
               type="button"
-              onClick={() => setFinalizeConfirmOpen(false)}
+              onClick={() => {
+                setAcceptTier(null);
+                setAcceptError(null);
+              }}
+              disabled={isAccepting}
               className="rounded-xl border border-gray-200 px-4 py-2 text-sm font-semibold text-gray-600 transition hover:bg-gray-50"
             >
               Keep Editing
             </button>
             <button
               type="button"
-              onClick={() => {
-                setFinalizeConfirmOpen(false);
-                // P2-B — saves BOTH tiers (siblings of one quote_group_id), neither
-                // is_selected — see savedProjectsStore.ts. Uses the CURRENT tierItems
-                // (whatever Minor Revision left them as), not a fresh re-derivation.
-                saveFinalizedQuotation({
-                  clientId: client.client_id,
-                  clientName: client.client_name,
-                  projectName: quotation.project_name,
-                  projectLocation: quotation.project_location,
-                  projectRegion: quotation.project_region,
-                  tierItems: effectiveTierItems,
-                  pricelistBasis,
-                  segments,
-                  blueprintFloors,
-                });
-                onFinalize();
-              }}
+              onClick={acceptSelectedTier}
+              disabled={isAccepting}
               className="rounded-xl bg-primary px-4 py-2 text-sm font-bold text-primary-foreground transition hover:bg-(--primary-hover)"
             >
-              Finalize
+              {isAccepting ? "Accepting..." : `Accept ${acceptTier ?? ""}`}
             </button>
           </DialogFooter>
         </DialogContent>

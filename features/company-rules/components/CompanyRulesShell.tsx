@@ -2,12 +2,12 @@
 
 import { useEffect, useState } from "react";
 import {
+  ListFilter,
   Package,
   Percent,
   Ruler,
   Truck,
   Users,
-  Wrench,
 } from "lucide-react";
 import { MaterialRulesForm } from "./MaterialRulesForm";
 import { SupplierRulesForm } from "./SupplierRulesForm";
@@ -31,9 +31,9 @@ const TABS = [
   { id: "material-rules", label: "Material Rules", icon: Package },
   { id: "supplier-rules", label: "Supplier Rules", icon: Truck },
   { id: "labor-rules", label: "Labor Rules", icon: Users },
-  { id: "pricing-strategy", label: "Pricing Strategy", icon: Percent },
   { id: "unit-rules", label: "Unit Rules", icon: Ruler },
-  { id: "manage-existing", label: "Manage Existing Rules", icon: Wrench },
+  { id: "pricing-strategy", label: "Pricing Strategy", icon: Percent },
+  { id: "manage-existing", label: "Manage Existing Rules", icon: ListFilter },
 ] as const;
 
 type TabId = (typeof TABS)[number]["id"];
@@ -56,7 +56,6 @@ export default function CompanyRulesShell() {
   const { strategies, refetch: refetchPricingStrategies } = usePricingStrategies();
   const { rules: unitRules, refetch: refetchUnitRules } = useUnitRules();
   const { rules: supplierRules, refetch: refetchSupplierRules } = useSupplierRules();
-
   const needsAttention: Partial<Record<TabId, boolean>> = {
     "material-rules": materialRules.length === 0,
     "supplier-rules": supplierRules.length === 0,
@@ -108,8 +107,11 @@ export default function CompanyRulesShell() {
   ]);
 
   return (
-    <div className="flex flex-col gap-5">
-      <div className="flex shrink-0 gap-1 overflow-x-auto border-b border-gray-200">
+    <div className="flex min-w-0 flex-col gap-4">
+      <nav
+        aria-label="Preferences and rules sections"
+        className="flex min-w-0 shrink-0 gap-0.5 overflow-x-auto border-b border-gray-200 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+      >
         {TABS.map((tab) => {
           const Icon = tab.icon;
           const active = activeTab === tab.id;
@@ -118,37 +120,40 @@ export default function CompanyRulesShell() {
               key={tab.id}
               type="button"
               onClick={() => setActiveTab(tab.id)}
-              className={`relative flex items-center gap-2 whitespace-nowrap px-4 py-3 text-sm font-semibold transition-colors ${
-                active ? "text-primary" : "text-gray-500 hover:text-gray-700"
+              aria-current={active ? "page" : undefined}
+              className={`relative flex shrink-0 items-center justify-center gap-2 whitespace-nowrap px-3 py-3 text-left text-sm font-semibold transition-colors ${
+                active ? "text-primary" : "text-gray-500 hover:bg-gray-50 hover:text-gray-700"
               }`}
             >
-              <Icon className="h-4 w-4" />
-              {tab.label}
+              <Icon className="h-4 w-4 shrink-0" />
+              <span>{tab.label}</span>
               {needsAttention[tab.id] && (
                 <span className="h-1.5 w-1.5 rounded-full bg-amber-500" aria-label="Needs configuration" />
               )}
-              {active && <span className="absolute inset-x-0 bottom-0 h-0.5 bg-primary" />}
+              {active && <span className="absolute inset-x-0 bottom-0 h-0.5 rounded-full bg-primary" />}
             </button>
           );
         })}
-      </div>
+      </nav>
 
-      {activeTab === "material-rules" && (
-        <MaterialRulesForm focusRuleId={focusRuleId} onFocusHandled={() => setFocusRuleId(null)} />
-      )}
-      {activeTab === "supplier-rules" && (
-        <SupplierRulesForm focusRuleId={focusRuleId} onFocusHandled={() => setFocusRuleId(null)} />
-      )}
-      {activeTab === "labor-rules" && (
-        <LaborRulesForm focusRuleId={focusRuleId} onFocusHandled={() => setFocusRuleId(null)} />
-      )}
-      {activeTab === "pricing-strategy" && (
-        <PricingStrategyForm focusRuleId={focusRuleId} onFocusHandled={() => setFocusRuleId(null)} />
-      )}
-      {activeTab === "unit-rules" && (
-        <UnitRulesForm focusRuleId={focusRuleId} onFocusHandled={() => setFocusRuleId(null)} />
-      )}
-      {activeTab === "manage-existing" && <ManageExistingRulesTab onViewRule={openExistingRule} />}
+      <div className="min-w-0">
+        {activeTab === "material-rules" && (
+          <MaterialRulesForm focusRuleId={focusRuleId} onFocusHandled={() => setFocusRuleId(null)} />
+        )}
+        {activeTab === "supplier-rules" && (
+          <SupplierRulesForm focusRuleId={focusRuleId} onFocusHandled={() => setFocusRuleId(null)} />
+        )}
+        {activeTab === "labor-rules" && (
+          <LaborRulesForm focusRuleId={focusRuleId} onFocusHandled={() => setFocusRuleId(null)} />
+        )}
+        {activeTab === "pricing-strategy" && (
+          <PricingStrategyForm focusRuleId={focusRuleId} onFocusHandled={() => setFocusRuleId(null)} />
+        )}
+        {activeTab === "unit-rules" && (
+          <UnitRulesForm focusRuleId={focusRuleId} onFocusHandled={() => setFocusRuleId(null)} />
+        )}
+        {activeTab === "manage-existing" && <ManageExistingRulesTab onViewRule={openExistingRule} />}
+      </div>
     </div>
   );
 }

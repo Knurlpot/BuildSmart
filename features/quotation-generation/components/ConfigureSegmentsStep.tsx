@@ -137,11 +137,12 @@ function SegmentConfigForm({ segment, onSave }: SegmentConfigFormProps) {
 interface ApplyToAllPanelProps {
   segmentCount: number;
   onApply: (patch: Pick<DraftSegment, "treatment_type" | "condition_tags" | "is_rush">) => void;
+  isOpen: boolean;
+  onOpenChange: (open: boolean) => void;
 }
 
 // 
-  function ApplyToAllPanel({ segmentCount, onApply }: ApplyToAllPanelProps) {
-  const [open, setOpen] = useState(false);
+function ApplyToAllPanel({ segmentCount, onApply, isOpen, onOpenChange }: ApplyToAllPanelProps) {
   const [treatmentChoice, setTreatmentChoice] = useState("");
   const [customTreatment, setCustomTreatment] = useState("");
   const [tags, setTags] = useState<SegmentConditionTag[]>([]);
@@ -160,37 +161,34 @@ interface ApplyToAllPanelProps {
       condition_tags: tags,
       is_rush: isRush,
     });
-    setOpen(false);
+    onOpenChange(false);
   };
 
-  if (!open) {
+  if (!isOpen) {
     return (
       <button
         type="button"
-        onClick={() => setOpen(true)}
-        className="flex w-fit items-center gap-1.5 rounded-lg border border-dashed border-primary/40 bg-orange-50/40 px-3 py-1.5 text-xs font-bold text-primary transition hover:bg-orange-50"
+        onClick={() => onOpenChange(true)}
+        className="flex items-center gap-1.5 rounded-lg border border-dashed border-primary/40 bg-orange-50/40 px-3 py-1.5 text-xs font-bold text-primary transition hover:bg-orange-50"
       >
-        <Zap className="h-3.5 w-3.5" /> Apply to All Segments
-        <span className="rounded-full bg-primary/10 px-1.5 py-0.5 text-[9px] font-extrabold uppercase tracking-wide text-primary">New</span>
+        <Zap className="h-3.5 w-3.5" />
+        Apply to All Segments
       </button>
     );
   }
 
   return (
-    <div className="flex flex-col gap-3 rounded-xl border border-primary/30 bg-orange-50/40 p-4">
-      <div className="flex items-start justify-between gap-2">
-        <div className="flex items-center gap-1.5">
+    <div className="flex flex-col gap-4">
+      <div className="rounded-xl border border-gray-100 bg-gray-50/60 p-3">
+        <h3 className="flex items-center gap-1.5 text-sm font-bold text-gray-900">
           <Sparkles className="h-4 w-4 text-primary" />
-          <p className="text-sm font-bold text-gray-900">Apply to All {segmentCount} Segments</p>
-        </div>
-        <button type="button" onClick={() => setOpen(false)} className="text-xs font-semibold text-gray-400 transition hover:text-gray-600">
-          Cancel
-        </button>
+          Apply to All {segmentCount} Segments
+        </h3>
+        <p className="mt-1 text-xs text-gray-500">
+          Set a value once and apply it to every segment.
+          You can still open any segment afterward and change just that one.
+        </p>
       </div>
-      <p className="text-xs text-gray-500">
-        Set a value once and apply it to every segment.
-        You can still open any segment afterward and change just that one.
-      </p>
 
       <div className="flex flex-col gap-1.5">
         <label className="text-xs font-semibold text-gray-600">Treatment Type</label>
@@ -270,6 +268,7 @@ export function ConfigureSegmentsStep({ quoteId, segments, onChange, onSaved, on
   const { updateInputMethod } = useUpdateQuotationInputMethod();
   const [selectedId, setSelectedId] = useState<string | null>(segments[0]?.draft_id ?? null);
   const [applyRevision, setApplyRevision] = useState(0);
+  const [showApplyPanel, setShowApplyPanel] = useState(false);
 
   // 
   const includedSegments = segments.filter(isSegmentIncluded);
@@ -320,13 +319,20 @@ export function ConfigureSegmentsStep({ quoteId, segments, onChange, onSaved, on
         </div>
       </div>
 
-      <ApplyToAllPanel segmentCount={segments.length} onApply={applyToAll} />
-
-
       <div className="flex overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm" style={{ height: 440 }}>
         <div className="flex w-80 shrink-0 flex-col border-r border-gray-100">
           <div className="border-b border-gray-100 px-4 py-3">
-            <p className="text-xs font-bold uppercase tracking-wider text-gray-400">Segments ({segments.length})</p>
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-xs font-bold uppercase tracking-wider text-gray-400">Segments ({segments.length})</p>
+              <button
+                type="button"
+                onClick={() => setShowApplyPanel(true)}
+                className="flex items-center gap-1.5 rounded-lg border border-dashed border-primary/40 bg-orange-50/40 px-3 py-1.5 text-xs font-bold text-primary transition hover:bg-orange-50"
+              >
+                <Zap className="h-3.5 w-3.5" />
+                Apply to All
+              </button>
+            </div>
           </div>
           <div className="flex-1 divide-y divide-gray-50 overflow-y-auto">
             {segments.map((seg) => {
@@ -337,7 +343,10 @@ export function ConfigureSegmentsStep({ quoteId, segments, onChange, onSaved, on
                 <button
                   key={seg.draft_id}
                   type="button"
-                  onClick={() => setSelectedId(seg.draft_id)}
+                  onClick={() => {
+                    setSelectedId(seg.draft_id);
+                    setShowApplyPanel(false);
+                  }}
                   className={`flex w-full items-center gap-2.5 px-4 py-3 text-left transition ${
                     isSelected ? "bg-orange-50/60" : "hover:bg-gray-50"
                   } ${!included ? "opacity-60" : ""}`}
@@ -351,6 +360,7 @@ export function ConfigureSegmentsStep({ quoteId, segments, onChange, onSaved, on
                   )}
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-semibold text-gray-800">{seg.segment_name}</p>
+                    {seg.treatment_type && <p className="truncate text-xs font-semibold text-primary">{seg.treatment_type}</p>}
                     <p className="text-xs text-gray-400">
                       {seg.floor_level || "—"} · {seg.area_sqm.toFixed(1)} sqm
                       {!included && <span className="ml-1.5 font-semibold text-gray-400">· Excluded</span>}
@@ -362,7 +372,9 @@ export function ConfigureSegmentsStep({ quoteId, segments, onChange, onSaved, on
           </div>
         </div>
         <div className="flex-1 overflow-y-auto p-5">
-          {selected ? (
+          {showApplyPanel ? (
+            <ApplyToAllPanel segmentCount={segments.length} onApply={applyToAll} isOpen={true} onOpenChange={setShowApplyPanel} />
+          ) : selected ? (
             <SegmentConfigForm key={`${selected.draft_id}-${applyRevision}`} segment={selected} onSave={(patch) => updateSegment(selected.draft_id, patch)} />
           ) : (
             <div className="flex h-full items-center justify-center text-sm text-gray-400">No segments to configure.</div>

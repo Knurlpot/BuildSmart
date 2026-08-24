@@ -1,9 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { AlertTriangle, BarChart2, BookOpen, ChevronDown, ChevronUp, Database, FileText, Layers, ShoppingBag, X } from "lucide-react";
+import { AlertTriangle, BarChart2, BookOpen, Check, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Layers, Pencil, ShoppingBag, X } from "lucide-react";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
-import { fmtPeso } from "@/lib/dev/provisional/quotationBreakdownFixtures";
+import { fmtPeso, recomputeItemLine } from "@/lib/dev/provisional/quotationBreakdownFixtures";
 import type { ItemCategory, PricelistBasis, ProvisionalItemLine, ProvisionalQuotationTierResult, ProvisionalTier } from "@/lib/dev/provisional/quotationBreakdownTypes";
 import type { BlueprintFloor } from "@/lib/dev/provisional/quotationGenerationTypes";
 import type { DraftSegment } from "../lib/draftSegment";
@@ -22,6 +22,7 @@ interface QuotationBreakdownModalProps {
   // point of a snapshot. The live wizard (QuotationResultsStep, pre-finalize) still passes
   // this and gets the real interactive toggle.
   onBasisChange?: (basis: PricelistBasis) => void;
+  onItemsChange?: (items: ProvisionalItemLine[]) => void;
   onClose: () => void;
   // Task 7, Part B — Segment Breakdown's split-view blueprint preview (left half). null/
   // undefined = this quote wasn't blueprint-sourced (Quick Measurement/Manual), OR (some
@@ -33,6 +34,20 @@ interface QuotationBreakdownModalProps {
 }
 
 const TIER_ACCENT: Record<ProvisionalTier, string> = { Practical: "text-primary", Premium: "text-indigo-600" };
+const TIER_HIGHLIGHT: Record<ProvisionalTier, { text: string; border: string; bg: string; selectedBadge: string }> = {
+  Practical: {
+    text: "text-primary",
+    border: "border-primary",
+    bg: "bg-primary",
+    selectedBadge: "bg-primary/10 text-primary",
+  },
+  Premium: {
+    text: "text-indigo-600",
+    border: "border-indigo-600",
+    bg: "bg-indigo-600",
+    selectedBadge: "bg-indigo-100 text-indigo-700",
+  },
+};
 const SOURCE_BADGE: Record<string, string> = {
   DPWH: "bg-blue-100 text-blue-700",
   PSA: "bg-purple-100 text-purple-700",
@@ -44,13 +59,10 @@ function SourceBadge({ source }: { source: string }) {
   return <span className={`shrink-0 rounded px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide ${SOURCE_BADGE[source] ?? "bg-gray-100 text-gray-600"}`}>{source}</span>;
 }
 
-// Part B — one small box per item line: real provenance fields (price_source/region/
-// quarter+year or recorded_at), and a Confidence row that is LABELED BUT ALWAYS BLANK.
-// There is no computed basis for price confidence anywhere yet — this must never show a
-// fabricated "High/Medium/Low." It only ever fills in the day a real computation backs it.
 function PricingReferenceBox({ line }: { line: ProvisionalItemLine }) {
   const ref = line.pricing_reference;
   const dateLabel = ref.quarter && ref.year ? `${ref.quarter} ${ref.year}` : ref.recorded_at ? new Date(ref.recorded_at).toLocaleDateString("en-PH", { year: "numeric", month: "short", day: "numeric" }) : "—";
+  const isSupplierPricelist = line.source_type === "Uploaded" || ref.price_source === "Supplier" || ref.price_source === "Internal";
   return (
     <div className="flex flex-col gap-1 rounded-lg border border-gray-100 bg-gray-50/60 px-3 py-2 text-[11px]">
       <div className="flex items-center justify-between">
@@ -58,9 +70,26 @@ function PricingReferenceBox({ line }: { line: ProvisionalItemLine }) {
         <SourceBadge source={ref.price_source} />
       </div>
       <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-gray-500">
-        <span>Region: {ref.region ?? "—"}</span>
+        {isSupplierPricelist ? <span>Brand: {ref.brand ?? "—"}</span> : <span>Region: {ref.region ?? "—"}</span>}
         <span>Recorded: {dateLabel}</span>
-        <span className="italic text-gray-400">Confidence: not yet computed</span>
+      </div>
+    </div>
+  );
+}
+
+function LaborRuleBox({ line }: { line: ProvisionalItemLine }) {
+  const scope = line.labor_rule_scope ?? (line.treatment_type ? "Treatment" : "General");
+  const label = line.labor_rule_label ?? (scope === "Treatment" ? line.treatment_type ?? "Treatment Labor Rule" : "General Labor Rule");
+  const scopeLabel = scope === "Trade" ? "By Trade" : scope === "Treatment" ? "By Treatment" : "General";
+
+  return (
+    <div className="flex flex-col gap-1 rounded-lg border border-indigo-100 bg-indigo-50/50 px-3 py-2 text-[11px]">
+      <div className="flex items-center justify-between">
+        <span className="font-semibold uppercase tracking-wide text-gray-400">Labor Rule</span>
+        <span className="shrink-0 rounded px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide bg-indigo-100 text-indigo-700">{scopeLabel}</span>
+      </div>
+      <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-gray-500">
+        <span>Rule: {label}</span>
       </div>
     </div>
   );
@@ -78,14 +107,14 @@ function CategoryChip({ category }: { category: ItemCategory }) {
 // is always visible; expanding it reveals the same item-level breakdown + Pricing Reference
 // this tab always showed. Collapsed by default (`defaultOpen`) so a quote with many
 // segments doesn't dump every line at once — the right half of the split view.
-function SegmentCostDeck({ segLines, defaultOpen, hovered, onHoverChange }: { segLines: ProvisionalItemLine[]; defaultOpen: boolean; hovered: boolean; onHoverChange: (id: string | null) => void }) {
+function SegmentCostDeck({ tier, segLines, defaultOpen, hovered, onHoverChange }: { tier: ProvisionalTier; segLines: ProvisionalItemLine[]; defaultOpen: boolean; hovered: boolean; onHoverChange: (id: string | null) => void }) {
   const [open, setOpen] = useState(defaultOpen);
   const first = segLines[0];
   const subtotal = segLines.reduce((sum, l) => sum + (l.total_cost ?? 0), 0);
 
   return (
     <div
-      className={`rounded-xl border bg-white shadow-sm transition-colors ${hovered ? "border-primary" : "border-gray-100"}`}
+      className={`rounded-xl border bg-white shadow-sm transition-colors ${hovered ? TIER_HIGHLIGHT[tier].border : "border-gray-100"}`}
       onMouseEnter={() => onHoverChange(first.segment_draft_id)}
       onMouseLeave={() => onHoverChange(null)}
     >
@@ -124,7 +153,7 @@ function SegmentCostDeck({ segLines, defaultOpen, hovered, onHoverChange }: { se
                   </>
                 )}
               </p>
-              <PricingReferenceBox line={line} />
+              {line.category === "Labor" ? <LaborRuleBox line={line} /> : <PricingReferenceBox line={line} />}
             </div>
           ))}
         </div>
@@ -173,7 +202,7 @@ function SegmentListFallback({ items, hoveredId, onHoverChange }: { items: Provi
 // Task 7, Part B — split view: left half previews the blueprint (reusing BlueprintOverlay
 // exactly, via SegmentBlueprintPreview) when one exists for this quote, otherwise degrades
 // to SegmentListFallback; right half is one collapsible cost deck per segment.
-function SegmentBreakdownTab({ items, segments, blueprintFloors }: { items: ProvisionalItemLine[]; segments?: DraftSegment[]; blueprintFloors?: BlueprintFloor[] | null }) {
+function SegmentBreakdownTab({ tier, items, segments, blueprintFloors }: { tier: ProvisionalTier; items: ProvisionalItemLine[]; segments?: DraftSegment[]; blueprintFloors?: BlueprintFloor[] | null }) {
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const segmentIds = Array.from(new Set(items.map((l) => l.segment_draft_id)));
   const hasBlueprint = !!blueprintFloors && blueprintFloors.length > 0 && !!segments && segments.length > 0;
@@ -191,6 +220,7 @@ function SegmentBreakdownTab({ items, segments, blueprintFloors }: { items: Prov
         {segmentIds.map((segId) => (
           <SegmentCostDeck
             key={segId}
+            tier={tier}
             segLines={items.filter((l) => l.segment_draft_id === segId)}
             defaultOpen={false}
             hovered={hoveredId === segId}
@@ -203,12 +233,21 @@ function SegmentBreakdownTab({ items, segments, blueprintFloors }: { items: Prov
 }
 
 function BoqTab({ items }: { items: ProvisionalItemLine[] }) {
+  const materialItems = items.filter((line) => line.category === "Material");
+  const laborItems = items.filter((line) => line.category === "Labor");
+
+  const formatLaborScope = (line: ProvisionalItemLine) => {
+    const scope = line.labor_rule_scope === "Trade" ? "By Trade" : line.labor_rule_scope === "Treatment" ? "By Treatment" : "General";
+    return line.labor_rule_label ? `${scope} · ${line.labor_rule_label}` : scope;
+  };
+
   return (
     <div className="flex flex-col gap-3">
       <p className="text-xs text-gray-500">
-        These are the materials needed for the project.
+        These are the materials and labor needed for the project.
       </p>
       <div className="overflow-x-auto rounded-xl border border-gray-100">
+        <div className="border-b border-gray-100 bg-gray-50 px-3 py-2.5 text-xs font-bold uppercase tracking-wide text-gray-600">Materials</div>
         <table className="w-full text-xs">
           <thead>
             <tr className="border-b border-gray-200 bg-gray-50">
@@ -222,7 +261,7 @@ function BoqTab({ items }: { items: ProvisionalItemLine[] }) {
             </tr>
           </thead>
           <tbody>
-            {items.map((line) => (
+            {materialItems.map((line) => (
               <tr key={line.line_id} className={`border-b border-gray-100 ${line.unit_price === null ? "bg-amber-50/40" : line.is_overridden ? "bg-blue-50/30" : ""}`}>
                 <td className="px-3 py-2.5">
                   <div className="flex items-center gap-1.5">
@@ -238,12 +277,53 @@ function BoqTab({ items }: { items: ProvisionalItemLine[] }) {
                 <td className="px-3 py-2.5">
                   <div className="flex items-center gap-1.5">
                     <SourceBadge source={line.pricing_reference.price_source} />
-                    <span className="text-gray-400">{line.pricing_reference.region ?? (line.pricing_reference.recorded_at ? new Date(line.pricing_reference.recorded_at).toLocaleDateString("en-PH", { year: "numeric", month: "short" }) : "—")}</span>
+                    <span className="text-gray-400">
+                      {line.source_type === "Uploaded"
+                        ? line.pricing_reference.brand ?? "—"
+                        : line.pricing_reference.region ?? (line.pricing_reference.recorded_at ? new Date(line.pricing_reference.recorded_at).toLocaleDateString("en-PH", { year: "numeric", month: "short" }) : "—")}
+                    </span>
                   </div>
                 </td>
                 <td className="px-3 py-2.5 text-right font-bold text-gray-900">{line.total_cost !== null ? fmtPeso(line.total_cost) : "—"}</td>
               </tr>
             ))}
+          </tbody>
+        </table>
+      </div>
+      <div className="overflow-x-auto rounded-xl border border-indigo-100">
+        <div className="border-b border-indigo-100 bg-indigo-50/60 px-3 py-2.5 text-xs font-bold uppercase tracking-wide text-indigo-700">Labor</div>
+        <table className="w-full text-xs">
+          <thead>
+            <tr className="border-b border-indigo-100 bg-indigo-50/30">
+              <th className="px-3 py-2.5 text-left font-semibold text-gray-500">Rule Scope (of Labor Rule)</th>
+              <th className="px-3 py-2.5 text-left font-semibold text-gray-500">Segment</th>
+              <th className="px-3 py-2.5 text-right font-semibold text-gray-500">Unit Price</th>
+              <th className="px-3 py-2.5 text-right font-semibold text-gray-500">Rush Multiplier</th>
+              <th className="px-3 py-2.5 text-right font-semibold text-gray-500">Productivity Index</th>
+              <th className="px-3 py-2.5 text-right font-semibold text-gray-500">Total</th>
+            </tr>
+          </thead>
+          <tbody>
+            {laborItems.map((line) => (
+              <tr key={line.line_id} className={`border-b border-gray-100 last:border-0 ${line.unit_price === null ? "bg-amber-50/40" : ""}`}>
+                <td className="px-3 py-2.5">
+                  <div className="flex items-center gap-1.5">
+                    <CategoryChip category={line.category} />
+                    <span className="font-medium text-gray-800">{formatLaborScope(line)}</span>
+                  </div>
+                </td>
+                <td className="px-3 py-2.5 text-gray-500">{line.segment_name}</td>
+                <td className="px-3 py-2.5 text-right text-gray-700">{line.unit_price !== null ? fmtPeso(line.unit_price) : <span className="font-semibold text-amber-600">Missing price</span>}</td>
+                <td className="px-3 py-2.5 text-right text-gray-700">{line.rush_multiplier_percentage !== null && line.rush_multiplier_percentage !== undefined ? `${line.rush_multiplier_percentage}%` : "—"}</td>
+                <td className="px-3 py-2.5 text-right text-gray-700">{line.productivity_index ?? "—"}</td>
+                <td className="px-3 py-2.5 text-right font-bold text-gray-900">{line.total_cost !== null ? fmtPeso(line.total_cost) : "—"}</td>
+              </tr>
+            ))}
+            {laborItems.length === 0 && (
+              <tr>
+                <td colSpan={6} className="px-3 py-4 text-center text-gray-400">No labor lines for this quotation.</td>
+              </tr>
+            )}
           </tbody>
         </table>
       </div>
@@ -309,57 +389,189 @@ function CostSummaryTab({ result }: { result: ProvisionalQuotationTierResult }) 
 // stock/availability at all (out of scope — a quoting tool, not inventory), so there is no
 // "Available"/"Can Fulfil?" column here anymore. Comparing suppliers by price, plus the
 // Uploaded-Pricelist-vs-DPWH toggle in the header above, is the whole of this tab.
-function BenchmarkingTab({ items }: { items: ProvisionalItemLine[] }) {
+function BenchmarkingTab({ tier, items, onItemsChange }: { tier: ProvisionalTier; items: ProvisionalItemLine[]; onItemsChange?: (items: ProvisionalItemLine[]) => void }) {
   const withSuppliers = items.filter((l) => l.supplier_options.length > 0);
+  const updateLineSupplier = (line: ProvisionalItemLine, supplierId: number) => {
+    const option = line.supplier_options.find((supplier) => supplier.supplier_id === supplierId);
+    if (!option || !onItemsChange) return;
+    onItemsChange(
+      items.map((item) =>
+        item.line_id === line.line_id
+          ? recomputeItemLine(item, {
+              selected_supplier_id: option.supplier_id,
+              unit_price: option.unit_price,
+              source_type: option.source_type,
+            })
+          : item
+      )
+    );
+  };
+
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex items-center gap-2 rounded-xl border border-blue-100 bg-blue-50 px-4 py-3 text-xs text-blue-700">
-        <ShoppingBag className="h-4 w-4 shrink-0" />
-        Comparing suppliers by price against what this quote actually needs.
-      </div>
       {withSuppliers.map((line) => (
-        <div key={line.line_id} className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
-          <div className="mb-2 flex items-center justify-between">
-            <div>
-              <p className="text-sm font-bold text-gray-900">{line.item_name}</p>
-              <p className="text-xs text-gray-400">
-                {line.segment_name} · needs {line.quantity.toFixed(1)} {line.unit}
-              </p>
-            </div>
-          </div>
-          <div className="overflow-x-auto rounded-lg border border-gray-100">
-            <table className="w-full text-xs">
-              <thead>
-                <tr className="border-b border-gray-200 bg-gray-50">
-                  <th className="px-3 py-2 text-left font-semibold text-gray-500">Supplier</th>
-                  <th className="px-3 py-2 text-right font-semibold text-gray-500">Unit Price</th>
-                </tr>
-              </thead>
-              <tbody>
-                {[...line.supplier_options]
-                  .sort((a, b) => a.unit_price - b.unit_price)
-                  .map((sup) => {
-                    const isSelected = sup.supplier_id === line.selected_supplier_id;
-                    return (
-                      <tr key={sup.supplier_id} className={`border-b border-gray-100 last:border-0 ${isSelected ? "bg-orange-50/40" : ""}`}>
-                        <td className="px-3 py-2 font-medium text-gray-800">
-                          {sup.supplier_name} {isSelected && <span className="ml-1 rounded-full bg-primary/10 px-1.5 py-0.5 text-[9px] font-bold text-primary">Selected</span>}
-                        </td>
-                        <td className="px-3 py-2 text-right text-gray-700">{fmtPeso(sup.unit_price)}</td>
-                      </tr>
-                    );
-                  })}
-              </tbody>
-            </table>
-          </div>
-        </div>
+        <BenchmarkingMaterialCard
+          key={line.line_id}
+          tier={tier}
+          line={line}
+          editable={Boolean(onItemsChange)}
+          onSelectSupplier={(supplierId) => updateLineSupplier(line, supplierId)}
+        />
       ))}
       {withSuppliers.length === 0 && <p className="text-sm text-gray-400">No priced items with supplier options to compare yet.</p>}
     </div>
   );
 }
 
-export function QuotationBreakdownModal({ tier, result, pricelistBasis, onBasisChange, onClose, blueprintFloors, segments }: QuotationBreakdownModalProps) {
+function BenchmarkingMaterialCard({ tier, line, editable, onSelectSupplier }: { tier: ProvisionalTier; line: ProvisionalItemLine; editable: boolean; onSelectSupplier: (supplierId: number) => void }) {
+  const [page, setPage] = useState(0);
+  const [editing, setEditing] = useState(false);
+  const pageSize = 5;
+  const sortedOptions = [...line.supplier_options].sort((a, b) => a.unit_price - b.unit_price);
+  const selectedOption =
+    sortedOptions.find((sup) => sup.supplier_id === line.selected_supplier_id) ??
+    sortedOptions.find((sup) => sup.source_type === line.source_type && sup.unit_price === line.unit_price) ??
+    null;
+  const totalPages = Math.max(1, Math.ceil(sortedOptions.length / pageSize));
+  const currentPage = Math.min(page, totalPages - 1);
+  const visibleOptions = sortedOptions.slice(currentPage * pageSize, currentPage * pageSize + pageSize);
+
+  return (
+    <div className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
+      <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0 flex-1">
+          <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Selected Material</p>
+          <div className="flex min-w-0 items-center gap-2">
+            <p className="truncate text-sm font-bold text-gray-900">{line.item_name}</p>
+            {selectedOption && <span className={`shrink-0 rounded-full px-2 py-0.5 text-[9px] font-bold ${TIER_HIGHLIGHT[tier].selectedBadge}`}>Selected</span>}
+          </div>
+          <p className="text-xs text-gray-400">
+            {line.segment_name} · needs {line.quantity.toFixed(1)} {line.unit}
+          </p>
+        </div>
+        {selectedOption && (
+          <div className="flex max-w-full items-center gap-2 rounded-lg border border-gray-100 bg-gray-50 px-3 py-2 text-xs md:max-w-[55%]">
+            <span className="shrink-0 font-semibold text-gray-500">Chosen option</span>
+            <span className="min-w-0 flex-1 truncate font-bold text-gray-900">
+              {selectedOption.supplier_name}
+              {selectedOption.source_type === "DPWH" && selectedOption.location ? ` · ${selectedOption.location}` : ""}
+            </span>
+            <span className={`shrink-0 font-bold ${TIER_HIGHLIGHT[tier].text}`}>{fmtPeso(selectedOption.unit_price)}</span>
+            {editable && (
+              <button
+                type="button"
+                onClick={() => setEditing((open) => !open)}
+                title="Edit selected supplier"
+                aria-label="Edit selected supplier"
+                className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-500 transition hover:border-primary/40 hover:text-primary"
+              >
+                <Pencil className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+      {editing && (
+        <div className="mb-3 rounded-lg border border-primary/20 bg-orange-50/40 p-3">
+          <label className="mb-1.5 block text-xs font-semibold text-gray-600">Supplier</label>
+          <select
+            value={selectedOption?.supplier_id ?? ""}
+            onChange={(e) => {
+              const supplierId = Number(e.target.value);
+              if (!Number.isFinite(supplierId)) return;
+              onSelectSupplier(supplierId);
+              setEditing(false);
+            }}
+            className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20"
+          >
+            {sortedOptions.map((sup) => (
+              <option key={sup.supplier_id} value={sup.supplier_id}>
+                {sup.supplier_name} - {fmtPeso(sup.unit_price)}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+      <div className="overflow-x-auto rounded-lg border border-gray-100">
+        <table className="w-full text-xs">
+          <thead>
+            <tr className="border-b border-gray-200 bg-gray-50">
+              <th className="px-3 py-2 text-left font-semibold text-gray-500">Supplier / Location</th>
+              <th className="px-3 py-2 text-right font-semibold text-gray-500">Unit Price</th>
+            </tr>
+          </thead>
+          <tbody>
+            {visibleOptions.map((sup) => {
+              const isSelected = sup.supplier_id === selectedOption?.supplier_id;
+              return (
+                <tr key={sup.supplier_id} className={`border-b border-gray-100 last:border-0 ${isSelected ? "bg-gray-50" : ""}`}>
+                  <td className="px-3 py-2 font-medium text-gray-800">
+                    <div className="flex flex-col gap-0.5">
+                      <span>
+                        {sup.supplier_name} {isSelected && <span className={`ml-1 rounded-full px-1.5 py-0.5 text-[9px] font-bold ${TIER_HIGHLIGHT[tier].selectedBadge}`}>Selected</span>}
+                      </span>
+                      {sup.source_type === "DPWH" && <span className="text-[10px] font-normal text-gray-400">Location: {sup.location ?? "—"}</span>}
+                    </div>
+                  </td>
+                  <td className="px-3 py-2 text-right text-gray-700">
+                    <div className="flex items-center justify-end gap-2">
+                      <span>{fmtPeso(sup.unit_price)}</span>
+                      {editing && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            onSelectSupplier(sup.supplier_id);
+                            setEditing(false);
+                          }}
+                          title="Select supplier"
+                          aria-label={`Select ${sup.supplier_name}`}
+                          className={`flex h-7 w-7 items-center justify-center rounded-lg border transition ${
+                            isSelected
+                              ? `${TIER_HIGHLIGHT[tier].border} ${TIER_HIGHLIGHT[tier].text} bg-white`
+                              : "border-gray-200 bg-white text-gray-500 hover:border-primary/40 hover:text-primary"
+                          }`}
+                        >
+                          <Check className="h-3.5 w-3.5" />
+                        </button>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+      {sortedOptions.length > pageSize && (
+        <div className="mt-3 flex items-center justify-end gap-2 text-xs text-gray-500">
+          <span>
+            Page {currentPage + 1} of {totalPages}
+          </span>
+          <button
+            type="button"
+            onClick={() => setPage((p) => Math.max(0, p - 1))}
+            disabled={currentPage === 0}
+            className="flex h-7 w-7 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-500 transition hover:border-gray-300 disabled:cursor-not-allowed disabled:opacity-40"
+            aria-label="Previous supplier options"
+          >
+            <ChevronLeft className="h-3.5 w-3.5" />
+          </button>
+          <button
+            type="button"
+            onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
+            disabled={currentPage >= totalPages - 1}
+            className="flex h-7 w-7 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-500 transition hover:border-gray-300 disabled:cursor-not-allowed disabled:opacity-40"
+            aria-label="Next supplier options"
+          >
+            <ChevronRight className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+export function QuotationBreakdownModal({ tier, result, onClose, blueprintFloors, segments, onItemsChange }: QuotationBreakdownModalProps) {
   const [activeTab, setActiveTab] = useState<TabId>("segments");
   const TABS: { id: TabId; label: string; icon: typeof BookOpen }[] = [
     { id: "segments", label: "Segment Breakdown", icon: Layers },
@@ -383,40 +595,10 @@ export function QuotationBreakdownModal({ tier, result, pricelistBasis, onBasisC
           <div>
             <h2 className="text-base font-bold text-gray-900">
               Detailed Breakdown: <span className={TIER_ACCENT[tier]}>{tier}</span>
-              <span className="ml-2 rounded-full bg-gray-200 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-gray-500">View only</span>
             </h2>
             <p className="text-xs text-gray-500">Full cost transparency · all prices in Philippine Pesos (₱) · mock fixture values</p>
           </div>
           <div className="flex items-center gap-3">
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-semibold text-gray-500">Pricelist Basis:</span>
-              {!onBasisChange ? (
-                <span
-                  title="Frozen at finalize. A saved quote's basis cannot be changed."
-                  className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-gray-100 px-3 py-1.5 text-xs font-semibold text-gray-500"
-                >
-                  {pricelistBasis === "Uploaded" ? <FileText className="h-3 w-3" /> : <Database className="h-3 w-3" />}
-                  {pricelistBasis === "Uploaded" ? "Uploaded Pricelist" : "DPWH CMPD"} (as finalized)
-                </span>
-              ) : (
-              <div className="flex overflow-hidden rounded-lg border border-gray-200 bg-white text-xs">
-                <button
-                  type="button"
-                  onClick={() => onBasisChange("Uploaded")}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 font-semibold transition-colors ${pricelistBasis === "Uploaded" ? "bg-primary text-primary-foreground" : "text-gray-500 hover:bg-gray-50"}`}
-                >
-                  <FileText className="h-3 w-3" /> Uploaded Pricelist
-                </button>
-                <button
-                  type="button"
-                  onClick={() => onBasisChange("DPWH")}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 font-semibold transition-colors ${pricelistBasis === "DPWH" ? "bg-blue-600 text-white" : "text-gray-500 hover:bg-gray-50"}`}
-                >
-                  <Database className="h-3 w-3" /> DPWH CMPD
-                </button>
-              </div>
-              )}
-            </div>
             <button type="button" onClick={onClose} className="flex h-8 w-8 items-center justify-center rounded-full hover:bg-gray-200">
               <X className="h-4 w-4 text-gray-600" />
             </button>
@@ -432,21 +614,21 @@ export function QuotationBreakdownModal({ tier, result, pricelistBasis, onBasisC
                 key={tab.id}
                 type="button"
                 onClick={() => setActiveTab(tab.id)}
-                className={`relative flex items-center gap-1.5 px-4 py-3 text-xs font-semibold transition-colors ${active ? "text-primary" : "text-gray-500 hover:text-gray-700"}`}
+                className={`relative flex items-center gap-1.5 px-4 py-3 text-xs font-semibold transition-colors ${active ? TIER_HIGHLIGHT[tier].text : "text-gray-500 hover:text-gray-700"}`}
               >
                 <Icon className="h-3.5 w-3.5" />
                 {tab.label}
-                {active && <span className="absolute inset-x-0 bottom-0 h-0.5 bg-primary" />}
+                {active && <span className={`absolute inset-x-0 bottom-0 h-0.5 ${TIER_HIGHLIGHT[tier].bg}`} />}
               </button>
             );
           })}
         </div>
 
         <div className="flex-1 overflow-y-auto p-6">
-          {activeTab === "segments" && <SegmentBreakdownTab items={result.items} segments={segments} blueprintFloors={blueprintFloors} />}
+          {activeTab === "segments" && <SegmentBreakdownTab tier={tier} items={result.items} segments={segments} blueprintFloors={blueprintFloors} />}
           {activeTab === "boq" && <BoqTab items={result.items} />}
           {activeTab === "cost-summary" && <CostSummaryTab result={result} />}
-          {activeTab === "benchmarking" && <BenchmarkingTab items={result.items} />}
+          {activeTab === "benchmarking" && <BenchmarkingTab tier={tier} items={result.items} onItemsChange={onItemsChange} />}
         </div>
       </DialogContent>
     </Dialog>

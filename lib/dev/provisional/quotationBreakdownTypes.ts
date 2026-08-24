@@ -34,7 +34,9 @@
 
 import type { HistoricalPriceRecord } from '@/types/entities/historical-price-record';
 import type { PhRegion } from '@/types/entities/common';
+import type { Client, Quotation } from '@/types/entities';
 import type { DraftSegment } from '@/features/quotation-generation/lib/draftSegment';
+import type { InputMethod, WizardPhase } from '@/features/quotation-generation/lib/workflowSteps';
 import type { BlueprintFloor } from './quotationGenerationTypes';
 
 export type ProvisionalTier = 'Practical' | 'Premium';
@@ -55,6 +57,7 @@ export type PricelistBasis = 'Uploaded' | 'DPWH';
 export interface ProvisionalPricingReference {
   price_source: HistoricalPriceRecord['price_source'];
   region: PhRegion | null;
+  brand: string | null;
   quarter: HistoricalPriceRecord['quarter'];
   year: number | null;
   recorded_at: string | null;
@@ -67,6 +70,8 @@ export interface ProvisionalPricingReference {
 export interface ProvisionalSupplierOption {
   supplier_id: number; // fixture, mirrors a real suppliers.supplier_id
   supplier_name: string;
+  brand: string | null;
+  location?: string | null;
   unit_price: number;
   quantity_available: number | null; // PROVISIONAL, no supplier_item_stock table exists
   source_type: PricelistBasis;
@@ -100,6 +105,10 @@ export interface ProvisionalItemLine {
   source_type: PricelistBasis; // which basis currently prices this line
   is_overridden: boolean; // addendum #3 — does a human override the derived value
   pricing_reference: ProvisionalPricingReference;
+  labor_rule_scope?: 'Treatment' | 'Trade' | 'General';
+  labor_rule_label?: string;
+  rush_multiplier_percentage?: number | null;
+  productivity_index?: number | null;
   supplier_options: ProvisionalSupplierOption[]; // Part B/D — benchmarking + Minor Revision's picker
   selected_supplier_id: number | null; // which of supplier_options is currently priced in
 }
@@ -174,20 +183,27 @@ export interface SavedQuoteSnapshot {
 
 export interface SavedProjectRecord {
   project_id: string;
+  source_quote_id?: number | null;
   client_id: number;
   client_name: string;
   project_name: string;
   project_location: string;
   project_region: string;
-  status: 'Final';
+  status: 'Draft' | 'Final';
   created_at: string;
   updated_at: string;
   quotes: Record<ProvisionalTier, SavedQuoteSnapshot>;
   segmentsSnapshot: DraftSegment[];
   blueprintFloors: BlueprintFloor[] | null;
+  resume_step?: WizardPhase;
+  resume_method?: InputMethod;
+  quotationSnapshot?: Quotation;
+  clientSnapshot?: Client;
+  blueprintFilePath?: string | null;
 }
 
 export interface FinalizedQuotationInput {
+  quoteId?: number | null;
   clientId: number;
   clientName: string;
   projectName: string;

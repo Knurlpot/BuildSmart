@@ -22,7 +22,7 @@ interface ProjectListQuotation extends Quotation {
 
 interface OpenProjectRow {
   id: string;
-  quote_id: number;
+  quote_id: number | null;
   client_name: string;
   project_name: string;
   project_location: string;
@@ -49,7 +49,18 @@ function StatusBadge({ status }: { status: OpenProjectRow["status"] }) {
 function acceptedTier(project: SavedProjectRecord | null): string {
   if (project?.quotes.Practical.is_selected) return "Practical";
   if (project?.quotes.Premium.is_selected) return "Premium";
-  return "Not chosen";
+  return "Not decided";
+}
+
+function isResumableDraft(project: SavedProjectRecord | null): project is SavedProjectRecord {
+  return project?.status === "Draft";
+}
+
+function projectHref(row: OpenProjectRow): string {
+  if (isResumableDraft(row.savedProject)) {
+    return `/quotations/new?resumeProjectId=${encodeURIComponent(row.savedProject.project_id)}`;
+  }
+  return row.savedProject ? `/projects/${row.savedProject.project_id}` : `/quotations/${row.quote_id}`;
 }
 
 function clientInitials(name: string): string {
@@ -77,6 +88,11 @@ function OpenProjectsContent({ onMetaChange }: OpenProjectsContentProps) {
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const rows = useMemo<OpenProjectRow[]>(() => {
+    const savedByQuoteId = new Map(
+      savedProjects
+        .filter((project) => project.source_quote_id != null)
+        .map((project) => [project.source_quote_id, project])
+    );
     const savedByProject = new Map(
       savedProjects.map((project) => [
         [
@@ -88,11 +104,13 @@ function OpenProjectsContent({ onMetaChange }: OpenProjectsContentProps) {
         project,
       ])
     );
+    const matchedSavedProjectIds = new Set<string>();
 
-    return (quotations ?? []).map((quote) => {
+    const backendRows = (quotations ?? []).map((quote) => {
       const clientName = quote.client_name ?? "No client";
       const savedProject =
-        quote.client_id == null
+        savedByQuoteId.get(quote.quote_id) ??
+        (quote.client_id == null
           ? null
           : savedByProject.get(
               [
@@ -101,7 +119,8 @@ function OpenProjectsContent({ onMetaChange }: OpenProjectsContentProps) {
                 quote.project_location,
                 quote.project_region,
               ].join("\u0000")
-            ) ?? null;
+            ) ?? null);
+      if (savedProject) matchedSavedProjectIds.add(savedProject.project_id);
 
       return {
         id: `quote-${quote.quote_id}`,
@@ -110,11 +129,27 @@ function OpenProjectsContent({ onMetaChange }: OpenProjectsContentProps) {
         project_name: quote.project_name,
         project_location: quote.project_location,
         project_region: quote.project_region,
-        status: quote.status,
+        status: savedProject?.status === "Draft" ? "Draft" : quote.status,
         created_at: quote.created_at,
         savedProject,
       };
     });
+
+    const savedOnlyRows: OpenProjectRow[] = savedProjects
+      .filter((project) => !matchedSavedProjectIds.has(project.project_id))
+      .map((project) => ({
+        id: `saved-${project.project_id}`,
+        quote_id: null,
+        client_name: project.client_name,
+        project_name: project.project_name,
+        project_location: project.project_location,
+        project_region: project.project_region,
+        status: project.status,
+        created_at: project.created_at,
+        savedProject: project,
+      }));
+
+    return [...savedOnlyRows, ...backendRows];
   }, [quotations, savedProjects]);
 
   const filteredRows = useMemo(() => {
@@ -127,7 +162,7 @@ function OpenProjectsContent({ onMetaChange }: OpenProjectsContentProps) {
   }, [region, rows, search]);
 
   const openRow = (row: OpenProjectRow) => {
-    router.push(row.savedProject ? `/projects/${row.savedProject.project_id}` : `/quotations/${row.quote_id}`);
+    router.push(projectHref(row));
   };
   const createNew = useCallback(() => router.push("/quotations/new"), [router]);
 
@@ -136,10 +171,12 @@ function OpenProjectsContent({ onMetaChange }: OpenProjectsContentProps) {
     setIsDeleting(true);
     setDeleteError(null);
     try {
-      await apiClient<void>(`/api/quotations/${deleteTarget.quote_id}`, {
-        method: "DELETE",
-        credentials: "include",
-      });
+      if (deleteTarget.quote_id !== null) {
+        await apiClient<void>(`/api/quotations/${deleteTarget.quote_id}`, {
+          method: "DELETE",
+          credentials: "include",
+        });
+      }
       if (deleteTarget.savedProject) deleteSavedProject(deleteTarget.savedProject.project_id);
       setDeleteTarget(null);
       refetch();
@@ -216,7 +253,7 @@ function OpenProjectsContent({ onMetaChange }: OpenProjectsContentProps) {
       ) : (
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
           {filteredRows.map((project) => {
-            const href = project.savedProject ? `/projects/${project.savedProject.project_id}` : `/quotations/${project.quote_id}`;
+            const href = projectHref(project);
             return (
               <article
                 key={project.id}
@@ -251,10 +288,17 @@ function OpenProjectsContent({ onMetaChange }: OpenProjectsContentProps) {
                     <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">Region</p>
                     <p className="mt-1 truncate text-xs font-medium text-gray-600">{project.project_region}</p>
                   </div>
-                  <div className="min-w-0">
-                    <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">Accepted Tier</p>
-                    <p className="mt-1 truncate text-xs font-medium text-gray-600">{acceptedTier(project.savedProject)}</p>
-                  </div>
+                  {project.status === "Final" ? (
+                    <div className="min-w-0">
+                      <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">Quotation</p>
+                      <p className="mt-1 truncate text-xs font-medium text-gray-600">{acceptedTier(project.savedProject)}</p>
+                    </div>
+                  ) : (
+                    <div className="min-w-0">
+                      <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">Decision</p>
+                      <p className="mt-1 truncate text-xs font-medium text-gray-600">{acceptedTier(project.savedProject)}</p>
+                    </div>
+                  )}
                   <div className="min-w-0">
                     <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">Created</p>
                     <p className="mt-1 truncate text-xs font-medium text-gray-600">{formatDate(project.created_at)}</p>

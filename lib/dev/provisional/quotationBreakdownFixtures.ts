@@ -9,7 +9,7 @@
 import { stagingId } from './quotationGenerationTypes';
 import type { DraftSegment } from '@/features/quotation-generation/lib/draftSegment';
 import { isSegmentIncluded } from '@/features/quotation-generation/lib/draftSegment';
-import type { MaterialRuleEntry, UnitRule } from './companyRulesTypes';
+import { laborRuleScope, type LaborRule, type MaterialRuleEntry, type UnitRule } from './companyRulesTypes';
 import type {
   ItemCategory,
   PricelistBasis,
@@ -23,6 +23,7 @@ import type {
 import type { Items } from '@/types/entities/items';
 import type { SavedPriceRecord } from '@/hooks/usePricelistCatalog';
 import type { DpwhCatalogRow } from '@/hooks/usePricelistPublishedSource';
+import type { PricingStrategyRule } from './companyRulesTypes';
 
 interface SupplierFixture {
   supplier_id: number;
@@ -210,18 +211,20 @@ function round2(n: number): number {
 }
 
 function pricingReferenceFor(basis: PricelistBasis): ProvisionalPricingReference {
-  // DPWH publishes quarterly (quarter/year present, no recorded_at date); an uploaded/
-  // internal pricelist has an upload timestamp instead, no quarter — matches
+  // DPWH publishes quarterly (quarter/year present, no recorded_at date); an uploaded
+  // supplier pricelist has an upload timestamp instead, no quarter — matches
   // HistoricalPriceRecord's documented nullability semantics exactly.
   return basis === 'DPWH'
-    ? { price_source: 'DPWH', region: 'NCR', quarter: 'Q2', year: 2026, recorded_at: null, confidence: null }
-    : { price_source: 'Internal', region: null, quarter: null, year: null, recorded_at: '2026-06-01T09:00:00.000Z', confidence: null };
+    ? { price_source: 'DPWH', region: 'NCR', brand: null, quarter: 'Q2', year: 2026, recorded_at: null, confidence: null }
+    : { price_source: 'Supplier', region: null, brand: null, quarter: null, year: null, recorded_at: '2026-06-01T09:00:00.000Z', confidence: null };
 }
 
 function supplierOptionsFor(def: ItemFixtureDef, tier: ProvisionalTier, basis: PricelistBasis): ProvisionalSupplierOption[] {
   return def.suppliers.map((s) => ({
     supplier_id: s.supplier_id,
     supplier_name: s.supplier_name,
+    brand: null,
+    location: null,
     unit_price: tier === 'Practical' ? s.practical_price : s.premium_price,
     quantity_available: s.quantity_available,
     source_type: basis,
@@ -252,6 +255,10 @@ function buildLine(seg: DraftSegment, def: ItemFixtureDef, tier: ProvisionalTier
     source_type: basis,
     is_overridden: false,
     pricing_reference: pricingReferenceFor(basis),
+    labor_rule_scope: def.category === 'Labor' ? (seg.treatment_type ? 'Treatment' : 'General') : undefined,
+    labor_rule_label: def.category === 'Labor' ? seg.treatment_type?.trim() || 'General Labor Rule' : undefined,
+    rush_multiplier_percentage: null,
+    productivity_index: null,
     supplier_options: suppliers,
     selected_supplier_id: suppliers[0]?.supplier_id ?? null,
   };
@@ -327,10 +334,13 @@ function buildCompanyRuleLine(
     .sort((a, b) => a.price - b.price);
   const selectedUploadedPrice = matchingUploadedPrices[0] ?? null;
   const selectedDpwhPrice = matchingDpwhPrices[0] ?? null;
-  const selectedPrice = basis === 'DPWH' ? selectedDpwhPrice : selectedUploadedPrice;
+  const selectedPrice = basis === 'DPWH' ? selectedDpwhPrice : selectedUploadedPrice ?? selectedDpwhPrice;
+  const selectedBasis: PricelistBasis = selectedPrice && selectedPrice === selectedDpwhPrice ? 'DPWH' : 'Uploaded';
   const uploadedOptions: ProvisionalSupplierOption[] = matchingUploadedPrices.map((price) => ({
     supplier_id: price.historicalrec_id,
     supplier_name: price.supplier_name ?? 'Uploaded pricelist',
+    brand: price.brand || null,
+    location: null,
     unit_price: price.price,
     quantity_available: null,
     source_type: 'Uploaded',
@@ -338,6 +348,8 @@ function buildCompanyRuleLine(
   const dpwhOptions: ProvisionalSupplierOption[] = matchingDpwhPrices.map((price) => ({
     supplier_id: price.historicalrec_id,
     supplier_name: `DPWH CMPD${price.region ? ` - ${price.region}` : ''}`,
+    brand: null,
+    location: price.location ?? price.region ?? null,
     unit_price: price.price,
     quantity_available: null,
     source_type: 'DPWH',
@@ -360,17 +372,75 @@ function buildCompanyRuleLine(
     quantity: qty,
     unit_price: unitPrice,
     total_cost: unitPrice !== null ? round2(qty * unitPrice) : null,
+    source_type: selectedPrice ? selectedBasis : basis,
+    is_overridden: false,
+    pricing_reference: {
+      ...pricingReferenceFor(selectedPrice ? selectedBasis : basis),
+      region: selectedBasis === 'Uploaded' ? null : pricingReferenceFor('DPWH').region,
+      brand: selectedBasis === 'Uploaded' ? selectedUploadedPrice?.brand || item?.brand || null : null,
+    },
+    supplier_options: [...uploadedOptions, ...dpwhOptions],
+    selected_supplier_id: selectedPrice?.historicalrec_id ?? null,
+  };
+}
+
+function matchingLaborRule(seg: DraftSegment, laborRules: LaborRule[]): LaborRule | null {
+  const activeRules = laborRules.filter((rule) => rule.is_active);
+  const treatment = seg.treatment_type?.trim().toLowerCase();
+  if (treatment) {
+    const treatmentMatch = activeRules.find(
+      (rule) => rule.treatment_type?.trim().toLowerCase() === treatment
+    );
+    if (treatmentMatch) return treatmentMatch;
+  }
+  return activeRules.find((rule) => rule.treatment_type === null && rule.labor_trade === null) ?? null;
+}
+
+function buildCompanyLaborLine(seg: DraftSegment, rule: LaborRule, basis: PricelistBasis): ProvisionalItemLine {
+  const quantity = round2(seg.area_sqm);
+  const productivityFactor = rule.productivity_index ?? 1;
+  const appliedRushMultiplier = seg.is_rush ? rule.rush_multiplier_percentage : null;
+  const rushFactor = 1 + ((appliedRushMultiplier ?? 0) / 100);
+  const rate = round2(rule.labor_rate * productivityFactor * rushFactor);
+  const treatmentLabel = seg.treatment_type?.trim() || "General";
+  const scope = laborRuleScope(rule);
+
+  return {
+    line_id: stagingId('item'),
+    segment_draft_id: seg.draft_id,
+    segment_name: seg.segment_name,
+    floor_level: seg.floor_level,
+    treatment_type: seg.treatment_type,
+    category: 'Labor',
+    item_code: `LABOR-${rule.rule_id}`,
+    item_name: rule.treatment_type
+      ? `Labor - ${treatmentLabel}`
+      : rule.labor_trade
+        ? `Labor - ${rule.labor_trade}`
+        : 'Labor - General',
+    unit: 'sqm',
+    derived_area_sqm: seg.area_sqm,
+    derived_coverage_per_sqm: 1,
+    derived_wastage_percentage: 0,
+    quantity,
+    unit_price: rate,
+    total_cost: round2(quantity * rate),
     source_type: basis,
     is_overridden: false,
     pricing_reference: pricingReferenceFor(basis),
-    supplier_options: [...uploadedOptions, ...dpwhOptions],
-    selected_supplier_id: selectedPrice?.historicalrec_id ?? null,
+    labor_rule_scope: scope,
+    labor_rule_label: scope === 'Treatment' ? rule.treatment_type ?? treatmentLabel : scope === 'Trade' ? rule.labor_trade ?? 'Trade Labor Rule' : 'General Labor Rule',
+    rush_multiplier_percentage: appliedRushMultiplier,
+    productivity_index: rule.productivity_index,
+    supplier_options: [],
+    selected_supplier_id: null,
   };
 }
 
 export function deriveCompanyRuleItemLines(
   segments: DraftSegment[],
   materialRules: MaterialRuleEntry[],
+  laborRules: LaborRule[],
   unitRules: UnitRule[],
   items: Items[],
   basis: PricelistBasis,
@@ -383,6 +453,7 @@ export function deriveCompanyRuleItemLines(
   const itemByCode = new Map(items.map((item) => [String(item.item_code), item]));
   const lines: ProvisionalItemLine[] = [];
   let matchedAnyTreatment = false;
+  let matchedAnyLabor = false;
 
   for (const seg of segments.filter(isSegmentIncluded)) {
     const treatment = seg.treatment_type?.trim().toLowerCase();
@@ -394,6 +465,11 @@ export function deriveCompanyRuleItemLines(
 
     if (rulesForTreatment.length === 0) {
       lines.push(buildMissingRuleLine(seg, basis));
+      const laborRule = matchingLaborRule(seg, laborRules);
+      if (laborRule) {
+        matchedAnyLabor = true;
+        lines.push(buildCompanyLaborLine(seg, laborRule, basis));
+      }
       continue;
     }
 
@@ -401,9 +477,15 @@ export function deriveCompanyRuleItemLines(
     for (const rule of rulesForTreatment) {
       lines.push(buildCompanyRuleLine(seg, rule, itemByCode.get(String(rule.preferred_item_code)), matchingUnitRule(rule, unitRules), basis, uploadedPrices, dpwhPrices));
     }
+
+    const laborRule = matchingLaborRule(seg, laborRules);
+    if (laborRule) {
+      matchedAnyLabor = true;
+      lines.push(buildCompanyLaborLine(seg, laborRule, basis));
+    }
   }
 
-  return matchedAnyTreatment ? lines : null;
+  return matchedAnyTreatment || matchedAnyLabor ? lines : null;
 }
 
 /** Part B/D — re-prices the CURRENT line set to a new pricelist basis (Uploaded <-> DPWH).
@@ -452,15 +534,32 @@ function deriveMockServiceCost(items: ProvisionalItemLine[], materialsSubtotal: 
  * never mutates lines (Part A). */
 export function recomputeItemLine(
   line: ProvisionalItemLine,
-  patch: Partial<Pick<ProvisionalItemLine, 'quantity' | 'unit_price' | 'selected_supplier_id' | 'item_name'>>
+  patch: Partial<Pick<ProvisionalItemLine, 'quantity' | 'unit_price' | 'selected_supplier_id' | 'item_name' | 'source_type'>>
 ): ProvisionalItemLine {
   const next: ProvisionalItemLine = { ...line, ...patch };
   if ('selected_supplier_id' in patch && patch.selected_supplier_id !== null) {
     const sup = line.supplier_options.find((s) => s.supplier_id === patch.selected_supplier_id);
-    if (sup) next.unit_price = sup.unit_price;
+    if (sup) {
+      next.unit_price = sup.unit_price;
+      next.source_type = sup.source_type;
+      next.pricing_reference = {
+        ...next.pricing_reference,
+        price_source: sup.source_type === 'DPWH' ? 'DPWH' : 'Supplier',
+        region: sup.source_type === 'DPWH' ? next.pricing_reference.region : null,
+        brand: sup.source_type === 'Uploaded' ? sup.brand : null,
+      };
+    }
   }
   if ('quantity' in patch || 'unit_price' in patch || 'selected_supplier_id' in patch || 'item_name' in patch) {
     next.is_overridden = true;
+  }
+  if ('unit_price' in patch && patch.unit_price !== null && line.unit_price === null) {
+    next.pricing_reference = {
+      ...next.pricing_reference,
+      price_source: next.source_type === 'DPWH' ? 'DPWH' : 'Supplier',
+      region: next.source_type === 'DPWH' ? next.pricing_reference.region : null,
+      brand: next.source_type === 'Uploaded' ? next.pricing_reference.brand ?? 'Manual revision' : null,
+    };
   }
   next.total_cost = next.unit_price !== null ? round2(next.quantity * next.unit_price) : null;
   return next;
@@ -474,9 +573,12 @@ export function recomputeItemLine(
 export function computeTierResult(
   tier: ProvisionalTier,
   items: ProvisionalItemLine[],
-  options?: { vatInclusive?: boolean; downpaymentPercentage?: number }
+  options?: { vatInclusive?: boolean; downpaymentPercentage?: number; pricingStrategy?: PricingStrategyRule | null }
 ): ProvisionalQuotationTierResult {
   const pricingFixture = TIER_PRICING_FIXTURE[tier];
+  const overheadPercentage = options?.pricingStrategy?.overhead_percentage ?? pricingFixture.ocm_percentage;
+  const profitMarginPercentage = options?.pricingStrategy?.profit_margin_percentage ?? pricingFixture.profit_margin_percentage;
+  const vatRatePercentage = options?.pricingStrategy?.vat_percentage ?? VAT_RATE_PERCENTAGE;
   const vatInclusive = options?.vatInclusive ?? true;
   const downpaymentPercentage = options?.downpaymentPercentage ?? DEFAULT_DOWNPAYMENT_PERCENTAGE;
 
@@ -484,11 +586,11 @@ export function computeTierResult(
   const serviceCost = deriveMockServiceCost(items, materialsSubtotal, tier);
 
   const baseForMarkup = materialsSubtotal + serviceCost.subtotal;
-  const ocmAmount = round2(baseForMarkup * (pricingFixture.ocm_percentage / 100));
-  const profitAmount = round2(baseForMarkup * (pricingFixture.profit_margin_percentage / 100));
+  const ocmAmount = round2(baseForMarkup * (overheadPercentage / 100));
+  const profitAmount = round2(baseForMarkup * (profitMarginPercentage / 100));
   const subtotalBeforeVat = round2(baseForMarkup + ocmAmount + profitAmount);
 
-  const vatAmount = vatInclusive ? round2(subtotalBeforeVat * (VAT_RATE_PERCENTAGE / 100)) : 0;
+  const vatAmount = vatInclusive ? round2(subtotalBeforeVat * (vatRatePercentage / 100)) : 0;
   const grandTotal = round2(subtotalBeforeVat + vatAmount);
   const downpaymentAmount = round2(grandTotal * (downpaymentPercentage / 100));
 
@@ -497,12 +599,12 @@ export function computeTierResult(
     items,
     materials_subtotal: materialsSubtotal,
     service_cost: serviceCost,
-    ocm_percentage: pricingFixture.ocm_percentage,
+    ocm_percentage: overheadPercentage,
     ocm_amount: ocmAmount,
-    profit_margin_percentage: pricingFixture.profit_margin_percentage,
+    profit_margin_percentage: profitMarginPercentage,
     profit_amount: profitAmount,
     subtotal_before_vat: subtotalBeforeVat,
-    vat: { rate_percentage: VAT_RATE_PERCENTAGE, taxable_base: subtotalBeforeVat, amount: vatAmount },
+    vat: { rate_percentage: vatRatePercentage, taxable_base: subtotalBeforeVat, amount: vatAmount },
     vat_inclusive: vatInclusive,
     downpayment_percentage: downpaymentPercentage,
     downpayment_amount: downpaymentAmount,
