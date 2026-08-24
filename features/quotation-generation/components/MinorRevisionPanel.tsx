@@ -1,20 +1,36 @@
 "use client";
 
 import { useState } from "react";
-import { AlertTriangle, Check, ChevronDown, Database, Edit2, FileText, RefreshCw, X } from "lucide-react";
+import { flushSync } from "react-dom";
+import { AlertTriangle, Check, ChevronDown, Edit2, RefreshCw, X } from "lucide-react";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { computeTierResult, fmtPeso, recomputeItemLine } from "@/lib/dev/provisional/quotationBreakdownFixtures";
-import type { PricelistBasis, ProvisionalItemLine, ProvisionalTier } from "@/lib/dev/provisional/quotationBreakdownTypes";
+import { PROVISIONAL_TIERS, type ProvisionalItemLine, type ProvisionalTier } from "@/lib/dev/provisional/quotationBreakdownTypes";
 
 interface MinorRevisionPanelProps {
   tier: ProvisionalTier;
   originalItems: ProvisionalItemLine[];
   items: ProvisionalItemLine[];
   onItemsChange: (next: ProvisionalItemLine[]) => void;
-  pricelistBasis: PricelistBasis;
-  onBasisChange: (basis: PricelistBasis) => void;
+  onTierChange?: (tier: ProvisionalTier) => void;
   onClose: () => void;
   onApply: () => void;
+}
+
+function parseMoneyInput(value: string): number {
+  return Number(value.replace(/[₱,\s]/g, ""));
+}
+
+function formatMoneyInput(value: string): string {
+  const cleaned = value.replace(/[^\d.]/g, "");
+  const [whole = "", ...decimalParts] = cleaned.split(".");
+  const decimal = decimalParts.join("").slice(0, 2);
+  const wholeNumber = whole === "" ? "" : Number(whole).toLocaleString("en-PH");
+  return decimalParts.length > 0 ? `${wholeNumber}.${decimal}` : wholeNumber;
+}
+
+function formatMoneyForEdit(value: number): string {
+  return value.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
 function EditableText({ value, onCommit }: { value: string; onCommit: (v: string) => void }) {
@@ -50,25 +66,38 @@ function EditableText({ value, onCommit }: { value: string; onCommit: (v: string
   );
 }
 
-function EditableAmount({ value, onCommit }: { value: number; onCommit: (n: number) => void }) {
+function EditableAmount({
+  value,
+  onCommit,
+  hideNumberSteppers = false,
+  money = false,
+}: {
+  value: number;
+  onCommit: (n: number) => void;
+  hideNumberSteppers?: boolean;
+  money?: boolean;
+}) {
   const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState(String(value));
+  const [draft, setDraft] = useState(money ? formatMoneyForEdit(value) : String(value));
   if (editing) {
     return (
       <input
         value={draft}
-        onChange={(e) => setDraft(e.target.value)}
+        onChange={(e) => setDraft(money ? formatMoneyInput(e.target.value) : e.target.value)}
         onBlur={() => {
-          const n = Number(draft);
-          if (!isNaN(n) && n >= 0) onCommit(n);
+          const n = money ? parseMoneyInput(draft) : Number(draft);
+          if (!isNaN(n) && n >= 0) onCommit(money ? Math.round(n * 100) / 100 : n);
           setEditing(false);
         }}
         onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()}
-        type="number"
+        type={money ? "text" : "number"}
+        inputMode={money ? "decimal" : undefined}
         min={0}
         step="0.01"
         autoFocus
-        className="w-24 rounded border border-primary px-1.5 py-0.5 text-right text-xs outline-none"
+        className={`w-24 rounded border border-primary px-1.5 py-0.5 text-right text-xs outline-none ${
+          hideNumberSteppers ? "[appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none" : ""
+        }`}
       />
     );
   }
@@ -76,12 +105,12 @@ function EditableAmount({ value, onCommit }: { value: number; onCommit: (n: numb
     <button
       type="button"
       onClick={() => {
-        setDraft(String(value));
+        setDraft(money ? formatMoneyForEdit(value) : String(value));
         setEditing(true);
       }}
       className="ml-auto flex items-center gap-1 rounded border border-transparent px-1.5 py-0.5 hover:border-gray-300 hover:bg-white"
     >
-      {value.toLocaleString("en-PH", { maximumFractionDigits: 2 })}
+      {money ? fmtPeso(value) : value.toLocaleString("en-PH", { maximumFractionDigits: 2 })}
       <Edit2 className="h-2.5 w-2.5 text-gray-400" />
     </button>
   );
@@ -135,11 +164,13 @@ function SupplierPicker({ line, onSelect }: { line: ProvisionalItemLine; onSelec
   );
 }
 
-function MissingRuleRow({ line, onResolve }: { line: ProvisionalItemLine; onResolve: (unitPrice: number, saveAsRule: boolean) => void }) {
+function MissingRuleRow({ line, onResolve }: { line: ProvisionalItemLine; onResolve: (unitPrice: number) => void }) {
   const [value, setValue] = useState("");
-  const [saveAsRule, setSaveAsRule] = useState(true);
-  const parsed = Number(value);
+  const parsed = parseMoneyInput(value);
   const valid = value.trim() !== "" && parsed > 0;
+  const commit = () => {
+    if (valid) onResolve(Math.round(parsed * 100) / 100);
+  };
   return (
     <div className="flex flex-col gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3">
       <p className="flex items-start gap-1.5 text-xs font-semibold text-amber-700">
@@ -152,33 +183,23 @@ function MissingRuleRow({ line, onResolve }: { line: ProvisionalItemLine; onReso
           <span className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-gray-400">₱</span>
           <input
             value={value}
-            onChange={(e) => setValue(e.target.value)}
-            type="number"
-            min={0}
-            step="0.01"
+            onChange={(e) => setValue(formatMoneyInput(e.target.value))}
+            onBlur={commit}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.currentTarget.blur();
+              }
+            }}
+            type="text"
+            inputMode="decimal"
             placeholder="Unit price"
-            className="w-32 rounded-lg border border-gray-200 bg-white py-1.5 pl-6 pr-2 text-xs outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+            className="w-32 rounded-lg border border-gray-200 bg-white py-1.5 pl-6 pr-2 text-xs outline-none [appearance:textfield] focus:border-primary focus:ring-2 focus:ring-primary/20 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
           />
         </div>
-        <label className="flex items-center gap-1.5 text-xs text-gray-600">
-          <input type="checkbox" checked={saveAsRule} onChange={(e) => setSaveAsRule(e.target.checked)} className="h-3.5 w-3.5 rounded border-gray-300 text-primary focus:ring-2 focus:ring-primary/30" />
-          Save as company rule for next time
-        </label>
-        <button
-          type="button"
-          disabled={!valid}
-          onClick={() => onResolve(parsed, saveAsRule)}
-          className="ml-auto flex items-center gap-1 rounded-lg bg-primary px-3 py-1.5 text-xs font-bold text-primary-foreground transition hover:bg-(--primary-hover) disabled:opacity-50"
-        >
-          <Check className="h-3.5 w-3.5" /> Continue
-        </button>
       </div>
-      {saveAsRule && (
-        <p className="text-[11px] text-amber-600">
-          Mock only. No company_rule row is created yet. This previews the pattern the real save flow
-          will use once rule creation is wired.
-        </p>
-      )}
+      <p className="text-[11px] text-amber-600">
+        This saves the price to this quotation option. Add or update CPRM Material/Unit Rules separately if this should become a reusable company rule.
+      </p>
     </div>
   );
 }
@@ -188,13 +209,20 @@ function MissingRuleRow({ line, onResolve }: { line: ProvisionalItemLine; onReso
 // prototype). "Regenerate" here means re-running the same mock formula
 // (computeTierResult) against edited qty/price/supplier — there is no backend endpoint to
 // regenerate against yet.
-export function MinorRevisionPanel({ tier, originalItems, items, onItemsChange, pricelistBasis, onBasisChange, onClose, onApply }: MinorRevisionPanelProps) {
+export function MinorRevisionPanel({ tier, originalItems, items, onItemsChange, onTierChange, onClose, onApply }: MinorRevisionPanelProps) {
+  const [workingItems, setWorkingItems] = useState(items);
   const originalTotal = computeTierResult(tier, originalItems).grand_total;
-  const revisedTotal = computeTierResult(tier, items).grand_total;
+  const revisedTotal = computeTierResult(tier, workingItems).grand_total;
   const diff = revisedTotal - originalTotal;
 
   const patchLine = (lineId: string, patch: Parameters<typeof recomputeItemLine>[1]) => {
-    onItemsChange(items.map((l) => (l.line_id === lineId ? recomputeItemLine(l, patch) : l)));
+    flushSync(() => {
+      setWorkingItems((current) => current.map((l) => (l.line_id === lineId ? recomputeItemLine(l, patch) : l)));
+    });
+  };
+
+  const commitWorkingItems = () => {
+    onItemsChange(workingItems);
   };
 
   return (
@@ -205,28 +233,33 @@ export function MinorRevisionPanel({ tier, originalItems, items, onItemsChange, 
       <DialogContent className="flex h-[92vh] w-[97vw] max-w-400 sm:max-w-400 flex-col p-0" showCloseButton={false}>
         <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-gray-200 bg-gray-50 px-6 py-4">
           <div>
-            <h2 className="text-base font-bold text-gray-900">Minor Revision: {tier}</h2>
-            <p className="text-xs text-gray-500">Edit materials, quantities, prices, and suppliers without restarting the process.</p>
+            <h2 className="text-base font-bold text-gray-900">Minor Revision: Shared Price Updates</h2>
+            <p className="text-xs text-gray-500">
+              Edit Practical and Premium revisions here before marking either quotation as accepted.
+            </p>
           </div>
           <div className="flex items-center gap-3">
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-semibold text-gray-500">Pricelist Basis:</span>
-              <div className="flex overflow-hidden rounded-lg border border-gray-200 bg-white text-xs">
+            <div className="flex overflow-hidden rounded-lg border border-gray-200 bg-white text-xs">
+              {PROVISIONAL_TIERS.map((option) => (
                 <button
+                  key={option}
                   type="button"
-                  onClick={() => onBasisChange("Uploaded")}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 font-semibold transition-colors ${pricelistBasis === "Uploaded" ? "bg-primary text-primary-foreground" : "text-gray-500 hover:bg-gray-50"}`}
+                  onClick={() => {
+                    if (option === tier) return;
+                    commitWorkingItems();
+                    onTierChange?.(option);
+                  }}
+                  className={`px-3 py-1.5 font-semibold transition-colors ${
+                    option === tier
+                      ? option === "Practical"
+                        ? "bg-primary text-primary-foreground"
+                        : "bg-indigo-600 text-white"
+                      : "text-gray-500 hover:bg-gray-50"
+                  }`}
                 >
-                  <FileText className="h-3 w-3" /> Uploaded
+                  {option}
                 </button>
-                <button
-                  type="button"
-                  onClick={() => onBasisChange("DPWH")}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 font-semibold transition-colors ${pricelistBasis === "DPWH" ? "bg-blue-600 text-white" : "text-gray-500 hover:bg-gray-50"}`}
-                >
-                  <Database className="h-3 w-3" /> DPWH
-                </button>
-              </div>
+              ))}
             </div>
             <button type="button" onClick={onClose} className="flex h-8 w-8 items-center justify-center rounded-full hover:bg-gray-200">
               <X className="h-4 w-4 text-gray-600" />
@@ -247,7 +280,7 @@ export function MinorRevisionPanel({ tier, originalItems, items, onItemsChange, 
               </tr>
             </thead>
             <tbody>
-              {items.map((line) => {
+              {workingItems.map((line) => {
                 const original = originalItems.find((o) => o.line_id === line.line_id);
                 const changed = original && Math.abs((line.total_cost ?? 0) - (original.total_cost ?? 0)) > 1;
                 if (line.unit_price === null) {
@@ -273,7 +306,7 @@ export function MinorRevisionPanel({ tier, originalItems, items, onItemsChange, 
                       <SupplierPicker line={line} onSelect={(id) => patchLine(line.line_id, { selected_supplier_id: id })} />
                     </td>
                     <td className="px-4 py-2.5 text-right">
-                      <EditableAmount value={line.unit_price} onCommit={(n) => patchLine(line.line_id, { unit_price: n })} />
+                      <EditableAmount value={line.unit_price} onCommit={(n) => patchLine(line.line_id, { unit_price: n })} hideNumberSteppers money />
                     </td>
                     <td className="px-4 py-2.5 text-right font-bold text-gray-900">
                       {line.total_cost !== null ? fmtPeso(line.total_cost) : "—"}
@@ -305,13 +338,20 @@ export function MinorRevisionPanel({ tier, originalItems, items, onItemsChange, 
             )}
           </div>
           <div className="flex items-center gap-3">
-            <button type="button" onClick={() => onItemsChange(originalItems)} className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-600 transition hover:bg-gray-50">
+            <button type="button" onClick={() => setWorkingItems(originalItems)} className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-600 transition hover:bg-gray-50">
               <RefreshCw className="h-3.5 w-3.5" /> Reset
             </button>
             <button type="button" onClick={onClose} className="rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-600 transition hover:bg-gray-50">
               Cancel
             </button>
-            <button type="button" onClick={onApply} className="flex items-center gap-2 rounded-lg bg-primary px-5 py-2 text-sm font-semibold text-primary-foreground transition hover:bg-(--primary-hover)">
+            <button
+              type="button"
+              onClick={() => {
+                commitWorkingItems();
+                onApply();
+              }}
+              className="flex items-center gap-2 rounded-lg bg-primary px-5 py-2 text-sm font-semibold text-primary-foreground transition hover:bg-(--primary-hover)"
+            >
               <Check className="h-4 w-4" /> Apply Revisions
             </button>
           </div>

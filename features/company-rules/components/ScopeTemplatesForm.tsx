@@ -208,7 +208,7 @@ export function ScopeTemplatesForm({ focusRuleId, onFocusHandled }: ScopeTemplat
         onAdd={startAdd}
         countLabel={`${allTemplates.length} configured`}
         listHeader={
-          <div className="grid grid-cols-2 gap-2 border-b border-gray-100 px-4 py-3">
+          <div className="grid grid-cols-2 gap-2">
             {(["active", "disabled"] as const).map((filter) => (
               <button
                 key={filter}
@@ -436,7 +436,7 @@ export function ScopeTemplatesForm({ focusRuleId, onFocusHandled }: ScopeTemplat
                   <Pencil className="h-3.5 w-3.5" /> Edit
                 </button>
               </div>
-              <div>
+              <div className="px-4">
                 <p className="mb-2 text-xs font-bold uppercase tracking-wider text-gray-400">Material Categories</p>
                 <div className="flex flex-wrap gap-2">
                   {selected.material_categories.map((c) => (
@@ -471,7 +471,7 @@ export function ScopeTemplatesForm({ focusRuleId, onFocusHandled }: ScopeTemplat
               </div>
             </div>
           ) : (
-            <div className="flex h-full flex-col items-center justify-center gap-2 text-center text-gray-400">
+            <div className="flex min-h-[26rem] w-full flex-col items-center justify-center gap-2 text-center text-gray-400">
               <p className="text-sm">Select Scope Template</p>
             </div>
           )

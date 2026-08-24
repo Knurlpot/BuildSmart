@@ -1,6 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
+import { Plus } from "lucide-react";
 import { QueryState } from "@/components/feedback/QueryState";
 
 interface RuleListDetailPanelProps<T> {
@@ -16,6 +17,7 @@ interface RuleListDetailPanelProps<T> {
   emptyHint?: string;
   countLabel?: string;
   listHeader?: ReactNode;
+  contentClassName?: string;
   renderListItem: (item: T) => ReactNode;
   detail: ReactNode;
 }
@@ -33,27 +35,34 @@ export function RuleListDetailPanel<T>({
   emptyHint,
   countLabel,
   listHeader,
+  contentClassName,
   renderListItem,
   detail,
 }: RuleListDetailPanelProps<T>) {
   return (
-    <div className="grid gap-4 lg:grid-cols-[20rem_minmax(0,1fr)]">
-      <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
-        <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3">
-          <div>
-            <p className="text-sm font-bold text-gray-900">{title}</p>
-            <p className="text-[11px] text-gray-400">{countLabel ?? `${items.length} configured`}</p>
-          </div>
-          <button
-            type="button"
-            onClick={onAdd}
-            className="rounded-lg bg-primary px-3 py-1.5 text-xs font-bold text-primary-foreground transition hover:bg-(--primary-hover)"
-          >
-            Add
-          </button>
+    <div className="flex min-w-0 flex-col gap-4">
+      <div
+        className="flex min-h-10 items-center justify-between gap-4"
+        aria-label={countLabel ?? `${items.length} configured`}
+      >
+        <div className="w-full max-w-sm">
+          {listHeader ?? (
+            <p className="text-xs font-semibold text-gray-500">{countLabel ?? `${items.length} configured`}</p>
+          )}
         </div>
-        {listHeader}
+        <button
+          type="button"
+          onClick={onAdd}
+          className="shrink-0 rounded-xl bg-primary px-7 py-2 text-sm font-bold text-primary-foreground shadow-sm transition hover:bg-(--primary-hover)"
+        >
+          <span className="inline-flex items-center gap-1.5">
+            Add <Plus className="h-4 w-4" />
+          </span>
+        </button>
+      </div>
 
+      <div className={contentClassName ?? "grid items-start gap-5 lg:grid-cols-2"}>
+        <div className="min-w-0">
         <QueryState
           isLoading={isLoading}
           error={error}
@@ -61,31 +70,36 @@ export function RuleListDetailPanel<T>({
           onRetry={onRetry}
           emptyTitle={`No ${title.toLowerCase()}`}
           emptyHint={emptyHint}
-          minHeight={220}
+          minHeight={448}
+          keepEmptyTextCentered
         >
-          <div className="max-h-[34rem] overflow-y-auto">
-            {items.map((item) => {
+          <div className="grid max-h-[34rem] grid-cols-1 gap-3 overflow-y-auto pr-1 sm:grid-cols-12 [scrollbar-width:thin]">
+            {items.map((item, index) => {
               const id = getId(item);
               const selected = selectedId === id;
+              const staggeredWidth = index % 4 === 0 || index % 4 === 3 ? "sm:col-span-5" : "sm:col-span-7";
               return (
                 <button
                   key={id}
                   type="button"
                   onClick={() => onSelect(id)}
-                  className={`flex w-full items-start gap-3 border-b border-gray-100 px-4 py-3 text-left transition last:border-b-0 ${
-                    selected ? "bg-orange-50" : "hover:bg-gray-50"
+                  aria-current={selected ? "true" : undefined}
+                  className={`group flex min-h-28 w-full cursor-pointer items-start rounded-xl border p-4 text-left shadow-sm outline-none transition focus-visible:ring-2 focus-visible:ring-primary/40 ${staggeredWidth} ${
+                    selected
+                      ? "border-primary bg-primary text-primary-foreground ring-1 ring-primary/20 [&_*]:!text-white [&_.rounded-full]:!bg-white/20"
+                      : "border-gray-200 bg-white hover:border-primary/40 hover:shadow-md"
                   }`}
                 >
-                  <span className={`mt-1 h-2.5 w-2.5 rounded-full ${selected ? "bg-primary" : "bg-gray-200"}`} />
                   <div className="min-w-0 flex-1">{renderListItem(item)}</div>
                 </button>
               );
             })}
           </div>
         </QueryState>
-      </div>
+        </div>
 
-      <div className="min-h-[24rem] rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">{detail}</div>
+        <div className="min-h-[28rem] rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">{detail}</div>
+      </div>
     </div>
   );
 }

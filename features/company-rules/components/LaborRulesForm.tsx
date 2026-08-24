@@ -45,14 +45,10 @@ export function LaborRulesForm({ focusRuleId, onFocusHandled }: LaborRulesFormPr
   const allRules = editable.applyOverrides([...editable.localExtra, ...rules]);
   const treatmentOptions = Array.from(
     new Set(
-      [
-        ...materialRules
-          .map((rule) => rule.treatment_type?.trim())
-          .filter((value): value is string => !!value),
-        ...allRules
-          .map((rule) => rule.treatment_type?.trim())
-          .filter((value): value is string => !!value),
-      ]
+      materialRules
+        .filter((rule) => rule.is_active)
+        .map((rule) => rule.treatment_type?.trim())
+        .filter((value): value is string => !!value)
     )
   ).sort();
   const [statusFilter, setStatusFilter] = useState<"active" | "disabled">("active");
@@ -82,7 +78,7 @@ export function LaborRulesForm({ focusRuleId, onFocusHandled }: LaborRulesFormPr
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const treatmentValid = scope !== "Treatment" || isNonEmpty(treatmentType);
+  const treatmentValid = scope !== "Treatment" || (isNonEmpty(treatmentType) && treatmentOptions.includes(treatmentType));
   const tradeValid = scope !== "Trade" || isNonEmpty(trade);
   const rateValid = rate !== "" && isPositiveNumber(Number(rate));
   const rushValid = rushMultiplier === "" || isPercent(Number(rushMultiplier));
@@ -113,7 +109,7 @@ export function LaborRulesForm({ focusRuleId, onFocusHandled }: LaborRulesFormPr
     setMode("edit");
     setScope(laborRuleScope(r));
     const isKnownTreatment = !!r.treatment_type && treatmentOptions.includes(r.treatment_type);
-    setTreatmentChoice(isKnownTreatment ? r.treatment_type! : r.treatment_type ? "Other" : "");
+    setTreatmentChoice(isKnownTreatment ? r.treatment_type! : "");
     setTreatmentType(r.treatment_type ?? "");
     setRegion(r.region ?? "");
     setTrade(r.labor_trade ?? "");
@@ -199,7 +195,7 @@ export function LaborRulesForm({ focusRuleId, onFocusHandled }: LaborRulesFormPr
         onAdd={startAdd}
         countLabel={`${allRules.length} configured`}
         listHeader={
-          <div className="grid grid-cols-2 gap-2 border-b border-gray-100 px-4 py-3">
+          <div className="grid grid-cols-2 gap-2">
             {(["active", "disabled"] as const).map((filter) => (
               <button
                 key={filter}
@@ -317,7 +313,7 @@ export function LaborRulesForm({ focusRuleId, onFocusHandled }: LaborRulesFormPr
                     onChange={(e) => {
                       const next = e.target.value;
                       setTreatmentChoice(next);
-                      setTreatmentType(next === "Other" ? "" : next);
+                      setTreatmentType(next);
                     }}
                     className={inputCls}
                   >
@@ -325,19 +321,10 @@ export function LaborRulesForm({ focusRuleId, onFocusHandled }: LaborRulesFormPr
                     {treatmentOptions.map((treatment) => (
                       <option key={treatment}>{treatment}</option>
                     ))}
-                    <option value="Other">Others</option>
                   </select>
-                  {treatmentChoice === "Other" && (
-                    <input
-                      value={treatmentType}
-                      onChange={(e) => setTreatmentType(e.target.value)}
-                      placeholder="Enter treatment type"
-                      className={inputCls}
-                    />
-                  )}
                   {treatmentOptions.length === 0 && (
                     <p className="text-[11px] text-amber-600">
-                      Add treatment-tagged Material Rules first, or choose Others.
+                      Add treatment-tagged Material Rules first.
                     </p>
                   )}
                   {touched && !treatmentValid && <p className="text-xs text-red-500">Treatment type is required.</p>}
@@ -465,10 +452,10 @@ export function LaborRulesForm({ focusRuleId, onFocusHandled }: LaborRulesFormPr
             </div>
           ) : selected ? (
             <div className="flex flex-col gap-4">
-              {savedMessage && (
+              {savedMessage && editable.supersededNotice && (
                 <div className="flex items-center gap-2 rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-xs text-green-700">
                   <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
-                  Company preferences updated successfully.
+                  A new version of this rule was created. The previous version is preserved for existing quotations.
                 </div>
               )}
               <div className="flex items-start justify-between gap-3 rounded-xl border border-gray-100 bg-gray-50/60 p-4">
@@ -498,7 +485,7 @@ export function LaborRulesForm({ focusRuleId, onFocusHandled }: LaborRulesFormPr
                   <Pencil className="h-3.5 w-3.5" /> Edit
                 </button>
               </div>
-              <dl className="grid grid-cols-2 gap-4 text-sm">
+              <dl className="grid grid-cols-2 gap-4 px-4 text-sm">
                 <div>
                   <dt className="text-xs font-semibold uppercase tracking-wide text-gray-400">Rate</dt>
                   <dd className="text-gray-700">
@@ -521,7 +508,7 @@ export function LaborRulesForm({ focusRuleId, onFocusHandled }: LaborRulesFormPr
               </dl>
             </div>
           ) : (
-            <div className="flex h-full flex-col items-center justify-center gap-2 text-center text-gray-400">
+            <div className="flex min-h-[26rem] w-full flex-col items-center justify-center gap-2 text-center text-gray-400">
               <p className="text-sm">Select Labor Rule</p>
             </div>
           )
