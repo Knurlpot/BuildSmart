@@ -50,6 +50,37 @@ function validateSegment(segment: SegmentPayload, index: number): string | null 
   return null;
 }
 
+export async function GET(request: NextRequest, { params }: Params) {
+  const auth = await authContext(request);
+  if (!isAuthContext(auth)) return auth;
+
+  const { quotationId } = await params;
+  const quoteId = Number(quotationId);
+  if (!Number.isInteger(quoteId)) return badRequest("Invalid quotation id.");
+
+  const result = await withTransaction(async (client) => {
+    const quote = await client.query(
+      "SELECT quote_id FROM quotation WHERE quote_id = $1 AND company_id = $2 LIMIT 1",
+      [quoteId, auth.companyId]
+    );
+    if (!quote.rows[0]) return null;
+
+    return client.query(
+      `SELECT segment_id, quote_id, segment_name, segment_type, source_method, floor_level,
+              shape_type, length::float AS length, width::float AS width, area_sqm::float AS area_sqm,
+              polygon_coords, confidence_score::float AS confidence_score, included_in_quote,
+              scope_of_work, work_type, notes, status
+       FROM project_segments
+       WHERE quote_id = $1
+       ORDER BY segment_id`,
+      [quoteId]
+    );
+  });
+
+  if (result === null) return NextResponse.json({ error: "Quotation not found." }, { status: 404 });
+  return NextResponse.json({ segments: result.rows });
+}
+
 export async function POST(request: NextRequest, { params }: Params) {
   const auth = await authContext(request);
   if (!isAuthContext(auth)) return auth;

@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useWorkflowHeader } from "@/providers/WorkflowHeaderProvider";
 import { AmbientBackground } from "./AmbientBackground";
 import { ClientAndProjectStep } from "./ClientAndProjectStep";
@@ -12,10 +12,64 @@ import { ConfigureSegmentsStep } from "./ConfigureSegmentsStep";
 import { GeneratingQuotationAnimation } from "./GeneratingQuotationAnimation";
 import { QuotationResultsStep } from "./QuotationResultsStep";
 import { useDeleteDraftQuotation, useUpdateQuotationInputMethod } from "@/hooks/useQuotationGeneration";
+import { apiClient } from "@/lib/api/client";
 import { buildWorkflowSteps, type InputMethod, type WizardPhase } from "../lib/workflowSteps";
 import type { Quotation, Client } from "@/types/entities";
 import type { DraftSegment } from "../lib/draftSegment";
 import type { BlueprintFloor } from "@/lib/dev/provisional/quotationGenerationTypes";
+import type { ProjectSegment } from "@/types/entities/project-segment";
+
+interface ResumeQuotationPayload extends Quotation {
+  client: Client | null;
+}
+
+function parsePolygon(value?: string | null): [number, number][] | null {
+  if (!value) return null;
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    if (!Array.isArray(parsed)) return null;
+    const points = parsed.filter(
+      (point): point is [number, number] =>
+        Array.isArray(point) &&
+        point.length === 2 &&
+        typeof point[0] === "number" &&
+        typeof point[1] === "number"
+    );
+    return points.length >= 3 ? points : null;
+  } catch {
+    return null;
+  }
+}
+
+function draftFromSavedSegment(segment: ProjectSegment): DraftSegment {
+  const polygon = parsePolygon(segment.polygon_coords);
+  return {
+    draft_id: `seg-${segment.segment_id}`,
+    segment_name: segment.segment_name,
+    floor_level: segment.floor_level,
+    source_method: segment.source_method === "Blueprint" ? "Blueprint" : "Manual",
+    entry_mode: "total_sqm",
+    length: null,
+    width: null,
+    overall_length: null,
+    overall_width: null,
+    notch_length: null,
+    notch_width: null,
+    area_sqm: segment.area_sqm,
+    polygon_coords: polygon,
+    polygon_groups: polygon ? [polygon] : null,
+    confidence_score: segment.confidence_score ?? null,
+    geometry_flagged: false,
+    geometry_warnings: [],
+    boundary_estimated: false,
+    confirmed: true,
+    included_in_quote: segment.included_in_quote,
+    treatment_type: segment.scope_of_work === "Not specified" ? null : segment.scope_of_work,
+    is_rush: false,
+    condition_tags: [],
+    site_notes: segment.notes ?? "",
+  };
+}
 
 // Part 1: client/project through validated + configured segments. Part 2 (FIX 5 / P2-A–E):
 // Generate's loading animation, Practical/Premium results, revision, and finalize — a
@@ -24,6 +78,8 @@ import type { BlueprintFloor } from "@/lib/dev/provisional/quotationGenerationTy
 // quotationBreakdownTypes.ts for the full list of what's provisional.
 export function QuotationGenerationWizard() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const resumeQuoteId = searchParams.get("resumeQuoteId");
   const { updateInputMethod } = useUpdateQuotationInputMethod();
   const { deleteDraftQuotation } = useDeleteDraftQuotation();
 
@@ -39,6 +95,39 @@ export function QuotationGenerationWizard() {
   const [blueprintFloors, setBlueprintFloors] = useState<BlueprintFloor[] | null>(null);
   const [blueprintFilePath, setBlueprintFilePath] = useState<string | null>(null);
   const [originalBlueprintFloors, setOriginalBlueprintFloors] = useState<BlueprintFloor[] | null>(null);
+  const [resumeError, setResumeError] = useState<string | null>(null);
+  const [isResuming, setIsResuming] = useState(() => Boolean(resumeQuoteId));
+
+  useEffect(() => {
+    const raw = resumeQuoteId;
+    const quoteId = raw ? Number(raw) : NaN;
+    if (!Number.isInteger(quoteId)) return;
+
+    let cancelled = false;
+    Promise.all([
+      apiClient<ResumeQuotationPayload>(`/api/quotations/${quoteId}`, { credentials: "include" }),
+      apiClient<{ segments: ProjectSegment[] }>(`/api/quotations/${quoteId}/segments`, { credentials: "include" }),
+    ])
+      .then(([resumeQuotation, savedSegments]) => {
+        if (cancelled) return;
+        setQuotation(resumeQuotation);
+        setClient(resumeQuotation.client);
+        const drafts = savedSegments.segments.map(draftFromSavedSegment);
+        setSegments(drafts);
+        setMethod(resumeQuotation.input_method === "Blueprint" ? "blueprint" : "quick");
+        setStep(drafts.length > 0 ? "configure" : resumeQuotation.input_method === "Blueprint" ? "blueprint" : "quick");
+      })
+      .catch((error) => {
+        if (!cancelled) setResumeError(error instanceof Error ? error.message : "Could not resume this quotation.");
+      })
+      .finally(() => {
+        if (!cancelled) setIsResuming(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [resumeQuoteId]);
 
   // Registers the path-aware step sequence on the GLOBAL header (components/layout/
   // Header.tsx's `workflow` prop) for as long as this wizard stays mounted — see
@@ -109,7 +198,11 @@ export function QuotationGenerationWizard() {
   };
 
   let body: React.ReactNode;
-  if (step === "client") {
+  if (isResuming) {
+    body = <p className="rounded-2xl border border-gray-100 bg-white p-5 text-sm text-gray-500 shadow-sm">Loading unfinished quotation...</p>;
+  } else if (resumeError) {
+    body = <p className="rounded-2xl border border-red-100 bg-red-50 p-5 text-sm text-red-700">{resumeError}</p>;
+  } else if (step === "client") {
     body = <ClientAndProjectStep onContinue={handleClientContinue} onExit={handleExitWizard} />;
   } else if (step === "method") {
     body = <InputMethodChoice onChoose={handleChooseMethod} onBack={handleBackToClient} />;

@@ -47,8 +47,8 @@ function StatusBadge({ status }: { status: OpenProjectRow["status"] }) {
 }
 
 function acceptedTier(project: SavedProjectRecord | null): string {
-  if (project?.quotes.Practical.is_selected) return "Practical";
-  if (project?.quotes.Premium.is_selected) return "Premium";
+  const selected = Object.values(project?.quotes ?? {}).find((quote) => quote?.is_selected);
+  if (selected) return selected.tier;
   return "Not chosen";
 }
 
@@ -127,7 +127,7 @@ function OpenProjectsContent({ onMetaChange }: OpenProjectsContentProps) {
   }, [region, rows, search]);
 
   const openRow = (row: OpenProjectRow) => {
-    router.push(row.savedProject ? `/projects/${row.savedProject.project_id}` : `/quotations/${row.quote_id}`);
+    router.push(row.savedProject ? `/projects/${row.savedProject.project_id}` : `/quotations/new?resumeQuoteId=${row.quote_id}`);
   };
   const createNew = useCallback(() => router.push("/quotations/new"), [router]);
 
@@ -216,7 +216,7 @@ function OpenProjectsContent({ onMetaChange }: OpenProjectsContentProps) {
       ) : (
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
           {filteredRows.map((project) => {
-            const href = project.savedProject ? `/projects/${project.savedProject.project_id}` : `/quotations/${project.quote_id}`;
+            const href = project.savedProject ? `/projects/${project.savedProject.project_id}` : `/quotations/new?resumeQuoteId=${project.quote_id}`;
             return (
               <article
                 key={project.id}

@@ -3,7 +3,6 @@
 import { useSyncExternalStore } from "react";
 import { computeTierResult } from "./quotationBreakdownFixtures";
 import {
-  PROVISIONAL_TIERS,
   type FinalizedQuotationInput,
   type ProvisionalTier,
   type SavedQuoteSnapshot,
@@ -37,11 +36,7 @@ function newVersion(tier: ProvisionalTier, result: SavedQuoteVersion["result"], 
 
 function normalizeProject(project: SavedProjectRecord): SavedProjectRecord {
   const now = project.updated_at || project.created_at || new Date().toISOString();
-  const legacyQuotes = project.quotes as Partial<Record<ProvisionalTier | "Economic", SavedQuoteSnapshot>>;
-  const practical = legacyQuotes.Practical ?? legacyQuotes.Economic;
-  const premium = legacyQuotes.Premium;
-
-  if (!practical || !premium) return project;
+  const legacyQuotes = project.quotes as Partial<Record<ProvisionalTier | "Economic" | "Good" | "Better" | "Best" | "Economy", SavedQuoteSnapshot>>;
 
   const normalizeQuote = (quote: SavedQuoteSnapshot, tier: ProvisionalTier): SavedQuoteSnapshot => {
     const versions = Array.isArray(quote.versions) && quote.versions.length > 0
@@ -57,13 +52,17 @@ function normalizeProject(project: SavedProjectRecord): SavedProjectRecord {
       is_selected: quote.is_selected === true,
     };
   };
+  const normalizedQuotes = Object.fromEntries(
+    Object.entries(legacyQuotes).flatMap(([rawTier, quote]) => {
+      if (!quote) return [];
+      const tier = rawTier === "Premium" || rawTier === "Best" ? "Premium" : "Practical";
+      return [[tier, normalizeQuote(quote, tier as ProvisionalTier)]];
+    })
+  ) as SavedProjectRecord["quotes"];
 
   return {
     ...project,
-    quotes: {
-      Practical: normalizeQuote(practical, "Practical"),
-      Premium: normalizeQuote(premium, "Premium"),
-    },
+    quotes: normalizedQuotes,
     segmentsSnapshot: project.segmentsSnapshot ?? [],
     blueprintFloors: project.blueprintFloors ?? null,
   };
@@ -116,8 +115,26 @@ export function deleteSavedProject(projectId: string) {
 export function saveFinalizedQuotation(input: FinalizedQuotationInput): SavedProjectRecord {
   const now = new Date().toISOString();
   const projectId = `proj-${Date.now()}`;
-  const practicalResult = computeTierResult("Practical", input.tierItems.Practical);
-  const premiumResult = computeTierResult("Premium", input.tierItems.Premium);
+  const quotes = Object.fromEntries(
+    Object.entries(input.tierItems).flatMap(([tier, items]) => {
+      if (!items) return [];
+      const typedTier = tier as ProvisionalTier;
+      const result = computeTierResult(typedTier, items, { segments: input.segments });
+      return [
+        [
+          typedTier,
+          {
+            tier: typedTier,
+            result,
+            versions: [newVersion(typedTier, result, 1, now)],
+            pricelist_basis_at_finalize: input.pricelistBasis,
+            finalized_at: now,
+            is_selected: false,
+          },
+        ],
+      ];
+    })
+  ) as SavedProjectRecord["quotes"];
   const project: SavedProjectRecord = {
     project_id: projectId,
     client_id: input.clientId,
@@ -128,24 +145,7 @@ export function saveFinalizedQuotation(input: FinalizedQuotationInput): SavedPro
     status: "Final",
     created_at: now,
     updated_at: now,
-    quotes: {
-      Practical: {
-        tier: "Practical",
-        result: practicalResult,
-        versions: [newVersion("Practical", practicalResult, 1, now)],
-        pricelist_basis_at_finalize: input.pricelistBasis,
-        finalized_at: now,
-        is_selected: false,
-      },
-      Premium: {
-        tier: "Premium",
-        result: premiumResult,
-        versions: [newVersion("Premium", premiumResult, 1, now)],
-        pricelist_basis_at_finalize: input.pricelistBasis,
-        finalized_at: now,
-        is_selected: false,
-      },
-    },
+    quotes,
     segmentsSnapshot: input.segments,
     blueprintFloors: input.blueprintFloors,
   };
@@ -160,6 +160,7 @@ export function refreshQuotePrices(projectId: string, tier: ProvisionalTier) {
       if (project.project_id !== projectId) return project;
 
       const quote = project.quotes[tier];
+      if (!quote) return project;
       const latest = quote.versions[quote.versions.length - 1];
       const nextVersion = newVersion(tier, latest.result, latest.version_number + 1, now);
 
@@ -186,12 +187,9 @@ export function setAcceptedTier(projectId: string, tier: ProvisionalTier | null)
         ...project,
         updated_at: new Date().toISOString(),
         quotes: Object.fromEntries(
-          PROVISIONAL_TIERS.map((name) => [
+          Object.entries(project.quotes).map(([name, quote]) => [
             name,
-            {
-              ...project.quotes[name],
-              is_selected: tier === name,
-            },
+            quote ? { ...quote, is_selected: tier === name } : quote,
           ])
         ) as SavedProjectRecord["quotes"],
       };

@@ -20,25 +20,11 @@ const inputCls =
   "w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm outline-none transition focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/20";
 
 const DEFAULT_TREATMENT_TYPES = [
-  "Waterproofing",
-  "Painting",
-  "Plastering",
-  "Tile Work",
-  "Flooring",
-  "Roofing",
-  "Ceiling Works",
-  "Partition Works",
-  "Masonry Works",
-  "Concrete Works",
-  "Carpentry Works",
-  "Glass and Aluminum Works",
-  "Electrical Works",
-  "Plumbing Works",
-  "HVAC / Air-Conditioning Works",
-  "Fire Protection Works",
-  "Insulation Works",
-  "Rendering",
-  "Skim Coating",
+  "Elastomeric Waterproofing",
+  "Cementitious Waterproofing",
+  "Torch-Applied Membrane",
+  "Interior Painting",
+  "Exterior Painting",
 ] as const;
 
 function useCompanySpecializations(): string[] {
@@ -78,6 +64,11 @@ export function ScopeTemplatesForm({ focusRuleId, onFocusHandled }: ScopeTemplat
   const [specialization, setSpecialization] = useState("");
   const [categories, setCategories] = useState<CategoryType[]>([]);
   const [othersDescription, setOthersDescription] = useState("");
+  const [warrantyYears, setWarrantyYears] = useState<number | "">("");
+  const [lifespanYears, setLifespanYears] = useState<number | "">("");
+  const [productivitySqmPerDay, setProductivitySqmPerDay] = useState<number | "">("");
+  const [minDurationDays, setMinDurationDays] = useState<number | "">("");
+  const [safetyBufferDays, setSafetyBufferDays] = useState<number | "">("");
   const [touched, setTouched] = useState(false);
   const [savedMessage, setSavedMessage] = useState(false);
   const [statusFilter, setStatusFilter] = useState<"active" | "disabled">("active");
@@ -113,6 +104,11 @@ export function ScopeTemplatesForm({ focusRuleId, onFocusHandled }: ScopeTemplat
     setSpecialization("");
     setCategories([]);
     setOthersDescription("");
+    setWarrantyYears("");
+    setLifespanYears("");
+    setProductivitySqmPerDay("");
+    setMinDurationDays("");
+    setSafetyBufferDays("");
     setTouched(false);
     setSavedMessage(false);
     resetSave();
@@ -127,6 +123,11 @@ export function ScopeTemplatesForm({ focusRuleId, onFocusHandled }: ScopeTemplat
     setSpecialization(t.service_specialization);
     setCategories(t.material_categories);
     setOthersDescription(t.others_description ?? "");
+    setWarrantyYears(t.warranty_years ?? "");
+    setLifespanYears(t.lifespan_years ?? "");
+    setProductivitySqmPerDay(t.productivity_sqm_per_day ?? "");
+    setMinDurationDays(t.min_duration_days ?? "");
+    setSafetyBufferDays(t.safety_buffer_days ?? "");
     setTouched(false);
     setSavedMessage(false);
   };
@@ -141,6 +142,11 @@ export function ScopeTemplatesForm({ focusRuleId, onFocusHandled }: ScopeTemplat
     service_specialization: specialization,
     material_categories: categories,
     others_description: categories.includes("Others") ? othersDescription : undefined,
+    warranty_years: warrantyYears === "" ? null : Number(warrantyYears),
+    lifespan_years: lifespanYears === "" ? null : Number(lifespanYears),
+    productivity_sqm_per_day: productivitySqmPerDay === "" ? null : Number(productivitySqmPerDay),
+    min_duration_days: minDurationDays === "" ? null : Number(minDurationDays),
+    safety_buffer_days: safetyBufferDays === "" ? null : Number(safetyBufferDays),
   });
 
   const handleSave = async () => {
@@ -362,6 +368,28 @@ export function ScopeTemplatesForm({ focusRuleId, onFocusHandled }: ScopeTemplat
                 </div>
               )}
 
+              <div className="grid gap-3 rounded-xl border border-gray-100 bg-gray-50/60 p-3.5 md:grid-cols-2">
+                {[
+                  ["Warranty Years", warrantyYears, setWarrantyYears],
+                  ["Expected Lifespan Years", lifespanYears, setLifespanYears],
+                  ["Productivity sqm/day", productivitySqmPerDay, setProductivitySqmPerDay],
+                  ["Minimum Duration Days", minDurationDays, setMinDurationDays],
+                  ["Safety Buffer Days", safetyBufferDays, setSafetyBufferDays],
+                ].map(([label, value, setter]) => (
+                  <label key={label as string} className="flex flex-col gap-1.5 text-xs font-semibold text-gray-600">
+                    {label as string}
+                    <input
+                      type="number"
+                      min={0}
+                      step="0.1"
+                      value={value as number | ""}
+                      onChange={(e) => (setter as (next: number | "") => void)(e.target.value === "" ? "" : Number(e.target.value))}
+                      className={inputCls}
+                    />
+                  </label>
+                ))}
+              </div>
+
               {(saveError || editable.saveError) && (
                 <div className="flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
                   <AlertTriangle className="h-3.5 w-3.5 shrink-0" /> Couldn&apos;t save:{" "}
@@ -422,6 +450,24 @@ export function ScopeTemplatesForm({ focusRuleId, onFocusHandled }: ScopeTemplat
                     <span className="font-semibold text-gray-600">Others:</span> {selected.others_description}
                   </p>
                 )}
+                <dl className="mt-4 grid grid-cols-2 gap-3 text-sm">
+                  <div>
+                    <dt className="text-xs font-semibold uppercase tracking-wide text-gray-400">Warranty</dt>
+                    <dd className="text-gray-700">{selected.warranty_years !== null ? `${selected.warranty_years} years` : "None"}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-xs font-semibold uppercase tracking-wide text-gray-400">Lifespan</dt>
+                    <dd className="text-gray-700">{selected.lifespan_years !== null ? `${selected.lifespan_years} years` : "Not set"}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-xs font-semibold uppercase tracking-wide text-gray-400">Productivity</dt>
+                    <dd className="text-gray-700">{selected.productivity_sqm_per_day !== null ? `${selected.productivity_sqm_per_day} sqm/day` : "Not set"}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-xs font-semibold uppercase tracking-wide text-gray-400">Buffer</dt>
+                    <dd className="text-gray-700">{selected.safety_buffer_days !== null ? `${selected.safety_buffer_days} days` : "Not set"}</dd>
+                  </div>
+                </dl>
               </div>
             </div>
           ) : (

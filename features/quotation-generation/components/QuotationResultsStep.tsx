@@ -16,7 +16,7 @@ import { MinorRevisionPanel } from "./MinorRevisionPanel";
 import { computeTierResult, deriveCompanyRuleItemLines, deriveMockItemLines, fmtPeso, recomputeItemLine } from "@/lib/dev/provisional/quotationBreakdownFixtures";
 import { PROVISIONAL_TIERS, type PricelistBasis, type ProvisionalItemLine, type ProvisionalQuotationTierResult, type ProvisionalTier } from "@/lib/dev/provisional/quotationBreakdownTypes";
 import { saveFinalizedQuotation } from "@/lib/dev/provisional/savedProjectsStore";
-import { useMaterialRules, useUnitRules } from "@/lib/dev/provisional/useCompanyRulesProvisional";
+import { useMaterialRules, usePricingStrategies, useScopeTemplates, useUnitRules } from "@/lib/dev/provisional/useCompanyRulesProvisional";
 import { useItemsCatalog } from "@/hooks/useItemsCatalog";
 import { usePricelistCatalog } from "@/hooks/usePricelistCatalog";
 import { usePricelistPublishedSource } from "@/hooks/usePricelistPublishedSource";
@@ -71,11 +71,12 @@ const FALLBACK_OPTIONS: { value: QuotationFallbackRule; label: string; helper: s
   { value: "Flag for manual review", label: "Flag for Manual Review", helper: "Keep missing prices visible for Minor Revision instead of auto-substituting." },
 ];
 
-function initTierItems(segments: DraftSegment[], basis: PricelistBasis): Record<ProvisionalTier, ProvisionalItemLine[]> {
-  return {
-    Practical: deriveMockItemLines(segments, "Practical", basis),
-    Premium: deriveMockItemLines(segments, "Premium", basis),
-  };
+function buildTierItems(tiers: ProvisionalTier[], makeItems: (tier: ProvisionalTier) => ProvisionalItemLine[]) {
+  return Object.fromEntries(tiers.map((tier) => [tier, makeItems(tier)])) as Partial<Record<ProvisionalTier, ProvisionalItemLine[]>>;
+}
+
+function initTierItems(segments: DraftSegment[], basis: PricelistBasis, tiers: ProvisionalTier[]) {
+  return buildTierItems(tiers, (tier) => deriveMockItemLines(segments, tier, basis));
 }
 
 function deriveTierItemsFromRules(
@@ -85,19 +86,35 @@ function deriveTierItemsFromRules(
   unitRules: ReturnType<typeof useUnitRules>["rules"],
   items: ReturnType<typeof useItemsCatalog>["items"],
   uploadedPrices: ReturnType<typeof usePricelistCatalog>["records"] = [],
-  dpwhPrices: ReturnType<typeof usePricelistPublishedSource>["dpwhCatalog"]["records"] = []
-): Record<ProvisionalTier, ProvisionalItemLine[]> {
+  dpwhPrices: ReturnType<typeof usePricelistPublishedSource>["dpwhCatalog"]["records"] = [],
+  tiers: ProvisionalTier[]
+): Partial<Record<ProvisionalTier, ProvisionalItemLine[]>> {
   const companyRuleLines = deriveCompanyRuleItemLines(segments, materialRules, unitRules, items, basis, uploadedPrices, dpwhPrices);
   if (companyRuleLines) {
-    return {
-      Practical: companyRuleLines,
-      Premium: companyRuleLines.map((line) => ({
+    return buildTierItems(tiers, (tier) =>
+      companyRuleLines.map((line) => ({
         ...line,
-        line_id: `${line.line_id}-premium`,
-      })),
-    };
+        line_id: `${line.line_id}-${tier.toLowerCase()}`,
+      }))
+    );
   }
-  return initTierItems(segments, basis);
+  return initTierItems(segments, basis, tiers);
+}
+
+function uniqueActiveTiers(strategies: ReturnType<typeof usePricingStrategies>["strategies"]): ProvisionalTier[] {
+  const normalize = (tier: string): ProvisionalTier | null => {
+    if (tier === "Premium" || tier === "Best") return "Premium";
+    if (tier === "Practical" || tier === "Economic" || tier === "Good" || tier === "Better" || tier === "Economy") return "Practical";
+    return null;
+  };
+  const active = strategies
+    .filter((strategy) => strategy.is_active)
+    .map((strategy) => normalize(strategy.quotation_tier))
+    .filter((tier): tier is ProvisionalTier => tier !== null);
+  const tiers = (active.length > 0 ? active : PROVISIONAL_TIERS).filter(
+    (tier, index, list) => list.indexOf(tier) === index
+  );
+  return tiers.length > 0 ? tiers : PROVISIONAL_TIERS;
 }
 
 function applyQuotationRuleToLines(
@@ -219,6 +236,8 @@ function QuoteCard({ tier, result, onViewBreakdown }: { tier: ProvisionalTier; r
 // and the revision flow (editing lives only in Minor Revision, Part D). Everything
 // downstream of `segments` is mock-derived — see quotationBreakdownFixtures.ts.
 export function QuotationResultsStep({ client, quotation, segments, blueprintFloors, onStructuralRevision, onFinalize }: QuotationResultsStepProps) {
+  const { strategies: pricingStrategies } = usePricingStrategies();
+  const { templates: scopeTemplates } = useScopeTemplates();
   const { rules: materialRules, isLoading: materialRulesLoading } = useMaterialRules();
   const { rules: unitRules, isLoading: unitRulesLoading } = useUnitRules();
   const { items, isLoading: itemsLoading } = useItemsCatalog();
@@ -230,7 +249,8 @@ export function QuotationResultsStep({ client, quotation, segments, blueprintFlo
     load: loadDpwhPrices,
   } = dpwhCatalog;
   const [pricelistBasis, setPricelistBasis] = useState<PricelistBasis>(DEFAULT_BASIS);
-  const [tierItems, setTierItems] = useState(() => initTierItems(segments, DEFAULT_BASIS));
+  const activeTiers = useMemo(() => uniqueActiveTiers(pricingStrategies), [pricingStrategies]);
+  const [tierItems, setTierItems] = useState(() => initTierItems(segments, DEFAULT_BASIS, PROVISIONAL_TIERS));
   const [hasManualLineEdits, setHasManualLineEdits] = useState(false);
   const [breakdownTier, setBreakdownTier] = useState<ProvisionalTier | null>(null);
   const [ruleDialogOpen, setRuleDialogOpen] = useState(false);
@@ -264,8 +284,8 @@ export function QuotationResultsStep({ client, quotation, segments, blueprintFlo
   );
 
   const autoTierItems = useMemo(
-    () => deriveTierItemsFromRules(segments, pricelistBasis, materialRules, unitRules, items, uploadedPrices, dpwhPrices),
-    [items, materialRules, pricelistBasis, segments, unitRules, uploadedPrices, dpwhPrices]
+    () => deriveTierItemsFromRules(segments, pricelistBasis, materialRules, unitRules, items, uploadedPrices, dpwhPrices, activeTiers),
+    [activeTiers, items, materialRules, pricelistBasis, segments, unitRules, uploadedPrices, dpwhPrices]
   );
   const effectiveTierItems = hasManualLineEdits ? tierItems : autoTierItems;
 
@@ -275,31 +295,22 @@ export function QuotationResultsStep({ client, quotation, segments, blueprintFlo
   const handleBasisChange = (basis: PricelistBasis) => {
     setPricelistBasis(basis);
     setHasManualLineEdits(true);
-    setTierItems(deriveTierItemsFromRules(segments, basis, materialRules, unitRules, items, uploadedPrices, dpwhPrices));
+    setTierItems(deriveTierItemsFromRules(segments, basis, materialRules, unitRules, items, uploadedPrices, dpwhPrices, activeTiers));
   };
 
   const handleApplyQuotationRules = () => {
     setHasManualLineEdits(true);
     handleBasisChange(prioritySource);
-    setTierItems(() => ({
-      Practical: applyQuotationRuleToLines(
-        deriveTierItemsFromRules(segments, prioritySource, materialRules, unitRules, items, uploadedPrices, dpwhPrices).Practical,
-        prioritySource,
-        fallbackRule
-      ),
-      Premium: applyQuotationRuleToLines(
-        deriveTierItemsFromRules(segments, prioritySource, materialRules, unitRules, items, uploadedPrices, dpwhPrices).Premium,
-        prioritySource,
-        fallbackRule
-      ),
-    }));
+    const next = deriveTierItemsFromRules(segments, prioritySource, materialRules, unitRules, items, uploadedPrices, dpwhPrices, activeTiers);
+    setTierItems(
+      buildTierItems(activeTiers, (tier) => applyQuotationRuleToLines(next[tier] ?? [], prioritySource, fallbackRule))
+    );
     setRuleDialogOpen(false);
   };
 
-  const tierResults: Record<ProvisionalTier, ProvisionalQuotationTierResult> = {
-    Practical: computeTierResult("Practical", effectiveTierItems.Practical),
-    Premium: computeTierResult("Premium", effectiveTierItems.Premium),
-  };
+  const tierResults = Object.fromEntries(
+    activeTiers.map((tier) => [tier, computeTierResult(tier, effectiveTierItems[tier] ?? [], { segments, scopeTemplates })])
+  ) as Partial<Record<ProvisionalTier, ProvisionalQuotationTierResult>>;
 
   return (
     <div className="flex flex-col gap-5">
@@ -342,10 +353,12 @@ export function QuotationResultsStep({ client, quotation, segments, blueprintFlo
         </span>
       </div>
 
-      <div className="flex flex-col gap-5 lg:flex-row">
-        {PROVISIONAL_TIERS.map((tier) => (
-          <QuoteCard key={tier} tier={tier} result={tierResults[tier]} onViewBreakdown={() => setBreakdownTier(tier)} />
-        ))}
+      <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
+        {activeTiers.map((tier) => {
+          const result = tierResults[tier];
+          if (!result) return null;
+          return <QuoteCard key={tier} tier={tier} result={result} onViewBreakdown={() => setBreakdownTier(tier)} />;
+        })}
       </div>
 
       <div className="flex items-center justify-end gap-3 border-t border-gray-100 pt-4">
@@ -363,7 +376,7 @@ export function QuotationResultsStep({ client, quotation, segments, blueprintFlo
         // component at all anymore. See QuotationBreakdownModal.tsx.
         <QuotationBreakdownModal
           tier={breakdownTier}
-          result={tierResults[breakdownTier]}
+          result={tierResults[breakdownTier]!}
           pricelistBasis={pricelistBasis}
           onBasisChange={handleBasisChange}
           onClose={() => setBreakdownTier(null)}
@@ -443,7 +456,7 @@ export function QuotationResultsStep({ client, quotation, segments, blueprintFlo
           }}
           onMinor={() => {
             setRevisionTypeOpen(false);
-            setMinorRevisionTier("Practical");
+            setMinorRevisionTier(activeTiers[0] ?? "Practical");
           }}
         />
       )}
@@ -451,8 +464,8 @@ export function QuotationResultsStep({ client, quotation, segments, blueprintFlo
       {minorRevisionTier && (
         <MinorRevisionPanel
           tier={minorRevisionTier}
-          originalItems={autoTierItems[minorRevisionTier]}
-          items={effectiveTierItems[minorRevisionTier]}
+          originalItems={autoTierItems[minorRevisionTier] ?? []}
+          items={effectiveTierItems[minorRevisionTier] ?? []}
           onItemsChange={(next) => {
             setHasManualLineEdits(true);
             setTierItems((prev) => ({ ...prev, [minorRevisionTier]: next }));
@@ -500,7 +513,7 @@ export function QuotationResultsStep({ client, quotation, segments, blueprintFlo
           <DialogHeader>
             <DialogTitle>Finalize this quotation?</DialogTitle>
             <DialogDescription>
-              Practical and Premium are saved as a linked pair. Neither is marked as the
+              The generated tiers are saved as a linked group. None is marked as the
               client&apos;s choice yet (that happens later, from Open Projects). This is a mock save (Part 2 shell):
               no real pricing engine or backend persistence is wired yet.
             </DialogDescription>

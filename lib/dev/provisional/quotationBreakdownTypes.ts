@@ -36,8 +36,9 @@ import type { HistoricalPriceRecord } from '@/types/entities/historical-price-re
 import type { PhRegion } from '@/types/entities/common';
 import type { DraftSegment } from '@/features/quotation-generation/lib/draftSegment';
 import type { BlueprintFloor } from './quotationGenerationTypes';
+import type { QuotationTier } from './companyRulesTypes';
 
-export type ProvisionalTier = 'Practical' | 'Premium';
+export type ProvisionalTier = QuotationTier;
 export const PROVISIONAL_TIERS: ProvisionalTier[] = ['Practical', 'Premium'];
 
 // Part B — "price the quote off Uploaded Pricelist vs DPWH-CMPD." Maps to the REAL
@@ -150,7 +151,7 @@ export interface ProvisionalQuotationTierResult {
 // and Premium quotes" step. quote_group_id/tier/is_selected are all addendum #2.
 export interface ProvisionalQuoteGroup {
   quote_group_id: string; // -> quotation.quote_group_id (addendum #2)
-  tiers: Record<ProvisionalTier, ProvisionalQuotationTierResult>;
+  tiers: Partial<Record<ProvisionalTier, ProvisionalQuotationTierResult>>;
   selected_tier: ProvisionalTier | null; // -> quotation.is_selected (addendum #2)
 }
 
@@ -182,7 +183,7 @@ export interface SavedProjectRecord {
   status: 'Final';
   created_at: string;
   updated_at: string;
-  quotes: Record<ProvisionalTier, SavedQuoteSnapshot>;
+  quotes: Partial<Record<ProvisionalTier, SavedQuoteSnapshot>>;
   segmentsSnapshot: DraftSegment[];
   blueprintFloors: BlueprintFloor[] | null;
 }
@@ -193,7 +194,7 @@ export interface FinalizedQuotationInput {
   projectName: string;
   projectLocation: string;
   projectRegion: string;
-  tierItems: Record<ProvisionalTier, ProvisionalItemLine[]>;
+  tierItems: Partial<Record<ProvisionalTier, ProvisionalItemLine[]>>;
   pricelistBasis: PricelistBasis;
   segments: DraftSegment[];
   blueprintFloors: BlueprintFloor[] | null;

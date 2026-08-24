@@ -32,7 +32,10 @@ interface QuotationBreakdownModalProps {
   segments?: DraftSegment[];
 }
 
-const TIER_ACCENT: Record<ProvisionalTier, string> = { Practical: "text-primary", Premium: "text-indigo-600" };
+const TIER_ACCENT: Record<ProvisionalTier, string> = {
+  Practical: "text-primary",
+  Premium: "text-indigo-600",
+};
 const SOURCE_BADGE: Record<string, string> = {
   DPWH: "bg-blue-100 text-blue-700",
   PSA: "bg-purple-100 text-purple-700",

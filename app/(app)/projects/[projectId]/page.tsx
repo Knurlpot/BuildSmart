@@ -40,12 +40,11 @@ function QuoteSummaryCard({
 }) {
   const meta = TIER_META[tier];
   const snapshot = project.quotes[tier];
+  const [viewingVersionId, setViewingVersionId] = useState<string | null>(null);
+  if (!snapshot) return null;
   const accepted = snapshot.is_selected === true;
   const versions = snapshot.versions;
   const latest = versions[versions.length - 1];
-
-  // 
-  const [viewingVersionId, setViewingVersionId] = useState<string | null>(null);
   const displayed = versions.find((v) => v.version_id === viewingVersionId) ?? latest;
   const { result } = displayed;
   const isOriginal = displayed.version_number === 1;
@@ -61,7 +60,7 @@ function QuoteSummaryCard({
       <div className={`${meta.headerBg} px-5 py-4 text-white`}>
         <div className="flex items-center justify-between">
           <div>
-            <span className="text-[10px] font-semibold uppercase tracking-widest opacity-80">{tier === "Practical" ? "Option A" : "Option B"}</span>
+            <span className="text-[10px] font-semibold uppercase tracking-widest opacity-80">Quote Option</span>
             <h2 className="text-xl font-bold leading-tight">{tier}</h2>
           </div>
           <div className="flex flex-col items-end gap-1">
@@ -182,9 +181,10 @@ function ProjectDetailContent({ projectId }: { projectId: string }) {
   }
 
   const handleToggleAccepted = (tier: ProvisionalTier) => {
-    const alreadyAccepted = project.quotes[tier].is_selected === true;
+    const alreadyAccepted = project.quotes[tier]?.is_selected === true;
     setAcceptedTier(project.project_id, alreadyAccepted ? null : tier);
   };
+  const quoteEntries = Object.entries(project.quotes).filter((entry): entry is [ProvisionalTier, NonNullable<SavedProjectRecord["quotes"][ProvisionalTier]>] => Boolean(entry[1]));
 
   return (
     <div className="flex flex-col gap-5">
@@ -219,19 +219,16 @@ function ProjectDetailContent({ projectId }: { projectId: string }) {
         ))}
       </div>
 
-      <div className="flex flex-col gap-5 lg:flex-row">
-        <QuoteSummaryCard
-          project={project}
-          tier="Practical"
-          onViewBreakdown={(versionId) => setBreakdown({ tier: "Practical", versionId })}
-          onToggleAccepted={() => handleToggleAccepted("Practical")}
-        />
-        <QuoteSummaryCard
-          project={project}
-          tier="Premium"
-          onViewBreakdown={(versionId) => setBreakdown({ tier: "Premium", versionId })}
-          onToggleAccepted={() => handleToggleAccepted("Premium")}
-        />
+      <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
+        {quoteEntries.map(([tier]) => (
+          <QuoteSummaryCard
+            key={tier}
+            project={project}
+            tier={tier}
+            onViewBreakdown={(versionId) => setBreakdown({ tier, versionId })}
+            onToggleAccepted={() => handleToggleAccepted(tier)}
+          />
+        ))}
       </div>
 
       {breakdown &&
@@ -239,6 +236,7 @@ function ProjectDetailContent({ projectId }: { projectId: string }) {
 
           // 
           const snapshot = project.quotes[breakdown.tier];
+          if (!snapshot) return null;
           const version = snapshot.versions.find((v) => v.version_id === breakdown.versionId) ?? snapshot.versions[snapshot.versions.length - 1];
           return (
             // REUSES QuotationBreakdownModal exactly as built for the live wizard, not a

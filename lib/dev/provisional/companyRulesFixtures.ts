@@ -33,28 +33,43 @@ export const laborTradeOptionsFixture: string[] = [
 export const scopeTemplatesFixture: ScopeTemplate[] = [
   {
     rule_id: 'st-1',
-    treatment_type: 'Roofing',
-    template_name: 'Standard Roof Retrofit',
-    service_specialization: 'Roofing Installation',
-    material_categories: ['Structural', 'Hardware', 'Finishing'],
+    treatment_type: 'Elastomeric Waterproofing',
+    template_name: 'Elastomeric Roof Deck Package',
+    service_specialization: 'Waterproofing Systems',
+    material_categories: ['Insulation & Waterproofing', 'Paints, Coatings & Sealants'],
+    warranty_years: 2,
+    lifespan_years: 5,
+    productivity_sqm_per_day: 18,
+    min_duration_days: 3,
+    safety_buffer_days: 2,
     is_active: true,
     effective_date: '2025-01-15',
   },
   {
     rule_id: 'st-2',
-    treatment_type: 'Waterproofing',
-    template_name: 'Interior Waterproofing Package',
+    treatment_type: 'Cementitious Waterproofing',
+    template_name: 'Cementitious Waterproofing Package',
     service_specialization: 'Waterproofing Systems',
-    material_categories: ['Structural', 'Finishing'],
+    material_categories: ['Insulation & Waterproofing'],
+    warranty_years: null,
+    lifespan_years: 2,
+    productivity_sqm_per_day: 22,
+    min_duration_days: 2,
+    safety_buffer_days: 1,
     is_active: true,
     effective_date: '2025-02-01',
   },
   {
     rule_id: 'st-3',
-    treatment_type: 'Electrical Works',
-    template_name: 'Full Electrical Rewire',
-    service_specialization: 'Electrical Works',
-    material_categories: ['Electrical', 'Hardware'],
+    treatment_type: 'Torch-Applied Membrane',
+    template_name: 'Torch Membrane Waterproofing Package',
+    service_specialization: 'Waterproofing Systems',
+    material_categories: ['Insulation & Waterproofing', 'Specialty Materials & Systems'],
+    warranty_years: 5,
+    lifespan_years: 10,
+    productivity_sqm_per_day: 12,
+    min_duration_days: 3,
+    safety_buffer_days: 2,
     is_active: true,
     effective_date: '2025-03-10',
   },
@@ -182,7 +197,7 @@ export const laborRulesFixture: LaborRule[] = [
 export const pricingStrategyFixture: PricingStrategyRule[] = [
   {
     rule_id: 'ps-1',
-    quotation_tier: 'Economic',
+    quotation_tier: 'Practical',
     markup_percentage: 12,
     contingency_percentage: 5,
     overhead_percentage: 8,
@@ -248,7 +263,7 @@ export const unitRulesFixture: UnitRule[] = [
 export const existingRulesFixture: ExistingRuleSummary[] = [
   ...scopeTemplatesFixture.map((t) => ({
     rule_id: t.rule_id,
-    rule_kind: 'Scope Template' as const,
+    rule_kind: 'scope-template' as const,
     label: t.template_name,
     detail: t.service_specialization,
     status: envelopeStatus(t),
@@ -256,7 +271,7 @@ export const existingRulesFixture: ExistingRuleSummary[] = [
   })),
   ...materialRulesFixture.map((m) => ({
     rule_id: m.rule_id,
-    rule_kind: 'Material Rule' as const,
+    rule_kind: 'material-rule' as const,
     label: m.preferred_item_name,
     detail: `${m.category} · priority ${m.material_priority}`,
     status: envelopeStatus(m),
@@ -264,7 +279,7 @@ export const existingRulesFixture: ExistingRuleSummary[] = [
   })),
   ...laborRulesFixture.map((l) => ({
     rule_id: l.rule_id,
-    rule_kind: 'Labor Rule' as const,
+    rule_kind: 'labor-rule' as const,
     label:
       l.treatment_type !== null
         ? l.treatment_type
@@ -277,7 +292,7 @@ export const existingRulesFixture: ExistingRuleSummary[] = [
   })),
   ...pricingStrategyFixture.map((p) => ({
     rule_id: p.rule_id,
-    rule_kind: 'Pricing Strategy' as const,
+    rule_kind: 'pricing-strategy' as const,
     label: `${p.quotation_tier} Tier`,
     detail: `${p.markup_percentage}% markup`,
     status: envelopeStatus(p),
@@ -285,7 +300,7 @@ export const existingRulesFixture: ExistingRuleSummary[] = [
   })),
   ...unitRulesFixture.map((u) => ({
     rule_id: u.rule_id,
-    rule_kind: 'Unit Rule' as const,
+    rule_kind: 'unit-rule' as const,
     label: u.item_name ?? u.category ?? 'Unit Rule',
     detail: `${u.wastage_allowance_percentage}% wastage`,
     status: envelopeStatus(u),

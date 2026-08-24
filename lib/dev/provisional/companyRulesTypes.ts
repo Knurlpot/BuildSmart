@@ -45,6 +45,11 @@ export interface ScopeTemplate extends RuleEnvelope {
   template_name: string; // -> company_rule.rule_name
   service_specialization: string; // -> rule_scope.service_specialization
   material_categories: CategoryType[]; // -> rule_scope_category junction rows — SUGGESTED categories, not enforced
+  warranty_years: number | null;
+  lifespan_years: number | null;
+  productivity_sqm_per_day: number | null;
+  min_duration_days: number | null;
+  safety_buffer_days: number | null;
   // Part G: rule_scope.description is REQUIRED only when 'Others' is one of the selected
   // categories (there's otherwise no schema change needed — the column already exists).
   others_description?: string;
@@ -118,10 +123,7 @@ export function laborRuleScope(r: Pick<LaborRule, 'treatment_type' | 'labor_trad
 }
 
 // ── 4. Pricing Strategy (rule_pricing) ───────────────────────────────────────
-// 'Economic' | 'Premium' are CLAUDE.md-documented product concepts, not fabricated — but
-// rule_pricing.quotation_tier has no CHECK constraint in the schema, so the DB itself
-// doesn't enforce this set; kept here as the client-side input constraint regardless.
-export const QUOTATION_TIERS = ['Economic', 'Premium'] as const;
+export const QUOTATION_TIERS = ['Practical', 'Premium'] as const;
 export type QuotationTier = (typeof QUOTATION_TIERS)[number];
 
 export interface PricingStrategyRule extends RuleEnvelope {

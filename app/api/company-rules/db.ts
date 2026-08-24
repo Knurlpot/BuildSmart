@@ -72,7 +72,8 @@ function materialFallbackToCompanyRuleFallback(fallback: unknown) {
 }
 
 function quotationTierToStrategyType(tier: unknown) {
-  return tier === "Premium" ? "Premium" : "Practical";
+  if (tier === "Premium" || tier === "Best") return "Premium";
+  return "Practical";
 }
 
 async function categoryId(client: PoolClient, category: CategoryType | null) {
@@ -160,6 +161,11 @@ export async function fetchCompanyRules(companyId: number): Promise<CompanyRules
       service_specialization: row.specialization,
       material_categories: row.categories,
       others_description: typeof parsed.others_description === "string" ? parsed.others_description : undefined,
+      warranty_years: typeof parsed.warranty_years === "number" ? parsed.warranty_years : null,
+      lifespan_years: typeof parsed.lifespan_years === "number" ? parsed.lifespan_years : null,
+      productivity_sqm_per_day: typeof parsed.productivity_sqm_per_day === "number" ? parsed.productivity_sqm_per_day : null,
+      min_duration_days: typeof parsed.min_duration_days === "number" ? parsed.min_duration_days : null,
+      safety_buffer_days: typeof parsed.safety_buffer_days === "number" ? parsed.safety_buffer_days : null,
       is_active: row.status === "Active",
       effective_date: asDate(row.date_created),
     };
@@ -325,7 +331,15 @@ export async function createRule(companyId: number, kind: RuleKindParam, body: R
           body.service_specialization,
           body.template_name,
           "Scope Template",
-          JSON.stringify({ others_description: body.others_description ?? null, treatment_type: body.treatment_type }),
+          JSON.stringify({
+            others_description: body.others_description ?? null,
+            treatment_type: body.treatment_type,
+            warranty_years: body.warranty_years ?? null,
+            lifespan_years: body.lifespan_years ?? null,
+            productivity_sqm_per_day: body.productivity_sqm_per_day ?? null,
+            min_duration_days: body.min_duration_days ?? null,
+            safety_buffer_days: body.safety_buffer_days ?? null,
+          }),
         ]
       );
       for (const category of (body.material_categories as CategoryType[]) ?? []) {
@@ -504,7 +518,15 @@ export async function updateRule(companyId: number, kind: RuleKindParam, ruleId:
         [
           body.template_name,
           body.service_specialization,
-          JSON.stringify({ others_description: body.others_description ?? null, treatment_type: body.treatment_type }),
+          JSON.stringify({
+            others_description: body.others_description ?? null,
+            treatment_type: body.treatment_type,
+            warranty_years: body.warranty_years ?? null,
+            lifespan_years: body.lifespan_years ?? null,
+            productivity_sqm_per_day: body.productivity_sqm_per_day ?? null,
+            min_duration_days: body.min_duration_days ?? null,
+            safety_buffer_days: body.safety_buffer_days ?? null,
+          }),
           companyId,
           id,
         ]

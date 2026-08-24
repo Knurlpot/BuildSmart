@@ -16,8 +16,8 @@ const inputCls =
   "w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm outline-none transition focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/20";
 
 const DEFAULT_MATERIAL_PRIORITY = 1;
-const DEFAULT_PRIORITY_SOURCE = "Supplier";
-const DEFAULT_FALLBACK_RULE = "Flag for manual review";
+const DEFAULT_PRIORITY_SOURCE = "Supplier" as const;
+const DEFAULT_FALLBACK_RULE = "Flag for manual review" as const;
 const TREATMENT_OPTIONS = [...TREATMENT_TYPES];
 
 interface MaterialRulesFormProps {
@@ -180,6 +180,15 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
   };
 
   const selected = allRules.find((r) => r.rule_id === selectedId) ?? null;
+  const groupedRules = Array.from(
+    allRules.reduce((groups, rule) => {
+      const key = rule.treatment_type?.trim() || "No treatment type";
+      const list = groups.get(key) ?? [];
+      list.push(rule);
+      groups.set(key, list);
+      return groups;
+    }, new Map<string, MaterialRuleEntry[]>())
+  ).sort(([a], [b]) => a.localeCompare(b));
 
   return (
     <div className="flex flex-col gap-4">
@@ -189,6 +198,43 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
           Link materials from your catalog to each treatment type.
         </p>
       </div>
+
+      {groupedRules.length > 0 && (
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+          {groupedRules.map(([treatment, group]) => (
+            <section key={treatment} className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <h3 className="truncate text-sm font-bold text-gray-900">{treatment}</h3>
+                  <p className="text-xs text-gray-400">
+                    {group.length} material{group.length === 1 ? "" : "s"}
+                  </p>
+                </div>
+                <span className="rounded-full bg-orange-50 px-2 py-0.5 text-[10px] font-bold text-primary">Treatment</span>
+              </div>
+              <div className="mt-3 flex flex-col divide-y divide-gray-100">
+                {group
+                  .slice()
+                  .sort((a, b) => a.material_priority - b.material_priority || a.preferred_item_name.localeCompare(b.preferred_item_name))
+                  .map((rule) => (
+                    <button
+                      key={rule.rule_id}
+                      type="button"
+                      onClick={() => {
+                        setSelectedId(rule.rule_id);
+                        setMode("idle");
+                      }}
+                      className="flex items-center justify-between gap-3 py-2 text-left hover:text-primary"
+                    >
+                      <span className="min-w-0 truncate text-xs font-semibold text-gray-700">{rule.preferred_item_name}</span>
+                      <span className="shrink-0 text-[10px] text-gray-400">{rule.category}</span>
+                    </button>
+                  ))}
+              </div>
+            </section>
+          ))}
+        </div>
+      )}
 
       <RuleListDetailPanel
         title="Material Rules"

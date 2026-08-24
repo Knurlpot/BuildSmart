@@ -9,7 +9,7 @@
 import { stagingId } from './quotationGenerationTypes';
 import type { DraftSegment } from '@/features/quotation-generation/lib/draftSegment';
 import { isSegmentIncluded } from '@/features/quotation-generation/lib/draftSegment';
-import type { MaterialRuleEntry, UnitRule } from './companyRulesTypes';
+import type { MaterialRuleEntry, ScopeTemplate, UnitRule } from './companyRulesTypes';
 import type {
   ItemCategory,
   PricelistBasis,
@@ -183,6 +183,7 @@ const DEFAULT_DOWNPAYMENT_PERCENTAGE = 30;
 interface TierPricingFixture {
   ocm_percentage: number;
   profit_margin_percentage: number;
+  price_factor: number;
   timeline_label: string;
   warranty_label: string;
   material_grade_label: string;
@@ -192,6 +193,7 @@ const TIER_PRICING_FIXTURE: Record<ProvisionalTier, TierPricingFixture> = {
   Practical: {
     ocm_percentage: 8,
     profit_margin_percentage: 10,
+    price_factor: 1,
     timeline_label: '8–10 weeks',
     warranty_label: '1-year workmanship',
     material_grade_label: 'Standard Grade',
@@ -199,11 +201,17 @@ const TIER_PRICING_FIXTURE: Record<ProvisionalTier, TierPricingFixture> = {
   Premium: {
     ocm_percentage: 10,
     profit_margin_percentage: 15,
+    price_factor: 1.3,
     timeline_label: '5–7 weeks',
     warranty_label: '3-year comprehensive',
     material_grade_label: 'Premium / Imported Grade',
   },
 };
+
+function normalizeTier(tier: string): ProvisionalTier {
+  if (tier === 'Premium' || tier === 'Best') return 'Premium';
+  return 'Practical';
+}
 
 function round2(n: number): number {
   return Math.round(n * 100) / 100;
@@ -219,19 +227,22 @@ function pricingReferenceFor(basis: PricelistBasis): ProvisionalPricingReference
 }
 
 function supplierOptionsFor(def: ItemFixtureDef, tier: ProvisionalTier, basis: PricelistBasis): ProvisionalSupplierOption[] {
+  const normalizedTier = normalizeTier(tier);
+  const factor = TIER_PRICING_FIXTURE[normalizedTier].price_factor;
   return def.suppliers.map((s) => ({
     supplier_id: s.supplier_id,
     supplier_name: s.supplier_name,
-    unit_price: tier === 'Practical' ? s.practical_price : s.premium_price,
+    unit_price: round2((normalizedTier === 'Practical' ? s.practical_price : s.premium_price) * factor),
     quantity_available: s.quantity_available,
     source_type: basis,
   }));
 }
 
 function buildLine(seg: DraftSegment, def: ItemFixtureDef, tier: ProvisionalTier, basis: PricelistBasis): ProvisionalItemLine {
+  const normalizedTier = normalizeTier(tier);
   const qty = round2(seg.area_sqm * def.coverage_factor * (1 + def.wastage_percentage / 100));
   const basisPrices = basis === 'DPWH' ? def.dpwh : def.uploaded;
-  const unitPrice = tier === 'Practical' ? basisPrices.practical : basisPrices.premium;
+  const unitPrice = round2((normalizedTier === 'Practical' ? basisPrices.practical : basisPrices.premium) * TIER_PRICING_FIXTURE[normalizedTier].price_factor);
   const suppliers = supplierOptionsFor(def, tier, basis);
   return {
     line_id: stagingId('item'),
@@ -241,7 +252,7 @@ function buildLine(seg: DraftSegment, def: ItemFixtureDef, tier: ProvisionalTier
     treatment_type: seg.treatment_type,
     category: def.category,
     item_code: def.item_code,
-    item_name: tier === 'Practical' ? def.item_name_practical : def.item_name_premium,
+    item_name: normalizedTier === 'Practical' ? def.item_name_practical : def.item_name_premium,
     unit: def.unit,
     derived_area_sqm: seg.area_sqm,
     derived_coverage_per_sqm: def.coverage_factor,
@@ -430,10 +441,11 @@ export function retargetItemLinesBasis(
  * ProvisionalServiceCost). labor_cost always equals the sum of this tier's Labor-category
  * item lines, so the summary and the BOQ never disagree. */
 function deriveMockServiceCost(items: ProvisionalItemLine[], materialsSubtotal: number, tier: ProvisionalTier): ProvisionalServiceCost {
+  const normalizedTier = normalizeTier(tier);
   const laborCost = round2(items.filter((l) => l.category === 'Labor').reduce((sum, l) => sum + (l.total_cost ?? 0), 0));
-  const equipmentPct = tier === 'Practical' ? 0.06 : 0.08;
-  const contingencyPct = tier === 'Practical' ? 0.04 : 0.05;
-  const otherPct = tier === 'Practical' ? 0.03 : 0.035; // PPE, mobilization
+  const equipmentPct = normalizedTier === 'Practical' ? 0.06 : 0.08;
+  const contingencyPct = normalizedTier === 'Practical' ? 0.04 : 0.05;
+  const otherPct = normalizedTier === 'Practical' ? 0.03 : 0.035; // PPE, mobilization
   const equipmentCost = round2(materialsSubtotal * equipmentPct);
   const contingencyCost = round2(materialsSubtotal * contingencyPct);
   const otherCost = round2(materialsSubtotal * otherPct);
@@ -474,9 +486,10 @@ export function recomputeItemLine(
 export function computeTierResult(
   tier: ProvisionalTier,
   items: ProvisionalItemLine[],
-  options?: { vatInclusive?: boolean; downpaymentPercentage?: number }
+  options?: { vatInclusive?: boolean; downpaymentPercentage?: number; segments?: DraftSegment[]; scopeTemplates?: ScopeTemplate[] }
 ): ProvisionalQuotationTierResult {
-  const pricingFixture = TIER_PRICING_FIXTURE[tier];
+  const normalizedTier = normalizeTier(tier);
+  const pricingFixture = TIER_PRICING_FIXTURE[normalizedTier];
   const vatInclusive = options?.vatInclusive ?? true;
   const downpaymentPercentage = options?.downpaymentPercentage ?? DEFAULT_DOWNPAYMENT_PERCENTAGE;
 
@@ -491,6 +504,25 @@ export function computeTierResult(
   const vatAmount = vatInclusive ? round2(subtotalBeforeVat * (VAT_RATE_PERCENTAGE / 100)) : 0;
   const grandTotal = round2(subtotalBeforeVat + vatAmount);
   const downpaymentAmount = round2(grandTotal * (downpaymentPercentage / 100));
+  const includedSegments = (options?.segments ?? []).filter(isSegmentIncluded);
+  const activeTemplates = (options?.scopeTemplates ?? []).filter((template) => template.is_active);
+  const matchedTemplates = activeTemplates.filter((template) =>
+    includedSegments.some((segment) => segment.treatment_type?.trim().toLowerCase() === template.treatment_type.trim().toLowerCase())
+  );
+  const area = includedSegments.reduce((sum, segment) => sum + segment.area_sqm, 0);
+  const productivityValues = matchedTemplates
+    .map((template) => template.productivity_sqm_per_day)
+    .filter((value): value is number => typeof value === 'number' && value > 0);
+  const productivity = productivityValues.length > 0 ? Math.min(...productivityValues) : null;
+  const templateMinDays = Math.max(0, ...matchedTemplates.map((template) => template.min_duration_days ?? 0));
+  const templateBufferDays = Math.max(0, ...matchedTemplates.map((template) => template.safety_buffer_days ?? 0));
+  const floorBufferDays = Math.max(0, new Set(includedSegments.map((segment) => segment.floor_level || 'Ground Floor')).size - 1);
+  const rushAdjustmentDays = includedSegments.some((segment) => segment.is_rush) ? -1 : 0;
+  const durationDays = productivity !== null
+    ? Math.max(1, Math.max(templateMinDays, Math.ceil(area / productivity)) + templateBufferDays + floorBufferDays + rushAdjustmentDays)
+    : null;
+  const warrantyYears = Math.max(0, ...matchedTemplates.map((template) => template.warranty_years ?? 0));
+  const lifespanYears = Math.max(0, ...matchedTemplates.map((template) => template.lifespan_years ?? 0));
 
   return {
     tier,
@@ -507,9 +539,9 @@ export function computeTierResult(
     downpayment_percentage: downpaymentPercentage,
     downpayment_amount: downpaymentAmount,
     grand_total: grandTotal,
-    timeline_label: pricingFixture.timeline_label,
-    warranty_label: pricingFixture.warranty_label,
-    material_grade_label: pricingFixture.material_grade_label,
+    timeline_label: durationDays !== null ? `${durationDays} working day${durationDays === 1 ? '' : 's'} incl. buffer` : pricingFixture.timeline_label,
+    warranty_label: warrantyYears > 0 ? `${warrantyYears}-year warranty` : pricingFixture.warranty_label,
+    material_grade_label: lifespanYears > 0 ? `${pricingFixture.material_grade_label} · ${lifespanYears}-year lifespan` : pricingFixture.material_grade_label,
   };
 }
 

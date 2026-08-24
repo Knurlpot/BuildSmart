@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { AlertTriangle, ArrowLeft, CheckCircle2, Circle, Sparkles, Zap } from "lucide-react";
 import { useSaveSegments, useUpdateQuotationInputMethod } from "@/hooks/useQuotationGeneration";
-import { TREATMENT_TYPES } from "@/lib/dev/provisional/quotationGenerationTypes";
+import { useScopeTemplates } from "@/lib/dev/provisional/useCompanyRulesProvisional";
 import { SEGMENT_CONDITION_TAGS, type SegmentConditionTag } from "@/types/entities/segment-tag";
 import {
   computeQuotationInputMethod,
@@ -13,17 +13,26 @@ import {
   type DraftSegment,
 } from "../lib/draftSegment";
 
+const DEFAULT_OFFERED_TREATMENTS = [
+  "Elastomeric Waterproofing",
+  "Cementitious Waterproofing",
+  "Torch-Applied Membrane",
+  "Interior Painting",
+  "Exterior Painting",
+] as const;
+
 const inputCls =
   "w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm outline-none transition focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/20";
 
 interface SegmentConfigFormProps {
   segment: DraftSegment;
+  treatmentOptions: string[];
   onSave: (patch: Partial<DraftSegment>) => void;
 }
 
 // 
-function SegmentConfigForm({ segment, onSave }: SegmentConfigFormProps) {
-  const isKnownTreatment = segment.treatment_type !== null && (TREATMENT_TYPES as readonly string[]).includes(segment.treatment_type);
+function SegmentConfigForm({ segment, treatmentOptions, onSave }: SegmentConfigFormProps) {
+  const isKnownTreatment = segment.treatment_type !== null && treatmentOptions.includes(segment.treatment_type);
   const [treatmentChoice, setTreatmentChoice] = useState<string>(
     isKnownTreatment ? segment.treatment_type! : segment.treatment_type ? "Other" : ""
   );
@@ -66,7 +75,7 @@ function SegmentConfigForm({ segment, onSave }: SegmentConfigFormProps) {
           className={inputCls}
         >
           <option value="">Select…</option>
-          {TREATMENT_TYPES.map((t) => (
+          {treatmentOptions.map((t) => (
             <option key={t}>{t}</option>
           ))}
           <option value="Other">Others</option>
@@ -136,11 +145,12 @@ function SegmentConfigForm({ segment, onSave }: SegmentConfigFormProps) {
 
 interface ApplyToAllPanelProps {
   segmentCount: number;
+  treatmentOptions: string[];
   onApply: (patch: Pick<DraftSegment, "treatment_type" | "condition_tags" | "is_rush">) => void;
 }
 
 // 
-  function ApplyToAllPanel({ segmentCount, onApply }: ApplyToAllPanelProps) {
+  function ApplyToAllPanel({ segmentCount, treatmentOptions, onApply }: ApplyToAllPanelProps) {
   const [open, setOpen] = useState(false);
   const [treatmentChoice, setTreatmentChoice] = useState("");
   const [customTreatment, setCustomTreatment] = useState("");
@@ -196,7 +206,7 @@ interface ApplyToAllPanelProps {
         <label className="text-xs font-semibold text-gray-600">Treatment Type</label>
         <select value={treatmentChoice} onChange={(e) => setTreatmentChoice(e.target.value)} className={inputCls}>
           <option value="">Select…</option>
-          {TREATMENT_TYPES.map((t) => (
+          {treatmentOptions.map((t) => (
             <option key={t}>{t}</option>
           ))}
           <option value="Other">Others</option>
@@ -268,6 +278,7 @@ interface ConfigureSegmentsStepProps {
 export function ConfigureSegmentsStep({ quoteId, segments, onChange, onSaved, onBack }: ConfigureSegmentsStepProps) {
   const { saveSegments, isSaving, saveError } = useSaveSegments();
   const { updateInputMethod } = useUpdateQuotationInputMethod();
+  const { templates } = useScopeTemplates();
   const [selectedId, setSelectedId] = useState<string | null>(segments[0]?.draft_id ?? null);
   const [applyRevision, setApplyRevision] = useState(0);
 
@@ -276,6 +287,12 @@ export function ConfigureSegmentsStep({ quoteId, segments, onChange, onSaved, on
   const configuredCount = includedSegments.filter(isSegmentConfigured).length;
   const allConfigured = includedSegments.length > 0 && configuredCount === includedSegments.length;
   const selected = segments.find((s) => s.draft_id === selectedId) ?? null;
+  const treatmentOptions = Array.from(
+    new Set([
+      ...templates.filter((template) => template.is_active).map((template) => template.treatment_type.trim()).filter(Boolean),
+      ...DEFAULT_OFFERED_TREATMENTS,
+    ])
+  );
 
   const updateSegment = (draftId: string, patch: Partial<DraftSegment>) => {
     onChange(segments.map((s) => (s.draft_id === draftId ? { ...s, ...patch } : s)));
@@ -320,7 +337,7 @@ export function ConfigureSegmentsStep({ quoteId, segments, onChange, onSaved, on
         </div>
       </div>
 
-      <ApplyToAllPanel segmentCount={segments.length} onApply={applyToAll} />
+      <ApplyToAllPanel segmentCount={segments.length} treatmentOptions={treatmentOptions} onApply={applyToAll} />
 
 
       <div className="flex overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm" style={{ height: 440 }}>
@@ -363,7 +380,7 @@ export function ConfigureSegmentsStep({ quoteId, segments, onChange, onSaved, on
         </div>
         <div className="flex-1 overflow-y-auto p-5">
           {selected ? (
-            <SegmentConfigForm key={`${selected.draft_id}-${applyRevision}`} segment={selected} onSave={(patch) => updateSegment(selected.draft_id, patch)} />
+            <SegmentConfigForm key={`${selected.draft_id}-${applyRevision}`} segment={selected} treatmentOptions={treatmentOptions} onSave={(patch) => updateSegment(selected.draft_id, patch)} />
           ) : (
             <div className="flex h-full items-center justify-center text-sm text-gray-400">No segments to configure.</div>
           )}
