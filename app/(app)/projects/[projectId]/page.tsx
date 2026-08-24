@@ -6,9 +6,9 @@ import { ArrowLeft, Award, CheckCircle2, Clock, History, RefreshCw, Shield, Star
 import { RequireOnboardingStep } from "@/components/auth/RequireOnboardingStep";
 import { QuotationBreakdownModal } from "@/features/quotation-generation/components/QuotationBreakdownModal";
 import { fmtPeso } from "@/lib/dev/provisional/quotationBreakdownFixtures";
-import { refreshQuotePrices, setAcceptedTier, updateSavedQuoteVersionItems, useSavedProjects } from "@/lib/dev/provisional/savedProjectsStore";
+import { refreshQuotePrices, setAcceptedTier, useSavedProjects } from "@/lib/dev/provisional/savedProjectsStore";
 import type { SavedProjectRecord, SavedQuoteVersion } from "@/lib/dev/provisional/savedProjectsTypes";
-import type { ProvisionalTier } from "@/lib/dev/provisional/quotationBreakdownTypes";
+import { PROVISIONAL_TIERS, type ProvisionalTier } from "@/lib/dev/provisional/quotationBreakdownTypes";
 
 
 // 
@@ -36,7 +36,7 @@ function formatDateTimeWithTime(iso: string | null | undefined) {
 }
 
 function versionLabel(v: SavedQuoteVersion): string {
-  const iso = v.price_reference_date ?? v.updated_at ?? v.created_at;
+  const iso = v.price_reference_date;
   return iso ? formatDateTime(iso) : (v.version_number === 1 ? "Original" : `Version ${v.version_number}`);
 }
 
@@ -79,7 +79,7 @@ function QuoteSummaryCard({
         </div>
         <div className="mt-3 border-t border-white/20 pt-3">
           <p className="text-[10px] uppercase tracking-widest opacity-70">
-            Total (incl. VAT): {isOriginal ? (project.status === "Final" ? formatDateTime(snapshot.finalized_at ?? displayed.price_reference_date ?? displayed.updated_at ?? displayed.created_at) : "Draft estimate") : displayedVersionLabel}
+            Total (incl. VAT): {isOriginal ? (project.status === "Final" ? formatDateTime(snapshot.finalized_at ?? displayed.price_reference_date) : "Draft estimate") : displayedVersionLabel}
           </p>
           <p className="text-2xl font-extrabold">{fmtPeso(result.grand_total)}</p>
         </div>
@@ -127,7 +127,7 @@ function QuoteSummaryCard({
             >
               {versions.map((v) => (
                 <option key={v.version_id} value={v.version_id}>
-                  {formatDateTimeWithTime(v.price_reference_date ?? v.updated_at ?? v.created_at)} — {fmtPeso(v.result.grand_total)}
+                  {formatDateTimeWithTime(v.price_reference_date)} — {fmtPeso(v.result.grand_total)}
                 </option>
               ))}
             </select>
@@ -187,7 +187,9 @@ function ProjectDetailContent({ projectId }: { projectId: string }) {
     const alreadyAccepted = project.quotes[tier]?.is_selected === true;
     setAcceptedTier(project.project_id, alreadyAccepted ? null : tier);
   };
-  const quoteEntries = Object.entries(project.quotes).filter((entry): entry is [ProvisionalTier, NonNullable<SavedProjectRecord["quotes"][ProvisionalTier]>] => Boolean(entry[1]));
+  const quoteEntries = PROVISIONAL_TIERS
+    .map((tier) => [tier, project.quotes[tier]] as const)
+    .filter((entry): entry is readonly [ProvisionalTier, NonNullable<SavedProjectRecord["quotes"][ProvisionalTier]>] => Boolean(entry[1]));
 
   const handleRefresh = () => {
     refreshQuotePrices(project.project_id, "Practical");
@@ -242,7 +244,7 @@ function ProjectDetailContent({ projectId }: { projectId: string }) {
         </div>
       </div>
 
-      <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
+      <div className="grid gap-5 lg:grid-cols-2">
         {quoteEntries.map(([tier]) => (
           <QuoteSummaryCard
             key={tier}
@@ -270,7 +272,6 @@ function ProjectDetailContent({ projectId }: { projectId: string }) {
               tier={breakdown.tier}
               result={version.result}
               pricelistBasis={snapshot.pricelist_basis_at_finalize}
-              onItemsChange={(items) => updateSavedQuoteVersionItems(project.project_id, breakdown.tier, version.version_id, items)}
               onClose={() => setBreakdown(null)}
               // Same split-view Segment Breakdown preview the live wizard
               // shows, sourced from what was frozen at Finalize. null blueprintFloors

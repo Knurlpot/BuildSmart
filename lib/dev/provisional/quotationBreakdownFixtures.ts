@@ -9,7 +9,7 @@
 import { stagingId } from './quotationGenerationTypes';
 import type { DraftSegment } from '@/features/quotation-generation/lib/draftSegment';
 import { isSegmentIncluded } from '@/features/quotation-generation/lib/draftSegment';
-import type { MaterialRuleEntry, ScopeTemplate, UnitRule } from './companyRulesTypes';
+import type { LaborRule, MaterialRuleEntry, UnitRule } from './companyRulesTypes';
 import type {
   ItemCategory,
   PricelistBasis,
@@ -486,7 +486,13 @@ export function recomputeItemLine(
 export function computeTierResult(
   tier: ProvisionalTier,
   items: ProvisionalItemLine[],
-  options?: { vatInclusive?: boolean; downpaymentPercentage?: number; segments?: DraftSegment[]; scopeTemplates?: ScopeTemplate[] }
+  options?: {
+    vatInclusive?: boolean;
+    downpaymentPercentage?: number;
+    segments?: DraftSegment[];
+    materialRules?: MaterialRuleEntry[];
+    laborRules?: LaborRule[];
+  }
 ): ProvisionalQuotationTierResult {
   const normalizedTier = normalizeTier(tier);
   const pricingFixture = TIER_PRICING_FIXTURE[normalizedTier];
@@ -505,24 +511,31 @@ export function computeTierResult(
   const grandTotal = round2(subtotalBeforeVat + vatAmount);
   const downpaymentAmount = round2(grandTotal * (downpaymentPercentage / 100));
   const includedSegments = (options?.segments ?? []).filter(isSegmentIncluded);
-  const activeTemplates = (options?.scopeTemplates ?? []).filter((template) => template.is_active);
-  const matchedTemplates = activeTemplates.filter((template) =>
-    includedSegments.some((segment) => segment.treatment_type?.trim().toLowerCase() === template.treatment_type.trim().toLowerCase())
+  const segmentTreatments = new Set(
+    includedSegments
+      .map((segment) => segment.treatment_type?.trim().toLowerCase())
+      .filter((value): value is string => !!value)
+  );
+  const matchedMaterialRules = (options?.materialRules ?? []).filter(
+    (rule) => rule.is_active && !!rule.treatment_type && segmentTreatments.has(rule.treatment_type.trim().toLowerCase())
+  );
+  const matchedLaborRules = (options?.laborRules ?? []).filter(
+    (rule) => rule.is_active && !!rule.treatment_type && segmentTreatments.has(rule.treatment_type.trim().toLowerCase())
   );
   const area = includedSegments.reduce((sum, segment) => sum + segment.area_sqm, 0);
-  const productivityValues = matchedTemplates
-    .map((template) => template.productivity_sqm_per_day)
+  const productivityValues = matchedLaborRules
+    .map((rule) => rule.productivity_sqm_per_day)
     .filter((value): value is number => typeof value === 'number' && value > 0);
   const productivity = productivityValues.length > 0 ? Math.min(...productivityValues) : null;
-  const templateMinDays = Math.max(0, ...matchedTemplates.map((template) => template.min_duration_days ?? 0));
-  const templateBufferDays = Math.max(0, ...matchedTemplates.map((template) => template.safety_buffer_days ?? 0));
+  const templateMinDays = Math.max(0, ...matchedLaborRules.map((rule) => rule.min_duration_days ?? 0));
+  const templateBufferDays = Math.max(0, ...matchedLaborRules.map((rule) => rule.safety_buffer_days ?? 0));
   const floorBufferDays = Math.max(0, new Set(includedSegments.map((segment) => segment.floor_level || 'Ground Floor')).size - 1);
   const rushAdjustmentDays = includedSegments.some((segment) => segment.is_rush) ? -1 : 0;
   const durationDays = productivity !== null
     ? Math.max(1, Math.max(templateMinDays, Math.ceil(area / productivity)) + templateBufferDays + floorBufferDays + rushAdjustmentDays)
     : null;
-  const warrantyYears = Math.max(0, ...matchedTemplates.map((template) => template.warranty_years ?? 0));
-  const lifespanYears = Math.max(0, ...matchedTemplates.map((template) => template.lifespan_years ?? 0));
+  const warrantyYears = Math.max(0, ...matchedMaterialRules.map((rule) => rule.warranty_years ?? 0));
+  const lifespanYears = Math.max(0, ...matchedMaterialRules.map((rule) => rule.lifespan_years ?? 0));
 
   return {
     tier,

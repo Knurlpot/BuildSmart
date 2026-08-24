@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { AlertTriangle, ArrowLeft, CheckCircle2, Circle, Sparkles, Zap } from "lucide-react";
 import { useSaveSegments, useUpdateQuotationInputMethod } from "@/hooks/useQuotationGeneration";
-import { useScopeTemplates } from "@/lib/dev/provisional/useCompanyRulesProvisional";
+import { useMaterialRules } from "@/lib/dev/provisional/useCompanyRulesProvisional";
 import { SEGMENT_CONDITION_TAGS, type SegmentConditionTag } from "@/types/entities/segment-tag";
 import {
   computeQuotationInputMethod,
@@ -12,14 +12,6 @@ import {
   isSegmentIncluded,
   type DraftSegment,
 } from "../lib/draftSegment";
-
-const DEFAULT_OFFERED_TREATMENTS = [
-  "Elastomeric Waterproofing",
-  "Cementitious Waterproofing",
-  "Torch-Applied Membrane",
-  "Interior Painting",
-  "Exterior Painting",
-] as const;
 
 const inputCls =
   "w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm outline-none transition focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/20";
@@ -91,6 +83,11 @@ function SegmentConfigForm({ segment, treatmentOptions, onSave }: SegmentConfigF
             className={inputCls}
             autoFocus
           />
+        )}
+        {treatmentOptions.length === 0 && (
+          <p className="text-[11px] text-amber-600">
+            Add treatment groups in Preferences &amp; Rules &gt; Material Rules first.
+          </p>
         )}
         {!segment.treatment_type && <p className="text-xs text-amber-600">Required before this segment can be saved.</p>}
       </div>
@@ -220,6 +217,11 @@ interface ApplyToAllPanelProps {
             autoFocus
           />
         )}
+        {treatmentOptions.length === 0 && (
+          <p className="text-[11px] text-amber-600">
+            Add treatment groups in Preferences &amp; Rules &gt; Material Rules first.
+          </p>
+        )}
       </div>
 
       <div className="flex flex-col gap-1.5">
@@ -278,7 +280,7 @@ interface ConfigureSegmentsStepProps {
 export function ConfigureSegmentsStep({ quoteId, segments, onChange, onSaved, onBack }: ConfigureSegmentsStepProps) {
   const { saveSegments, isSaving, saveError } = useSaveSegments();
   const { updateInputMethod } = useUpdateQuotationInputMethod();
-  const { templates } = useScopeTemplates();
+  const { rules: materialRules } = useMaterialRules();
   const [selectedId, setSelectedId] = useState<string | null>(segments[0]?.draft_id ?? null);
   const [applyRevision, setApplyRevision] = useState(0);
 
@@ -288,11 +290,13 @@ export function ConfigureSegmentsStep({ quoteId, segments, onChange, onSaved, on
   const allConfigured = includedSegments.length > 0 && configuredCount === includedSegments.length;
   const selected = segments.find((s) => s.draft_id === selectedId) ?? null;
   const treatmentOptions = Array.from(
-    new Set([
-      ...templates.filter((template) => template.is_active).map((template) => template.treatment_type.trim()).filter(Boolean),
-      ...DEFAULT_OFFERED_TREATMENTS,
-    ])
-  );
+    new Set(
+      materialRules
+        .filter((rule) => rule.is_active)
+        .map((rule) => rule.treatment_type?.trim())
+        .filter((value): value is string => !!value)
+    )
+  ).sort();
 
   const updateSegment = (draftId: string, patch: Partial<DraftSegment>) => {
     onChange(segments.map((s) => (s.draft_id === draftId ? { ...s, ...patch } : s)));

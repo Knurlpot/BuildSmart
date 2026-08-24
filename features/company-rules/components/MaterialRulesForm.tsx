@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { AlertTriangle, CheckCircle2, Pencil, Search, X } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Pencil, Search, X, XCircle } from "lucide-react";
 import { RuleListDetailPanel } from "./RuleListDetailPanel";
 import { useMaterialRules, useCheckRuleUsage, stagingId } from "@/lib/dev/provisional/useCompanyRulesProvisional";
 import { useEditableRuleList } from "@/lib/dev/provisional/useEditableRuleList";
+import { apiClient } from "@/lib/api/client";
 import type { MaterialRuleEntry } from "@/lib/dev/provisional/companyRulesTypes";
 import { useItemsCatalog } from "@/hooks/useItemsCatalog";
 import { useCategories } from "@/hooks/useCategories";
@@ -58,13 +59,18 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
   // Seeded from the prop at construction, not synced via effect: a jump always remounts
   // this component fresh through CompanyRulesShell.
   const [selectedId, setSelectedId] = useState<string | null>(focusRuleId ?? null);
-  const [mode, setMode] = useState<"idle" | "browse" | "configure" | "edit">("idle");
+  const [mode, setMode] = useState<"idle" | "browse" | "configure" | "edit-group">("idle");
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState<CategoryType | "">("");
   const [checkedItemCodes, setCheckedItemCodes] = useState<Set<string>>(new Set());
   const [treatmentType, setTreatmentType] = useState("");
+  const [warrantyYears, setWarrantyYears] = useState<number | "">("");
+  const [lifespanYears, setLifespanYears] = useState<number | "">("");
+  const [selectedGroup, setSelectedGroup] = useState<string | null>(null);
   const [touched, setTouched] = useState(false);
   const [savedMessage, setSavedMessage] = useState(false);
+  const [isDisablingGroup, setIsDisablingGroup] = useState(false);
+  const [disableError, setDisableError] = useState<Error | null>(null);
 
   useEffect(() => {
     if (focusRuleId) onFocusHandled?.();
@@ -100,10 +106,13 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
     resetCreate();
     setMode("browse");
     setSelectedId(null);
+    setSelectedGroup(null);
     setSearch("");
     setCategoryFilter("");
     setCheckedItemCodes(new Set());
     setTreatmentType("");
+    setWarrantyYears("");
+    setLifespanYears("");
     setTouched(false);
     setSavedMessage(false);
   };
@@ -113,9 +122,14 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
     setMode("configure");
   };
 
-  const startEdit = (r: MaterialRuleEntry) => {
-    setMode("edit");
-    setTreatmentType(r.treatment_type ?? "");
+  const startEditGroup = (groupName: string) => {
+    const groupRules = groupedRules.find(([name]) => name === groupName)?.[1] ?? [];
+    const firstWithWarranty = groupRules.find((rule) => rule.warranty_years !== null);
+    const firstWithLifespan = groupRules.find((rule) => rule.lifespan_years !== null);
+    setMode("edit-group");
+    setTreatmentType(groupName === "No treatment type" ? "" : groupName);
+    setWarrantyYears(firstWithWarranty?.warranty_years ?? "");
+    setLifespanYears(firstWithLifespan?.lifespan_years ?? "");
     setTouched(false);
     setSavedMessage(false);
   };
@@ -135,6 +149,8 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
         if (!category) throw new Error(`Could not resolve the category for ${item.item_name}.`);
         const payload = {
           treatment_type: treatmentType.trim() || null,
+          warranty_years: null,
+          lifespan_years: null,
           category,
           preferred_item_code: code,
           preferred_item_name: item.item_name,
@@ -151,30 +167,37 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
         });
       }
       setMode("idle");
+      setSelectedGroup(treatmentType.trim() || "No treatment type");
       setSavedMessage(true);
     } catch {
       // surfaced via editable.saveError below — no fabricated success
     }
   };
 
-  const handleSaveEdit = async () => {
+  const handleSaveGroupEdit = async () => {
     setTouched(true);
-    if (!selectedId || !TREATMENT_OPTIONS.includes(treatmentType as (typeof TREATMENT_OPTIONS)[number])) return;
-    const current = allRules.find((r) => r.rule_id === selectedId);
-    if (!current) return;
-    const payload = {
-      treatment_type: treatmentType.trim(),
-      category: current.category,
-      preferred_item_code: current.preferred_item_code,
-      preferred_item_name: current.preferred_item_name,
-      material_priority: current.material_priority || DEFAULT_MATERIAL_PRIORITY,
-      priority_source: current.priority_source || DEFAULT_PRIORITY_SOURCE,
-      fallback_rule: current.fallback_rule || DEFAULT_FALLBACK_RULE,
-    };
-    const resultId = await editable.saveEdit(selectedId, payload);
-    if (resultId) {
+    if (!selectedGroupName || selectedGroupRules.length === 0 || !TREATMENT_OPTIONS.includes(treatmentType as (typeof TREATMENT_OPTIONS)[number])) return;
+    const nextGroup = treatmentType.trim();
+    let savedAny = false;
+    for (const rule of selectedGroupRules) {
+      const payload = {
+        treatment_type: nextGroup,
+        warranty_years: warrantyYears === "" ? null : Number(warrantyYears),
+        lifespan_years: lifespanYears === "" ? null : Number(lifespanYears),
+        category: rule.category,
+        preferred_item_code: rule.preferred_item_code,
+        preferred_item_name: rule.preferred_item_name,
+        material_priority: rule.material_priority || DEFAULT_MATERIAL_PRIORITY,
+        priority_source: rule.priority_source || DEFAULT_PRIORITY_SOURCE,
+        fallback_rule: rule.fallback_rule || DEFAULT_FALLBACK_RULE,
+      };
+      const resultId = await editable.saveEdit(rule.rule_id, payload);
+      if (resultId) savedAny = true;
+    }
+    if (savedAny) {
       setMode("idle");
-      setSelectedId(resultId);
+      setSelectedId(null);
+      setSelectedGroup(nextGroup || "No treatment type");
       setSavedMessage(true);
     }
   };
@@ -189,6 +212,35 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
       return groups;
     }, new Map<string, MaterialRuleEntry[]>())
   ).sort(([a], [b]) => a.localeCompare(b));
+  const selectedGroupName = selectedGroup ?? selected?.treatment_type?.trim() ?? groupedRules[0]?.[0] ?? null;
+  const selectedGroupRules = groupedRules.find(([group]) => group === selectedGroupName)?.[1] ?? [];
+
+  const handleDisableGroup = async () => {
+    if (!selectedGroupName || selectedGroupRules.length === 0 || isDisablingGroup) return;
+    setIsDisablingGroup(true);
+    setDisableError(null);
+    try {
+      await Promise.all(
+        selectedGroupRules
+          .filter((rule) => rule.is_active)
+          .map((rule) =>
+            apiClient(`/api/company-rules/material-rules/${rule.rule_id}`, {
+              method: "DELETE",
+              credentials: "include",
+            })
+          )
+      );
+      setSavedMessage(false);
+      setSelectedGroup(null);
+      setSelectedId(null);
+      await refetch();
+      window.dispatchEvent(new CustomEvent("buildsmart:company-rules-changed", { detail: { kind: "material-rules" } }));
+    } catch (error) {
+      setDisableError(error instanceof Error ? error : new Error("Could not disable this treatment group."));
+    } finally {
+      setIsDisablingGroup(false);
+    }
+  };
 
   return (
     <div className="flex flex-col gap-4">
@@ -199,62 +251,31 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
         </p>
       </div>
 
-      {groupedRules.length > 0 && (
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-          {groupedRules.map(([treatment, group]) => (
-            <section key={treatment} className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <h3 className="truncate text-sm font-bold text-gray-900">{treatment}</h3>
-                  <p className="text-xs text-gray-400">
-                    {group.length} material{group.length === 1 ? "" : "s"}
-                  </p>
-                </div>
-                <span className="rounded-full bg-orange-50 px-2 py-0.5 text-[10px] font-bold text-primary">Treatment</span>
-              </div>
-              <div className="mt-3 flex flex-col divide-y divide-gray-100">
-                {group
-                  .slice()
-                  .sort((a, b) => a.material_priority - b.material_priority || a.preferred_item_name.localeCompare(b.preferred_item_name))
-                  .map((rule) => (
-                    <button
-                      key={rule.rule_id}
-                      type="button"
-                      onClick={() => {
-                        setSelectedId(rule.rule_id);
-                        setMode("idle");
-                      }}
-                      className="flex items-center justify-between gap-3 py-2 text-left hover:text-primary"
-                    >
-                      <span className="min-w-0 truncate text-xs font-semibold text-gray-700">{rule.preferred_item_name}</span>
-                      <span className="shrink-0 text-[10px] text-gray-400">{rule.category}</span>
-                    </button>
-                  ))}
-              </div>
-            </section>
-          ))}
-        </div>
-      )}
-
       <RuleListDetailPanel
-        title="Material Rules"
-        items={allRules}
+        title="Treatment Groups"
+        items={groupedRules}
         isLoading={isLoading}
         error={error}
         onRetry={refetch}
-        getId={(r) => r.rule_id}
-        selectedId={selectedId}
+        getId={([group]) => group}
+        selectedId={selectedGroupName}
         onSelect={(id) => {
-          setSelectedId(id);
+          setSelectedGroup(id);
+          setSelectedId(null);
           setMode("idle");
         }}
         onAdd={startAdd}
         emptyHint="Add materials from your catalog and tag them with a treatment type."
-        renderListItem={(r) => (
+        countLabel={`${allRules.length} configured`}
+        renderListItem={([group, groupRules]) => (
           <div className="flex flex-col gap-0.5">
-            <span className="text-sm font-semibold text-gray-800">{r.preferred_item_name}</span>
-            <span className="text-xs text-gray-400">{r.category}</span>
-            {r.treatment_type && <span className="text-[10px] font-semibold text-primary">{r.treatment_type}</span>}
+            <div className="flex items-center justify-between gap-2">
+              <span className="truncate text-sm font-semibold text-gray-800">{group}</span>
+              <span className="rounded-full bg-orange-50 px-2 py-0.5 text-[10px] font-bold text-primary">Treatment</span>
+            </div>
+            <span className="text-xs text-gray-400">
+              {groupRules.length} material{groupRules.length === 1 ? "" : "s"}
+            </span>
           </div>
         )}
         detail={
@@ -267,8 +288,8 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
                 </button>
               </div>
 
-              <div className="flex gap-2">
-                <div className="relative flex-1">
+              <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_minmax(0,12rem)]">
+                <div className="relative min-w-0">
                   <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
                   <input
                     value={search}
@@ -280,7 +301,7 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
                 <select
                   value={categoryFilter}
                   onChange={(e) => setCategoryFilter(e.target.value as CategoryType | "")}
-                  className={`${inputCls} w-44 shrink-0`}
+                  className={`${inputCls} min-w-0`}
                 >
                   <option value="">All categories</option>
                   {CATEGORY_TYPES.map((c) => (
@@ -411,10 +432,10 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
                 </button>
               </div>
             </div>
-          ) : mode === "edit" && selected ? (
+          ) : mode === "edit-group" && selectedGroupName ? (
             <div className="flex flex-col gap-4">
               <div className="flex items-center justify-between">
-                <p className="text-sm font-bold text-gray-900">Edit Material Rule</p>
+                <p className="text-sm font-bold text-gray-900">Edit Treatment Group</p>
                 <button type="button" onClick={() => setMode("idle")} className="text-gray-300 hover:text-gray-500">
                   <X className="h-4 w-4" />
                 </button>
@@ -423,15 +444,16 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
               <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
                 <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
                 <span>
-                  Saving creates a new version for rules already in use.
+                  Saving updates every material rule in this treatment group.
                 </span>
               </div>
 
               <div className="rounded-xl border border-gray-100 bg-gray-50/60 p-3">
-                <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Material</p>
-                <p className="text-sm font-semibold text-gray-800">{selected.preferred_item_name}</p>
-                <p className="text-xs text-gray-400">{selected.category}</p>
-                {selected.treatment_type && <p className="text-xs font-semibold text-primary">{selected.treatment_type}</p>}
+                <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Treatment Group</p>
+                <p className="text-sm font-semibold text-gray-800">{selectedGroupName}</p>
+                <p className="text-xs text-gray-400">
+                  {selectedGroupRules.length} material{selectedGroupRules.length === 1 ? "" : "s"}
+                </p>
               </div>
 
               <div className="flex flex-col gap-1.5">
@@ -456,22 +478,49 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
                 )}
               </div>
 
+              <div className="grid grid-cols-2 gap-3">
+                <div className="flex flex-col gap-1.5">
+                  <label htmlFor="edit-material-warranty-years" className="text-xs font-semibold text-gray-600">Warranty Years</label>
+                  <input
+                    id="edit-material-warranty-years"
+                    type="number"
+                    min={0}
+                    value={warrantyYears}
+                    onChange={(e) => setWarrantyYears(e.target.value === "" ? "" : Number(e.target.value))}
+                    className={inputCls}
+                  />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <label htmlFor="edit-material-lifespan-years" className="text-xs font-semibold text-gray-600">Expected Lifespan Years</label>
+                  <input
+                    id="edit-material-lifespan-years"
+                    type="number"
+                    min={0}
+                    value={lifespanYears}
+                    onChange={(e) => setLifespanYears(e.target.value === "" ? "" : Number(e.target.value))}
+                    className={inputCls}
+                  />
+                </div>
+              </div>
+
               {editable.saveError && (
                 <div className="flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
                   <AlertTriangle className="h-3.5 w-3.5 shrink-0" /> Couldn&apos;t save: {editable.saveError.message}
                 </div>
               )}
 
-              <button
-                type="button"
-                onClick={handleSaveEdit}
-                disabled={editable.isSaving}
-                className="w-fit rounded-xl bg-primary px-5 py-2.5 text-sm font-bold text-primary-foreground shadow-sm transition hover:bg-(--primary-hover) disabled:opacity-60"
-              >
-                {editable.isSaving ? "Saving…" : "Save Changes"}
-              </button>
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  onClick={handleSaveGroupEdit}
+                  disabled={editable.isSaving}
+                  className="w-fit rounded-xl bg-primary px-5 py-2.5 text-sm font-bold text-primary-foreground shadow-sm transition hover:bg-(--primary-hover) disabled:opacity-60"
+                >
+                  {editable.isSaving ? "Saving…" : "Save Changes"}
+                </button>
+              </div>
             </div>
-          ) : selected ? (
+          ) : selectedGroupName ? (
             <div className="flex flex-col gap-4">
               {savedMessage && (
                 <div className="flex items-center gap-2 rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-xs text-green-700">
@@ -481,20 +530,64 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
                     : "Company preferences updated successfully."}
                 </div>
               )}
-              <div className="flex items-start justify-between gap-3 rounded-xl border border-gray-100 bg-gray-50/60 p-4">
-                <div>
-                  <p className="text-lg font-bold text-gray-900">{selected.preferred_item_name}</p>
-                  <p className="text-sm text-gray-500">{selected.category}</p>
-                  {selected.treatment_type && <p className="mt-0.5 text-xs font-semibold text-primary">{selected.treatment_type}</p>}
-                  <p className="mt-1 text-[11px] text-gray-400">Effective {selected.effective_date}</p>
+              <div className="rounded-xl border border-gray-100 bg-gray-50/60 p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-lg font-bold text-gray-900">{selectedGroupName}</p>
+                    <p className="text-sm text-gray-500">
+                    {selectedGroupRules.length} material{selectedGroupRules.length === 1 ? "" : "s"} in this treatment group
+                  </p>
+                  <p className="mt-1 text-xs text-gray-400">
+                    Warranty: {Math.max(0, ...selectedGroupRules.map((rule) => rule.warranty_years ?? 0)) || "None"} year
+                    {Math.max(0, ...selectedGroupRules.map((rule) => rule.warranty_years ?? 0)) === 1 ? "" : "s"} · Lifespan:{" "}
+                    {Math.max(0, ...selectedGroupRules.map((rule) => rule.lifespan_years ?? 0)) || "Not set"} year
+                    {Math.max(0, ...selectedGroupRules.map((rule) => rule.lifespan_years ?? 0)) === 1 ? "" : "s"}
+                  </p>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => startEdit(selected)}
-                  className="flex shrink-0 items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-gray-600 transition hover:border-primary hover:text-primary"
-                >
-                  <Pencil className="h-3.5 w-3.5" /> Edit
-                </button>
+                  <div className="flex shrink-0 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => startEditGroup(selectedGroupName)}
+                      title="Edit"
+                      aria-label="Edit treatment group"
+                      className="flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-600 transition hover:border-primary hover:text-primary"
+                    >
+                      <Pencil className="h-3.5 w-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      disabled={isDisablingGroup}
+                      onClick={handleDisableGroup}
+                      title="Disable"
+                      aria-label="Disable treatment group"
+                      className="flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-600 transition hover:border-red-300 hover:text-red-600 disabled:opacity-50"
+                    >
+                      <XCircle className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                </div>
+                {disableError && (
+                  <div className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+                    Couldn&apos;t disable: {disableError.message}
+                  </div>
+                )}
+                <div className="mt-4 divide-y divide-gray-100 overflow-hidden rounded-xl border border-gray-100 bg-white">
+                  {selectedGroupRules
+                    .slice()
+                    .sort((a, b) => a.material_priority - b.material_priority || a.preferred_item_name.localeCompare(b.preferred_item_name))
+                    .map((rule) => (
+                      <div key={rule.rule_id} className="flex items-center justify-between gap-4 px-4 py-3">
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-semibold text-gray-800">{rule.preferred_item_name}</p>
+                          <p className="truncate text-xs text-gray-400">{rule.category}</p>
+                          <p className="mt-0.5 text-[11px] text-gray-400">Effective {rule.effective_date}</p>
+                        </div>
+                        <span className="shrink-0 rounded-full bg-gray-50 px-2 py-0.5 text-[10px] font-bold text-gray-500">
+                          Priority {rule.material_priority}
+                        </span>
+                      </div>
+                    ))}
+                </div>
               </div>
             </div>
           ) : (

@@ -9,7 +9,6 @@ import {
   Users,
   Wrench,
 } from "lucide-react";
-import { ScopeTemplatesForm } from "./ScopeTemplatesForm";
 import { MaterialRulesForm } from "./MaterialRulesForm";
 import { SupplierRulesForm } from "./SupplierRulesForm";
 import { LaborRulesForm } from "./LaborRulesForm";
@@ -18,7 +17,6 @@ import { UnitRulesForm } from "./UnitRulesForm";
 import { ManageExistingRulesTab } from "./ManageExistingRulesTab";
 import { RULE_KIND_TAB, type ExistingRuleSummary } from "@/lib/dev/provisional/companyRulesTypes";
 import {
-  useScopeTemplates,
   useMaterialRules,
   useLaborRules,
   usePricingStrategies,
@@ -30,7 +28,6 @@ import { advanceOnboardingStep, hasCompletedCompanyRulesStep } from "@/lib/onboa
 
 // 
 const TABS = [
-  { id: "scope-templates", label: "Scope Templates", icon: Wrench },
   { id: "material-rules", label: "Material Rules", icon: Package },
   { id: "supplier-rules", label: "Supplier Rules", icon: Truck },
   { id: "labor-rules", label: "Labor Rules", icon: Users },
@@ -42,7 +39,7 @@ const TABS = [
 type TabId = (typeof TABS)[number]["id"];
 
 export default function CompanyRulesShell() {
-  const [activeTab, setActiveTab] = useState<TabId>("scope-templates");
+  const [activeTab, setActiveTab] = useState<TabId>("material-rules");
   // "Manage Existing Rules" rows jump to the rule's owning tab with that rule
   // pre-selected, instead of dumping the user on the tab with no idea what to look for.
   const [focusRuleId, setFocusRuleId] = useState<string | null>(null);
@@ -54,7 +51,6 @@ export default function CompanyRulesShell() {
 
   // 
   const { currentUser, updateOnboardingStep } = useAuth();
-  const { templates: scopeTemplates, refetch: refetchScopeTemplates } = useScopeTemplates();
   const { rules: materialRules, refetch: refetchMaterialRules } = useMaterialRules();
   const { rules: laborRules, refetch: refetchLaborRules } = useLaborRules();
   const { strategies, refetch: refetchPricingStrategies } = usePricingStrategies();
@@ -62,7 +58,6 @@ export default function CompanyRulesShell() {
   const { rules: supplierRules, refetch: refetchSupplierRules } = useSupplierRules();
 
   const needsAttention: Partial<Record<TabId, boolean>> = {
-    "scope-templates": scopeTemplates.length === 0,
     "material-rules": materialRules.length === 0,
     "supplier-rules": supplierRules.length === 0,
     "labor-rules": laborRules.length === 0,
@@ -91,7 +86,6 @@ export default function CompanyRulesShell() {
   useEffect(() => {
     const refetchByKind: Record<string, () => void> = {
       "material-rules": refetchMaterialRules,
-      "scope-templates": refetchScopeTemplates,
       "supplier-rules": refetchSupplierRules,
       "labor-rules": refetchLaborRules,
       "pricing-strategy": refetchPricingStrategies,
@@ -107,7 +101,6 @@ export default function CompanyRulesShell() {
     return () => window.removeEventListener("buildsmart:company-rules-changed", handleRulesChanged);
   }, [
     refetchMaterialRules,
-    refetchScopeTemplates,
     refetchSupplierRules,
     refetchLaborRules,
     refetchPricingStrategies,
@@ -140,9 +133,6 @@ export default function CompanyRulesShell() {
         })}
       </div>
 
-      {activeTab === "scope-templates" && (
-        <ScopeTemplatesForm focusRuleId={focusRuleId} onFocusHandled={() => setFocusRuleId(null)} />
-      )}
       {activeTab === "material-rules" && (
         <MaterialRulesForm focusRuleId={focusRuleId} onFocusHandled={() => setFocusRuleId(null)} />
       )}

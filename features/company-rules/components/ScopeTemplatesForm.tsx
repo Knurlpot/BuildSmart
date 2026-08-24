@@ -431,9 +431,11 @@ export function ScopeTemplatesForm({ focusRuleId, onFocusHandled }: ScopeTemplat
                 <button
                   type="button"
                   onClick={() => startEdit(selected)}
-                  className="flex shrink-0 items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-gray-600 transition hover:border-primary hover:text-primary"
+                  title="Edit"
+                  aria-label="Edit scope template"
+                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-600 transition hover:border-primary hover:text-primary"
                 >
-                  <Pencil className="h-3.5 w-3.5" /> Edit
+                  <Pencil className="h-3.5 w-3.5" />
                 </button>
               </div>
               <div className="px-4">

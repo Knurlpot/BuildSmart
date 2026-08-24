@@ -608,18 +608,22 @@ export function SupplierRulesForm({ focusRuleId, onFocusHandled }: SupplierRules
                   <button
                     type="button"
                     onClick={() => startEdit(selected)}
-                    className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-gray-600 transition hover:border-primary hover:text-primary"
+                    title="Edit"
+                    aria-label="Edit supplier rule"
+                    className="flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-600 transition hover:border-primary hover:text-primary"
                   >
-                    <Pencil className="h-3.5 w-3.5" /> Edit
+                    <Pencil className="h-3.5 w-3.5" />
                   </button>
                   {selected.is_active && (
                     <button
                       type="button"
                       disabled={deactivatingId === selected.rule_id && isDeactivating}
                       onClick={() => handleDeactivate(selected)}
-                      className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-gray-600 transition hover:border-red-300 hover:text-red-600 disabled:opacity-50"
+                      title="Disable"
+                      aria-label="Disable supplier rule"
+                      className="flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-600 transition hover:border-red-300 hover:text-red-600 disabled:opacity-50"
                     >
-                      <XCircle className="h-3.5 w-3.5" /> {deactivatingId === selected.rule_id && isDeactivating ? "Deactivating…" : "Deactivate"}
+                      <XCircle className="h-3.5 w-3.5" />
                     </button>
                   )}
                 </div>

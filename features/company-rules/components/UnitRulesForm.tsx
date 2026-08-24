@@ -1,11 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { AlertTriangle, CheckCircle2, Pencil, X } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Pencil, X, XCircle } from "lucide-react";
 import { RuleListDetailPanel } from "./RuleListDetailPanel";
 import { useUnitRules, useCheckRuleUsage, stagingId } from "@/lib/dev/provisional/useCompanyRulesProvisional";
 import { useEditableRuleList } from "@/lib/dev/provisional/useEditableRuleList";
 import { isPercent, isPositiveNumber } from "@/lib/dev/provisional/ruleValidation";
+import { apiClient } from "@/lib/api/client";
 import { unitRuleTargetKind, type UnitRule, type UnitRuleTargetKind } from "@/lib/dev/provisional/companyRulesTypes";
 import { useItemsCatalog } from "@/hooks/useItemsCatalog";
 import { CATEGORY_TYPES, type CategoryType } from "@/types/entities/category";
@@ -49,6 +50,8 @@ export function UnitRulesForm({ focusRuleId, onFocusHandled }: UnitRulesFormProp
   const [touched, setTouched] = useState(false);
   const [savedMessage, setSavedMessage] = useState(false);
   const [statusFilter, setStatusFilter] = useState<"active" | "disabled">("active");
+  const [isDisabling, setIsDisabling] = useState(false);
+  const [disableError, setDisableError] = useState<Error | null>(null);
   const visibleRules = allRules.filter((rule) => rule.is_active === (statusFilter === "active"));
 
   useEffect(() => {
@@ -144,6 +147,27 @@ export function UnitRulesForm({ focusRuleId, onFocusHandled }: UnitRulesFormProp
       setSavedMessage(true);
     } catch {
       // surfaced via saveError below — no fabricated success
+    }
+  };
+
+  const handleDisable = async () => {
+    if (!selected || isDisabling) return;
+    setIsDisabling(true);
+    setDisableError(null);
+    try {
+      await apiClient(`/api/company-rules/unit-rules/${selected.rule_id}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+      setMode("idle");
+      setSelectedId(null);
+      setStatusFilter("disabled");
+      await refetch();
+      window.dispatchEvent(new CustomEvent("buildsmart:company-rules-changed", { detail: { kind: "unit-rules" } }));
+    } catch (error) {
+      setDisableError(error instanceof Error ? error : new Error("Could not disable this unit rule."));
+    } finally {
+      setIsDisabling(false);
     }
   };
 
@@ -424,14 +448,33 @@ export function UnitRulesForm({ focusRuleId, onFocusHandled }: UnitRulesFormProp
                   </p>
                   <p className="mt-1 text-[11px] text-gray-400">Effective {selected.effective_date}</p>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => startEdit(selected)}
-                  className="flex shrink-0 items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-gray-600 transition hover:border-primary hover:text-primary"
-                >
-                  <Pencil className="h-3.5 w-3.5" /> Edit
-                </button>
+                <div className="flex shrink-0 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => startEdit(selected)}
+                    title="Edit"
+                    aria-label="Edit unit rule"
+                    className="flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-600 transition hover:border-primary hover:text-primary"
+                  >
+                    <Pencil className="h-3.5 w-3.5" />
+                  </button>
+                  <button
+                    type="button"
+                    disabled={isDisabling || !selected.is_active}
+                    onClick={handleDisable}
+                    title="Disable"
+                    aria-label="Disable unit rule"
+                    className="flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-600 transition hover:border-red-300 hover:text-red-600 disabled:opacity-50"
+                  >
+                    <XCircle className="h-3.5 w-3.5" />
+                  </button>
+                </div>
               </div>
+              {disableError && (
+                <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+                  Couldn&apos;t disable: {disableError.message}
+                </div>
+              )}
               <dl className="grid grid-cols-2 gap-4 px-4 text-sm">
                 <div>
                   <dt className="text-xs font-semibold uppercase tracking-wide text-gray-400">Conversion Factor</dt>

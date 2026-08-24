@@ -79,6 +79,8 @@ export type PriceSource = (typeof PRICE_SOURCES)[number];
 
 export interface MaterialRuleEntry extends RuleEnvelope {
   treatment_type: string | null;
+  warranty_years: number | null;
+  lifespan_years: number | null;
   category: CategoryType; // -> rule_material.category_id. Filtering metadata, not the organizing key.
   // -> rule_material.preferred_item_code (FK to items, nullable in the schema). The catalog
   // picker always sets this in practice; stays nullable in the type to be honest about
@@ -110,6 +112,9 @@ export interface LaborRule extends RuleEnvelope {
   // v6 schema OPEN ITEM, not something this pass can wire end-to-end.)
   rush_multiplier_percentage: number | null;
   productivity_index: number | null;
+  productivity_sqm_per_day: number | null;
+  min_duration_days: number | null;
+  safety_buffer_days: number | null;
   // CORRECTION 1 DECISION: fallback_rule REMOVED (was optional in the prior pass). Two
   // independent rounds of client validation now agree the General rule already IS the
   // fallback — keeping a second, separate "fallback rule" dropdown alongside it was

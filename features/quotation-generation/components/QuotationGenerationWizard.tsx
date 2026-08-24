@@ -23,6 +23,49 @@ interface ResumeQuotationPayload extends Quotation {
   client: Client | null;
 }
 
+interface LocalQuotationDraft {
+  quoteId: number;
+  step: WizardPhase;
+  method: InputMethod;
+  segments: DraftSegment[];
+  blueprintFloors: BlueprintFloor[] | null;
+  originalBlueprintFloors: BlueprintFloor[] | null;
+  blueprintFilePath: string | null;
+  updatedAt: string;
+}
+
+const LOCAL_DRAFTS_KEY = "buildsmart_quotation_drafts_v1";
+
+function readLocalQuotationDrafts(): Record<string, LocalQuotationDraft> {
+  if (typeof window === "undefined") return {};
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(LOCAL_DRAFTS_KEY) ?? "{}") as unknown;
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? (parsed as Record<string, LocalQuotationDraft>)
+      : {};
+  } catch {
+    return {};
+  }
+}
+
+function readLocalQuotationDraft(quoteId: number): LocalQuotationDraft | null {
+  return readLocalQuotationDrafts()[String(quoteId)] ?? null;
+}
+
+function writeLocalQuotationDraft(draft: LocalQuotationDraft) {
+  if (typeof window === "undefined") return;
+  const drafts = readLocalQuotationDrafts();
+  drafts[String(draft.quoteId)] = draft;
+  window.localStorage.setItem(LOCAL_DRAFTS_KEY, JSON.stringify(drafts));
+}
+
+function clearLocalQuotationDraft(quoteId: number) {
+  if (typeof window === "undefined") return;
+  const drafts = readLocalQuotationDrafts();
+  delete drafts[String(quoteId)];
+  window.localStorage.setItem(LOCAL_DRAFTS_KEY, JSON.stringify(drafts));
+}
+
 function parsePolygon(value?: string | null): [number, number][] | null {
   if (!value) return null;
   try {
@@ -110,12 +153,26 @@ export function QuotationGenerationWizard() {
     ])
       .then(([resumeQuotation, savedSegments]) => {
         if (cancelled) return;
+        const localDraft = readLocalQuotationDraft(quoteId);
         setQuotation(resumeQuotation);
         setClient(resumeQuotation.client);
-        const drafts = savedSegments.segments.map(draftFromSavedSegment);
+        const savedDrafts = savedSegments.segments.map(draftFromSavedSegment);
+        const drafts = localDraft?.segments?.length ? localDraft.segments : savedDrafts;
         setSegments(drafts);
-        setMethod(resumeQuotation.input_method === "Blueprint" ? "blueprint" : "quick");
-        setStep(drafts.length > 0 ? "configure" : resumeQuotation.input_method === "Blueprint" ? "blueprint" : "quick");
+        const nextMethod = localDraft?.method ?? (resumeQuotation.input_method === "Blueprint" ? "blueprint" : "quick");
+        setMethod(nextMethod);
+        setBlueprintFloors(localDraft?.blueprintFloors ?? null);
+        setOriginalBlueprintFloors(localDraft?.originalBlueprintFloors ?? null);
+        setBlueprintFilePath(localDraft?.blueprintFilePath ?? null);
+        setStep(
+          localDraft?.step && localDraft.step !== "client" && localDraft.step !== "method" && localDraft.step !== "finalized"
+            ? localDraft.step
+            : drafts.length > 0
+              ? "configure"
+              : nextMethod === "blueprint"
+                ? "blueprint"
+                : "quick"
+        );
       })
       .catch((error) => {
         if (!cancelled) setResumeError(error instanceof Error ? error.message : "Could not resume this quotation.");
@@ -128,6 +185,20 @@ export function QuotationGenerationWizard() {
       cancelled = true;
     };
   }, [resumeQuoteId]);
+
+  useEffect(() => {
+    if (!quotation || step === "client" || step === "method" || step === "finalized") return;
+    writeLocalQuotationDraft({
+      quoteId: quotation.quote_id,
+      step,
+      method,
+      segments,
+      blueprintFloors,
+      originalBlueprintFloors,
+      blueprintFilePath,
+      updatedAt: new Date().toISOString(),
+    });
+  }, [blueprintFilePath, blueprintFloors, method, originalBlueprintFloors, quotation, segments, step]);
 
   // Registers the path-aware step sequence on the GLOBAL header (components/layout/
   // Header.tsx's `workflow` prop) for as long as this wizard stays mounted — see
@@ -183,7 +254,10 @@ export function QuotationGenerationWizard() {
 
   const discardDraftQuotation = async () => {
     const quoteId = quotation?.quote_id;
-    if (quoteId) await deleteDraftQuotation(quoteId).catch(() => {});
+    if (quoteId) {
+      clearLocalQuotationDraft(quoteId);
+      await deleteDraftQuotation(quoteId).catch(() => {});
+    }
     resetDraftState();
   };
 
@@ -270,7 +344,11 @@ export function QuotationGenerationWizard() {
         // whichever path this quotation actually used, segments intact (nothing here
         // clears them; the user re-reviews/re-confirms from where they left off).
         onStructuralRevision={() => setStep(method ?? "method")}
-        onFinalize={() => router.push("/projects")}
+        onSaveDraft={() => router.push("/projects")}
+        onFinalize={() => {
+          clearLocalQuotationDraft(quotation.quote_id);
+          router.push("/projects");
+        }}
       />
     );
   } else {

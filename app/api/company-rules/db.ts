@@ -188,6 +188,8 @@ export async function fetchCompanyRules(companyId: number): Promise<CompanyRules
     return {
       rule_id: `mr-${row.rule_id}`,
       treatment_type: typeof parsed.treatment_type === "string" ? parsed.treatment_type : null,
+      warranty_years: typeof parsed.warranty_years === "number" ? parsed.warranty_years : null,
+      lifespan_years: typeof parsed.lifespan_years === "number" ? parsed.lifespan_years : null,
       category: row.category_type,
       preferred_item_code: String(parsed.preferred_item_code ?? ""),
       preferred_item_name: row.item_name ?? row.rule_name,
@@ -210,6 +212,9 @@ export async function fetchCompanyRules(companyId: number): Promise<CompanyRules
       rush_multiplier_percentage:
         typeof parsed.rush_multiplier_percentage === "number" ? parsed.rush_multiplier_percentage : null,
       productivity_index: row.productivity_index === null ? null : Number(row.productivity_index),
+      productivity_sqm_per_day: typeof parsed.productivity_sqm_per_day === "number" ? parsed.productivity_sqm_per_day : null,
+      min_duration_days: typeof parsed.min_duration_days === "number" ? parsed.min_duration_days : null,
+      safety_buffer_days: typeof parsed.safety_buffer_days === "number" ? parsed.safety_buffer_days : null,
       is_active: row.status === "Active",
       effective_date: asDate(row.date_created),
     };
@@ -374,7 +379,13 @@ export async function createRule(companyId: number, kind: RuleKindParam, body: R
           body.preferred_item_name,
           body.category,
           body.category,
-          JSON.stringify({ preferred_item_code: body.preferred_item_code, priority_source: source, treatment_type: body.treatment_type ?? null }),
+          JSON.stringify({
+            preferred_item_code: body.preferred_item_code,
+            priority_source: source,
+            treatment_type: body.treatment_type ?? null,
+            warranty_years: body.warranty_years ?? null,
+            lifespan_years: body.lifespan_years ?? null,
+          }),
           sourceToCompanyRuleSource(source),
           materialFallbackToCompanyRuleFallback(body.fallback_rule),
         ]
@@ -390,6 +401,9 @@ export async function createRule(companyId: number, kind: RuleKindParam, body: R
         labor_trade: body.labor_trade,
         region: body.region,
         rush_multiplier_percentage: body.rush_multiplier_percentage,
+        productivity_sqm_per_day: body.productivity_sqm_per_day,
+        min_duration_days: body.min_duration_days,
+        safety_buffer_days: body.safety_buffer_days,
       };
       const label = (body.treatment_type || body.labor_trade || "General Labor Rule") as string;
       const rule = await client.query<{ rule_id: number }>(
@@ -659,6 +673,8 @@ export async function updateRule(companyId: number, kind: RuleKindParam, ruleId:
             preferred_item_code: body.preferred_item_code,
             priority_source: source,
             treatment_type: body.treatment_type ?? null,
+            warranty_years: body.warranty_years ?? null,
+            lifespan_years: body.lifespan_years ?? null,
           }),
           sourceToCompanyRuleSource(source),
           materialFallbackToCompanyRuleFallback(body.fallback_rule),
@@ -683,6 +699,9 @@ export async function updateRule(companyId: number, kind: RuleKindParam, ruleId:
         labor_trade: body.labor_trade,
         region: body.region,
         rush_multiplier_percentage: body.rush_multiplier_percentage,
+        productivity_sqm_per_day: body.productivity_sqm_per_day,
+        min_duration_days: body.min_duration_days,
+        safety_buffer_days: body.safety_buffer_days,
       };
       const label = (body.treatment_type || body.labor_trade || "General Labor Rule") as string;
       const updatedRule = await client.query(

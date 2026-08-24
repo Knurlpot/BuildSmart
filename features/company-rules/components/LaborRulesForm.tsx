@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { AlertTriangle, CheckCircle2, Pencil, X } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Pencil, X, XCircle } from "lucide-react";
 import { RuleListDetailPanel } from "./RuleListDetailPanel";
 import {
   useLaborRules,
@@ -12,6 +12,7 @@ import {
 } from "@/lib/dev/provisional/useCompanyRulesProvisional";
 import { useEditableRuleList } from "@/lib/dev/provisional/useEditableRuleList";
 import { isNonEmpty, isPercent, isPositiveNumber } from "@/lib/dev/provisional/ruleValidation";
+import { apiClient } from "@/lib/api/client";
 import { laborRuleScope, type LaborRule, type LaborRuleScope } from "@/lib/dev/provisional/companyRulesTypes";
 import { PH_REGIONS, type PhRegion } from "@/types/entities/common";
 
@@ -70,8 +71,13 @@ export function LaborRulesForm({ focusRuleId, onFocusHandled }: LaborRulesFormPr
   const [rate, setRate] = useState<number | "">("");
   const [rushMultiplier, setRushMultiplier] = useState<number | "">("");
   const [productivity, setProductivity] = useState<number | "">("");
+  const [productivitySqmPerDay, setProductivitySqmPerDay] = useState<number | "">("");
+  const [minDurationDays, setMinDurationDays] = useState<number | "">("");
+  const [safetyBufferDays, setSafetyBufferDays] = useState<number | "">("");
   const [touched, setTouched] = useState(false);
   const [savedMessage, setSavedMessage] = useState(false);
+  const [isDisabling, setIsDisabling] = useState(false);
+  const [disableError, setDisableError] = useState<Error | null>(null);
 
   useEffect(() => {
     if (focusRuleId) onFocusHandled?.();
@@ -83,7 +89,10 @@ export function LaborRulesForm({ focusRuleId, onFocusHandled }: LaborRulesFormPr
   const rateValid = rate !== "" && isPositiveNumber(Number(rate));
   const rushValid = rushMultiplier === "" || isPercent(Number(rushMultiplier));
   const productivityValid = productivity === "" || isPositiveNumber(Number(productivity));
-  const formValid = treatmentValid && tradeValid && rateValid && rushValid && productivityValid;
+  const productivitySqmValid = productivitySqmPerDay === "" || isPositiveNumber(Number(productivitySqmPerDay));
+  const minDurationValid = minDurationDays === "" || isPositiveNumber(Number(minDurationDays));
+  const safetyBufferValid = safetyBufferDays === "" || isPositiveNumber(Number(safetyBufferDays));
+  const formValid = treatmentValid && tradeValid && rateValid && rushValid && productivityValid && productivitySqmValid && minDurationValid && safetyBufferValid;
 
   const resetForm = () => {
     setScope("Treatment");
@@ -94,6 +103,9 @@ export function LaborRulesForm({ focusRuleId, onFocusHandled }: LaborRulesFormPr
     setRate("");
     setRushMultiplier("");
     setProductivity("");
+    setProductivitySqmPerDay("");
+    setMinDurationDays("");
+    setSafetyBufferDays("");
     setTouched(false);
   };
 
@@ -116,6 +128,9 @@ export function LaborRulesForm({ focusRuleId, onFocusHandled }: LaborRulesFormPr
     setRate(r.labor_rate);
     setRushMultiplier(r.rush_multiplier_percentage ?? "");
     setProductivity(r.productivity_index ?? "");
+    setProductivitySqmPerDay(r.productivity_sqm_per_day ?? "");
+    setMinDurationDays(r.min_duration_days ?? "");
+    setSafetyBufferDays(r.safety_buffer_days ?? "");
     setTouched(false);
     setSavedMessage(false);
   };
@@ -127,6 +142,9 @@ export function LaborRulesForm({ focusRuleId, onFocusHandled }: LaborRulesFormPr
     labor_rate: Number(rate),
     rush_multiplier_percentage: rushMultiplier === "" ? null : Number(rushMultiplier),
     productivity_index: productivity === "" ? null : Number(productivity),
+    productivity_sqm_per_day: productivitySqmPerDay === "" ? null : Number(productivitySqmPerDay),
+    min_duration_days: minDurationDays === "" ? null : Number(minDurationDays),
+    safety_buffer_days: safetyBufferDays === "" ? null : Number(safetyBufferDays),
   });
 
   const handleSave = async () => {
@@ -159,6 +177,27 @@ export function LaborRulesForm({ focusRuleId, onFocusHandled }: LaborRulesFormPr
       setSavedMessage(true);
     } catch {
       // surfaced via saveError below — no fabricated success
+    }
+  };
+
+  const handleDisable = async () => {
+    if (!selected || isDisabling) return;
+    setIsDisabling(true);
+    setDisableError(null);
+    try {
+      await apiClient(`/api/company-rules/labor-rules/${selected.rule_id}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+      setMode("idle");
+      setSelectedId(null);
+      setStatusFilter("disabled");
+      await refetch();
+      window.dispatchEvent(new CustomEvent("buildsmart:company-rules-changed", { detail: { kind: "labor-rules" } }));
+    } catch (error) {
+      setDisableError(error instanceof Error ? error : new Error("Could not disable this labor rule."));
+    } finally {
+      setIsDisabling(false);
     }
   };
 
@@ -408,6 +447,42 @@ export function LaborRulesForm({ focusRuleId, onFocusHandled }: LaborRulesFormPr
                 </div>
               </div>
 
+              <div className="grid grid-cols-3 gap-3">
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-xs font-semibold text-gray-600">Productivity sqm/day</label>
+                  <input
+                    type="number"
+                    min={0}
+                    value={productivitySqmPerDay}
+                    onChange={(e) => setProductivitySqmPerDay(e.target.value === "" ? "" : Number(e.target.value))}
+                    className={inputCls}
+                  />
+                  {touched && !productivitySqmValid && <p className="text-xs text-red-500">Must be greater than 0.</p>}
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-xs font-semibold text-gray-600">Minimum Duration Days</label>
+                  <input
+                    type="number"
+                    min={0}
+                    value={minDurationDays}
+                    onChange={(e) => setMinDurationDays(e.target.value === "" ? "" : Number(e.target.value))}
+                    className={inputCls}
+                  />
+                  {touched && !minDurationValid && <p className="text-xs text-red-500">Must be greater than 0.</p>}
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-xs font-semibold text-gray-600">Safety Buffer Days</label>
+                  <input
+                    type="number"
+                    min={0}
+                    value={safetyBufferDays}
+                    onChange={(e) => setSafetyBufferDays(e.target.value === "" ? "" : Number(e.target.value))}
+                    className={inputCls}
+                  />
+                  {touched && !safetyBufferValid && <p className="text-xs text-red-500">Must be greater than 0.</p>}
+                </div>
+              </div>
+
               <div className="flex flex-col gap-1.5">
                 <div className="relative">
                   <input
@@ -477,14 +552,33 @@ export function LaborRulesForm({ focusRuleId, onFocusHandled }: LaborRulesFormPr
                   )}
                   <p className="mt-1 text-[11px] text-gray-400">Effective {selected.effective_date}</p>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => startEdit(selected)}
-                  className="flex shrink-0 items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-gray-600 transition hover:border-primary hover:text-primary"
-                >
-                  <Pencil className="h-3.5 w-3.5" /> Edit
-                </button>
+                <div className="flex shrink-0 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => startEdit(selected)}
+                    title="Edit"
+                    aria-label="Edit labor rule"
+                    className="flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-600 transition hover:border-primary hover:text-primary"
+                  >
+                    <Pencil className="h-3.5 w-3.5" />
+                  </button>
+                  <button
+                    type="button"
+                    disabled={isDisabling || !selected.is_active}
+                    onClick={handleDisable}
+                    title="Disable"
+                    aria-label="Disable labor rule"
+                    className="flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-600 transition hover:border-red-300 hover:text-red-600 disabled:opacity-50"
+                  >
+                    <XCircle className="h-3.5 w-3.5" />
+                  </button>
+                </div>
               </div>
+              {disableError && (
+                <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+                  Couldn&apos;t disable: {disableError.message}
+                </div>
+              )}
               <dl className="grid grid-cols-2 gap-4 px-4 text-sm">
                 <div>
                   <dt className="text-xs font-semibold uppercase tracking-wide text-gray-400">Rate</dt>
@@ -503,6 +597,24 @@ export function LaborRulesForm({ focusRuleId, onFocusHandled }: LaborRulesFormPr
                   <div>
                     <dt className="text-xs font-semibold uppercase tracking-wide text-gray-400">Productivity Index</dt>
                     <dd className="text-gray-700">{selected.productivity_index}</dd>
+                  </div>
+                )}
+                {selected.productivity_sqm_per_day !== null && (
+                  <div>
+                    <dt className="text-xs font-semibold uppercase tracking-wide text-gray-400">Productivity</dt>
+                    <dd className="text-gray-700">{selected.productivity_sqm_per_day} sqm/day</dd>
+                  </div>
+                )}
+                {selected.min_duration_days !== null && (
+                  <div>
+                    <dt className="text-xs font-semibold uppercase tracking-wide text-gray-400">Minimum Duration</dt>
+                    <dd className="text-gray-700">{selected.min_duration_days} days</dd>
+                  </div>
+                )}
+                {selected.safety_buffer_days !== null && (
+                  <div>
+                    <dt className="text-xs font-semibold uppercase tracking-wide text-gray-400">Safety Buffer</dt>
+                    <dd className="text-gray-700">{selected.safety_buffer_days} days</dd>
                   </div>
                 )}
               </dl>

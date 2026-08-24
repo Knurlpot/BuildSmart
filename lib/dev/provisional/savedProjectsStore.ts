@@ -4,6 +4,7 @@ import { useSyncExternalStore } from "react";
 import { computeTierResult } from "./quotationBreakdownFixtures";
 import {
   type FinalizedQuotationInput,
+  type ProvisionalItemLine,
   type ProvisionalTier,
   type SavedQuoteSnapshot,
   type SavedQuoteVersion,
@@ -119,7 +120,11 @@ export function saveFinalizedQuotation(input: FinalizedQuotationInput): SavedPro
     Object.entries(input.tierItems).flatMap(([tier, items]) => {
       if (!items) return [];
       const typedTier = tier as ProvisionalTier;
-      const result = computeTierResult(typedTier, items, { segments: input.segments });
+      const result = computeTierResult(typedTier, items, {
+        segments: input.segments,
+        materialRules: input.materialRules,
+        laborRules: input.laborRules,
+      });
       return [
         [
           typedTier,
@@ -172,6 +177,44 @@ export function refreshQuotePrices(projectId: string, tier: ProvisionalTier) {
           [tier]: {
             ...quote,
             versions: [...quote.versions, nextVersion],
+          },
+        },
+      };
+    })
+  );
+}
+
+export function updateSavedQuoteVersionItems(
+  projectId: string,
+  tier: ProvisionalTier,
+  versionId: string,
+  items: ProvisionalItemLine[]
+) {
+  writeProjects(
+    readProjects().map((project) => {
+      if (project.project_id !== projectId) return project;
+      const quote = project.quotes[tier];
+      if (!quote) return project;
+
+      const versions = quote.versions.map((version) => {
+        if (version.version_id !== versionId) return version;
+        return {
+          ...version,
+          result: computeTierResult(tier, items, { segments: project.segmentsSnapshot }),
+          price_reference_date: new Date().toISOString(),
+        };
+      });
+      const currentResult = versions.find((version) => version.version_id === versionId)?.result ?? quote.result;
+
+      return {
+        ...project,
+        updated_at: new Date().toISOString(),
+        quotes: {
+          ...project.quotes,
+          [tier]: {
+            ...quote,
+            result: currentResult,
+            versions,
           },
         },
       };

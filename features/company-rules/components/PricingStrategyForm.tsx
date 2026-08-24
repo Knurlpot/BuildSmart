@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { AlertTriangle, CheckCircle2, Pencil, X } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Pencil, X, XCircle } from "lucide-react";
 import { usePricingStrategies } from "@/lib/dev/provisional/useCompanyRulesProvisional";
+import { apiClient } from "@/lib/api/client";
 import { isPercent, warnContingency, warnMarkup, warnOverhead, warnProfitMargin, warnVat } from "@/lib/dev/provisional/ruleValidation";
 import {
   QUOTATION_TIERS,
@@ -85,13 +86,16 @@ interface StrategyPanelProps {
   isBusy: boolean;
   error?: Error | null;
   onSave: (tier: QuotationTier, strategy: PricingStrategyRule | null, draft: StrategyDraft) => Promise<PricingStrategyRule | null>;
+  onDisable: (strategy: PricingStrategyRule) => Promise<boolean>;
 }
 
-function StrategyPanel({ tier, strategy, isBusy, error, onSave }: StrategyPanelProps) {
+function StrategyPanel({ tier, strategy, isBusy, error, onSave, onDisable }: StrategyPanelProps) {
   const [draft, setDraft] = useState<StrategyDraft>(() => draftFromStrategy(strategy));
   const [touched, setTouched] = useState(false);
   const [saved, setSaved] = useState(false);
   const [isEditing, setIsEditing] = useState(strategy === null);
+  const [isDisabling, setIsDisabling] = useState(false);
+  const [disableError, setDisableError] = useState<Error | null>(null);
 
   const markupValid = draft.markup !== "" && isPercent(Number(draft.markup));
   const contingencyValid = draft.contingency !== "" && isPercent(Number(draft.contingency));
@@ -123,6 +127,15 @@ function StrategyPanel({ tier, strategy, isBusy, error, onSave }: StrategyPanelP
     setIsEditing(true);
   };
 
+  const handleDisable = async () => {
+    if (!strategy || isDisabling) return;
+    setIsDisabling(true);
+    setDisableError(null);
+    const disabled = await onDisable(strategy);
+    if (!disabled) setDisableError(new Error("Could not disable this pricing rule."));
+    setIsDisabling(false);
+  };
+
   return (
     <section
       className={`flex min-w-0 flex-col gap-2 rounded-xl border-2 p-4 shadow-sm ${
@@ -141,18 +154,30 @@ function StrategyPanel({ tier, strategy, isBusy, error, onSave }: StrategyPanelP
               strategy?.is_active ? "bg-green-50 text-green-700" : "bg-gray-100 text-gray-400"
             }`}
           >
-            {strategy?.is_active ? "Active" : "Draft"}
+            {strategy?.is_active ? "Active" : "Disabled"}
           </span>
           {strategy && !isEditing && (
-            <button
-              type="button"
-              onClick={startEdit}
-              title={`Edit ${tier} pricing`}
-              aria-label={`Edit ${tier} pricing`}
-              className="flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-500 transition hover:border-primary/40 hover:text-primary"
-            >
-              <Pencil className="h-3.5 w-3.5" />
-            </button>
+            <>
+              <button
+                type="button"
+                onClick={startEdit}
+                title={`Edit ${tier} pricing`}
+                aria-label={`Edit ${tier} pricing`}
+                className="flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-600 transition hover:border-primary hover:text-primary"
+              >
+                <Pencil className="h-3.5 w-3.5" />
+              </button>
+              <button
+                type="button"
+                disabled={isDisabling || !strategy.is_active}
+                onClick={handleDisable}
+                title="Disable"
+                aria-label={`Disable ${tier} pricing`}
+                className="flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-600 transition hover:border-red-300 hover:text-red-600 disabled:opacity-50"
+              >
+                <XCircle className="h-3.5 w-3.5" />
+              </button>
+            </>
           )}
           {strategy && isEditing && (
             <button
@@ -259,6 +284,11 @@ function StrategyPanel({ tier, strategy, isBusy, error, onSave }: StrategyPanelP
           <AlertTriangle className="h-3.5 w-3.5 shrink-0" /> Couldn&apos;t save: {error.message}
         </div>
       )}
+      {disableError && (
+        <div className="flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+          <AlertTriangle className="h-3.5 w-3.5 shrink-0" /> {disableError.message}
+        </div>
+      )}
 
       {isEditing && (
         <button
@@ -280,7 +310,7 @@ interface PricingStrategyFormProps {
 }
 
 export function PricingStrategyForm({ focusRuleId, onFocusHandled }: PricingStrategyFormProps) {
-  const { strategies, isLoading, error, save, isSaving, saveError, update } = usePricingStrategies();
+  const { strategies, isLoading, error, save, isSaving, saveError, update, refetch } = usePricingStrategies();
   const [localStrategies, setLocalStrategies] = useState<PricingStrategyRule[]>([]);
   const allStrategies = useMemo(() => [...localStrategies, ...strategies], [localStrategies, strategies]);
 
@@ -319,6 +349,21 @@ export function PricingStrategyForm({ focusRuleId, onFocusHandled }: PricingStra
     }
   };
 
+  const handleDisable = async (strategy: PricingStrategyRule) => {
+    try {
+      await apiClient(`/api/company-rules/pricing-strategy/${strategy.rule_id}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+      setLocalStrategies((current) => current.map((item) => item.rule_id === strategy.rule_id ? { ...item, is_active: false } : item));
+      await refetch();
+      window.dispatchEvent(new CustomEvent("buildsmart:company-rules-changed", { detail: { kind: "pricing-strategy" } }));
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
   return (
     <div className="flex flex-col gap-4">
       <div>
@@ -341,6 +386,7 @@ export function PricingStrategyForm({ focusRuleId, onFocusHandled }: PricingStra
             isBusy={isLoading || isSaving}
             error={saveError}
             onSave={handleSave}
+            onDisable={handleDisable}
           />
         ))}
       </div>

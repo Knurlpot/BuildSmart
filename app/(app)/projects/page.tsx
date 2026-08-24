@@ -72,6 +72,7 @@ function OpenProjectsContent({ onMetaChange }: OpenProjectsContentProps) {
   const { data: quotations, isLoading, error, refetch } = useFetch<ProjectListQuotation[]>("/api/quotations");
   const [search, setSearch] = useState("");
   const [region, setRegion] = useState("All");
+  const [statusFilter, setStatusFilter] = useState<"All" | "Final" | "Draft">("All");
   const [deleteTarget, setDeleteTarget] = useState<OpenProjectRow | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
@@ -110,7 +111,7 @@ function OpenProjectsContent({ onMetaChange }: OpenProjectsContentProps) {
         project_name: quote.project_name,
         project_location: quote.project_location,
         project_region: quote.project_region,
-        status: quote.status,
+        status: savedProject?.status ?? quote.status,
         created_at: quote.created_at,
         savedProject,
       };
@@ -121,10 +122,11 @@ function OpenProjectsContent({ onMetaChange }: OpenProjectsContentProps) {
     const q = search.trim().toLowerCase();
     return rows.filter((p) => {
       const matchesRegion = region === "All" || p.project_region === region;
+      const matchesStatus = statusFilter === "All" || p.status === statusFilter;
       const matchesSearch = !q || p.project_name.toLowerCase().includes(q);
-      return matchesRegion && matchesSearch;
+      return matchesRegion && matchesStatus && matchesSearch;
     });
-  }, [region, rows, search]);
+  }, [region, rows, search, statusFilter]);
 
   const openRow = (row: OpenProjectRow) => {
     router.push(row.savedProject ? `/projects/${row.savedProject.project_id}` : `/quotations/new?resumeQuoteId=${row.quote_id}`);
@@ -157,7 +159,7 @@ function OpenProjectsContent({ onMetaChange }: OpenProjectsContentProps) {
   return (
     <div className="flex flex-col gap-5">
       <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
-        <div className="flex shrink-0 items-center gap-3">
+        <div className="flex shrink-0 flex-wrap items-center gap-3">
           <div className="relative min-w-50 flex-1">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
             <input
@@ -179,6 +181,22 @@ function OpenProjectsContent({ onMetaChange }: OpenProjectsContentProps) {
               </option>
             ))}
           </select>
+          <div className="flex h-10 items-center gap-2">
+            {(["Draft", "Final"] as const).map((status) => (
+              <button
+                key={status}
+                type="button"
+                onClick={() => setStatusFilter((current) => (current === status ? "All" : status))}
+                className={`h-9 rounded-full border px-3 text-xs font-bold transition ${
+                  statusFilter === status
+                    ? "border-primary bg-orange-50 text-primary"
+                    : "border-gray-200 bg-white text-gray-500 hover:border-gray-300 hover:text-gray-700"
+                }`}
+              >
+                {status}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 

@@ -38,7 +38,7 @@ import type { Client, Quotation } from '@/types/entities';
 import type { DraftSegment } from '@/features/quotation-generation/lib/draftSegment';
 import type { InputMethod, WizardPhase } from '@/features/quotation-generation/lib/workflowSteps';
 import type { BlueprintFloor } from './quotationGenerationTypes';
-import type { QuotationTier } from './companyRulesTypes';
+import type { LaborRule, MaterialRuleEntry, QuotationTier } from './companyRulesTypes';
 
 export type ProvisionalTier = QuotationTier;
 export const PROVISIONAL_TIERS: ProvisionalTier[] = ['Practical', 'Premium'];
@@ -213,5 +213,7 @@ export interface FinalizedQuotationInput {
   tierItems: Partial<Record<ProvisionalTier, ProvisionalItemLine[]>>;
   pricelistBasis: PricelistBasis;
   segments: DraftSegment[];
+  materialRules?: MaterialRuleEntry[];
+  laborRules?: LaborRule[];
   blueprintFloors: BlueprintFloor[] | null;
 }
