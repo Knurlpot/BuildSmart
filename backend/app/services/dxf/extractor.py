@@ -1799,13 +1799,6 @@ def _to_segment(
     labeled = space.label is not None or symbol_inferred
     if not labeled and canonical_name(name) in {"unclassified space", "unlabeled space", "unlabeled"}:
         name = f"UNLABELED_SPACE_{unlabeled_id}"
-    category, color_hex, alpha = _category_for_space(name, space.polygon, labeled)
-    normalized = _normalize_label_with_gemini(name, category, color_hex) if labeled else None
-    if normalized:
-        name = normalized.standardized_name
-        category = normalized.category
-        color_hex = normalized.color_hex
-    overlay = RoomOverlay(category=category, color_hex=color_hex, alpha=alpha, rgba=_hex_to_rgba(color_hex, alpha))
     return ExtractedSegment(
         segment_name=space.name[:150],
         area_sqm=space.reported_area_sqm or round(space.polygon.area * metre_factor * metre_factor, 2),

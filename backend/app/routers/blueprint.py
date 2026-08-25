@@ -1,4 +1,5 @@
 import logging
+import time
 from pathlib import Path
 
 import httpx
@@ -15,6 +16,7 @@ logger = logging.getLogger(__name__)
 @router.post("/extract/{quotation_id}", response_model=BlueprintExtractionResult)
 async def extract_uploaded_blueprint(quotation_id: int, file: UploadFile = File(...)) -> BlueprintExtractionResult:
     filename = file.filename or "blueprint"
+    started_at = time.perf_counter()
     logger.info("Blueprint extraction requested quotation_id=%s filename=%s", quotation_id, filename)
     try:
         content = await file.read()
@@ -32,11 +34,12 @@ async def extract_uploaded_blueprint(quotation_id: int, file: UploadFile = File(
         result.blueprint_file_path = stored_path
         result.persistence_warning = persistence_warning
         logger.info(
-            "Blueprint extraction completed quotation_id=%s filename=%s floors=%s segments=%s",
+            "Blueprint extraction completed quotation_id=%s filename=%s floors=%s segments=%s duration_seconds=%.2f",
             quotation_id,
             filename,
             len(result.floors),
             sum(len(floor.segments) for floor in result.floors),
+            time.perf_counter() - started_at,
         )
         return result
     except ValueError as exc:
