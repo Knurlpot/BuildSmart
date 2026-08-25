@@ -242,7 +242,8 @@ function QuoteCard({
           onClick={onAccept}
           className="mt-2 flex w-full items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white py-2.5 text-sm font-bold text-gray-600 transition hover:border-primary hover:text-primary"
         >
-          <CheckCircle2 className="h-4 w-4" /> Accept {tier} Quotation
+          {unresolvedCount > 0 ? <PenLine className="h-4 w-4" /> : <CheckCircle2 className="h-4 w-4" />}
+          {unresolvedCount > 0 ? `Resolve ${unresolvedCount} Missing Price${unresolvedCount === 1 ? "" : "s"}` : `Accept ${tier} Quotation`}
         </button>
       </div>
     </div>
@@ -278,6 +279,7 @@ export function QuotationResultsStep({ client, quotation, segments, blueprintFlo
   const [revisionTypeOpen, setRevisionTypeOpen] = useState(false);
   const [minorRevisionTier, setMinorRevisionTier] = useState<ProvisionalTier | null>(null);
   const [structuralConfirmOpen, setStructuralConfirmOpen] = useState(false);
+  const [acceptError, setAcceptError] = useState<string | null>(null);
 
   const includedSegments = segments.filter(isSegmentIncluded);
   const totalArea = includedSegments.reduce((sum, s) => sum + s.area_sqm, 0);
@@ -339,19 +341,30 @@ export function QuotationResultsStep({ client, quotation, segments, blueprintFlo
     const result = tierResults[tier];
     if (!result) return;
 
-    await apiClient(`/api/quotations/${quotation.quote_id}/accept`, {
-      method: "POST",
-      credentials: "include",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        tier,
-        items: effectiveTierItems[tier] ?? [],
-        total_material_cost: result.materials_subtotal,
-        total_service_cost: result.service_cost.subtotal,
-        grand_total: result.grand_total,
-      }),
-    });
-    onFinalize();
+    if (result.items.some((item) => item.unit_price === null || item.total_cost === null)) {
+      setAcceptError(null);
+      setMinorRevisionTier(tier);
+      return;
+    }
+
+    setAcceptError(null);
+    try {
+      await apiClient(`/api/quotations/${quotation.quote_id}/accept`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          tier,
+          items: effectiveTierItems[tier] ?? [],
+          total_material_cost: result.materials_subtotal,
+          total_service_cost: result.service_cost.subtotal,
+          grand_total: result.grand_total,
+        }),
+      });
+      onFinalize();
+    } catch (error) {
+      setAcceptError(error instanceof Error ? error.message : "Could not accept this quotation.");
+    }
   };
 
   return (
@@ -445,6 +458,12 @@ export function QuotationResultsStep({ client, quotation, segments, blueprintFlo
           ))}
         </div>
       </section>
+
+      {acceptError && (
+        <p role="alert" className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
+          {acceptError}
+        </p>
+      )}
 
       <div className="flex flex-col gap-5 lg:flex-row">
         {activeTiers.map((tier) => {

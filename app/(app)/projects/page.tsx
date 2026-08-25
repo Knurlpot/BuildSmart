@@ -26,6 +26,7 @@ interface OpenProjectRow {
   project_location: string;
   project_region: string;
   status: Quotation["status"];
+  accepted_tier: Quotation["accepted_tier"];
   grand_total: number;
   created_at: string;
 }
@@ -84,6 +85,7 @@ function OpenProjectsContent({ onMetaChange }: OpenProjectsContentProps) {
         project_location: quote.project_location,
         project_region: quote.project_region,
         status: quote.status,
+        accepted_tier: quote.accepted_tier ?? null,
         grand_total: quote.grand_total,
         created_at: quote.created_at,
       };
@@ -208,6 +210,10 @@ function OpenProjectsContent({ onMetaChange }: OpenProjectsContentProps) {
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
           {filteredRows.map((project) => {
             const href = project.status === "Draft" ? `/quotations/new?resumeQuoteId=${project.quote_id}` : `/quotations/${project.quote_id}`;
+            const tier = project.accepted_tier;
+            const isPremiumFinal = project.status === "Final" && tier === "Premium";
+            const isPracticalFinal = project.status === "Final" && tier === "Practical";
+            const hasTierColor = isPremiumFinal || isPracticalFinal;
             return (
               <article
                 key={project.id}
@@ -217,24 +223,31 @@ function OpenProjectsContent({ onMetaChange }: OpenProjectsContentProps) {
                 onKeyDown={(event) => {
                   if (event.key === "Enter" || event.key === " ") openRow(project);
                 }}
-                className="group cursor-pointer overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-md transition-all hover:border-gray-200"
+                className={`group cursor-pointer overflow-hidden rounded-2xl bg-white shadow-md transition-all ${hasTierColor ? "" : "border border-gray-100 hover:border-gray-200"}`}
               >
-                <div className="flex items-start justify-between gap-4 bg-white p-5">
+                <div className={`flex items-start justify-between gap-4 p-5 ${isPremiumFinal ? "project-tier-gradient bg-linear-to-r from-[#0000CD] via-[#4169E1] to-[#0000CD]" : isPracticalFinal ? "project-tier-gradient bg-linear-to-r from-primary via-orange-400 to-primary" : "bg-white"}`}>
                   <div className="min-w-0">
-                    <h2 className="truncate text-base font-semibold text-gray-900 transition-colors group-hover:text-primary">
+                    <h2 className={`truncate text-base font-semibold transition-colors ${hasTierColor ? "text-white" : "text-gray-900 group-hover:text-primary"}`}>
                       {project.project_name}
                     </h2>
                     <div className="mt-3 flex items-center gap-2.5">
-                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-orange-50 text-xs font-semibold text-primary">
+                      <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-xs font-semibold ${hasTierColor ? "bg-white/20 text-white" : "bg-orange-50 text-primary"}`}>
                         {clientInitials(project.client_name)}
                       </div>
                       <div className="min-w-0">
-                        <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">Client</p>
-                        <p className="truncate text-sm font-medium text-gray-700">{project.client_name}</p>
+                        <p className={`text-[10px] font-semibold uppercase tracking-wider ${hasTierColor ? "text-white/65" : "text-gray-400"}`}>Client</p>
+                        <p className={`truncate text-sm font-medium ${hasTierColor ? "text-white" : "text-gray-700"}`}>{project.client_name}</p>
                       </div>
                     </div>
                   </div>
-                  <StatusBadge status={project.status} />
+                  <div className="flex items-center gap-1.5">
+                    <StatusBadge status={project.status} onTierColor={hasTierColor} />
+                    {tier && project.status === "Final" && (
+                      <span className={`rounded-full px-2.5 py-0.5 text-[11px] font-bold ${hasTierColor ? "border border-white/30 bg-white/10 text-white" : "bg-gray-100 text-gray-600"}`}>
+                        {tier}
+                      </span>
+                    )}
+                  </div>
                 </div>
 
                 <div className="mx-5 grid grid-cols-3 gap-3 border-t border-gray-100 pt-4">

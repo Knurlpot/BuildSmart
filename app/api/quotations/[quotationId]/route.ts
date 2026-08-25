@@ -14,7 +14,7 @@ export async function GET(request: NextRequest, { params }: Params) {
 
   const quoteResult = await pool.query(
     `SELECT quote_id, company_id, user_id, client_id, project_name, project_location,
-            project_region, input_method, status, total_material_cost::float AS total_material_cost,
+            project_region, input_method, status, accepted_tier, total_material_cost::float AS total_material_cost,
             total_service_cost::float AS total_service_cost, grand_total::float AS grand_total,
             created_at::text AS created_at, updated_at::text AS updated_at
      FROM quotation
@@ -71,7 +71,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
      SET input_method = $1, updated_at = CURRENT_TIMESTAMP
      WHERE quote_id = $2 AND company_id = $3 AND user_id = $4
      RETURNING quote_id, company_id, user_id, client_id, project_name, project_location,
-               project_region, input_method, status, total_material_cost::float AS total_material_cost,
+               project_region, input_method, status, accepted_tier, total_material_cost::float AS total_material_cost,
                total_service_cost::float AS total_service_cost, grand_total::float AS grand_total,
                created_at::text AS created_at, updated_at::text AS updated_at`,
     [body.input_method, quoteId, auth.companyId, auth.userId]
@@ -91,11 +91,11 @@ export async function DELETE(request: NextRequest, { params }: Params) {
 
   const result = await pool.query(
     `DELETE FROM quotation
-     WHERE quote_id = $1 AND company_id = $2 AND user_id = $3 AND status = 'Draft'
+     WHERE quote_id = $1 AND company_id = $2 AND user_id = $3
      RETURNING quote_id`,
     [quoteId, auth.companyId, auth.userId]
   );
 
-  if (!result.rows[0]) return NextResponse.json({ error: "Draft quotation not found." }, { status: 404 });
+  if (!result.rows[0]) return NextResponse.json({ error: "Quotation not found." }, { status: 404 });
   return NextResponse.json({ deleted: true, quote_id: result.rows[0].quote_id });
 }
