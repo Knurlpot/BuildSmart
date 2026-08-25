@@ -37,6 +37,10 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Invalid credentials" }, { status: 401 });
   }
 
+  if (user.status !== "Active") {
+    return NextResponse.json({ error: "This account has been deactivated." }, { status: 403 });
+  }
+
   // Check if account is locked
   if (user.locked_until) {
     const lockExpiryTime = new Date(user.locked_until);
