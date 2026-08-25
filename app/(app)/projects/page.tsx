@@ -38,9 +38,9 @@ function formatDate(iso: string) {
   return d.toLocaleDateString("en-PH", { month: "short", day: "numeric", year: "numeric" });
 }
 
-function StatusBadge({ status }: { status: OpenProjectRow["status"] }) {
+function StatusBadge({ status, onTierColor = false }: { status: OpenProjectRow["status"]; onTierColor?: boolean }) {
   return (
-    <span className={`rounded-full px-2.5 py-0.5 text-[11px] font-bold ${status === "Final" ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-600"}`}>
+    <span className={`rounded-full px-2.5 py-0.5 text-[11px] font-bold ${onTierColor ? "bg-white/20 text-white" : status === "Final" ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-600"}`}>
       {status}
     </span>
   );
@@ -120,12 +120,14 @@ function OpenProjectsContent({ onMetaChange }: OpenProjectsContentProps) {
 
   const filteredRows = useMemo(() => {
     const q = search.trim().toLowerCase();
-    return rows.filter((p) => {
-      const matchesRegion = region === "All" || p.project_region === region;
-      const matchesStatus = statusFilter === "All" || p.status === statusFilter;
-      const matchesSearch = !q || p.project_name.toLowerCase().includes(q);
-      return matchesRegion && matchesStatus && matchesSearch;
-    });
+    return rows
+      .filter((p) => {
+        const matchesRegion = region === "All" || p.project_region === region;
+        const matchesStatus = statusFilter === "All" || p.status === statusFilter;
+        const matchesSearch = !q || p.project_name.toLowerCase().includes(q);
+        return matchesRegion && matchesStatus && matchesSearch;
+      })
+      .sort((a, b) => Number(b.status === "Final") - Number(a.status === "Final"));
   }, [region, rows, search, statusFilter]);
 
   const openRow = (row: OpenProjectRow) => {
@@ -235,6 +237,11 @@ function OpenProjectsContent({ onMetaChange }: OpenProjectsContentProps) {
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
           {filteredRows.map((project) => {
             const href = project.savedProject ? `/projects/${project.savedProject.project_id}` : `/quotations/new?resumeQuoteId=${project.quote_id}`;
+            const tier = acceptedTier(project.savedProject);
+            const isFinal = project.status === "Final";
+            const isPremiumFinal = isFinal && tier === "Premium";
+            const isPracticalFinal = isFinal && tier === "Practical";
+            const hasTierColor = isPremiumFinal || isPracticalFinal;
             return (
               <article
                 key={project.id}
@@ -244,34 +251,41 @@ function OpenProjectsContent({ onMetaChange }: OpenProjectsContentProps) {
                 onKeyDown={(event) => {
                   if (event.key === "Enter" || event.key === " ") openRow(project);
                 }}
-                className="group cursor-pointer rounded-2xl border border-gray-100 bg-white p-5 shadow-sm transition-all hover:border-gray-200 hover:shadow-md"
+                className={`group cursor-pointer overflow-hidden rounded-2xl bg-white shadow-md transition-all ${hasTierColor ? "" : "border border-gray-100 hover:border-gray-200"}`}
               >
-                <div className="flex items-start justify-between gap-4">
+                <div className={`flex items-start justify-between gap-4 p-5 ${isPremiumFinal ? "project-tier-gradient bg-linear-to-r from-[#0000CD] via-[#4169E1] to-[#0000CD]" : isPracticalFinal ? "project-tier-gradient bg-linear-to-r from-primary via-orange-400 to-primary" : "bg-white"}`}>
                   <div className="min-w-0">
-                    <h2 className="truncate text-base font-semibold text-gray-900 transition-colors group-hover:text-primary">
+                    <h2 className={`truncate text-base font-semibold transition-colors ${hasTierColor ? "text-white" : "text-gray-900 group-hover:text-primary"}`}>
                       {project.project_name}
                     </h2>
                     <div className="mt-3 flex items-center gap-2.5">
-                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-orange-50 text-xs font-semibold text-primary">
+                      <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-xs font-semibold ${hasTierColor ? "bg-white/20 text-white" : "bg-orange-50 text-primary"}`}>
                         {clientInitials(project.client_name)}
                       </div>
                       <div className="min-w-0">
-                        <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">Client</p>
-                        <p className="truncate text-sm font-medium text-gray-700">{project.client_name}</p>
+                        <p className={`text-[10px] font-semibold uppercase tracking-wider ${hasTierColor ? "text-white/65" : "text-gray-400"}`}>Client</p>
+                        <p className={`truncate text-sm font-medium ${hasTierColor ? "text-white" : "text-gray-700"}`}>{project.client_name}</p>
                       </div>
                     </div>
                   </div>
-                  <StatusBadge status={project.status} />
+                  <div className="flex items-center gap-1.5">
+                    <StatusBadge status={project.status} onTierColor={hasTierColor} />
+                    {hasTierColor && (
+                      <span className="rounded-full border border-white/30 bg-white/10 px-2.5 py-0.5 text-[11px] font-bold text-white">
+                        {tier}
+                      </span>
+                    )}
+                  </div>
                 </div>
 
-                <div className="mt-5 grid grid-cols-3 gap-3 border-t border-gray-100 pt-4">
+                <div className="mx-5 grid grid-cols-3 gap-3 border-t border-gray-100 pt-4">
                   <div className="min-w-0">
                     <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">Region</p>
                     <p className="mt-1 truncate text-xs font-medium text-gray-600">{project.project_region}</p>
                   </div>
                   <div className="min-w-0">
                     <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">Accepted Tier</p>
-                    <p className="mt-1 truncate text-xs font-medium text-gray-600">{acceptedTier(project.savedProject)}</p>
+                    <p className="mt-1 truncate text-xs font-medium text-gray-600">{tier}</p>
                   </div>
                   <div className="min-w-0">
                     <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">Created</p>
@@ -279,7 +293,7 @@ function OpenProjectsContent({ onMetaChange }: OpenProjectsContentProps) {
                   </div>
                 </div>
 
-                <div className="mt-4 flex items-center justify-end gap-2">
+                <div className="mx-5 mb-5 mt-4 flex items-center justify-end gap-2">
                   <Link
                     href={href}
                     onClick={(event) => event.stopPropagation()}

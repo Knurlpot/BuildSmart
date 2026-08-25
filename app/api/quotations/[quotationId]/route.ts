@@ -25,12 +25,15 @@ export async function GET(request: NextRequest, { params }: Params) {
   if (!quotation) return NextResponse.json({ error: "Quotation not found." }, { status: 404 });
 
   const items = await pool.query(
-    `SELECT qi.quote_item_id, qi.quote_id, qi.item_code, qi.supplier_id, i.item_name,
+    `SELECT qi.quote_item_id, qi.quote_id, qi.item_code,
+            NULLIF(to_jsonb(qi)->>'supplier_id', '')::integer AS supplier_id, i.item_name,
             qi.quantity::float AS quantity, qi.unit_cost::float AS unit_cost,
             qi.markup_percentage::float AS markup_percentage,
             qi.final_unit_price::float AS final_unit_price, qi.total_cost::float AS total_cost,
-            qi.source_type, qi.source_price_id, qi.last_refreshed_at::text AS last_refreshed_at,
-            qi.is_price_locked, qi.original_unit_cost::float AS original_unit_cost
+            qi.source_type, NULLIF(to_jsonb(qi)->>'source_price_id', '')::integer AS source_price_id,
+            to_jsonb(qi)->>'last_refreshed_at' AS last_refreshed_at,
+            COALESCE(NULLIF(to_jsonb(qi)->>'is_price_locked', '')::boolean, FALSE) AS is_price_locked,
+            COALESCE(NULLIF(to_jsonb(qi)->>'original_unit_cost', '')::numeric, qi.unit_cost)::float AS original_unit_cost
      FROM quotation_items qi
      JOIN items i ON i.item_code = qi.item_code
      WHERE qi.quote_id = $1

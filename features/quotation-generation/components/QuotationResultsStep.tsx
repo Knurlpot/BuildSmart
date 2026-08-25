@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Award, CheckCircle2, Clock, Database, FileText, PenLine, Save, Shield, SlidersHorizontal, Star, TrendingDown } from "lucide-react";
+import { Award, Building2, CheckCircle2, Clock, Database, FileText, Mail, MapPin, PenLine, Phone, Save, Shield, SlidersHorizontal, Star, TrendingDown, UserRound } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -52,9 +52,9 @@ const TIER_META: Record<ProvisionalTier, { tagline: string; badge: string; accen
   Premium: {
     tagline: "High-spec materials with expedited delivery",
     badge: "Best Quality",
-    accent: "text-indigo-600",
-    headerBg: "bg-indigo-600",
-    accentBg: "bg-indigo-50",
+    accent: "text-[#0000CC]",
+    headerBg: "bg-[#0000CC]",
+    accentBg: "bg-[#0000CC]/5",
   },
 };
 
@@ -406,6 +406,44 @@ export function QuotationResultsStep({ client, quotation, segments, blueprintFlo
           Fallback: {fallbackRule}
         </span>
       </div>
+
+      <section className="rounded-2xl border border-gray-100 bg-white px-5 py-4 shadow-sm" aria-labelledby="client-details-heading">
+        <div className="flex flex-wrap items-start justify-between gap-3 border-b border-gray-100 pb-3">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-orange-50 text-primary">
+              <Building2 className="h-5 w-5" />
+            </div>
+            <div>
+              <p id="client-details-heading" className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">
+                Client details
+              </p>
+              <h3 className="text-base font-semibold text-gray-900">{client.client_name}</h3>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="rounded-full bg-orange-50 px-2.5 py-1 text-[10px] font-semibold text-primary">{client.client_type}</span>
+            <span className={`rounded-full px-2.5 py-1 text-[10px] font-semibold ${client.status === "Active" ? "bg-green-50 text-green-700" : "bg-gray-100 text-gray-600"}`}>
+              {client.status}
+            </span>
+          </div>
+        </div>
+        <div className="grid gap-x-6 gap-y-3 pt-3 sm:grid-cols-2 xl:grid-cols-4">
+          {[
+            { icon: UserRound, label: "Contact person", value: client.contact_person },
+            { icon: Mail, label: "Email", value: client.contact_email },
+            { icon: Phone, label: "Phone", value: client.contact_number },
+            { icon: MapPin, label: "Address", value: client.client_address },
+          ].map(({ icon: Icon, label, value }) => (
+            <div key={label} className="flex min-w-0 items-start gap-2.5">
+              <Icon className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+              <div className="min-w-0">
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">{label}</p>
+                <p className="truncate text-xs font-medium text-gray-700" title={value || "Not provided"}>{value || "Not provided"}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
 
       <div className="flex flex-col gap-5 lg:flex-row">
         {activeTiers.map((tier) => {
