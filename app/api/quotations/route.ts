@@ -16,8 +16,9 @@ export async function GET(request: NextRequest) {
      FROM quotation q
      LEFT JOIN client c ON c.client_id = q.client_id AND c.company_id = q.company_id
      WHERE q.company_id = $1
+       AND q.user_id = $2
      ORDER BY q.created_at DESC, q.quote_id DESC`,
-    [auth.companyId]
+    [auth.companyId, auth.userId]
   );
 
   return NextResponse.json(result.rows);

@@ -4,7 +4,7 @@ import { readSession } from "@/lib/server/session";
 
 type Params = { params: Promise<{ clientId: string }> };
 
-async function companyIdFor(request: NextRequest) {
+async function authFor(request: NextRequest) {
   const session = readSession(request);
   if (!session) return null;
 
@@ -12,12 +12,13 @@ async function companyIdFor(request: NextRequest) {
     "SELECT company_id FROM users WHERE user_id = $1 LIMIT 1",
     [session.userId]
   );
-  return result.rows[0]?.company_id ?? null;
+  const companyId = result.rows[0]?.company_id ?? null;
+  return companyId ? { companyId, userId: session.userId } : null;
 }
 
 export async function GET(request: NextRequest, { params }: Params) {
-  const companyId = await companyIdFor(request);
-  if (!companyId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const auth = await authFor(request);
+  if (!auth) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { clientId } = await params;
   const id = Number(clientId);
@@ -30,7 +31,7 @@ export async function GET(request: NextRequest, { params }: Params) {
     `SELECT client_type, default_downpayment_percentage::float AS default_downpayment_percentage
      FROM client
      WHERE client_id = $1 AND company_id = $2`,
-    [id, companyId]
+    [id, auth.companyId]
   );
   const client = clientResult.rows[0];
   if (!client) return NextResponse.json({ error: "Client not found." }, { status: 404 });
@@ -44,20 +45,20 @@ export async function GET(request: NextRequest, { params }: Params) {
             (
               SELECT q2.project_name
               FROM quotation q2
-              WHERE q2.client_id = $1 AND q2.company_id = $2
+              WHERE q2.client_id = $1 AND q2.company_id = $2 AND q2.user_id = $3
               ORDER BY q2.created_at DESC, q2.quote_id DESC
               LIMIT 1
             ) AS project_name,
             (
               SELECT q2.created_at::text
               FROM quotation q2
-              WHERE q2.client_id = $1 AND q2.company_id = $2
+              WHERE q2.client_id = $1 AND q2.company_id = $2 AND q2.user_id = $3
               ORDER BY q2.created_at DESC, q2.quote_id DESC
               LIMIT 1
             ) AS created_at
      FROM quotation q
-     WHERE q.client_id = $1 AND q.company_id = $2`,
-    [id, companyId]
+     WHERE q.client_id = $1 AND q.company_id = $2 AND q.user_id = $3`,
+    [id, auth.companyId, auth.userId]
   );
   const summary = quoteResult.rows[0];
 

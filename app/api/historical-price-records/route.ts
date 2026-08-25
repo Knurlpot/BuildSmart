@@ -45,8 +45,7 @@ export async function GET(request: NextRequest) {
          SUM(qi.total_cost)::float AS actual_total_cost
        FROM quotation_items qi
        JOIN quotation q ON q.quote_id = qi.quote_id
-       JOIN users u ON u.company_id = q.company_id
-       WHERE u.user_id = $1
+       WHERE q.user_id = $1
        GROUP BY qi.item_code
      )
      SELECT

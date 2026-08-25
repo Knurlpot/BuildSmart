@@ -15,7 +15,7 @@ import { RevisionTypeModal } from "./RevisionTypeModal";
 import { MinorRevisionPanel } from "./MinorRevisionPanel";
 import { computeTierResult, deriveCompanyRuleItemLines, deriveMockItemLines, fmtPeso, recomputeItemLine } from "@/lib/dev/provisional/quotationBreakdownFixtures";
 import { PROVISIONAL_TIERS, type PricelistBasis, type ProvisionalItemLine, type ProvisionalQuotationTierResult, type ProvisionalTier } from "@/lib/dev/provisional/quotationBreakdownTypes";
-import { saveFinalizedQuotation, setAcceptedTier } from "@/lib/dev/provisional/savedProjectsStore";
+import { apiClient } from "@/lib/api/client";
 import { useLaborRules, useMaterialRules, usePricingStrategies, useUnitRules } from "@/lib/dev/provisional/useCompanyRulesProvisional";
 import { useItemsCatalog } from "@/hooks/useItemsCatalog";
 import { usePricelistCatalog } from "@/hooks/usePricelistCatalog";
@@ -254,7 +254,7 @@ function QuoteCard({
 // depends on that don't exist in the schema yet), the READ-ONLY detailed breakdown (Part A),
 // and the revision flow (editing lives only in Minor Revision, Part D). Everything
 // downstream of `segments` is mock-derived — see quotationBreakdownFixtures.ts.
-export function QuotationResultsStep({ client, quotation, segments, blueprintFloors, onStructuralRevision, onSaveDraft, onFinalize }: QuotationResultsStepProps) {
+export function QuotationResultsStep({ quotation, segments, blueprintFloors, onStructuralRevision, onSaveDraft, onFinalize }: QuotationResultsStepProps) {
   const { strategies: pricingStrategies } = usePricingStrategies();
   const { rules: materialRules, isLoading: materialRulesLoading } = useMaterialRules();
   const { rules: laborRules } = useLaborRules();
@@ -335,21 +335,22 @@ export function QuotationResultsStep({ client, quotation, segments, blueprintFlo
     activeTiers.map((tier) => [tier, computeTierResult(tier, effectiveTierItems[tier] ?? [], { segments, materialRules, laborRules })])
   ) as Partial<Record<ProvisionalTier, ProvisionalQuotationTierResult>>;
 
-  const handleAcceptQuotation = (tier: ProvisionalTier) => {
-    const savedProject = saveFinalizedQuotation({
-      clientId: client.client_id,
-      clientName: client.client_name,
-      projectName: quotation.project_name,
-      projectLocation: quotation.project_location,
-      projectRegion: quotation.project_region,
-      tierItems: effectiveTierItems,
-      pricelistBasis,
-      segments,
-      materialRules,
-      laborRules,
-      blueprintFloors,
+  const handleAcceptQuotation = async (tier: ProvisionalTier) => {
+    const result = tierResults[tier];
+    if (!result) return;
+
+    await apiClient(`/api/quotations/${quotation.quote_id}/accept`, {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        tier,
+        items: effectiveTierItems[tier] ?? [],
+        total_material_cost: result.materials_subtotal,
+        total_service_cost: result.service_cost.subtotal,
+        grand_total: result.grand_total,
+      }),
     });
-    setAcceptedTier(savedProject.project_id, tier);
     onFinalize();
   };
 

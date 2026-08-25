@@ -16,6 +16,7 @@ export async function GET(request: NextRequest) {
               COALESCE(q.updated_at, q.created_at) AS occurred_at
        FROM quotation q
        WHERE q.company_id = $1
+         AND q.user_id = $2
 
        UNION ALL
 
@@ -29,7 +30,7 @@ export async function GET(request: NextRequest) {
      ) activity
      ORDER BY occurred_at DESC
      LIMIT 5`,
-    [auth.companyId]
+    [auth.companyId, auth.userId]
   );
 
   return NextResponse.json(result.rows);

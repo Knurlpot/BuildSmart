@@ -18,8 +18,8 @@ export async function GET(request: NextRequest, { params }: Params) {
             total_service_cost::float AS total_service_cost, grand_total::float AS grand_total,
             created_at::text AS created_at, updated_at::text AS updated_at
      FROM quotation
-     WHERE quote_id = $1 AND company_id = $2`,
-    [quoteId, auth.companyId]
+     WHERE quote_id = $1 AND company_id = $2 AND user_id = $3`,
+    [quoteId, auth.companyId, auth.userId]
   );
   const quotation = quoteResult.rows[0];
   if (!quotation) return NextResponse.json({ error: "Quotation not found." }, { status: 404 });
@@ -66,12 +66,12 @@ export async function PATCH(request: NextRequest, { params }: Params) {
   const result = await pool.query(
     `UPDATE quotation
      SET input_method = $1, updated_at = CURRENT_TIMESTAMP
-     WHERE quote_id = $2 AND company_id = $3
+     WHERE quote_id = $2 AND company_id = $3 AND user_id = $4
      RETURNING quote_id, company_id, user_id, client_id, project_name, project_location,
                project_region, input_method, status, total_material_cost::float AS total_material_cost,
                total_service_cost::float AS total_service_cost, grand_total::float AS grand_total,
                created_at::text AS created_at, updated_at::text AS updated_at`,
-    [body.input_method, quoteId, auth.companyId]
+    [body.input_method, quoteId, auth.companyId, auth.userId]
   );
 
   if (!result.rows[0]) return NextResponse.json({ error: "Quotation not found." }, { status: 404 });
@@ -88,9 +88,9 @@ export async function DELETE(request: NextRequest, { params }: Params) {
 
   const result = await pool.query(
     `DELETE FROM quotation
-     WHERE quote_id = $1 AND company_id = $2 AND status = 'Draft'
+     WHERE quote_id = $1 AND company_id = $2 AND user_id = $3 AND status = 'Draft'
      RETURNING quote_id`,
-    [quoteId, auth.companyId]
+    [quoteId, auth.companyId, auth.userId]
   );
 
   if (!result.rows[0]) return NextResponse.json({ error: "Draft quotation not found." }, { status: 404 });
