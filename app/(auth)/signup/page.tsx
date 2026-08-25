@@ -402,7 +402,12 @@ export default function SignUpPage() {
     } catch (err) {
       // No fabricated success — surface the real error and keep everything the user
       // entered so far (form state is untouched on failure, no wizard reset).
-      setApiError(err instanceof Error ? err.message : "Registration failed. Please try again.");
+      const message = err instanceof Error ? err.message : "Registration failed. Please try again.";
+      setApiError(message);
+      if (message.toLowerCase().includes("already exists")) {
+        setStep(1);
+        setErrors((current) => ({ ...current, email: message }));
+      }
       setSubmitting(false);
     }
   };

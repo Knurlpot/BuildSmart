@@ -12,9 +12,10 @@ export async function GET(request: NextRequest, { params }: Params) {
   const quoteId = Number(quotationId);
   if (!Number.isInteger(quoteId)) return NextResponse.json({ error: "Invalid quotation id." }, { status: 400 });
 
-  const owned = await pool.query("SELECT 1 FROM quotation WHERE quote_id = $1 AND company_id = $2", [
+  const owned = await pool.query("SELECT 1 FROM quotation WHERE quote_id = $1 AND company_id = $2 AND user_id = $3", [
     quoteId,
     auth.companyId,
+    auth.userId,
   ]);
   if (!owned.rowCount) return NextResponse.json({ error: "Quotation not found." }, { status: 404 });
 

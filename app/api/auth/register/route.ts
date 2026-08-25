@@ -25,6 +25,23 @@ type RegisterBody = {
   };
 };
 
+function isPgUniqueViolation(error: unknown, constraint: string): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    "constraint" in error &&
+    (error as { code?: unknown; constraint?: unknown }).code === "23505" &&
+    (error as { code?: unknown; constraint?: unknown }).constraint === constraint
+  );
+}
+
+class DuplicateEmailError extends Error {
+  constructor() {
+    super("An account with this email already exists. Please sign in instead.");
+  }
+}
+
 export async function POST(request: NextRequest) {
   const body = (await request.json()) as RegisterBody;
   const firstName = body.first_name?.trim() || "";
@@ -64,6 +81,14 @@ export async function POST(request: NextRequest) {
 
   try {
     await client.query("BEGIN");
+
+    const existingUser = await client.query<{ user_id: number; status: "Active" | "Inactive" }>(
+      "SELECT user_id, status FROM users WHERE email = $1 LIMIT 1",
+      [email]
+    );
+    if (existingUser.rows[0]) {
+      throw new DuplicateEmailError();
+    }
 
     let companyId = companyIdToJoin;
     if (companyId) {
@@ -118,11 +143,17 @@ export async function POST(request: NextRequest) {
 
     await client.query("COMMIT");
 
-    const response = NextResponse.json({ user: toAuthUser(userResult.rows[0], 0) }, { status: 201 });
-    setSessionCookie(response, userResult.rows[0].user_id, 0);
+    const response = NextResponse.json({ user: toAuthUser(userResult.rows[0], 2) }, { status: 201 });
+    setSessionCookie(response, userResult.rows[0].user_id, 2);
     return response;
   } catch (error) {
     await client.query("ROLLBACK");
+    if (error instanceof DuplicateEmailError) {
+      return NextResponse.json({ error: error.message }, { status: 409 });
+    }
+    if (isPgUniqueViolation(error, "users_email_key")) {
+      return NextResponse.json({ error: "An account with this email already exists. Please sign in instead." }, { status: 409 });
+    }
     const message = error instanceof Error ? error.message : "Registration failed";
     return NextResponse.json({ error: message }, { status: 400 });
   } finally {

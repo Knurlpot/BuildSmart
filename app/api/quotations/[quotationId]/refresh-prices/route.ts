@@ -33,9 +33,9 @@ export async function POST(request: NextRequest, { params }: Params) {
       }>(
         `SELECT quote_id, project_region, total_service_cost::float AS total_service_cost
          FROM quotation
-         WHERE quote_id = $1 AND company_id = $2
+         WHERE quote_id = $1 AND company_id = $2 AND user_id = $3
          FOR UPDATE`,
-        [quoteId, auth.companyId]
+        [quoteId, auth.companyId, auth.userId]
       );
       const quotation = quoteResult.rows[0];
       if (!quotation) throw new Error("Quotation not found.");

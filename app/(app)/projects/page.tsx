@@ -9,9 +9,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useRouter } from "next/navigation";
 import { useFetch } from "@/hooks/useFetch";
-import { deleteSavedProject, useSavedProjects } from "@/lib/dev/provisional/savedProjectsStore";
 import { apiClient } from "@/lib/api/client";
-import type { SavedProjectRecord } from "@/lib/dev/provisional/savedProjectsTypes";
 import { MyClientsTab } from "@/features/clients/components/MyClientsTab";
 import type { Quotation } from "@/types/entities";
 import { PH_REGIONS } from "@/types/entities/common";
@@ -28,8 +26,8 @@ interface OpenProjectRow {
   project_location: string;
   project_region: string;
   status: Quotation["status"];
+  grand_total: number;
   created_at: string;
-  savedProject: SavedProjectRecord | null;
 }
 
 function formatDate(iso: string) {
@@ -46,10 +44,8 @@ function StatusBadge({ status, onTierColor = false }: { status: OpenProjectRow["
   );
 }
 
-function acceptedTier(project: SavedProjectRecord | null): string {
-  const selected = Object.values(project?.quotes ?? {}).find((quote) => quote?.is_selected);
-  if (selected) return selected.tier;
-  return "Not chosen";
+function formatPeso(value: number) {
+  return new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP", maximumFractionDigits: 0 }).format(value);
 }
 
 function clientInitials(name: string): string {
@@ -68,7 +64,6 @@ interface OpenProjectsContentProps {
 
 function OpenProjectsContent({ onMetaChange }: OpenProjectsContentProps) {
   const router = useRouter();
-  const savedProjects = useSavedProjects();
   const { data: quotations, isLoading, error, refetch } = useFetch<ProjectListQuotation[]>("/api/quotations");
   const [search, setSearch] = useState("");
   const [region, setRegion] = useState("All");
@@ -78,31 +73,8 @@ function OpenProjectsContent({ onMetaChange }: OpenProjectsContentProps) {
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const rows = useMemo<OpenProjectRow[]>(() => {
-    const savedByProject = new Map(
-      savedProjects.map((project) => [
-        [
-          project.client_id,
-          project.project_name,
-          project.project_location,
-          project.project_region,
-        ].join("\u0000"),
-        project,
-      ])
-    );
-
     return (quotations ?? []).map((quote) => {
       const clientName = quote.client_name ?? "No client";
-      const savedProject =
-        quote.client_id == null
-          ? null
-          : savedByProject.get(
-              [
-                quote.client_id,
-                quote.project_name,
-                quote.project_location,
-                quote.project_region,
-              ].join("\u0000")
-            ) ?? null;
 
       return {
         id: `quote-${quote.quote_id}`,
@@ -111,12 +83,12 @@ function OpenProjectsContent({ onMetaChange }: OpenProjectsContentProps) {
         project_name: quote.project_name,
         project_location: quote.project_location,
         project_region: quote.project_region,
-        status: savedProject?.status ?? quote.status,
+        status: quote.status,
+        grand_total: quote.grand_total,
         created_at: quote.created_at,
-        savedProject,
       };
     });
-  }, [quotations, savedProjects]);
+  }, [quotations]);
 
   const filteredRows = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -131,7 +103,7 @@ function OpenProjectsContent({ onMetaChange }: OpenProjectsContentProps) {
   }, [region, rows, search, statusFilter]);
 
   const openRow = (row: OpenProjectRow) => {
-    router.push(row.savedProject ? `/projects/${row.savedProject.project_id}` : `/quotations/new?resumeQuoteId=${row.quote_id}`);
+    router.push(row.status === "Draft" ? `/quotations/new?resumeQuoteId=${row.quote_id}` : `/quotations/${row.quote_id}`);
   };
   const createNew = useCallback(() => router.push("/quotations/new"), [router]);
 
@@ -144,7 +116,6 @@ function OpenProjectsContent({ onMetaChange }: OpenProjectsContentProps) {
         method: "DELETE",
         credentials: "include",
       });
-      if (deleteTarget.savedProject) deleteSavedProject(deleteTarget.savedProject.project_id);
       setDeleteTarget(null);
       refetch();
     } catch (error) {
@@ -236,12 +207,7 @@ function OpenProjectsContent({ onMetaChange }: OpenProjectsContentProps) {
       ) : (
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
           {filteredRows.map((project) => {
-            const href = project.savedProject ? `/projects/${project.savedProject.project_id}` : `/quotations/new?resumeQuoteId=${project.quote_id}`;
-            const tier = acceptedTier(project.savedProject);
-            const isFinal = project.status === "Final";
-            const isPremiumFinal = isFinal && tier === "Premium";
-            const isPracticalFinal = isFinal && tier === "Practical";
-            const hasTierColor = isPremiumFinal || isPracticalFinal;
+            const href = project.status === "Draft" ? `/quotations/new?resumeQuoteId=${project.quote_id}` : `/quotations/${project.quote_id}`;
             return (
               <article
                 key={project.id}
@@ -251,31 +217,24 @@ function OpenProjectsContent({ onMetaChange }: OpenProjectsContentProps) {
                 onKeyDown={(event) => {
                   if (event.key === "Enter" || event.key === " ") openRow(project);
                 }}
-                className={`group cursor-pointer overflow-hidden rounded-2xl bg-white shadow-md transition-all ${hasTierColor ? "" : "border border-gray-100 hover:border-gray-200"}`}
+                className="group cursor-pointer overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-md transition-all hover:border-gray-200"
               >
-                <div className={`flex items-start justify-between gap-4 p-5 ${isPremiumFinal ? "project-tier-gradient bg-linear-to-r from-[#0000CD] via-[#4169E1] to-[#0000CD]" : isPracticalFinal ? "project-tier-gradient bg-linear-to-r from-primary via-orange-400 to-primary" : "bg-white"}`}>
+                <div className="flex items-start justify-between gap-4 bg-white p-5">
                   <div className="min-w-0">
-                    <h2 className={`truncate text-base font-semibold transition-colors ${hasTierColor ? "text-white" : "text-gray-900 group-hover:text-primary"}`}>
+                    <h2 className="truncate text-base font-semibold text-gray-900 transition-colors group-hover:text-primary">
                       {project.project_name}
                     </h2>
                     <div className="mt-3 flex items-center gap-2.5">
-                      <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-xs font-semibold ${hasTierColor ? "bg-white/20 text-white" : "bg-orange-50 text-primary"}`}>
+                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-orange-50 text-xs font-semibold text-primary">
                         {clientInitials(project.client_name)}
                       </div>
                       <div className="min-w-0">
-                        <p className={`text-[10px] font-semibold uppercase tracking-wider ${hasTierColor ? "text-white/65" : "text-gray-400"}`}>Client</p>
-                        <p className={`truncate text-sm font-medium ${hasTierColor ? "text-white" : "text-gray-700"}`}>{project.client_name}</p>
+                        <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">Client</p>
+                        <p className="truncate text-sm font-medium text-gray-700">{project.client_name}</p>
                       </div>
                     </div>
                   </div>
-                  <div className="flex items-center gap-1.5">
-                    <StatusBadge status={project.status} onTierColor={hasTierColor} />
-                    {hasTierColor && (
-                      <span className="rounded-full border border-white/30 bg-white/10 px-2.5 py-0.5 text-[11px] font-bold text-white">
-                        {tier}
-                      </span>
-                    )}
-                  </div>
+                  <StatusBadge status={project.status} />
                 </div>
 
                 <div className="mx-5 grid grid-cols-3 gap-3 border-t border-gray-100 pt-4">
@@ -284,8 +243,8 @@ function OpenProjectsContent({ onMetaChange }: OpenProjectsContentProps) {
                     <p className="mt-1 truncate text-xs font-medium text-gray-600">{project.project_region}</p>
                   </div>
                   <div className="min-w-0">
-                    <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">Accepted Tier</p>
-                    <p className="mt-1 truncate text-xs font-medium text-gray-600">{tier}</p>
+                    <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">Total</p>
+                    <p className="mt-1 truncate text-xs font-medium text-gray-600">{formatPeso(project.grand_total)}</p>
                   </div>
                   <div className="min-w-0">
                     <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">Created</p>

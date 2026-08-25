@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { CalendarDays, CheckCircle2, ChevronRight, FileText, Upload, Zap } from "lucide-react";
+import { CalendarDays, CheckCircle2, ChevronRight, FileText, Zap } from "lucide-react";
 import { RequireOnboardingStep } from "@/components/auth/RequireOnboardingStep";
 import { NAV_ITEMS } from "@/components/layout/nav-items";
 import { useFetch } from "@/hooks/useFetch";
@@ -16,7 +16,7 @@ function formatActivityDate(value: string): string {
 
 interface DashboardActivity {
   activity_id: string;
-  activity_type: "quotation" | "pricelist";
+  activity_type: "quotation";
   title: string;
   status: string;
   occurred_at: string;
@@ -108,18 +108,16 @@ export default function DashboardPage() {
             {isActivityLoading && <p className="py-5 text-sm text-gray-400">Loading recent activity...</p>}
             {!isActivityLoading && activityError && <p className="py-5 text-sm text-gray-500">Recent activity is unavailable.</p>}
             {!isActivityLoading && !activityError && (activities ?? []).length === 0 && (
-              <p className="py-5 text-sm text-gray-400">No quotations or pricelist uploads yet.</p>
+              <p className="py-5 text-sm text-gray-400">No quotation projects yet.</p>
             )}
             {!isActivityLoading && !activityError && (activities ?? []).map((activity) => (
               <Link
                 key={`${activity.activity_type}-${activity.activity_id}`}
-                href={activity.activity_type === "quotation" ? `/quotations/${activity.activity_id}` : "/pricelist"}
+                href={`/quotations/${activity.activity_id}`}
                 className="flex items-center gap-3 py-3 transition-colors hover:text-primary"
               >
                 <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-orange-50 text-primary">
-                  {activity.activity_type === "pricelist" ? (
-                    <Upload className="h-4 w-4" />
-                  ) : activity.status === "Final" ? (
+                  {activity.status === "Final" ? (
                     <CheckCircle2 className="h-4 w-4" />
                   ) : (
                     <FileText className="h-4 w-4" />
