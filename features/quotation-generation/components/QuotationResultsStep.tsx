@@ -235,14 +235,14 @@ function QuoteCard({
           onClick={onViewBreakdown}
           className={`flex w-full items-center justify-center gap-2 rounded-xl py-2.5 text-sm font-bold text-white transition hover:opacity-90 ${meta.headerBg}`}
         >
-          View Detailed Breakdown
+          Detailed Breakdown
         </button>
         <button
           type="button"
           onClick={onAccept}
           className="mt-2 flex w-full items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white py-2.5 text-sm font-bold text-gray-600 transition hover:border-primary hover:text-primary"
         >
-          <CheckCircle2 className="h-4 w-4" /> Accept Quotation
+          <CheckCircle2 className="h-4 w-4" /> Accept {tier} Quotation
         </button>
       </div>
     </div>
@@ -324,6 +324,11 @@ export function QuotationResultsStep({ client, quotation, segments, blueprintFlo
       buildTierItems(activeTiers, (tier) => applyQuotationRuleToLines(next[tier] ?? [], prioritySource, fallbackRule))
     );
     setRuleDialogOpen(false);
+  };
+
+  const handlePrioritySourceChange = (source: QuotationPrioritySource) => {
+    setPrioritySource(source);
+    if (source === "Uploaded") setFallbackRule("Use next available source");
   };
 
   const tierResults = Object.fromEntries(
@@ -445,7 +450,7 @@ export function QuotationResultsStep({ client, quotation, segments, blueprintFlo
                   <button
                     key={value}
                     type="button"
-                    onClick={() => setPrioritySource(value)}
+                    onClick={() => handlePrioritySourceChange(value)}
                     className={`flex min-h-20 flex-col items-start justify-between rounded-xl border p-3 text-left transition ${
                       prioritySource === value ? "border-primary bg-orange-50 text-primary" : "border-gray-200 bg-white text-gray-600 hover:bg-gray-50"
                     }`}
@@ -464,9 +469,10 @@ export function QuotationResultsStep({ client, quotation, segments, blueprintFlo
                     key={option.value}
                     type="button"
                     onClick={() => setFallbackRule(option.value)}
+                    disabled={prioritySource === "Uploaded" && option.value !== "Use next available source"}
                     className={`rounded-xl border p-3 text-left transition ${
                       fallbackRule === option.value ? "border-primary bg-orange-50" : "border-gray-200 bg-white hover:bg-gray-50"
-                    }`}
+                    } disabled:cursor-not-allowed disabled:opacity-50`}
                   >
                     <span className={`text-sm font-bold ${fallbackRule === option.value ? "text-primary" : "text-gray-800"}`}>{option.label}</span>
                     <span className="mt-0.5 block text-xs text-gray-500">{option.helper}</span>

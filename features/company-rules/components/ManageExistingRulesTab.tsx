@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import { QueryState } from "@/components/feedback/QueryState";
 import { DataTable } from "@/components/data-table/DataTable";
+import { apiClient } from "@/lib/api/client";
 import { useExistingRules, useMaterialRules } from "@/lib/dev/provisional/useCompanyRulesProvisional";
 import { RULE_KIND_LABEL, RULE_KINDS, type ExistingRuleSummary, type RuleKind } from "@/lib/dev/provisional/companyRulesTypes";
 
@@ -173,6 +174,14 @@ export function ManageExistingRulesTab({ onViewRule }: ManageExistingRulesTabPro
       };
     }).sort((a, b) => a.label.localeCompare(b.label));
   }, [materialRules]);
+  const materialRuleIdsByGroup = useMemo(() => {
+    const grouped = new Map<string, string[]>();
+    for (const rule of materialRules) {
+      const treatment = rule.treatment_type?.trim() || "No treatment type";
+      grouped.set(treatment, [...(grouped.get(treatment) ?? []), rule.rule_id]);
+    }
+    return grouped;
+  }, [materialRules]);
 
   const displayRules = useMemo(
     () => [
@@ -206,6 +215,20 @@ export function ManageExistingRulesTab({ onViewRule }: ManageExistingRulesTabPro
     setActiveRuleId(rule.rule_id);
     setWarningFor(null);
     try {
+      if (rule.rule_kind === "material-rule") {
+        const groupRuleIds = materialRuleIdsByGroup.get(rule.rule_id) ?? [];
+        await Promise.all(
+          groupRuleIds.map((ruleId) =>
+            apiClient(`/api/company-rules/material-rules/${ruleId}`, {
+              method: "DELETE",
+              credentials: "include",
+            })
+          )
+        );
+        await refetchMaterialRules();
+        window.dispatchEvent(new CustomEvent("buildsmart:company-rules-changed", { detail: { kind: "material-rules" } }));
+        return;
+      }
       const usage = await checkUsage(rule.rule_id);
       if (usage.in_use) {
         setWarningFor(rule);
@@ -218,7 +241,7 @@ export function ManageExistingRulesTab({ onViewRule }: ManageExistingRulesTabPro
     } finally {
       setActiveRuleId(null);
     }
-  }, [checkUsage, disable]);
+  }, [checkUsage, disable, materialRuleIdsByGroup, refetchMaterialRules]);
 
   const columns = useMemo<ColumnDef<ExistingRuleSummary>[]>(
     () => [
@@ -254,7 +277,6 @@ export function ManageExistingRulesTab({ onViewRule }: ManageExistingRulesTabPro
         enableGlobalFilter: false,
         cell: ({ row }) => {
           const rule = row.original;
-          const isMaterialGroup = rule.rule_kind === "material-rule";
           const busy = activeRuleId === rule.rule_id && (isCheckingUsage || isDisabling);
           if (rule.status === "Disabled") return null;
           return (
@@ -285,23 +307,21 @@ export function ManageExistingRulesTab({ onViewRule }: ManageExistingRulesTabPro
                 <Pencil className="h-3.5 w-3.5" />
               </button>
               </ActionTooltip>
-              {!isMaterialGroup && (
-                <ActionTooltip label="Disable">
-                  <button
-                    type="button"
-                    disabled={busy}
-                    aria-label={`Disable ${rule.label}`}
-                    onClick={(e) => {
-                      // Don't also trigger the row's own "open in owning tab" click.
-                      e.stopPropagation();
-                      handleDisable(rule);
-                    }}
-                    className="flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-500 transition hover:border-red-300 hover:text-red-600 disabled:opacity-50"
-                  >
-                    <Ban className="h-3.5 w-3.5" />
-                  </button>
-                </ActionTooltip>
-              )}
+              <ActionTooltip label="Disable">
+                <button
+                  type="button"
+                  disabled={busy}
+                  aria-label={`Disable ${rule.label}`}
+                  onClick={(e) => {
+                    // Don't also trigger the row's own "open in owning tab" click.
+                    e.stopPropagation();
+                    handleDisable(rule);
+                  }}
+                  className="flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-500 transition hover:border-red-300 hover:text-red-600 disabled:opacity-50"
+                >
+                  <Ban className="h-3.5 w-3.5" />
+                </button>
+              </ActionTooltip>
             </div>
           );
         },

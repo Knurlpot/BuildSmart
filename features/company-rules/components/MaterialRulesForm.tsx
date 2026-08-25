@@ -9,6 +9,7 @@ import { apiClient } from "@/lib/api/client";
 import type { MaterialRuleEntry } from "@/lib/dev/provisional/companyRulesTypes";
 import { useItemsCatalog } from "@/hooks/useItemsCatalog";
 import { useCategories } from "@/hooks/useCategories";
+import { useSuppliers } from "@/hooks/useSuppliers";
 import { TREATMENT_TYPES } from "@/lib/dev/provisional/quotationGenerationTypes";
 import { CATEGORY_TYPES, type CategoryType } from "@/types/entities/category";
 import type { Items } from "@/types/entities/items";
@@ -20,6 +21,7 @@ const DEFAULT_MATERIAL_PRIORITY = 1;
 const DEFAULT_PRIORITY_SOURCE = "Supplier" as const;
 const DEFAULT_FALLBACK_RULE = "Flag for manual review" as const;
 const TREATMENT_OPTIONS = [...TREATMENT_TYPES];
+const DPWH_SUPPLIER_VALUE = "DPWH";
 
 interface MaterialRulesFormProps {
   focusRuleId?: string | null;
@@ -50,6 +52,7 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
   const editable = useEditableRuleList<MaterialRuleEntry>({ checkUsage, update, supersede, idPrefix: "mr" });
   const { items, isLoading: itemsLoading, error: itemsError } = useItemsCatalog();
   const { categories, isLoading: categoriesLoading, error: categoriesError } = useCategories();
+  const { suppliers, isLoading: suppliersLoading } = useSuppliers();
 
   const allRules = editable.applyOverrides([...editable.localExtra, ...rules]);
 
@@ -61,6 +64,7 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
   const [selectedId, setSelectedId] = useState<string | null>(focusRuleId ?? null);
   const [mode, setMode] = useState<"idle" | "browse" | "configure" | "edit-group">("idle");
   const [search, setSearch] = useState("");
+  const [supplierFilter, setSupplierFilter] = useState<string>(DPWH_SUPPLIER_VALUE);
   const [categoryFilter, setCategoryFilter] = useState<CategoryType | "">("");
   const [checkedItemCodes, setCheckedItemCodes] = useState<Set<string>>(new Set());
   const [treatmentType, setTreatmentType] = useState("");
@@ -108,6 +112,7 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
     setSelectedId(null);
     setSelectedGroup(null);
     setSearch("");
+    setSupplierFilter(DPWH_SUPPLIER_VALUE);
     setCategoryFilter("");
     setCheckedItemCodes(new Set());
     setTreatmentType("");
@@ -155,7 +160,7 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
           preferred_item_code: code,
           preferred_item_name: item.item_name,
           material_priority: DEFAULT_MATERIAL_PRIORITY,
-          priority_source: DEFAULT_PRIORITY_SOURCE,
+          priority_source: supplierFilter === DPWH_SUPPLIER_VALUE ? "DPWH" as const : DEFAULT_PRIORITY_SOURCE,
           fallback_rule: DEFAULT_FALLBACK_RULE,
         };
         await save(payload);
@@ -212,7 +217,14 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
       return groups;
     }, new Map<string, MaterialRuleEntry[]>())
   ).sort(([a], [b]) => a.localeCompare(b));
-  const selectedGroupName = selectedGroup ?? selected?.treatment_type?.trim() ?? groupedRules[0]?.[0] ?? null;
+  const [statusFilter, setStatusFilter] = useState<"active" | "disabled">("active");
+  const visibleGroupedRules = groupedRules.filter(([, groupRules]) =>
+    groupRules.some((rule) => rule.is_active) === (statusFilter === "active")
+  );
+  const selectedGroupName =
+    mode === "browse" || mode === "configure"
+      ? null
+      : selectedGroup ?? selected?.treatment_type?.trim() ?? visibleGroupedRules[0]?.[0] ?? null;
   const selectedGroupRules = groupedRules.find(([group]) => group === selectedGroupName)?.[1] ?? [];
 
   const handleDisableGroup = async () => {
@@ -253,7 +265,7 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
 
       <RuleListDetailPanel
         title="Treatment Groups"
-        items={groupedRules}
+        items={visibleGroupedRules}
         isLoading={isLoading}
         error={error}
         onRetry={refetch}
@@ -267,11 +279,40 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
         onAdd={startAdd}
         emptyHint="Add materials from your catalog and tag them with a treatment type."
         countLabel={`${allRules.length} configured`}
+        listHeader={
+          <div className="grid grid-cols-2 gap-2">
+            {(["active", "disabled"] as const).map((filter) => (
+              <button
+                key={filter}
+                type="button"
+                onClick={() => {
+                  setStatusFilter(filter);
+                  setMode("idle");
+                  setSelectedId(null);
+                  setSelectedGroup(null);
+                }}
+                className={`min-h-9 rounded-lg border px-3 py-2 text-center text-xs font-semibold capitalize transition ${
+                  statusFilter === filter
+                    ? "border-primary bg-orange-50 text-primary"
+                    : "border-gray-200 bg-white text-gray-500 hover:border-gray-300"
+                }`}
+              >
+                {filter}
+              </button>
+            ))}
+          </div>
+        }
         renderListItem={([group, groupRules]) => (
           <div className="flex flex-col gap-0.5">
             <div className="flex items-center justify-between gap-2">
               <span className="truncate text-sm font-semibold text-gray-800">{group}</span>
-              <span className="rounded-full bg-orange-50 px-2 py-0.5 text-[10px] font-bold text-primary">Treatment</span>
+              <span
+                className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                  groupRules.some((rule) => rule.is_active) ? "bg-green-50 text-green-700" : "bg-gray-100 text-gray-400"
+                }`}
+              >
+                {groupRules.some((rule) => rule.is_active) ? "Active" : "Disabled"}
+              </span>
             </div>
             <span className="text-xs text-gray-400">
               {groupRules.length} material{groupRules.length === 1 ? "" : "s"}
@@ -288,7 +329,7 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
                 </button>
               </div>
 
-              <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_minmax(0,12rem)]">
+              <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_minmax(0,12rem)_minmax(0,12rem)]">
                 <div className="relative min-w-0">
                   <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
                   <input
@@ -298,6 +339,22 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
                     className={`${inputCls} pl-9`}
                   />
                 </div>
+                <select
+                  value={supplierFilter}
+                  onChange={(e) => setSupplierFilter(e.target.value)}
+                  className={`${inputCls} min-w-0`}
+                  disabled={suppliersLoading}
+                  aria-label="Supplier source"
+                >
+                  <option value={DPWH_SUPPLIER_VALUE}>DPWH</option>
+                  {suppliers
+                    .filter((s) => s.status === "Active")
+                    .map((supplier) => (
+                      <option key={supplier.supplier_id} value={String(supplier.supplier_id)}>
+                        {supplier.supplier_name}
+                      </option>
+                    ))}
+                </select>
                 <select
                   value={categoryFilter}
                   onChange={(e) => setCategoryFilter(e.target.value as CategoryType | "")}

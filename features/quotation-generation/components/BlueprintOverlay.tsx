@@ -466,6 +466,7 @@ export function BlueprintOverlay({
                 const revealed = !scanning || polygonCenterY(points) <= scanLineY;
                 const selected = selectedEditId === seg.draft_id && selectedEditPolygonIndex === polygonIndex;
                 const showOutline = !grouped || editingHighlights || selected;
+                const groupedFillGap = grouped && !editingHighlights && revealed;
 
                 return (
                   <polygon
@@ -503,9 +504,15 @@ export function BlueprintOverlay({
                     fill={color}
                     fillOpacity={hovered || selected ? (estimated ? 0.18 : 0.24) : revealed ? (estimated ? 0.08 : 0.12) : editingHighlights ? 0.04 : 0}
                     stroke={color}
-                    strokeWidth={showOutline ? (hovered || selected || editingHighlights ? (estimated ? 5 : 6) : revealed ? (estimated ? 2.5 : 3.5) : 0) : 0}
+                    strokeWidth={
+                      groupedFillGap
+                        ? 10
+                        : showOutline
+                          ? (hovered || selected || editingHighlights ? (estimated ? 5 : 6) : revealed ? (estimated ? 2.5 : 3.5) : 0)
+                          : 0
+                    }
                     strokeLinejoin="round"
-                    strokeOpacity={showOutline ? (hovered || selected ? 0.95 : revealed ? 0.8 : 0) : 0}
+                    strokeOpacity={groupedFillGap ? (hovered ? 0.24 : 0.12) : showOutline ? (hovered || selected ? 0.95 : revealed ? 0.8 : 0) : 0}
                     strokeDasharray={estimated ? "12 8" : undefined}
                     className={`${editingHighlights && highlightEditTool === "move-shape" && selected ? "cursor-grab active:cursor-grabbing" : "cursor-pointer"} transition-opacity`}
                   />

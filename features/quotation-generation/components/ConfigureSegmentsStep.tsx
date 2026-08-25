@@ -178,7 +178,6 @@ interface ApplyToAllPanelProps {
         className="flex w-fit items-center gap-1.5 rounded-lg border border-dashed border-primary/40 bg-orange-50/40 px-3 py-1.5 text-xs font-bold text-primary transition hover:bg-orange-50"
       >
         <Zap className="h-3.5 w-3.5" /> Apply to All Segments
-        <span className="rounded-full bg-primary/10 px-1.5 py-0.5 text-[9px] font-extrabold uppercase tracking-wide text-primary">New</span>
       </button>
     );
   }

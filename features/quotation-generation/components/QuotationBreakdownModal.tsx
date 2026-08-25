@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { AlertTriangle, BarChart2, BookOpen, ChevronDown, ChevronUp, Database, FileText, Layers, ShoppingBag, X } from "lucide-react";
+import { AlertTriangle, BarChart2, BookOpen, Check, ChevronDown, ChevronUp, Database, FileText, Layers, Pencil, ShoppingBag, X } from "lucide-react";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { fmtPeso } from "@/lib/dev/provisional/quotationBreakdownFixtures";
 import type { ItemCategory, PricelistBasis, ProvisionalItemLine, ProvisionalQuotationTierResult, ProvisionalTier } from "@/lib/dev/provisional/quotationBreakdownTypes";
@@ -48,9 +48,7 @@ function SourceBadge({ source }: { source: string }) {
 }
 
 // Part B — one small box per item line: real provenance fields (price_source/region/
-// quarter+year or recorded_at), and a Confidence row that is LABELED BUT ALWAYS BLANK.
-// There is no computed basis for price confidence anywhere yet — this must never show a
-// fabricated "High/Medium/Low." It only ever fills in the day a real computation backs it.
+// quarter+year or recorded_at).
 function PricingReferenceBox({ line }: { line: ProvisionalItemLine }) {
   const ref = line.pricing_reference;
   const dateLabel = ref.quarter && ref.year ? `${ref.quarter} ${ref.year}` : ref.recorded_at ? new Date(ref.recorded_at).toLocaleDateString("en-PH", { year: "numeric", month: "short", day: "numeric" }) : "—";
@@ -63,7 +61,6 @@ function PricingReferenceBox({ line }: { line: ProvisionalItemLine }) {
       <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-gray-500">
         <span>Region: {ref.region ?? "—"}</span>
         <span>Recorded: {dateLabel}</span>
-        <span className="italic text-gray-400">Confidence: not yet computed</span>
       </div>
     </div>
   );
@@ -206,6 +203,15 @@ function SegmentBreakdownTab({ items, segments, blueprintFloors }: { items: Prov
 }
 
 function BoqTab({ items }: { items: ProvisionalItemLine[] }) {
+  const segmentGroups = Array.from(
+    items.reduce((groups, line) => {
+      const key = line.segment_draft_id || line.segment_name;
+      groups.set(key, [...(groups.get(key) ?? []), line]);
+      return groups;
+    }, new Map<string, ProvisionalItemLine[]>())
+  );
+  const hasMultipleSegments = segmentGroups.length > 1;
+
   return (
     <div className="flex flex-col gap-3">
       <p className="text-xs text-gray-500">
@@ -225,28 +231,39 @@ function BoqTab({ items }: { items: ProvisionalItemLine[] }) {
             </tr>
           </thead>
           <tbody>
-            {items.map((line) => (
-              <tr key={line.line_id} className={`border-b border-gray-100 ${line.unit_price === null ? "bg-amber-50/40" : line.is_overridden ? "bg-blue-50/30" : ""}`}>
-                <td className="px-3 py-2.5">
-                  <div className="flex items-center gap-1.5">
-                    <CategoryChip category={line.category} />
-                    <span className="font-medium text-gray-800">{line.item_name}</span>
-                    {line.is_overridden && <span className="rounded bg-blue-100 px-1 py-0.5 text-[9px] font-bold uppercase tracking-wide text-blue-600">Overridden</span>}
-                  </div>
-                </td>
-                <td className="px-3 py-2.5 text-gray-500">{line.segment_name}</td>
-                <td className="px-3 py-2.5 text-right text-gray-700">{line.quantity.toFixed(1)}</td>
-                <td className="px-3 py-2.5 text-gray-500">{line.unit}</td>
-                <td className="px-3 py-2.5 text-right text-gray-700">{line.unit_price !== null ? fmtPeso(line.unit_price) : <span className="font-semibold text-amber-600">Missing price</span>}</td>
-                <td className="px-3 py-2.5">
-                  <div className="flex items-center gap-1.5">
-                    <SourceBadge source={line.pricing_reference.price_source} />
-                    <span className="text-gray-400">{line.pricing_reference.region ?? (line.pricing_reference.recorded_at ? new Date(line.pricing_reference.recorded_at).toLocaleDateString("en-PH", { year: "numeric", month: "short" }) : "—")}</span>
-                  </div>
-                </td>
-                <td className="px-3 py-2.5 text-right font-bold text-gray-900">{line.total_cost !== null ? fmtPeso(line.total_cost) : "—"}</td>
-              </tr>
-            ))}
+            {segmentGroups.flatMap(([segmentId, lines]) => [
+              ...(hasMultipleSegments
+                ? [
+                    <tr key={`${segmentId}-header`} className="border-y border-gray-200 bg-gray-100/80">
+                      <td colSpan={7} className="px-3 py-2 text-xs font-bold uppercase tracking-wide text-gray-600">
+                        {lines[0]?.segment_name ?? "Segment"} Materials
+                      </td>
+                    </tr>,
+                  ]
+                : []),
+              ...lines.map((line) => (
+                <tr key={line.line_id} className={`border-b border-gray-100 ${line.unit_price === null ? "bg-amber-50/40" : line.is_overridden ? "bg-blue-50/30" : ""}`}>
+                  <td className="px-3 py-2.5">
+                    <div className="flex items-center gap-1.5">
+                      <CategoryChip category={line.category} />
+                      <span className="font-medium text-gray-800">{line.item_name}</span>
+                      {line.is_overridden && <span className="rounded bg-blue-100 px-1 py-0.5 text-[9px] font-bold uppercase tracking-wide text-blue-600">Overridden</span>}
+                    </div>
+                  </td>
+                  <td className="px-3 py-2.5 text-gray-500">{line.segment_name}</td>
+                  <td className="px-3 py-2.5 text-right text-gray-700">{line.quantity.toFixed(1)}</td>
+                  <td className="px-3 py-2.5 text-gray-500">{line.unit}</td>
+                  <td className="px-3 py-2.5 text-right text-gray-700">{line.unit_price !== null ? fmtPeso(line.unit_price) : <span className="font-semibold text-amber-600">Missing price</span>}</td>
+                  <td className="px-3 py-2.5">
+                    <div className="flex items-center gap-1.5">
+                      <SourceBadge source={line.pricing_reference.price_source} />
+                      <span className="text-gray-400">{line.pricing_reference.region ?? (line.pricing_reference.recorded_at ? new Date(line.pricing_reference.recorded_at).toLocaleDateString("en-PH", { year: "numeric", month: "short" }) : "—")}</span>
+                    </div>
+                  </td>
+                  <td className="px-3 py-2.5 text-right font-bold text-gray-900">{line.total_cost !== null ? fmtPeso(line.total_cost) : "—"}</td>
+                </tr>
+              )),
+            ])}
           </tbody>
         </table>
       </div>
@@ -314,6 +331,9 @@ function CostSummaryTab({ result }: { result: ProvisionalQuotationTierResult }) 
 // Uploaded-Pricelist-vs-DPWH toggle in the header above, is the whole of this tab.
 function BenchmarkingTab({ items }: { items: ProvisionalItemLine[] }) {
   const withSuppliers = items.filter((l) => l.supplier_options.length > 0);
+  const [editingLineId, setEditingLineId] = useState<string | null>(null);
+  const [selectedSuppliers, setSelectedSuppliers] = useState<Record<string, string | number | null>>({});
+
   return (
     <div className="flex flex-col gap-4">
       <div className="flex items-center gap-2 rounded-xl border border-blue-100 bg-blue-50 px-4 py-3 text-xs text-blue-700">
@@ -329,6 +349,15 @@ function BenchmarkingTab({ items }: { items: ProvisionalItemLine[] }) {
                 {line.segment_name} · needs {line.quantity.toFixed(1)} {line.unit}
               </p>
             </div>
+            <button
+              type="button"
+              onClick={() => setEditingLineId((current) => (current === line.line_id ? null : line.line_id))}
+              title={editingLineId === line.line_id ? "Done selecting supplier" : "Edit selected supplier"}
+              aria-label={editingLineId === line.line_id ? "Done selecting supplier" : "Edit selected supplier"}
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-500 transition hover:border-primary/40 hover:text-primary"
+            >
+              {editingLineId === line.line_id ? <Check className="h-3.5 w-3.5" /> : <Pencil className="h-3.5 w-3.5" />}
+            </button>
           </div>
           <div className="overflow-x-auto rounded-lg border border-gray-100">
             <table className="w-full text-xs">
@@ -342,9 +371,17 @@ function BenchmarkingTab({ items }: { items: ProvisionalItemLine[] }) {
                 {[...line.supplier_options]
                   .sort((a, b) => a.unit_price - b.unit_price)
                   .map((sup) => {
-                    const isSelected = sup.supplier_id === line.selected_supplier_id;
+                    const selectedSupplier = selectedSuppliers[line.line_id] ?? line.selected_supplier_id;
+                    const isSelected = sup.supplier_id === selectedSupplier;
                     return (
-                      <tr key={sup.supplier_id} className={`border-b border-gray-100 last:border-0 ${isSelected ? "bg-orange-50/40" : ""}`}>
+                      <tr
+                        key={sup.supplier_id}
+                        className={`border-b border-gray-100 last:border-0 ${isSelected ? "bg-orange-50/40" : ""} ${editingLineId === line.line_id ? "cursor-pointer hover:bg-gray-50" : ""}`}
+                        onClick={() => {
+                          if (editingLineId !== line.line_id) return;
+                          setSelectedSuppliers((prev) => ({ ...prev, [line.line_id]: sup.supplier_id }));
+                        }}
+                      >
                         <td className="px-3 py-2 font-medium text-gray-800">
                           {sup.supplier_name} {isSelected && <span className="ml-1 rounded-full bg-primary/10 px-1.5 py-0.5 text-[9px] font-bold text-primary">Selected</span>}
                         </td>
@@ -386,7 +423,6 @@ export function QuotationBreakdownModal({ tier, result, pricelistBasis, onBasisC
           <div>
             <h2 className="text-base font-bold text-gray-900">
               Detailed Breakdown: <span className={TIER_ACCENT[tier]}>{tier}</span>
-              <span className="ml-2 rounded-full bg-gray-200 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-gray-500">View only</span>
             </h2>
             <p className="text-xs text-gray-500">Full cost transparency · all prices in Philippine Pesos (₱) · mock fixture values</p>
           </div>
