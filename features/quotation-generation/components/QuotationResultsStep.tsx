@@ -46,15 +46,15 @@ const TIER_META: Record<ProvisionalTier, { tagline: string; badge: string; accen
     tagline: "Cost-effective solution with quality materials",
     badge: "Recommended",
     accent: "text-primary",
-    headerBg: "bg-primary",
+    headerBg: "project-tier-gradient bg-linear-to-r from-primary via-orange-400 to-primary",
     accentBg: "bg-orange-50",
   },
   Premium: {
     tagline: "High-spec materials with expedited delivery",
     badge: "Best Quality",
-    accent: "text-[#0000CC]",
-    headerBg: "bg-[#0000CC]",
-    accentBg: "bg-[#0000CC]/5",
+    accent: "text-[#0000CD]",
+    headerBg: "project-tier-gradient bg-linear-to-r from-[#0000CD] via-[#4169E1] to-[#0000CD]",
+    accentBg: "bg-[#0000CD]/5",
   },
 };
 
