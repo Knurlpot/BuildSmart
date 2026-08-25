@@ -254,7 +254,7 @@ function QuoteCard({
 // depends on that don't exist in the schema yet), the READ-ONLY detailed breakdown (Part A),
 // and the revision flow (editing lives only in Minor Revision, Part D). Everything
 // downstream of `segments` is mock-derived — see quotationBreakdownFixtures.ts.
-export function QuotationResultsStep({ quotation, segments, blueprintFloors, onStructuralRevision, onSaveDraft, onFinalize }: QuotationResultsStepProps) {
+export function QuotationResultsStep({ client, quotation, segments, blueprintFloors, onStructuralRevision, onSaveDraft, onFinalize }: QuotationResultsStepProps) {
   const { strategies: pricingStrategies } = usePricingStrategies();
   const { rules: materialRules, isLoading: materialRulesLoading } = useMaterialRules();
   const { rules: laborRules } = useLaborRules();
