@@ -6,6 +6,7 @@ type SupplierCatalogRecord = {
   historicalrec_id: number;
   item_code: number;
   item_name: string;
+  supplier_id: number | null;
   supplier_name: string | null;
   supplier_location: string | null;
   brand: string;
@@ -29,6 +30,7 @@ export async function GET(request: NextRequest) {
        h.historicalrec_id,
        i.item_code,
        i.item_name,
+       h.supplier_id,
        s.supplier_name,
        COALESCE(
          NULLIF(BTRIM(h.location), ''),

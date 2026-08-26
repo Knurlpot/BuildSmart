@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { AlertTriangle, CheckCircle2, Pencil, Search, X, XCircle } from "lucide-react";
 import { RuleListDetailPanel } from "./RuleListDetailPanel";
 import { useMaterialRules, useCheckRuleUsage, stagingId } from "@/lib/dev/provisional/useCompanyRulesProvisional";
@@ -8,6 +8,8 @@ import { useEditableRuleList } from "@/lib/dev/provisional/useEditableRuleList";
 import { apiClient } from "@/lib/api/client";
 import type { MaterialRuleEntry } from "@/lib/dev/provisional/companyRulesTypes";
 import { useItemsCatalog } from "@/hooks/useItemsCatalog";
+import { usePricelistCatalog, type SavedPriceRecord } from "@/hooks/usePricelistCatalog";
+import { usePricelistPublishedSource, type DpwhCatalogRow } from "@/hooks/usePricelistPublishedSource";
 import { useCategories } from "@/hooks/useCategories";
 import { useSuppliers } from "@/hooks/useSuppliers";
 import { TREATMENT_TYPES } from "@/lib/dev/provisional/quotationGenerationTypes";
@@ -27,6 +29,8 @@ interface MaterialRulesFormProps {
   focusRuleId?: string | null;
   onFocusHandled?: () => void;
 }
+
+type CatalogItem = Items & { catalogKey: string };
 
 // v6 Correction 3 — REBUILT as a catalog picker. A category contains many materials used
 // TOGETHER (a waterproofing system needs primer AND membrane AND topcoat), not
@@ -50,9 +54,19 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
   } = useMaterialRules();
   const { checkUsage } = useCheckRuleUsage();
   const editable = useEditableRuleList<MaterialRuleEntry>({ checkUsage, update, supersede, idPrefix: "mr" });
-  const { items, isLoading: itemsLoading, error: itemsError } = useItemsCatalog();
+  const { isLoading: itemsLoading, error: itemsError } = useItemsCatalog();
   const { categories, isLoading: categoriesLoading, error: categoriesError } = useCategories();
   const { suppliers, isLoading: suppliersLoading } = useSuppliers();
+  const supplierCatalog = usePricelistCatalog();
+  const { dpwhCatalog } = usePricelistPublishedSource();
+  const supplierCatalogRecords = supplierCatalog.records;
+  const supplierCatalogLoad = supplierCatalog.load;
+  const supplierCatalogLoading = supplierCatalog.isLoading;
+  const supplierCatalogError = supplierCatalog.error;
+  const dpwhCatalogRecords = dpwhCatalog.records;
+  const dpwhCatalogLoad = dpwhCatalog.load;
+  const dpwhCatalogLoading = dpwhCatalog.isLoading;
+  const dpwhCatalogError = dpwhCatalog.error;
 
   const allRules = editable.applyOverrides([...editable.localExtra, ...rules]);
 
@@ -66,7 +80,7 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
   const [search, setSearch] = useState("");
   const [supplierFilter, setSupplierFilter] = useState<string>(DPWH_SUPPLIER_VALUE);
   const [categoryFilter, setCategoryFilter] = useState<CategoryType | "">("");
-  const [checkedItemCodes, setCheckedItemCodes] = useState<Set<string>>(new Set());
+  const [checkedCatalogKeys, setCheckedCatalogKeys] = useState<Set<string>>(new Set());
   const [treatmentType, setTreatmentType] = useState("");
   const [warrantyYears, setWarrantyYears] = useState<number | "">("");
   const [lifespanYears, setLifespanYears] = useState<number | "">("");
@@ -81,7 +95,54 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const filteredItems = items.filter((item) => {
+  const categoryIdByType = useMemo(
+    () => new Map(categories.map((category) => [category.category_type, category.category_id])),
+    [categories]
+  );
+
+  const catalogItems = useMemo<CatalogItem[]>(() => {
+    if (supplierFilter === DPWH_SUPPLIER_VALUE) {
+      return dpwhCatalogRecords.map((record: DpwhCatalogRow) => ({
+        catalogKey: `dpwh-${record.historicalrec_id}`,
+        item_code: record.item_code,
+        category_id: record.category_type ? categoryIdByType.get(record.category_type as CategoryType) ?? 0 : 0,
+        company_id: null,
+        item_name: record.item_name ?? `Material ${record.item_code}`,
+        brand: "",
+        unit: "",
+        item_source: "DPWH",
+        source_location: record.location ?? record.region ?? null,
+        description: record.location ?? record.region ?? undefined,
+      }));
+    }
+
+    const supplierId = Number(supplierFilter);
+    return supplierCatalogRecords
+      .filter((record: SavedPriceRecord) => record.supplier_id === supplierId)
+      .map((record) => ({
+        catalogKey: `supplier-${record.historicalrec_id}`,
+        item_code: record.item_code,
+        category_id: record.category_type ? categoryIdByType.get(record.category_type as CategoryType) ?? 0 : 0,
+        company_id: null,
+        item_name: record.item_name,
+        brand: record.brand,
+        unit: record.unit,
+        item_source: "Supplier",
+        source_location: record.supplier_location,
+        description: record.description_material || record.supplier_location || undefined,
+      }));
+  }, [categoryIdByType, dpwhCatalogRecords, supplierCatalogRecords, supplierFilter]);
+
+  useEffect(() => {
+    if (mode !== "browse") return;
+    if (supplierFilter === DPWH_SUPPLIER_VALUE) {
+      dpwhCatalogLoad();
+    } else {
+      supplierCatalogLoad();
+    }
+  }, [mode, supplierFilter, dpwhCatalogLoad, supplierCatalogLoad]);
+
+  const filteredItems = catalogItems.filter((item) => {
     const matchesSearch = search.trim() === "" || item.item_name.toLowerCase().includes(search.trim().toLowerCase());
     const matchesCategory = categoryFilter === "" || categoryTypeOf(item) === categoryFilter;
     return matchesSearch && matchesCategory;
@@ -95,13 +156,13 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
       item.unit,
     ].filter(Boolean).join(" · ");
 
-  const checkedItems = items.filter((i) => checkedItemCodes.has(String(i.item_code)));
+  const checkedItems = catalogItems.filter((i) => checkedCatalogKeys.has(i.catalogKey));
 
-  const toggleChecked = (itemCode: string) => {
-    setCheckedItemCodes((prev) => {
+  const toggleChecked = (catalogKey: string) => {
+    setCheckedCatalogKeys((prev) => {
       const next = new Set(prev);
-      if (next.has(itemCode)) next.delete(itemCode);
-      else next.add(itemCode);
+      if (next.has(catalogKey)) next.delete(catalogKey);
+      else next.add(catalogKey);
       return next;
     });
   };
@@ -114,7 +175,7 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
     setSearch("");
     setSupplierFilter(DPWH_SUPPLIER_VALUE);
     setCategoryFilter("");
-    setCheckedItemCodes(new Set());
+    setCheckedCatalogKeys(new Set());
     setTreatmentType("");
     setWarrantyYears("");
     setLifespanYears("");
@@ -353,7 +414,10 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
                 </div>
                 <select
                   value={supplierFilter}
-                  onChange={(e) => setSupplierFilter(e.target.value)}
+                  onChange={(e) => {
+                    setSupplierFilter(e.target.value);
+                    setCheckedCatalogKeys(new Set());
+                  }}
                   className={`${inputCls} min-w-0`}
                   disabled={suppliersLoading}
                   aria-label="Supplier source"
@@ -379,27 +443,26 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
                 </select>
               </div>
 
-              {itemsLoading ? (
+              {(supplierFilter === DPWH_SUPPLIER_VALUE ? dpwhCatalogLoading : supplierCatalogLoading) || itemsLoading ? (
                 <p className="text-xs text-gray-400">Loading catalog…</p>
-              ) : itemsError ? (
-                <p className="text-xs text-red-500">Couldn&apos;t load your catalog: {itemsError.message}</p>
-              ) : items.length === 0 ? (
+              ) : itemsError || dpwhCatalogError || supplierCatalogError ? (
+                <p className="text-xs text-red-500">Couldn&apos;t load your catalog: {(itemsError ?? dpwhCatalogError ?? supplierCatalogError)?.message}</p>
+              ) : catalogItems.length === 0 ? (
                 <p className="text-xs text-amber-600">No items in your catalog. Upload a pricelist first.</p>
               ) : filteredItems.length === 0 ? (
                 <p className="text-xs text-gray-400">No catalog items match that search.</p>
               ) : (
                 <div className="max-h-72 overflow-y-auto rounded-lg border border-gray-200">
                   {filteredItems.map((item) => {
-                    const code = String(item.item_code);
                     return (
                       <label
-                        key={code}
+                        key={item.catalogKey}
                         className="flex cursor-pointer items-center gap-3 border-b border-gray-50 px-3 py-2 last:border-b-0 hover:bg-gray-50"
                       >
                         <input
                           type="checkbox"
-                          checked={checkedItemCodes.has(code)}
-                          onChange={() => toggleChecked(code)}
+                          checked={checkedCatalogKeys.has(item.catalogKey)}
+                          onChange={() => toggleChecked(item.catalogKey)}
                           className="h-4 w-4 shrink-0 rounded border-gray-300 text-primary focus:ring-2 focus:ring-primary/30"
                         />
                         <div className="min-w-0 flex-1">
