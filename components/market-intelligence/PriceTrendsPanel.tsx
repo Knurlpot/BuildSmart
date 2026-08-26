@@ -3,7 +3,7 @@
 // 
 import { useMemo, useState } from "react";
 import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { Filter, Globe2, Info, Landmark, Minus, Sparkles, Truck, TrendingDown, TrendingUp } from "lucide-react";
+import { Filter, Globe2, Info, Landmark, Minus, Truck, TrendingDown, TrendingUp } from "lucide-react";
 import { QueryState } from "@/components/feedback/QueryState";
 import { useMarketIntelligence, type HistoricalPriceRecordRow } from "@/hooks/useMarketIntelligence";
 import { mapToPsaCmrpiCommodityGroup, type CmrpiMappingResult } from "@/lib/psa-cmrpi-mapping";
@@ -129,7 +129,7 @@ export function PriceTrendsPanel({ compact = false }: PriceTrendsPanelProps) {
   const [categoryFilter, setCategoryFilter] = useState("All");
   const [selectedVariance, setSelectedVariance] = useState<DrilldownSelection | null>(null);
 
-  const { historical, variances, insight } = useMarketIntelligence({
+  const { historical, variances } = useMarketIntelligence({
     region,
   });
 
@@ -712,46 +712,14 @@ export function PriceTrendsPanel({ compact = false }: PriceTrendsPanelProps) {
       </div>
 
       {!compact && (
-        <>
-          <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
-            <div className="mb-1 flex items-center gap-2">
-              <Globe2 className="h-4 w-4 text-gray-400" />
-              <p className="font-bold text-gray-900">Regional Insights</p>
-            </div>
-            <p className="text-sm text-gray-400">Not yet wired to a backend endpoint.</p>
+        <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
+          <div className="mb-1 flex items-center gap-2">
+            <Truck className="h-4 w-4 text-gray-400" />
+            <p className="font-bold text-gray-900">Supplier Comparisons</p>
           </div>
-
-          <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
-            <div className="mb-1 flex items-center gap-2">
-              <Truck className="h-4 w-4 text-gray-400" />
-              <p className="font-bold text-gray-900">Supplier Comparisons</p>
-            </div>
-            <p className="text-sm text-gray-400">Not yet wired to a backend endpoint.</p>
-          </div>
-        </>
-      )}
-
-      <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
-        <div className="mb-1 flex items-center gap-2">
-          <Sparkles className="h-4 w-4 text-gray-400" />
-          <p className="font-bold text-gray-900">Market Insights</p>
+          <p className="text-sm text-gray-400">Not yet wired to a backend endpoint.</p>
         </div>
-        {categoryFilter === "All" ? (
-          <p className="text-sm text-gray-400">Select a category to focus the variance analysis above.</p>
-        ) : (
-          <QueryState
-            isLoading={insight.isLoading}
-            error={insight.error}
-            isEmpty={!insight.data?.insight}
-            onRetry={insight.refetch}
-            emptyTitle="No insight available yet"
-            emptyHint="This panel displays Gemini-generated text from the backend."
-            minHeight={80}
-          >
-            <p className="text-sm leading-relaxed text-gray-600">{insight.data?.insight}</p>
-          </QueryState>
-        )}
-      </div>
+      )}
     </div>
   );
 }
