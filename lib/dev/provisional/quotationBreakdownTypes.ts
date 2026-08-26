@@ -192,6 +192,7 @@ export interface SavedProjectRecord {
   project_location: string;
   project_region: string;
   status: 'Draft' | 'Final';
+  accepted_tier?: ProvisionalTier | null;
   created_at: string;
   updated_at: string;
   quotes: Partial<Record<ProvisionalTier, SavedQuoteSnapshot>>;
@@ -206,6 +207,7 @@ export interface SavedProjectRecord {
 
 export interface FinalizedQuotationInput {
   quoteId?: number | null;
+  acceptedTier: ProvisionalTier;
   clientId: number;
   clientName: string;
   projectName: string;

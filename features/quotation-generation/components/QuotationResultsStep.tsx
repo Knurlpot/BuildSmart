@@ -345,6 +345,7 @@ export function QuotationResultsStep({ client, quotation, segments, blueprintFlo
       });
       saveFinalizedQuotation({
         quoteId: quotation.quote_id,
+        acceptedTier: tier,
         clientId: client.client_id,
         clientName: client.client_name,
         projectName: quotation.project_name,

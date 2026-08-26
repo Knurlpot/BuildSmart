@@ -134,7 +134,7 @@ export function saveFinalizedQuotation(input: FinalizedQuotationInput): SavedPro
             versions: [newVersion(typedTier, result, 1, now)],
             pricelist_basis_at_finalize: input.pricelistBasis,
             finalized_at: now,
-            is_selected: false,
+            is_selected: typedTier === input.acceptedTier,
           },
         ],
       ];
@@ -149,6 +149,7 @@ export function saveFinalizedQuotation(input: FinalizedQuotationInput): SavedPro
     project_location: input.projectLocation,
     project_region: input.projectRegion,
     status: "Final",
+    accepted_tier: input.acceptedTier,
     created_at: now,
     updated_at: now,
     quotes,
@@ -230,6 +231,7 @@ export function setAcceptedTier(projectId: string, tier: ProvisionalTier | null)
       return {
         ...project,
         updated_at: new Date().toISOString(),
+        accepted_tier: tier,
         quotes: Object.fromEntries(
           Object.entries(project.quotes).map(([name, quote]) => [
             name,

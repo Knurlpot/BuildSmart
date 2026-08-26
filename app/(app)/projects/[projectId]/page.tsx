@@ -30,9 +30,9 @@ import { useClients } from "@/hooks/useClients";
 
 
 // 
-const TIER_META: Record<ProvisionalTier, { accent: string; headerBg: string; accentBg: string; badge: string }> = {
-  Practical: { accent: "text-primary", headerBg: "bg-primary", accentBg: "bg-orange-50", badge: "Recommended" },
-  Premium: { accent: "text-[#0000CD]", headerBg: "bg-[#0000CD]", accentBg: "bg-[#0000CD]/5", badge: "Best Quality" },
+const TIER_META: Record<ProvisionalTier, { accent: string; headerBg: string; accentBg: string }> = {
+  Practical: { accent: "text-primary", headerBg: "bg-primary", accentBg: "bg-orange-50" },
+  Premium: { accent: "text-[#0000CD]", headerBg: "bg-[#0000CD]", accentBg: "bg-[#0000CD]/5" },
 };
 
 function formatDateTime(iso: string) {
@@ -109,7 +109,7 @@ function QuoteSummaryCard({
   const snapshot = project.quotes[tier];
   const [viewingVersionId, setViewingVersionId] = useState<string | null>(null);
   if (!snapshot) return null;
-  const accepted = snapshot.is_selected === true;
+  const accepted = snapshot.is_selected === true || project.accepted_tier === tier;
   const canChooseAcceptedTier = project.status !== "Final";
   const versions = snapshot.versions;
   const latest = versions[versions.length - 1];
@@ -119,7 +119,7 @@ function QuoteSummaryCard({
   const displayedVersionLabel = isOriginal && project.status === "Draft" ? "Draft estimate" : versionLabel(displayed);
 
   return (
-    <div className={`flex flex-1 flex-col overflow-hidden rounded-2xl border-2 bg-white ${tier === "Premium" ? "" : "shadow-sm"} ${accepted ? (tier === "Premium" ? "border-[#0000CD]" : "border-green-300") : "border-gray-100"}`}>
+    <div className={`flex flex-1 flex-col overflow-hidden rounded-2xl border-2 bg-white ${tier === "Premium" ? "" : "shadow-sm"} ${accepted ? "border-green-500 ring-2 ring-green-200" : "border-gray-100"}`}>
       <div className={`${meta.headerBg} px-5 py-4 text-white`}>
         <div className="flex items-center justify-between">
           <div>
@@ -127,7 +127,6 @@ function QuoteSummaryCard({
             <h2 className="text-xl font-bold leading-tight">{tier}</h2>
           </div>
           <div className="flex flex-col items-end gap-1">
-            <span className="rounded-full bg-white/20 px-2.5 py-0.5 text-[10px] font-semibold backdrop-blur">{meta.badge}</span>
             {tier === "Premium" ? <Star className="h-4 w-4 fill-yellow-300 text-yellow-300" /> : <TrendingDown className="h-4 w-4 text-white/80" />}
           </div>
         </div>
@@ -242,7 +241,7 @@ function ProjectDetailContent({ projectId }: { projectId: string }) {
   }
 
   const handleToggleAccepted = (tier: ProvisionalTier) => {
-    const alreadyAccepted = project.quotes[tier]?.is_selected === true;
+    const alreadyAccepted = project.quotes[tier]?.is_selected === true || project.accepted_tier === tier;
     setAcceptedTier(project.project_id, alreadyAccepted ? null : tier);
   };
   const quoteEntries = PROVISIONAL_TIERS
