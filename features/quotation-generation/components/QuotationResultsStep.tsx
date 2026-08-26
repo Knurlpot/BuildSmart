@@ -14,6 +14,7 @@ import { QuotationBreakdownModal } from "./QuotationBreakdownModal";
 import { RevisionTypeModal } from "./RevisionTypeModal";
 import { MinorRevisionPanel } from "./MinorRevisionPanel";
 import { computeTierResult, deriveCompanyRuleItemLines, deriveMockItemLines, fmtPeso, recomputeItemLine } from "@/lib/dev/provisional/quotationBreakdownFixtures";
+import { saveFinalizedQuotation } from "@/lib/dev/provisional/savedProjectsStore";
 import { PROVISIONAL_TIERS, type PricelistBasis, type ProvisionalItemLine, type ProvisionalQuotationTierResult, type ProvisionalTier } from "@/lib/dev/provisional/quotationBreakdownTypes";
 import { apiClient } from "@/lib/api/client";
 import { useLaborRules, useMaterialRules, usePricingStrategies, useUnitRules } from "@/lib/dev/provisional/useCompanyRulesProvisional";
@@ -221,10 +222,6 @@ function QuoteCard({
               <span>VAT ({result.vat.rate_percentage}%)</span>
               <span className="font-semibold text-gray-700">{fmtPeso(result.vat.amount)}</span>
             </div>
-            <div className="flex justify-between text-gray-500">
-              <span>Downpayment ({result.downpayment_percentage}%)</span>
-              <span className="font-semibold text-gray-700">{fmtPeso(result.downpayment_amount)}</span>
-            </div>
           </div>
         </div>
       </div>
@@ -360,6 +357,20 @@ export function QuotationResultsStep({ client, quotation, segments, blueprintFlo
           total_service_cost: result.service_cost.subtotal,
           grand_total: result.grand_total,
         }),
+      });
+      saveFinalizedQuotation({
+        quoteId: quotation.quote_id,
+        clientId: client.client_id,
+        clientName: client.client_name,
+        projectName: quotation.project_name,
+        projectLocation: quotation.project_location,
+        projectRegion: quotation.project_region,
+        tierItems: effectiveTierItems,
+        pricelistBasis,
+        segments,
+        materialRules,
+        laborRules,
+        blueprintFloors,
       });
       onFinalize();
     } catch (error) {

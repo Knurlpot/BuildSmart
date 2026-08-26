@@ -312,14 +312,10 @@ function CostSummaryTab({ result }: { result: ProvisionalQuotationTierResult }) 
           <span className="text-base font-bold text-gray-900">Grand Total</span>
           <span className={`text-2xl font-extrabold ${TIER_ACCENT[result.tier]}`}>{fmtPeso(result.grand_total)}</span>
         </div>
-        <div className="flex items-center justify-between rounded-lg bg-gray-50 px-3 py-2.5">
-          <span className="text-xs font-semibold text-gray-500">Downpayment ({result.downpayment_percentage}%)</span>
-          <span className="text-sm font-bold text-gray-700">{fmtPeso(result.downpayment_amount)}</span>
-        </div>
       </div>
       <p className="text-[11px] text-gray-400">
-        VAT and Downpayment are shown as separate bottom-line figures, never folded into a line item. Every figure
-        above is a mock fixture value; no real pricelist/supplier/rule lookup produced it.
+        VAT is shown as a separate bottom-line figure, never folded into a line item. Every figure above is a mock
+        fixture value; no real pricelist/supplier/rule lookup produced it.
       </p>
     </div>
   );

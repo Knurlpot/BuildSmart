@@ -11,6 +11,7 @@ import { useRouter } from "next/navigation";
 import { useFetch } from "@/hooks/useFetch";
 import { apiClient } from "@/lib/api/client";
 import { MyClientsTab } from "@/features/clients/components/MyClientsTab";
+import { useSavedProjects } from "@/lib/dev/provisional/savedProjectsStore";
 import type { Quotation } from "@/types/entities";
 import { PH_REGIONS } from "@/types/entities/common";
 
@@ -29,6 +30,7 @@ interface OpenProjectRow {
   accepted_tier: Quotation["accepted_tier"];
   grand_total: number;
   created_at: string;
+  saved_project_id: string | null;
 }
 
 function formatDate(iso: string) {
@@ -66,6 +68,7 @@ interface OpenProjectsContentProps {
 function OpenProjectsContent({ onMetaChange }: OpenProjectsContentProps) {
   const router = useRouter();
   const { data: quotations, isLoading, error, refetch } = useFetch<ProjectListQuotation[]>("/api/quotations");
+  const savedProjects = useSavedProjects();
   const [search, setSearch] = useState("");
   const [region, setRegion] = useState("All");
   const [statusFilter, setStatusFilter] = useState<"All" | "Final" | "Draft">("All");
@@ -76,6 +79,13 @@ function OpenProjectsContent({ onMetaChange }: OpenProjectsContentProps) {
   const rows = useMemo<OpenProjectRow[]>(() => {
     return (quotations ?? []).map((quote) => {
       const clientName = quote.client_name ?? "No client";
+      const savedProject = savedProjects.find((project) => project.source_quote_id === quote.quote_id)
+        ?? savedProjects.find((project) =>
+          project.project_name === quote.project_name &&
+          project.client_id === quote.client_id &&
+          project.project_location === quote.project_location &&
+          project.project_region === quote.project_region
+        )
 
       return {
         id: `quote-${quote.quote_id}`,
@@ -88,9 +98,10 @@ function OpenProjectsContent({ onMetaChange }: OpenProjectsContentProps) {
         accepted_tier: quote.accepted_tier ?? null,
         grand_total: quote.grand_total,
         created_at: quote.created_at,
+        saved_project_id: savedProject?.project_id ?? null,
       };
     });
-  }, [quotations]);
+  }, [quotations, savedProjects]);
 
   const filteredRows = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -105,7 +116,7 @@ function OpenProjectsContent({ onMetaChange }: OpenProjectsContentProps) {
   }, [region, rows, search, statusFilter]);
 
   const openRow = (row: OpenProjectRow) => {
-    router.push(row.status === "Draft" ? `/quotations/new?resumeQuoteId=${row.quote_id}` : `/quotations/${row.quote_id}`);
+    router.push(row.status === "Draft" ? `/quotations/new?resumeQuoteId=${row.quote_id}` : row.saved_project_id ? `/projects/${row.saved_project_id}` : `/quotations/${row.quote_id}`);
   };
   const createNew = useCallback(() => router.push("/quotations/new"), [router]);
 
@@ -209,7 +220,7 @@ function OpenProjectsContent({ onMetaChange }: OpenProjectsContentProps) {
       ) : (
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
           {filteredRows.map((project) => {
-            const href = project.status === "Draft" ? `/quotations/new?resumeQuoteId=${project.quote_id}` : `/quotations/${project.quote_id}`;
+            const href = project.status === "Draft" ? `/quotations/new?resumeQuoteId=${project.quote_id}` : project.saved_project_id ? `/projects/${project.saved_project_id}` : `/quotations/${project.quote_id}`;
             const tier = project.accepted_tier;
             const isPremiumFinal = project.status === "Final" && tier === "Premium";
             const isPracticalFinal = project.status === "Final" && tier === "Practical";

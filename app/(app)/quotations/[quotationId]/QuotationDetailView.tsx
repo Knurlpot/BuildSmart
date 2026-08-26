@@ -4,7 +4,6 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { AlertCircle, Lock, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { PriceHistoryView } from "./PriceHistoryView";
 
 type QuotationItem = {
   quote_item_id: number;
@@ -86,7 +85,7 @@ export function QuotationDetailView({ quotationId }: { quotationId: string }) {
 
   const totalPriceChange = refreshResult?.total_impact ?? 0;
   const hasSignificantChange = Math.abs(totalPriceChange) > 1000;
-  const historyRefreshKey = useMemo(() => refreshResult?.new_total_material_cost ?? 0, [refreshResult]);
+  const refreshedMaterialTotal = useMemo(() => refreshResult?.new_total_material_cost ?? 0, [refreshResult]);
 
   function toggleLock(quoteItemId: number) {
     setLockedItems((current) => {
@@ -184,8 +183,6 @@ export function QuotationDetailView({ quotationId }: { quotationId: string }) {
         Total Material Cost: <strong className="text-gray-900">{peso(quotation.total_material_cost)}</strong>
       </div>
 
-      <PriceHistoryView quotationId={quotationId} refreshKey={historyRefreshKey} />
-
       <Dialog open={showRefreshConfirm} onOpenChange={setShowRefreshConfirm}>
         <DialogContent>
           <DialogHeader>
@@ -243,7 +240,7 @@ export function QuotationDetailView({ quotationId }: { quotationId: string }) {
                 ))}
               </div>
               <div className="rounded border border-blue-200 bg-blue-50 p-3 text-sm">
-                New material total: <strong>{peso(refreshResult.new_total_material_cost)}</strong>
+                New material total: <strong>{peso(refreshedMaterialTotal)}</strong>
               </div>
             </div>
           )}

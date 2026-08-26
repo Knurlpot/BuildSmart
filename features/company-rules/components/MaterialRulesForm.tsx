@@ -142,6 +142,10 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
   const allConfigValid =
     checkedItems.length > 0 &&
     TREATMENT_OPTIONS.includes(treatmentType as (typeof TREATMENT_OPTIONS)[number]) &&
+    warrantyYears !== "" &&
+    Number(warrantyYears) > 0 &&
+    lifespanYears !== "" &&
+    Number(lifespanYears) > 0 &&
     checkedItems.every((i) => categoryTypeOf(i) !== undefined);
 
   const handleSaveAll = async () => {
@@ -154,8 +158,8 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
         if (!category) throw new Error(`Could not resolve the category for ${item.item_name}.`);
         const payload = {
           treatment_type: treatmentType.trim() || null,
-          warranty_years: warrantyYears === "" ? null : Number(warrantyYears),
-          lifespan_years: lifespanYears === "" ? null : Number(lifespanYears),
+          warranty_years: Number(warrantyYears),
+          lifespan_years: Number(lifespanYears),
           category,
           preferred_item_code: code,
           preferred_item_name: item.item_name,
@@ -181,14 +185,14 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
 
   const handleSaveGroupEdit = async () => {
     setTouched(true);
-    if (!selectedGroupName || selectedGroupRules.length === 0 || !TREATMENT_OPTIONS.includes(treatmentType as (typeof TREATMENT_OPTIONS)[number])) return;
+    if (!groupEditValid) return;
     const nextGroup = treatmentType.trim();
     let savedAny = false;
     for (const rule of selectedGroupRules) {
       const payload = {
         treatment_type: nextGroup,
-        warranty_years: warrantyYears === "" ? null : Number(warrantyYears),
-        lifespan_years: lifespanYears === "" ? null : Number(lifespanYears),
+        warranty_years: Number(warrantyYears),
+        lifespan_years: Number(lifespanYears),
         category: rule.category,
         preferred_item_code: rule.preferred_item_code,
         preferred_item_name: rule.preferred_item_name,
@@ -226,6 +230,14 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
       ? null
       : selectedGroup ?? selected?.treatment_type?.trim() ?? visibleGroupedRules[0]?.[0] ?? null;
   const selectedGroupRules = groupedRules.find(([group]) => group === selectedGroupName)?.[1] ?? [];
+  const groupEditValid =
+    !!selectedGroupName &&
+    selectedGroupRules.length > 0 &&
+    TREATMENT_OPTIONS.includes(treatmentType as (typeof TREATMENT_OPTIONS)[number]) &&
+    warrantyYears !== "" &&
+    Number(warrantyYears) > 0 &&
+    lifespanYears !== "" &&
+    Number(lifespanYears) > 0;
 
   const handleDisableGroup = async () => {
     if (!selectedGroupName || selectedGroupRules.length === 0 || isDisablingGroup) return;
@@ -467,9 +479,10 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
                       htmlFor="material-warranty-years"
                       className="pointer-events-none absolute left-3 top-1.5 text-[10px] font-semibold text-gray-500 transition-all peer-placeholder-shown:top-1/2 peer-placeholder-shown:-translate-y-1/2 peer-placeholder-shown:text-sm peer-placeholder-shown:font-medium peer-focus:top-1.5 peer-focus:translate-y-0 peer-focus:text-[10px] peer-focus:font-semibold peer-focus:text-primary"
                     >
-                      Warranty Years <span className="font-normal normal-case text-gray-400">(optional)</span>
+                      Warranty Years <span className="text-red-500">*</span>
                     </label>
                   </div>
+                  {touched && (warrantyYears === "" || Number(warrantyYears) <= 0) && <p className="text-xs text-red-500">Warranty years is required.</p>}
                 </div>
                 <div className="flex flex-col gap-1.5">
                   <div className="relative">
@@ -489,9 +502,10 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
                       htmlFor="material-lifespan-years"
                       className="pointer-events-none absolute left-3 top-1.5 text-[10px] font-semibold text-gray-500 transition-all peer-placeholder-shown:top-1/2 peer-placeholder-shown:-translate-y-1/2 peer-placeholder-shown:text-sm peer-placeholder-shown:font-medium peer-focus:top-1.5 peer-focus:translate-y-0 peer-focus:text-[10px] peer-focus:font-semibold peer-focus:text-primary"
                     >
-                      Expected Lifespan Years <span className="font-normal normal-case text-gray-400">(optional)</span>
+                      Expected Lifespan Years <span className="text-red-500">*</span>
                     </label>
                   </div>
+                  {touched && (lifespanYears === "" || Number(lifespanYears) <= 0) && <p className="text-xs text-red-500">Expected lifespan years is required.</p>}
                 </div>
               </div>
 
@@ -545,13 +559,6 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
                 </button>
               </div>
 
-              <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-                <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                <span>
-                  Saving updates every material rule in this treatment group.
-                </span>
-              </div>
-
               <div className="rounded-xl border border-gray-100 bg-gray-50/60 p-3">
                 <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Treatment Group</p>
                 <p className="text-sm font-semibold text-gray-800">{selectedGroupName}</p>
@@ -601,9 +608,10 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
                       htmlFor="edit-material-warranty-years"
                       className="pointer-events-none absolute left-3 top-1.5 text-[10px] font-semibold text-gray-500 transition-all peer-placeholder-shown:top-1/2 peer-placeholder-shown:-translate-y-1/2 peer-placeholder-shown:text-sm peer-placeholder-shown:font-medium peer-focus:top-1.5 peer-focus:translate-y-0 peer-focus:text-[10px] peer-focus:font-semibold peer-focus:text-primary"
                     >
-                      Warranty Years <span className="font-normal normal-case text-gray-400">(optional)</span>
+                      Warranty Years <span className="text-red-500">*</span>
                     </label>
                   </div>
+                  {touched && (warrantyYears === "" || Number(warrantyYears) <= 0) && <p className="text-xs text-red-500">Warranty years is required.</p>}
                 </div>
                 <div className="flex flex-col gap-1.5">
                   <div className="relative">
@@ -623,9 +631,10 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
                       htmlFor="edit-material-lifespan-years"
                       className="pointer-events-none absolute left-3 top-1.5 text-[10px] font-semibold text-gray-500 transition-all peer-placeholder-shown:top-1/2 peer-placeholder-shown:-translate-y-1/2 peer-placeholder-shown:text-sm peer-placeholder-shown:font-medium peer-focus:top-1.5 peer-focus:translate-y-0 peer-focus:text-[10px] peer-focus:font-semibold peer-focus:text-primary"
                     >
-                      Expected Lifespan Years <span className="font-normal normal-case text-gray-400">(optional)</span>
+                      Expected Lifespan Years <span className="text-red-500">*</span>
                     </label>
                   </div>
+                  {touched && (lifespanYears === "" || Number(lifespanYears) <= 0) && <p className="text-xs text-red-500">Expected lifespan years is required.</p>}
                 </div>
               </div>
 

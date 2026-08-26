@@ -142,6 +142,7 @@ export function saveFinalizedQuotation(input: FinalizedQuotationInput): SavedPro
   ) as SavedProjectRecord["quotes"];
   const project: SavedProjectRecord = {
     project_id: projectId,
+    source_quote_id: input.quoteId ?? null,
     client_id: input.clientId,
     client_name: input.clientName,
     project_name: input.projectName,

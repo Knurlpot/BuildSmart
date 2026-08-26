@@ -5,7 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import {
   ArrowLeft,
   Award,
-  Building2,
+  ChevronDown,
   CheckCircle2,
   Clock,
   History,
@@ -22,8 +22,10 @@ import { RequireOnboardingStep } from "@/components/auth/RequireOnboardingStep";
 import { QuotationBreakdownModal } from "@/features/quotation-generation/components/QuotationBreakdownModal";
 import { fmtPeso } from "@/lib/dev/provisional/quotationBreakdownFixtures";
 import { refreshQuotePrices, setAcceptedTier, useSavedProjects } from "@/lib/dev/provisional/savedProjectsStore";
+import { useMaterialRules } from "@/lib/dev/provisional/useCompanyRulesProvisional";
 import type { SavedProjectRecord, SavedQuoteVersion } from "@/lib/dev/provisional/savedProjectsTypes";
 import { PROVISIONAL_TIERS, type ProvisionalTier } from "@/lib/dev/provisional/quotationBreakdownTypes";
+import type { MaterialRuleEntry } from "@/lib/dev/provisional/companyRulesTypes";
 import { useClients } from "@/hooks/useClients";
 
 
@@ -65,14 +67,31 @@ function clientInitials(name: string): string {
     .join("") || "CL";
 }
 
+function warrantyLabelFromMaterialRules(project: SavedProjectRecord, materialRules: MaterialRuleEntry[]): string | null {
+  const segmentTreatments = new Set(
+    project.segmentsSnapshot
+      .map((segment) => segment.treatment_type?.trim().toLowerCase())
+      .filter((value): value is string => !!value)
+  );
+  const warrantyYears = Math.max(
+    0,
+    ...materialRules
+      .filter((rule) => rule.is_active && !!rule.treatment_type && segmentTreatments.has(rule.treatment_type.trim().toLowerCase()))
+      .map((rule) => rule.warranty_years ?? 0)
+  );
+  return warrantyYears > 0 ? `${warrantyYears}-year warranty` : null;
+}
+
 function QuoteSummaryCard({
   project,
   tier,
+  warrantyLabel,
   onViewBreakdown,
   onToggleAccepted,
 }: {
   project: SavedProjectRecord;
   tier: ProvisionalTier;
+  warrantyLabel: string | null;
   onViewBreakdown: (versionId: string) => void;
   onToggleAccepted: () => void;
 }) {
@@ -114,7 +133,7 @@ function QuoteSummaryCard({
         <div className="grid grid-cols-2 gap-2.5">
           {[
             { icon: Clock, label: "Timeline", val: result.timeline_label },
-            { icon: Shield, label: "Warranty", val: result.warranty_label },
+            { icon: Shield, label: "Warranty", val: warrantyLabel ?? result.warranty_label },
             { icon: Award, label: "Material Grade", val: result.material_grade_label },
           ].map(({ icon: Icon, label, val }) => (
             <div key={label} className={`rounded-xl ${meta.accentBg} p-2.5`}>
@@ -194,8 +213,10 @@ function ProjectDetailContent({ projectId }: { projectId: string }) {
   const router = useRouter();
   const projects = useSavedProjects();
   const { clients, isLoading: clientsLoading, error: clientsError } = useClients();
+  const { rules: materialRules } = useMaterialRules();
   const project = projects.find((p) => p.project_id === projectId);
   const [breakdown, setBreakdown] = useState<{ tier: ProvisionalTier; versionId: string } | null>(null);
+  const [clientDetailsOpen, setClientDetailsOpen] = useState(false);
 
   if (!project) {
     return (
@@ -217,6 +238,7 @@ function ProjectDetailContent({ projectId }: { projectId: string }) {
     .map((tier) => [tier, project.quotes[tier]] as const)
     .filter((entry): entry is readonly [ProvisionalTier, NonNullable<SavedProjectRecord["quotes"][ProvisionalTier]>] => Boolean(entry[1]));
   const client = clients.find((entry) => entry.client_id === project.client_id) ?? null;
+  const warrantyLabel = warrantyLabelFromMaterialRules(project, materialRules);
 
   const handleRefresh = () => {
     refreshQuotePrices(project.project_id, "Practical");
@@ -234,41 +256,6 @@ function ProjectDetailContent({ projectId }: { projectId: string }) {
         >
           <ArrowLeft className="h-4 w-4" />
         </button>
-        <div>
-          <h1 className="text-lg font-bold text-gray-900">{project.project_name}</h1>
-          <p className="text-sm text-gray-500">
-            <span className="font-semibold text-gray-700">{project.client_name}</span> · {project.project_location}, {project.project_region}
-          </p>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <div className="rounded-xl border border-gray-100 bg-white p-3 shadow-sm">
-          <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">Status</p>
-          <p className="mt-0.5 text-sm font-bold text-gray-800">{project.status}</p>
-        </div>
-        <div className="rounded-xl border border-gray-100 bg-white p-3 shadow-sm">
-          <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">Region</p>
-          <p className="mt-0.5 text-sm font-bold text-gray-800">{project.project_region}</p>
-        </div>
-        <div className="rounded-xl border border-gray-100 bg-white p-3 shadow-sm">
-          <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">Created</p>
-          <p className="mt-0.5 text-sm font-bold text-gray-800">{formatDateTime(project.created_at)}</p>
-        </div>
-        <div className="flex items-stretch gap-2">
-          <div className="min-w-0 flex-1 rounded-xl border border-gray-100 bg-white p-3 shadow-sm">
-            <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">Last Updated</p>
-            <p className="mt-0.5 truncate text-sm font-bold text-gray-800">{formatDateTime(project.updated_at)}</p>
-          </div>
-          <button
-            type="button"
-            onClick={handleRefresh}
-            title="Refresh Practical and Premium prices"
-            className="flex shrink-0 items-center gap-1 rounded-xl border border-gray-200 bg-white px-2.5 text-[10px] font-bold text-gray-600 shadow-sm transition hover:border-primary hover:text-primary"
-          >
-            <RefreshCw className="h-3 w-3" /> Refresh
-          </button>
-        </div>
       </div>
 
       <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm" aria-labelledby="client-details-heading">
@@ -297,15 +284,34 @@ function ProjectDetailContent({ projectId }: { projectId: string }) {
                 </div>
               </div>
               <div className="flex items-center gap-2">
-                <span className="rounded-full bg-orange-50 px-2.5 py-1 text-[11px] font-semibold text-primary">{client.client_type}</span>
                 <span className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${client.status === "Active" ? "bg-green-50 text-green-700" : "bg-gray-100 text-gray-500"}`}>
                   {client.status}
                 </span>
+                <button
+                  type="button"
+                  onClick={() => setClientDetailsOpen((open) => !open)}
+                  title={clientDetailsOpen ? "Hide client contact details" : "Show client contact details"}
+                  aria-label={clientDetailsOpen ? "Hide client contact details" : "Show client contact details"}
+                  aria-expanded={clientDetailsOpen}
+                  className="flex h-8 w-8 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-500 transition hover:border-primary hover:text-primary"
+                >
+                  <ChevronDown className={`h-3.5 w-3.5 transition-transform ${clientDetailsOpen ? "rotate-180" : ""}`} />
+                </button>
+                <button
+                  type="button"
+                  onClick={handleRefresh}
+                  title="Refresh Practical and Premium prices"
+                  aria-label="Refresh Practical and Premium prices"
+                  className="flex h-8 w-8 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-500 transition hover:border-primary hover:text-primary"
+                >
+                  <RefreshCw className="h-3.5 w-3.5" />
+                </button>
               </div>
             </div>
 
-            <div className="grid gap-4 py-4 sm:grid-cols-2 xl:grid-cols-4">
-              {[
+            {clientDetailsOpen && (
+              <div className="grid gap-4 py-4 sm:grid-cols-2 xl:grid-cols-4">
+                {[
                 { icon: UserRound, label: "Contact Person", value: client.contact_person || "Not provided" },
                 { icon: Mail, label: "Email", value: client.contact_email || "Not provided" },
                 { icon: Phone, label: "Phone", value: client.contact_number || "Not provided" },
@@ -321,21 +327,36 @@ function ProjectDetailContent({ projectId }: { projectId: string }) {
                   </div>
                 </div>
               ))}
+              </div>
+            )}
+
+            <div className={`grid gap-3 sm:grid-cols-2 ${clientDetailsOpen ? "border-t border-gray-100 pt-4" : "py-4"}`}>
+              {[
+                ["Project Name", project.project_name],
+                ["Project Location", project.project_location],
+              ].map(([label, value]) => (
+                <div key={label} className="rounded-xl bg-gray-50 p-3">
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">{label}</p>
+                  <p className="mt-0.5 text-sm font-medium text-gray-700">{value}</p>
+                </div>
+              ))}
             </div>
 
-            <div className="grid gap-3 border-t border-gray-100 pt-4 sm:grid-cols-2">
-              <div className="flex items-start gap-2.5 rounded-xl bg-gray-50 p-3">
-                <Building2 className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
-                <div>
-                  <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">Default Downpayment</p>
-                  <p className="mt-0.5 text-sm font-medium text-gray-700">
-                    {client.default_downpayment_percentage == null ? "Not provided" : `${client.default_downpayment_percentage}%`}
-                  </p>
+            <div className="grid gap-3 border-t border-gray-100 pt-4 sm:grid-cols-2 lg:grid-cols-5">
+              {[
+                ["Project Status", project.status],
+                ["Region", project.project_region],
+                ["Created", formatDateTime(project.created_at)],
+                ["Last Updated", formatDateTime(project.updated_at)],
+              ].map(([label, value]) => (
+                <div key={label} className="rounded-xl bg-gray-50 p-3">
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">{label}</p>
+                  <p className="mt-0.5 text-sm font-medium text-gray-700">{value}</p>
                 </div>
-              </div>
+              ))}
               <div className="rounded-xl bg-gray-50 p-3">
                 <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">Notes</p>
-                <p className="mt-0.5 text-sm text-gray-700">{client.notes || "No notes"}</p>
+                <p className="mt-0.5 text-sm text-gray-700">{client.notes || "-"}</p>
               </div>
             </div>
           </>
@@ -348,6 +369,7 @@ function ProjectDetailContent({ projectId }: { projectId: string }) {
             key={tier}
             project={project}
             tier={tier}
+            warrantyLabel={warrantyLabel}
             onViewBreakdown={(versionId) => setBreakdown({ tier, versionId })}
             onToggleAccepted={() => handleToggleAccepted(tier)}
           />
