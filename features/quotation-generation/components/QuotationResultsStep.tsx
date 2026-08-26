@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Award, Building2, CheckCircle2, ChevronDown, Clock, Database, FileText, Mail, MapPin, PenLine, Phone, Save, Shield, SlidersHorizontal, Star, TrendingDown, UserRound } from "lucide-react";
+import { ArrowLeft, Award, Building2, CheckCircle2, ChevronDown, Clock, Database, FileText, Mail, MapPin, PenLine, Phone, Save, Shield, SlidersHorizontal, Star, TrendingDown, UserRound } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -34,6 +34,7 @@ interface QuotationResultsStepProps {
   blueprintFloors: BlueprintFloor[] | null;
   /** Activity diagram's "Structural revision -> Return to segmentation." */
   onStructuralRevision: () => void;
+  onBack: () => void;
   /** Saves the current unfinished quotation as Draft and returns to Open Projects. */
   onSaveDraft: () => void;
   /** Fires once the finalized project has actually been saved (P2-B) — caller only needs
@@ -252,7 +253,7 @@ function QuoteCard({
 // depends on that don't exist in the schema yet), the READ-ONLY detailed breakdown (Part A),
 // and the missing-price resolution flow. Everything
 // downstream of `segments` is mock-derived — see quotationBreakdownFixtures.ts.
-export function QuotationResultsStep({ client, quotation, segments, blueprintFloors, onStructuralRevision, onSaveDraft, onFinalize }: QuotationResultsStepProps) {
+export function QuotationResultsStep({ client, quotation, segments, blueprintFloors, onStructuralRevision, onBack, onSaveDraft, onFinalize }: QuotationResultsStepProps) {
   const { strategies: pricingStrategies } = usePricingStrategies();
   const { rules: materialRules } = useMaterialRules();
   const { rules: laborRules } = useLaborRules();
@@ -366,6 +367,15 @@ export function QuotationResultsStep({ client, quotation, segments, blueprintFlo
 
   return (
     <div className="flex flex-col gap-5">
+      <button
+        type="button"
+        onClick={onBack}
+        title="Back"
+        aria-label="Back"
+        className="flex h-10 w-10 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-700 shadow-sm transition hover:border-primary hover:text-primary"
+      >
+        <ArrowLeft className="h-4 w-4" />
+      </button>
       <section className="rounded-2xl border border-gray-100 bg-white px-5 py-4 shadow-sm" aria-labelledby="client-details-heading">
         <div className="flex flex-wrap items-start justify-between gap-4 border-b border-gray-100 pb-3">
           <div className="flex min-w-0 flex-1 flex-wrap items-center gap-4">

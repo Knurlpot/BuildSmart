@@ -344,6 +344,7 @@ export function QuotationGenerationWizard() {
         // whichever path this quotation actually used, segments intact (nothing here
         // clears them; the user re-reviews/re-confirms from where they left off).
         onStructuralRevision={() => setStep(method ?? "method")}
+        onBack={() => setStep("configure")}
         onSaveDraft={() => router.push("/projects")}
         onFinalize={() => {
           clearLocalQuotationDraft(quotation.quote_id);
