@@ -440,7 +440,7 @@ export function LaborRulesForm({ focusRuleId, onFocusHandled }: LaborRulesFormPr
                       htmlFor="labor-productivity-index"
                       className="pointer-events-none absolute left-3 top-1.5 text-[10px] font-semibold text-gray-500 transition-all peer-placeholder-shown:top-1/2 peer-placeholder-shown:-translate-y-1/2 peer-placeholder-shown:text-sm peer-placeholder-shown:font-medium peer-focus:top-1.5 peer-focus:translate-y-0 peer-focus:text-[10px] peer-focus:font-semibold peer-focus:text-primary"
                     >
-                      Productivity Index <span className="font-normal normal-case text-gray-400">(optional)</span>
+                      Productivity Index
                     </label>
                   </div>
                   {touched && !productivityValid && <p className="text-xs text-red-500">Must be greater than 0.</p>}
@@ -466,7 +466,7 @@ export function LaborRulesForm({ focusRuleId, onFocusHandled }: LaborRulesFormPr
                       htmlFor="labor-productivity-sqm-per-day"
                       className="pointer-events-none absolute left-3 top-1.5 text-[10px] font-semibold text-gray-500 transition-all peer-placeholder-shown:top-1/2 peer-placeholder-shown:-translate-y-1/2 peer-placeholder-shown:text-sm peer-placeholder-shown:font-medium peer-focus:top-1.5 peer-focus:translate-y-0 peer-focus:text-[10px] peer-focus:font-semibold peer-focus:text-primary"
                     >
-                      Productivity sqm/day <span className="font-normal normal-case text-gray-400">(optional)</span>
+                      Productivity sqm/day
                     </label>
                   </div>
                   {touched && !productivitySqmValid && <p className="text-xs text-red-500">Must be greater than 0.</p>}
@@ -489,7 +489,7 @@ export function LaborRulesForm({ focusRuleId, onFocusHandled }: LaborRulesFormPr
                       htmlFor="labor-min-duration-days"
                       className="pointer-events-none absolute left-3 top-1.5 text-[10px] font-semibold text-gray-500 transition-all peer-placeholder-shown:top-1/2 peer-placeholder-shown:-translate-y-1/2 peer-placeholder-shown:text-sm peer-placeholder-shown:font-medium peer-focus:top-1.5 peer-focus:translate-y-0 peer-focus:text-[10px] peer-focus:font-semibold peer-focus:text-primary"
                     >
-                      Minimum Duration Days <span className="font-normal normal-case text-gray-400">(optional)</span>
+                      Minimum Duration Days
                     </label>
                   </div>
                   {touched && !minDurationValid && <p className="text-xs text-red-500">Must be greater than 0.</p>}
@@ -512,7 +512,7 @@ export function LaborRulesForm({ focusRuleId, onFocusHandled }: LaborRulesFormPr
                       htmlFor="labor-safety-buffer-days"
                       className="pointer-events-none absolute left-3 top-1.5 text-[10px] font-semibold text-gray-500 transition-all peer-placeholder-shown:top-1/2 peer-placeholder-shown:-translate-y-1/2 peer-placeholder-shown:text-sm peer-placeholder-shown:font-medium peer-focus:top-1.5 peer-focus:translate-y-0 peer-focus:text-[10px] peer-focus:font-semibold peer-focus:text-primary"
                     >
-                      Safety Buffer Days <span className="font-normal normal-case text-gray-400">(optional)</span>
+                      Safety Buffer Days
                     </label>
                   </div>
                   {touched && !safetyBufferValid && <p className="text-xs text-red-500">Must be greater than 0.</p>}

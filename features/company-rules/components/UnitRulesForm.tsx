@@ -270,11 +270,6 @@ export function UnitRulesForm({ focusRuleId, onFocusHandled }: UnitRulesFormProp
                     Specific Item
                   </button>
                 </div>
-                <p className="text-[11px] text-gray-400">
-                  An item-level rule overrides its category&apos;s rule. Example: a 10% wastage
-                  rule on all Finishing materials, with one high-end finish set to 5%. That
-                  item uses 5%, everything else in the category still uses 10%.
-                </p>
               </div>
 
               <div className="flex flex-col gap-1.5">

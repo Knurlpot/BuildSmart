@@ -21,7 +21,6 @@ import type { Client, Quotation } from "@/types/entities";
 
 const inputCls =
   "w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-2.5 text-sm outline-none transition focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/20";
-const labelCls = "text-xs font-semibold uppercase tracking-wide text-gray-600";
 const floatingInputCls =
   "peer pb-2 pt-5 placeholder:text-transparent";
 const floatingLabelBaseCls =
@@ -130,18 +129,22 @@ function ClientPicker({
   return (
     <div ref={containerRef} className="relative">
       <div className="relative">
-        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+        <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
         <input
+          id="quotation-client"
           value={query}
           onChange={(e) => {
             setQuery(e.target.value);
             setOpen(true);
           }}
           onFocus={() => setOpen(true)}
-          placeholder="Search clients, or type a new name…"
-          className={`${inputCls} pl-9`}
+          placeholder=" "
+          className={`${inputCls} ${floatingInputCls} pl-10`}
           autoFocus={!!selected}
         />
+        <label htmlFor="quotation-client" className={`${floatingLabelBaseCls} left-10`}>
+          Client <span className="text-red-500">*</span>
+        </label>
       </div>
 
       {open && (
@@ -321,10 +324,7 @@ export function ClientAndProjectStep({ onContinue, onExit }: ClientAndProjectSte
           "New Quotation" + "Select a client and the basics of the project" one level up, so
           this column (and the card beside it) starts right away, higher on the page. */}
       <div className="flex flex-col gap-5">
-        <div className="flex flex-col gap-1.5">
-          <label className={labelCls}>
-            Client <span className="text-red-500">*</span>
-          </label>
+        <div>
           <ClientPicker
             clients={clients}
             isLoading={clientsLoading}
