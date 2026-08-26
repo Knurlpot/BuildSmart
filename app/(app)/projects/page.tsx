@@ -3,7 +3,7 @@
 // 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Ellipsis, Eye, FileText, FolderOpen, Plus, Search, Trash2, Upload, Users } from "lucide-react";
+import { Ellipsis, Eye, FileText, FolderOpen, ListFilter, Plus, Search, Trash2, Upload, Users, X } from "lucide-react";
 import { RequireOnboardingStep } from "@/components/auth/RequireOnboardingStep";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -72,6 +72,11 @@ function OpenProjectsContent({ onMetaChange }: OpenProjectsContentProps) {
   const [search, setSearch] = useState("");
   const [region, setRegion] = useState("All");
   const [statusFilter, setStatusFilter] = useState<"All" | "Final" | "Draft">("All");
+  const [tierFilter, setTierFilter] = useState<"All" | "Practical" | "Premium">("All");
+  const [draftStatusFilter, setDraftStatusFilter] = useState<"All" | "Final" | "Draft">("All");
+  const [draftTierFilter, setDraftTierFilter] = useState<"All" | "Practical" | "Premium">("All");
+  const [filterOpen, setFilterOpen] = useState(false);
+  const filterRef = useRef<HTMLDivElement>(null);
   const [deleteTarget, setDeleteTarget] = useState<OpenProjectRow | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
@@ -109,11 +114,12 @@ function OpenProjectsContent({ onMetaChange }: OpenProjectsContentProps) {
       .filter((p) => {
         const matchesRegion = region === "All" || p.project_region === region;
         const matchesStatus = statusFilter === "All" || p.status === statusFilter;
+        const matchesTier = tierFilter === "All" || p.accepted_tier === tierFilter;
         const matchesSearch = !q || p.project_name.toLowerCase().includes(q);
-        return matchesRegion && matchesStatus && matchesSearch;
+        return matchesRegion && matchesStatus && matchesTier && matchesSearch;
       })
       .sort((a, b) => Number(b.status === "Final") - Number(a.status === "Final"));
-  }, [region, rows, search, statusFilter]);
+  }, [region, rows, search, statusFilter, tierFilter]);
 
   const openRow = (row: OpenProjectRow) => {
     router.push(row.status === "Draft" ? `/quotations/new?resumeQuoteId=${row.quote_id}` : row.saved_project_id ? `/projects/${row.saved_project_id}` : `/quotations/${row.quote_id}`);
@@ -142,6 +148,34 @@ function OpenProjectsContent({ onMetaChange }: OpenProjectsContentProps) {
     onMetaChange({ filteredCount: filteredRows.length, totalCount: rows.length, onCreateNew: createNew });
   }, [createNew, filteredRows.length, onMetaChange, rows.length]);
 
+  useEffect(() => {
+    if (!filterOpen) return;
+    const handleClickOutside = (event: MouseEvent) => {
+      if (filterRef.current && !filterRef.current.contains(event.target as Node)) setFilterOpen(false);
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [filterOpen]);
+
+  const activeFilterCount = Number(statusFilter !== "All") + Number(tierFilter !== "All");
+  const openFilters = () => {
+    setDraftStatusFilter(statusFilter);
+    setDraftTierFilter(tierFilter);
+    setFilterOpen(true);
+  };
+  const applyFilters = () => {
+    setStatusFilter(draftStatusFilter);
+    setTierFilter(draftTierFilter);
+    setFilterOpen(false);
+  };
+  const clearFilters = () => {
+    setStatusFilter("All");
+    setTierFilter("All");
+    setDraftStatusFilter("All");
+    setDraftTierFilter("All");
+    setFilterOpen(false);
+  };
+
   return (
     <div className="flex flex-col gap-5">
       <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
@@ -167,21 +201,103 @@ function OpenProjectsContent({ onMetaChange }: OpenProjectsContentProps) {
               </option>
             ))}
           </select>
-          <div className="flex h-10 items-center gap-2">
-            {(["Draft", "Final"] as const).map((status) => (
-              <button
-                key={status}
-                type="button"
-                onClick={() => setStatusFilter((current) => (current === status ? "All" : status))}
-                className={`h-9 rounded-full border px-3 text-xs font-bold transition ${
-                  statusFilter === status
-                    ? "border-primary bg-orange-50 text-primary"
-                    : "border-gray-200 bg-white text-gray-500 hover:border-gray-300 hover:text-gray-700"
-                }`}
-              >
-                {status}
-              </button>
-            ))}
+          <div ref={filterRef} className="relative">
+            <button
+              type="button"
+              onClick={() => {
+                if (filterOpen) {
+                  setFilterOpen(false);
+                  return;
+                }
+                openFilters();
+              }}
+              aria-label="Project filters"
+              title="Project filters"
+              className={`flex h-10 w-10 items-center justify-center rounded-lg border text-sm font-bold transition ${
+                activeFilterCount > 0
+                  ? "border-primary bg-orange-50 text-primary"
+                  : "border-gray-200 bg-white text-gray-600 hover:border-gray-300"
+              }`}
+            >
+              <ListFilter className="h-4 w-4" />
+              {activeFilterCount > 0 && (
+                <span className="absolute -right-1 -top-1 rounded-full bg-primary px-1.5 py-0.5 text-[10px] font-bold text-white">{activeFilterCount}</span>
+              )}
+            </button>
+            {filterOpen && (
+              <div className="absolute right-0 top-full z-20 mt-2 w-72 rounded-xl border border-gray-200 bg-white p-3 shadow-lg">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-xs font-bold uppercase tracking-wide text-gray-500">Project Filters</p>
+                  <button
+                    type="button"
+                    onClick={() => setFilterOpen(false)}
+                    className="flex h-7 w-7 items-center justify-center rounded-lg text-gray-400 transition hover:bg-gray-50 hover:text-gray-600"
+                    aria-label="Close filters"
+                    title="Close filters"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+
+                <div className="mt-3 flex flex-col gap-3">
+                  <div>
+                    <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-gray-400">Project Status</p>
+                    <div className="grid grid-cols-2 gap-2">
+                      {(["Draft", "Final"] as const).map((status) => (
+                        <button
+                          key={status}
+                          type="button"
+                          onClick={() => setDraftStatusFilter(status)}
+                          className={`h-9 rounded-lg border px-2 text-xs font-bold transition ${
+                            draftStatusFilter === status
+                              ? "border-primary bg-orange-50 text-primary"
+                              : "border-gray-200 bg-white text-gray-500 hover:border-gray-300"
+                          }`}
+                        >
+                          {status}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div>
+                    <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-gray-400">Practical or Premium</p>
+                    <div className="grid grid-cols-3 gap-2">
+                      {(["All", "Practical", "Premium"] as const).map((tier) => (
+                        <button
+                          key={tier}
+                          type="button"
+                          onClick={() => setDraftTierFilter(tier)}
+                          className={`h-9 rounded-lg border px-2 text-xs font-bold transition ${
+                            draftTierFilter === tier
+                              ? "border-primary bg-orange-50 text-primary"
+                              : "border-gray-200 bg-white text-gray-500 hover:border-gray-300"
+                          }`}
+                        >
+                          {tier}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+                <div className="mt-4 flex justify-end gap-2 border-t border-gray-100 pt-3">
+                  <button
+                    type="button"
+                    onClick={clearFilters}
+                    className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-bold text-gray-600 transition hover:bg-gray-50"
+                  >
+                    Clear
+                  </button>
+                  <button
+                    type="button"
+                    onClick={applyFilters}
+                    className="rounded-lg bg-primary px-3 py-2 text-xs font-bold text-primary-foreground transition hover:bg-(--primary-hover)"
+                  >
+                    Apply
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>

@@ -364,16 +364,18 @@ export function QuotationGenerationWizard() {
           review specifically, so it never competes with the polygon overlay (Part B). */}
       <AmbientBackground dimmed={step === "blueprint"} />
       <div className="relative flex flex-col gap-5">
-        <div>
-          <h1 className="text-lg font-extrabold tracking-tight text-gray-900">New Quotation</h1>
-          {client && quotation ? (
-            <p className="text-sm text-gray-500">
-              Quoting for <span className="font-semibold text-gray-700">{client.client_name}</span>: {quotation.project_name}
-            </p>
-          ) : (
-            <p className="text-sm text-gray-500">Select a client and the basics of the project.</p>
-          )}
-        </div>
+        {step !== "results" && (
+          <div>
+            <h1 className="text-lg font-extrabold tracking-tight text-gray-900">New Quotation</h1>
+            {client && quotation ? (
+              <p className="text-sm text-gray-500">
+                Quoting for <span className="font-semibold text-gray-700">{client.client_name}</span>: {quotation.project_name}
+              </p>
+            ) : (
+              <p className="text-sm text-gray-500">Select a client and the basics of the project.</p>
+            )}
+          </div>
+        )}
         {body}
       </div>
     </div>

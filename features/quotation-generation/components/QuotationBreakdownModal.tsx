@@ -111,7 +111,7 @@ function SegmentCostDeck({ segLines, defaultOpen, hovered, onHoverChange }: { se
               </div>
               <p className="text-xs text-gray-500">
                 {line.unit_price === null ? (
-                  <span className="font-semibold text-amber-600">No rate on file. Resolve it in Minor Revision.</span>
+                  <span className="font-semibold text-amber-600">No rate on file. Resolve it from the quotation card.</span>
                 ) : line.category === "Material" ? (
                   <>
                     {line.derived_area_sqm?.toFixed(1)} sqm × {line.derived_coverage_per_sqm?.toFixed(2)} coverage ×{" "}
@@ -288,7 +288,7 @@ function CostSummaryTab({ result }: { result: ProvisionalQuotationTierResult }) 
         <div className="flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-700">
           <AlertTriangle className="h-4 w-4 shrink-0" />
           {unresolvedCount} line{unresolvedCount === 1 ? "" : "s"} still missing a rate and excluded from every total below
-          until resolved in Minor Revision.
+          until resolved from the quotation card.
         </div>
       )}
       <div className="rounded-xl border border-gray-100 bg-white p-5 shadow-sm">

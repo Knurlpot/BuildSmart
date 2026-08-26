@@ -233,9 +233,9 @@ export function MinorRevisionPanel({ tier, originalItems, items, onItemsChange, 
       <DialogContent className="flex h-[92vh] w-[97vw] max-w-400 sm:max-w-400 flex-col p-0" showCloseButton={false}>
         <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-gray-200 bg-gray-50 px-6 py-4">
           <div>
-            <h2 className="text-base font-bold text-gray-900">Minor Revision: Shared Price Updates</h2>
+            <h2 className="text-base font-bold text-gray-900">Resolve Missing Prices</h2>
             <p className="text-xs text-gray-500">
-              Edit Practical and Premium revisions here before marking either quotation as accepted.
+              Add or update rates before marking either quotation as accepted.
             </p>
           </div>
           <div className="flex items-center gap-3">

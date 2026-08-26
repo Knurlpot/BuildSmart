@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Award, Building2, CheckCircle2, Clock, Database, FileText, Mail, MapPin, PenLine, Phone, Save, Shield, SlidersHorizontal, Star, TrendingDown, UserRound } from "lucide-react";
+import { Award, Building2, CheckCircle2, ChevronDown, Clock, Database, FileText, Mail, MapPin, PenLine, Phone, Save, Shield, SlidersHorizontal, Star, TrendingDown, UserRound } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -11,7 +11,6 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { QuotationBreakdownModal } from "./QuotationBreakdownModal";
-import { RevisionTypeModal } from "./RevisionTypeModal";
 import { MinorRevisionPanel } from "./MinorRevisionPanel";
 import { computeTierResult, deriveCompanyRuleItemLines, deriveMockItemLines, fmtPeso, recomputeItemLine } from "@/lib/dev/provisional/quotationBreakdownFixtures";
 import { saveFinalizedQuotation } from "@/lib/dev/provisional/savedProjectsStore";
@@ -71,7 +70,7 @@ const SOURCE_OPTIONS: { value: QuotationPrioritySource; label: string; icon: typ
 const FALLBACK_OPTIONS: { value: QuotationFallbackRule; label: string; helper: string }[] = [
   { value: "Use next available source", label: "Next Available Source", helper: "Try the selected source first, then use the other source when a line is missing a rate." },
   { value: "Use lowest uploaded rate", label: "Lowest Uploaded Rate", helper: "Use the lowest matching rate from the uploaded pricelist entries for each material." },
-  { value: "Flag for manual review", label: "Flag for Manual Review", helper: "Keep missing prices visible for Minor Revision instead of auto-substituting." },
+  { value: "Flag for manual review", label: "Flag for Manual Review", helper: "Keep missing prices visible so they can be resolved from the quotation card." },
 ];
 
 function buildTierItems(tiers: ProvisionalTier[], makeItems: (tier: ProvisionalTier) => ProvisionalItemLine[]) {
@@ -188,7 +187,7 @@ function QuoteCard({
           <p className="text-2xl font-extrabold">{fmtPeso(result.grand_total)}</p>
           {unresolvedCount > 0 && (
             <p className="mt-1 text-[10px] font-semibold text-amber-200">
-              {unresolvedCount} line{unresolvedCount === 1 ? "" : "s"} missing a rate. Resolve in Minor Revision.
+              {unresolvedCount} line{unresolvedCount === 1 ? "" : "s"} missing a rate. Resolve it from this quotation.
             </p>
           )}
         </div>
@@ -251,19 +250,18 @@ function QuoteCard({
 // P2-A/B/C/D — Generate's results screen: two tier cards (siblings of one
 // ProvisionalQuoteGroup — see quotationBreakdownTypes.ts for the tier-linkage fields this
 // depends on that don't exist in the schema yet), the READ-ONLY detailed breakdown (Part A),
-// and the revision flow (editing lives only in Minor Revision, Part D). Everything
+// and the missing-price resolution flow. Everything
 // downstream of `segments` is mock-derived — see quotationBreakdownFixtures.ts.
 export function QuotationResultsStep({ client, quotation, segments, blueprintFloors, onStructuralRevision, onSaveDraft, onFinalize }: QuotationResultsStepProps) {
   const { strategies: pricingStrategies } = usePricingStrategies();
-  const { rules: materialRules, isLoading: materialRulesLoading } = useMaterialRules();
+  const { rules: materialRules } = useMaterialRules();
   const { rules: laborRules } = useLaborRules();
-  const { rules: unitRules, isLoading: unitRulesLoading } = useUnitRules();
-  const { items, isLoading: itemsLoading } = useItemsCatalog();
-  const { records: uploadedPrices, isLoading: uploadedPricesLoading, load: loadUploadedPrices } = usePricelistCatalog();
+  const { rules: unitRules } = useUnitRules();
+  const { items } = useItemsCatalog();
+  const { records: uploadedPrices, load: loadUploadedPrices } = usePricelistCatalog();
   const { dpwhCatalog } = usePricelistPublishedSource();
   const {
     records: dpwhPrices,
-    isLoading: dpwhPricesLoading,
     load: loadDpwhPrices,
   } = dpwhCatalog;
   const [pricelistBasis, setPricelistBasis] = useState<PricelistBasis>(DEFAULT_BASIS);
@@ -274,10 +272,10 @@ export function QuotationResultsStep({ client, quotation, segments, blueprintFlo
   const [ruleDialogOpen, setRuleDialogOpen] = useState(false);
   const [prioritySource, setPrioritySource] = useState<QuotationPrioritySource>("Uploaded");
   const [fallbackRule, setFallbackRule] = useState<QuotationFallbackRule>("Use next available source");
-  const [revisionTypeOpen, setRevisionTypeOpen] = useState(false);
   const [minorRevisionTier, setMinorRevisionTier] = useState<ProvisionalTier | null>(null);
   const [structuralConfirmOpen, setStructuralConfirmOpen] = useState(false);
   const [acceptError, setAcceptError] = useState<string | null>(null);
+  const [clientDetailsOpen, setClientDetailsOpen] = useState(false);
 
   const includedSegments = segments.filter(isSegmentIncluded);
   const totalArea = includedSegments.reduce((sum, s) => sum + s.area_sqm, 0);
@@ -287,20 +285,6 @@ export function QuotationResultsStep({ client, quotation, segments, blueprintFlo
     loadDpwhPrices();
   }, [loadDpwhPrices, loadUploadedPrices]);
 
-  const cprmLoading = materialRulesLoading || unitRulesLoading || itemsLoading || uploadedPricesLoading || dpwhPricesLoading;
-  const cprmHasTreatmentMatches = useMemo(
-    () =>
-      segments.some((seg) =>
-        materialRules.some(
-          (rule) =>
-            rule.is_active &&
-            !!rule.treatment_type &&
-            rule.treatment_type.trim().toLowerCase() === seg.treatment_type?.trim().toLowerCase()
-        )
-      ),
-    [materialRules, segments]
-  );
-
   const autoTierItems = useMemo(
     () => deriveTierItemsFromRules(segments, pricelistBasis, materialRules, unitRules, items, uploadedPrices, dpwhPrices, activeTiers),
     [activeTiers, items, materialRules, pricelistBasis, segments, unitRules, uploadedPrices, dpwhPrices]
@@ -308,7 +292,7 @@ export function QuotationResultsStep({ client, quotation, segments, blueprintFlo
   const effectiveTierItems = hasManualLineEdits ? tierItems : autoTierItems;
 
   // Part B/D — the Uploaded/DPWH toggle is shared by the read-only Breakdown view AND
-  // Minor Revision; switching it re-prices every NON-overridden line to the new basis for
+  // Missing-price resolution; switching it re-prices every NON-overridden line to the new basis for
   // BOTH tiers at once (see retargetItemLinesBasis's doc — a manual override always wins).
   const handleBasisChange = (basis: PricelistBasis) => {
     setPricelistBasis(basis);
@@ -381,6 +365,68 @@ export function QuotationResultsStep({ client, quotation, segments, blueprintFlo
 
   return (
     <div className="flex flex-col gap-5">
+      <section className="rounded-2xl border border-gray-100 bg-white px-5 py-4 shadow-sm" aria-labelledby="client-details-heading">
+        <div className="flex flex-wrap items-start justify-between gap-4 border-b border-gray-100 pb-3">
+          <div className="flex min-w-0 flex-1 flex-wrap items-center gap-4">
+            <div className="flex min-w-0 items-center gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-orange-50 text-primary">
+              <Building2 className="h-5 w-5" />
+            </div>
+            <div className="min-w-0">
+              <p id="client-details-heading" className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">
+                Client
+              </p>
+              <h3 className="truncate text-base font-semibold text-gray-900">{client.client_name}</h3>
+            </div>
+            </div>
+            <div className="grid min-w-0 flex-1 gap-3 sm:grid-cols-2">
+              {[
+                ["Project Name", quotation.project_name],
+                ["Project Location", quotation.project_location],
+              ].map(([label, value]) => (
+                <div key={label} className="min-w-0 rounded-xl bg-gray-50 px-3 py-2">
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">{label}</p>
+                  <p className="mt-0.5 truncate text-sm font-medium text-gray-700" title={value}>{value}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className={`rounded-full px-2.5 py-1 text-[10px] font-semibold ${client.status === "Active" ? "bg-green-50 text-green-700" : "bg-gray-100 text-gray-600"}`}>
+              {client.status}
+            </span>
+            <button
+              type="button"
+              onClick={() => setClientDetailsOpen((open) => !open)}
+              title={clientDetailsOpen ? "Hide client contact details" : "Show client contact details"}
+              aria-label={clientDetailsOpen ? "Hide client contact details" : "Show client contact details"}
+              aria-expanded={clientDetailsOpen}
+              className="flex h-8 w-8 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-500 transition hover:border-primary hover:text-primary"
+            >
+              <ChevronDown className={`h-3.5 w-3.5 transition-transform ${clientDetailsOpen ? "rotate-180" : ""}`} />
+            </button>
+          </div>
+        </div>
+        {clientDetailsOpen && (
+          <div className="grid gap-x-6 gap-y-3 pt-3 sm:grid-cols-2 xl:grid-cols-4">
+            {[
+              { icon: UserRound, label: "Contact person", value: client.contact_person },
+              { icon: Mail, label: "Email", value: client.contact_email },
+              { icon: Phone, label: "Phone", value: client.contact_number },
+              { icon: MapPin, label: "Address", value: client.client_address },
+            ].map(({ icon: Icon, label, value }) => (
+              <div key={label} className="flex min-w-0 items-start gap-2.5">
+                <Icon className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+                <div className="min-w-0">
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">{label}</p>
+                  <p className="truncate text-xs font-medium text-gray-700" title={value || "Not provided"}>{value || "Not provided"}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h2 className="text-lg font-bold text-gray-900">Generated Quotations</h2>
@@ -401,9 +447,9 @@ export function QuotationResultsStep({ client, quotation, segments, blueprintFlo
           </button>
           <button
             type="button"
-            onClick={() => setRevisionTypeOpen(true)}
-            title="Validate & Edit"
-            aria-label="Validate & Edit"
+            onClick={() => setStructuralConfirmOpen(true)}
+            title="Modify Segments"
+            aria-label="Modify Segments"
             className="flex h-10 w-10 items-center justify-center rounded-lg border border-primary/30 bg-orange-50/60 text-primary transition hover:bg-orange-50"
           >
             <PenLine className="h-4 w-4" />
@@ -419,57 +465,6 @@ export function QuotationResultsStep({ client, quotation, segments, blueprintFlo
           </button>
         </div>
       </div>
-
-      <div className="flex flex-wrap items-center gap-2 rounded-xl border border-gray-100 bg-white px-4 py-3 text-xs text-gray-500 shadow-sm">
-        <span className="font-bold uppercase tracking-wide text-gray-400">Active material rule</span>
-        <span className={`rounded-full px-2 py-1 font-semibold ${cprmHasTreatmentMatches ? "bg-green-50 text-green-700" : "bg-amber-50 text-amber-700"}`}>
-          {cprmLoading ? "Checking CPRM..." : cprmHasTreatmentMatches ? "CPRM treatment match" : "Mock fallback"}
-        </span>
-        <span className="rounded-full bg-orange-50 px-2 py-1 font-semibold text-primary">
-          Priority: {SOURCE_OPTIONS.find((o) => o.value === prioritySource)?.label}
-        </span>
-        <span className="rounded-full bg-gray-100 px-2 py-1 font-semibold text-gray-600">
-          Fallback: {fallbackRule}
-        </span>
-      </div>
-
-      <section className="rounded-2xl border border-gray-100 bg-white px-5 py-4 shadow-sm" aria-labelledby="client-details-heading">
-        <div className="flex flex-wrap items-start justify-between gap-3 border-b border-gray-100 pb-3">
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-orange-50 text-primary">
-              <Building2 className="h-5 w-5" />
-            </div>
-            <div>
-              <p id="client-details-heading" className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">
-                Client details
-              </p>
-              <h3 className="text-base font-semibold text-gray-900">{client.client_name}</h3>
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="rounded-full bg-orange-50 px-2.5 py-1 text-[10px] font-semibold text-primary">{client.client_type}</span>
-            <span className={`rounded-full px-2.5 py-1 text-[10px] font-semibold ${client.status === "Active" ? "bg-green-50 text-green-700" : "bg-gray-100 text-gray-600"}`}>
-              {client.status}
-            </span>
-          </div>
-        </div>
-        <div className="grid gap-x-6 gap-y-3 pt-3 sm:grid-cols-2 xl:grid-cols-4">
-          {[
-            { icon: UserRound, label: "Contact person", value: client.contact_person },
-            { icon: Mail, label: "Email", value: client.contact_email },
-            { icon: Phone, label: "Phone", value: client.contact_number },
-            { icon: MapPin, label: "Address", value: client.client_address },
-          ].map(({ icon: Icon, label, value }) => (
-            <div key={label} className="flex min-w-0 items-start gap-2.5">
-              <Icon className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
-              <div className="min-w-0">
-                <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">{label}</p>
-                <p className="truncate text-xs font-medium text-gray-700" title={value || "Not provided"}>{value || "Not provided"}</p>
-              </div>
-            </div>
-          ))}
-        </div>
-      </section>
 
       {acceptError && (
         <p role="alert" className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
@@ -570,20 +565,6 @@ export function QuotationResultsStep({ client, quotation, segments, blueprintFlo
         </DialogContent>
       </Dialog>
 
-      {revisionTypeOpen && (
-        <RevisionTypeModal
-          onClose={() => setRevisionTypeOpen(false)}
-          onStructural={() => {
-            setRevisionTypeOpen(false);
-            setStructuralConfirmOpen(true);
-          }}
-          onMinor={() => {
-            setRevisionTypeOpen(false);
-            setMinorRevisionTier(activeTiers[0] ?? "Practical");
-          }}
-        />
-      )}
-
       {minorRevisionTier && (
         <MinorRevisionPanel
           tier={minorRevisionTier}
@@ -601,7 +582,7 @@ export function QuotationResultsStep({ client, quotation, segments, blueprintFlo
       <Dialog open={structuralConfirmOpen} onOpenChange={setStructuralConfirmOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Return to segmentation?</DialogTitle>
+            <DialogTitle>Modify segments?</DialogTitle>
             <DialogDescription>
               You return to review segments with your previous data. Any quotations generated here are discarded and
               regenerated when you proceed.
@@ -623,7 +604,7 @@ export function QuotationResultsStep({ client, quotation, segments, blueprintFlo
               }}
               className="rounded-xl bg-red-600 px-4 py-2 text-sm font-bold text-white transition hover:bg-red-700"
             >
-              Return to Segmentation
+              Modify Segments
             </button>
           </DialogFooter>
         </DialogContent>
