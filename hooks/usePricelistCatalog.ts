@@ -18,6 +18,7 @@ export interface SavedPriceRecord {
   item_code: number;
   item_name: string;
   supplier_name: string | null;
+  supplier_location: string | null;
   brand: string;
   category_type: string | null;
   description_material: string;

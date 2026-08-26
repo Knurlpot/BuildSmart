@@ -378,8 +378,13 @@ function BenchmarkingTab({ items }: { items: ProvisionalItemLine[] }) {
                           setSelectedSuppliers((prev) => ({ ...prev, [line.line_id]: sup.supplier_id }));
                         }}
                       >
-                        <td className="px-3 py-2 font-medium text-gray-800">
-                          {sup.supplier_name} {isSelected && <span className="ml-1 rounded-full bg-primary/10 px-1.5 py-0.5 text-[9px] font-bold text-primary">Selected</span>}
+                        <td className="px-3 py-2">
+                          <div className="flex flex-col gap-0.5">
+                            <div className="font-medium text-gray-800">
+                              {sup.supplier_name} {isSelected && <span className="ml-1 rounded-full bg-primary/10 px-1.5 py-0.5 text-[9px] font-bold text-primary">Selected</span>}
+                            </div>
+                            <div className="text-[11px] text-gray-400">{sup.location ?? "Location not specified"}</div>
+                          </div>
                         </td>
                         <td className="px-3 py-2 text-right text-gray-700">{fmtPeso(sup.unit_price)}</td>
                       </tr>

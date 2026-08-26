@@ -7,6 +7,7 @@ type SupplierCatalogRecord = {
   item_code: number;
   item_name: string;
   supplier_name: string | null;
+  supplier_location: string | null;
   brand: string;
   category_type: string | null;
   description_material: string;
@@ -29,6 +30,10 @@ export async function GET(request: NextRequest) {
        i.item_code,
        i.item_name,
        s.supplier_name,
+       COALESCE(
+         NULLIF(BTRIM(h.location), ''),
+         NULLIF(CONCAT_WS(', ', NULLIF(BTRIM(s.city), ''), NULLIF(BTRIM(s.region), '')), '')
+       ) AS supplier_location,
        i.brand,
        c.category_type,
        CASE

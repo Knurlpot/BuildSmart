@@ -27,6 +27,7 @@ import type { DpwhCatalogRow } from '@/hooks/usePricelistPublishedSource';
 interface SupplierFixture {
   supplier_id: number;
   supplier_name: string;
+  location: string | null;
   practical_price: number;
   premium_price: number;
   quantity_available: number | null; // null = internal crew / not stock-tracked (labor)
@@ -62,9 +63,9 @@ const TREATMENT_ITEM_FIXTURES: Record<string, ItemFixtureDef[]> = {
       uploaded: { practical: 1450, premium: 2180 },
       dpwh: { practical: 1685, premium: 2530 },
       suppliers: [
-        { supplier_id: 5101, supplier_name: 'Sika Philippines Inc.', practical_price: 1450, premium_price: 2180, quantity_available: 450 },
-        { supplier_id: 5102, supplier_name: 'Mapei Philippines Corp.', practical_price: 1320, premium_price: 1980, quantity_available: 180 },
-        { supplier_id: 5103, supplier_name: 'Fosroc Philippines', practical_price: 1595, premium_price: 2395, quantity_available: 600 },
+        { supplier_id: 5101, supplier_name: 'Sika Philippines Inc.', location: 'Taguig, NCR', practical_price: 1450, premium_price: 2180, quantity_available: 450 },
+        { supplier_id: 5102, supplier_name: 'Mapei Philippines Corp.', location: 'Muntinlupa, NCR', practical_price: 1320, premium_price: 1980, quantity_available: 180 },
+        { supplier_id: 5103, supplier_name: 'Fosroc Philippines', location: 'Pasig, NCR', practical_price: 1595, premium_price: 2395, quantity_available: 600 },
       ],
     },
     {
@@ -78,8 +79,8 @@ const TREATMENT_ITEM_FIXTURES: Record<string, ItemFixtureDef[]> = {
       uploaded: { practical: 380, premium: 480 },
       dpwh: { practical: 420, premium: 530 },
       suppliers: [
-        { supplier_id: 5201, supplier_name: 'JC In-house Crew', practical_price: 380, premium_price: 480, quantity_available: null },
-        { supplier_id: 5202, supplier_name: 'Sub-contractor A', practical_price: 420, premium_price: 510, quantity_available: null },
+        { supplier_id: 5201, supplier_name: 'JC In-house Crew', location: 'Quezon City, NCR', practical_price: 380, premium_price: 480, quantity_available: null },
+        { supplier_id: 5202, supplier_name: 'Sub-contractor A', location: 'Makati, NCR', practical_price: 420, premium_price: 510, quantity_available: null },
       ],
     },
   ],
@@ -95,8 +96,8 @@ const TREATMENT_ITEM_FIXTURES: Record<string, ItemFixtureDef[]> = {
       uploaded: { practical: 1280, premium: 1920 },
       dpwh: { practical: 1490, premium: 2225 },
       suppliers: [
-        { supplier_id: 5104, supplier_name: 'Davies Paints Philippines', practical_price: 1280, premium_price: 1920, quantity_available: 320 },
-        { supplier_id: 5105, supplier_name: 'Boysen Coatings', practical_price: 1195, premium_price: 1795, quantity_available: 150 },
+        { supplier_id: 5104, supplier_name: 'Davies Paints Philippines', location: 'Pasig, NCR', practical_price: 1280, premium_price: 1920, quantity_available: 320 },
+        { supplier_id: 5105, supplier_name: 'Boysen Coatings', location: 'Quezon City, NCR', practical_price: 1195, premium_price: 1795, quantity_available: 150 },
       ],
     },
     {
@@ -110,8 +111,8 @@ const TREATMENT_ITEM_FIXTURES: Record<string, ItemFixtureDef[]> = {
       uploaded: { practical: 360, premium: 460 },
       dpwh: { practical: 395, premium: 500 },
       suppliers: [
-        { supplier_id: 5201, supplier_name: 'JC In-house Crew', practical_price: 360, premium_price: 460, quantity_available: null },
-        { supplier_id: 5203, supplier_name: 'Sub-contractor B', practical_price: 340, premium_price: 440, quantity_available: null },
+        { supplier_id: 5201, supplier_name: 'JC In-house Crew', location: 'Quezon City, NCR', practical_price: 360, premium_price: 460, quantity_available: null },
+        { supplier_id: 5203, supplier_name: 'Sub-contractor B', location: 'Caloocan, NCR', practical_price: 340, premium_price: 440, quantity_available: null },
       ],
     },
   ],
@@ -127,8 +128,8 @@ const TREATMENT_ITEM_FIXTURES: Record<string, ItemFixtureDef[]> = {
       uploaded: { practical: 1650, premium: 2475 },
       dpwh: { practical: 1915, premium: 2870 },
       suppliers: [
-        { supplier_id: 5106, supplier_name: 'Sika Philippines Inc.', practical_price: 1650, premium_price: 2475, quantity_available: 400 },
-        { supplier_id: 5107, supplier_name: 'Tremco Philippines', practical_price: 1780, premium_price: 2670, quantity_available: 90 },
+        { supplier_id: 5106, supplier_name: 'Sika Philippines Inc.', location: 'Taguig, NCR', practical_price: 1650, premium_price: 2475, quantity_available: 400 },
+        { supplier_id: 5107, supplier_name: 'Tremco Philippines', location: 'Paranaque, NCR', practical_price: 1780, premium_price: 2670, quantity_available: 90 },
       ],
     },
     {
@@ -141,7 +142,7 @@ const TREATMENT_ITEM_FIXTURES: Record<string, ItemFixtureDef[]> = {
       wastage_percentage: 0,
       uploaded: { practical: 400, premium: 500 },
       dpwh: { practical: 440, premium: 550 },
-      suppliers: [{ supplier_id: 5201, supplier_name: 'JC In-house Crew', practical_price: 400, premium_price: 500, quantity_available: null }],
+      suppliers: [{ supplier_id: 5201, supplier_name: 'JC In-house Crew', location: 'Quezon City, NCR', practical_price: 400, premium_price: 500, quantity_available: null }],
     },
   ],
   'Torch-Applied Membrane': [
@@ -156,8 +157,8 @@ const TREATMENT_ITEM_FIXTURES: Record<string, ItemFixtureDef[]> = {
       uploaded: { practical: 1596, premium: 2394 },
       dpwh: { practical: 1855, premium: 2780 },
       suppliers: [
-        { supplier_id: 5108, supplier_name: 'Fosroc Philippines', practical_price: 1596, premium_price: 2394, quantity_available: 600 },
-        { supplier_id: 5109, supplier_name: 'Ardex Philippines', practical_price: 1470, premium_price: 2205, quantity_available: 120 },
+        { supplier_id: 5108, supplier_name: 'Fosroc Philippines', location: 'Pasig, NCR', practical_price: 1596, premium_price: 2394, quantity_available: 600 },
+        { supplier_id: 5109, supplier_name: 'Ardex Philippines', location: 'Mandaluyong, NCR', practical_price: 1470, premium_price: 2205, quantity_available: 120 },
       ],
     },
     {
@@ -170,7 +171,7 @@ const TREATMENT_ITEM_FIXTURES: Record<string, ItemFixtureDef[]> = {
       wastage_percentage: 0,
       uploaded: { practical: 410, premium: 510 },
       dpwh: { practical: 450, premium: 560 },
-      suppliers: [{ supplier_id: 5202, supplier_name: 'Sub-contractor A', practical_price: 410, premium_price: 510, quantity_available: null }],
+      suppliers: [{ supplier_id: 5202, supplier_name: 'Sub-contractor A', location: 'Makati, NCR', practical_price: 410, premium_price: 510, quantity_available: null }],
     },
   ],
 };
@@ -225,8 +226,8 @@ function pricingReferenceFor(basis: PricelistBasis): ProvisionalPricingReference
   // internal pricelist has an upload timestamp instead, no quarter — matches
   // HistoricalPriceRecord's documented nullability semantics exactly.
   return basis === 'DPWH'
-    ? { price_source: 'DPWH', region: 'NCR', quarter: 'Q2', year: 2026, recorded_at: null, confidence: null }
-    : { price_source: 'Internal', region: null, quarter: null, year: null, recorded_at: '2026-06-01T09:00:00.000Z', confidence: null };
+    ? { price_source: 'DPWH', region: 'NCR', brand: null, quarter: 'Q2', year: 2026, recorded_at: null, confidence: null }
+    : { price_source: 'Internal', region: null, brand: null, quarter: null, year: null, recorded_at: '2026-06-01T09:00:00.000Z', confidence: null };
 }
 
 function supplierOptionsFor(def: ItemFixtureDef, tier: ProvisionalTier, basis: PricelistBasis): ProvisionalSupplierOption[] {
@@ -235,6 +236,8 @@ function supplierOptionsFor(def: ItemFixtureDef, tier: ProvisionalTier, basis: P
   return def.suppliers.map((s) => ({
     supplier_id: s.supplier_id,
     supplier_name: s.supplier_name,
+    brand: null,
+    location: s.location,
     unit_price: round2((normalizedTier === 'Practical' ? s.practical_price : s.premium_price) * factor),
     quantity_available: s.quantity_available,
     source_type: basis,
@@ -345,6 +348,8 @@ function buildCompanyRuleLine(
   const uploadedOptions: ProvisionalSupplierOption[] = matchingUploadedPrices.map((price) => ({
     supplier_id: price.historicalrec_id,
     supplier_name: price.supplier_name ?? 'Uploaded pricelist',
+    brand: price.brand ?? null,
+    location: price.supplier_location ?? price.region ?? null,
     unit_price: price.price,
     quantity_available: null,
     source_type: 'Uploaded',
@@ -352,6 +357,8 @@ function buildCompanyRuleLine(
   const dpwhOptions: ProvisionalSupplierOption[] = matchingDpwhPrices.map((price) => ({
     supplier_id: price.historicalrec_id,
     supplier_name: `DPWH CMPD${price.region ? ` - ${price.region}` : ''}`,
+    brand: null,
+    location: price.location ?? price.region ?? null,
     unit_price: price.price,
     quantity_available: null,
     source_type: 'DPWH',
