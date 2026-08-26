@@ -186,6 +186,7 @@ interface TierPricingFixture {
   price_factor: number;
   timeline_label: string;
   warranty_label: string;
+  lifespan_label: string;
   material_grade_label: string;
 }
 
@@ -196,6 +197,7 @@ const TIER_PRICING_FIXTURE: Record<ProvisionalTier, TierPricingFixture> = {
     price_factor: 1,
     timeline_label: '8–10 weeks',
     warranty_label: '1-year workmanship',
+    lifespan_label: 'Not set',
     material_grade_label: 'Standard Grade',
   },
   Premium: {
@@ -204,6 +206,7 @@ const TIER_PRICING_FIXTURE: Record<ProvisionalTier, TierPricingFixture> = {
     price_factor: 1.3,
     timeline_label: '5–7 weeks',
     warranty_label: '3-year comprehensive',
+    lifespan_label: 'Not set',
     material_grade_label: 'Premium / Imported Grade',
   },
 };
@@ -554,7 +557,8 @@ export function computeTierResult(
     grand_total: grandTotal,
     timeline_label: durationDays !== null ? `${durationDays} working day${durationDays === 1 ? '' : 's'} incl. buffer` : pricingFixture.timeline_label,
     warranty_label: warrantyYears > 0 ? `${warrantyYears}-year warranty` : pricingFixture.warranty_label,
-    material_grade_label: lifespanYears > 0 ? `${pricingFixture.material_grade_label} · ${lifespanYears}-year lifespan` : pricingFixture.material_grade_label,
+    lifespan_label: lifespanYears > 0 ? `${lifespanYears}-year lifespan` : pricingFixture.lifespan_label,
+    material_grade_label: pricingFixture.material_grade_label,
   };
 }
 

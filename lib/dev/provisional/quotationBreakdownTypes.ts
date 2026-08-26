@@ -153,6 +153,7 @@ export interface ProvisionalQuotationTierResult {
   // back anywhere for real — Part 2 doesn't persist real derivations
   timeline_label: string; // decorative flavor text, not a stored/computed value
   warranty_label: string;
+  lifespan_label: string;
   material_grade_label: string;
 }
 

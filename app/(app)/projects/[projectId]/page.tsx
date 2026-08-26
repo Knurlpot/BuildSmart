@@ -82,6 +82,16 @@ function warrantyLabelFromMaterialRules(project: SavedProjectRecord, materialRul
   return warrantyYears > 0 ? `${warrantyYears}-year warranty` : null;
 }
 
+function lifespanLabel(result: { lifespan_label?: string; material_grade_label: string }): string {
+  if (result.lifespan_label) return result.lifespan_label;
+  const [, legacyLifespan] = result.material_grade_label.split(" · ");
+  return legacyLifespan ?? "Not set";
+}
+
+function materialGradeLabel(label: string): string {
+  return label.split(" · ")[0] ?? label;
+}
+
 function QuoteSummaryCard({
   project,
   tier,
@@ -134,7 +144,8 @@ function QuoteSummaryCard({
           {[
             { icon: Clock, label: "Timeline", val: result.timeline_label },
             { icon: Shield, label: "Warranty", val: warrantyLabel ?? result.warranty_label },
-            { icon: Award, label: "Material Grade", val: result.material_grade_label },
+            { icon: Award, label: "Material Grade", val: materialGradeLabel(result.material_grade_label) },
+            { icon: Clock, label: "Lifespan", val: lifespanLabel(result) },
           ].map(({ icon: Icon, label, val }) => (
             <div key={label} className={`rounded-xl ${meta.accentBg} p-2.5`}>
               <div className="flex items-center gap-1.5">

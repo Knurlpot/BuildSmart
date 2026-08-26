@@ -82,12 +82,19 @@ export async function POST(request: NextRequest) {
   try {
     await client.query("BEGIN");
 
-    const existingUser = await client.query<{ user_id: number; status: "Active" | "Inactive" }>(
-      "SELECT user_id, status FROM users WHERE email = $1 LIMIT 1",
+    const existingUser = await client.query<{ user_id: number; company_id: number; status: "Active" | "Inactive" }>(
+      "SELECT user_id, company_id, status FROM users WHERE email = $1 LIMIT 1",
       [email]
     );
-    if (existingUser.rows[0]) {
+    const existingUserRow = existingUser.rows[0];
+    if (existingUserRow?.status === "Active") {
       throw new DuplicateEmailError();
+    }
+    if (existingUserRow?.status === "Inactive") {
+      await client.query("DELETE FROM price_list_review_item WHERE company_id = $1", [existingUserRow.company_id]);
+      await client.query("DELETE FROM items WHERE company_id = $1", [existingUserRow.company_id]);
+      await client.query("DELETE FROM quotation WHERE company_id = $1", [existingUserRow.company_id]);
+      await client.query("DELETE FROM company WHERE company_id = $1", [existingUserRow.company_id]);
     }
 
     let companyId = companyIdToJoin;

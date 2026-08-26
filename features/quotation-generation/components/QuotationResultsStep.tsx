@@ -200,6 +200,7 @@ function QuoteCard({
             { icon: Clock, label: "Timeline", val: result.timeline_label },
             { icon: Shield, label: "Warranty", val: result.warranty_label },
             { icon: Award, label: "Material Grade", val: result.material_grade_label },
+            { icon: Clock, label: "Lifespan", val: result.lifespan_label },
           ].map(({ icon: Icon, label, val }) => (
             <div key={label} className={`rounded-xl ${meta.accentBg} p-2.5`}>
               <div className="flex items-center gap-1.5">

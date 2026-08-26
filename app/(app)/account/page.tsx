@@ -659,7 +659,7 @@ function DeactivateAccountDialog({ open, onOpenChange }: { open: boolean; onOpen
   const router = useRouter();
   const deactivate = useMutation<unknown>();
   const [countdown, setCountdown] = useState(DEACTIVATE_COUNTDOWN_SECONDS);
-  const [deactivated, setDeactivated] = useState(false);
+  const [deleted, setDeleted] = useState(false);
 
   const [syncedOpen, setSyncedOpen] = useState(open);
   if (open !== syncedOpen) {
@@ -678,14 +678,14 @@ function DeactivateAccountDialog({ open, onOpenChange }: { open: boolean; onOpen
     onOpenChange(next);
     if (!next) {
       deactivate.reset();
-      setDeactivated(false);
+      setDeleted(false);
     }
   };
 
   const handleConfirm = async () => {
     try {
-          await deactivate.mutate("/api/account/deactivate", {}, "POST");
-      setDeactivated(true);
+      await deactivate.mutate("/api/account/deactivate", {}, "POST");
+      setDeleted(true);
     } catch {
       // surfaced via deactivate.error below — no fabricated success
     }
@@ -694,12 +694,12 @@ function DeactivateAccountDialog({ open, onOpenChange }: { open: boolean; onOpen
   const confirmDisabled = countdown > 0 || deactivate.isLoading;
 
     useEffect(() => {
-    if (!deactivated) return;
+    if (!deleted) return;
     const t = setTimeout(() => {
       logout().finally(() => router.push("/login"));
     }, DEACTIVATE_SIGNOUT_DELAY_MS);
     return () => clearTimeout(t);
-  }, [deactivated, logout, router]);
+  }, [deleted, logout, router]);
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
@@ -714,16 +714,16 @@ function DeactivateAccountDialog({ open, onOpenChange }: { open: boolean; onOpen
           </DialogDescription>
         </DialogHeader>
 
-        {deactivated ? (
+        {deleted ? (
           <p className="text-sm text-green-700">
-            Your account has been deactivated. Signing you out…
+            Your account has been deleted. Signing you out…
           </p>
         ) : (
           <>
             {deactivate.error && (
               <p className="flex items-start gap-1.5 text-xs text-red-600">
                 <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                Couldn&apos;t deactivate your account: {deactivate.error.message}
+                Couldn&apos;t delete your account: {deactivate.error.message}
               </p>
             )}
             <DialogFooter>
