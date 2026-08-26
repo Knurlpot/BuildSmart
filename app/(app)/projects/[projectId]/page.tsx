@@ -2,19 +2,35 @@
 
 import { useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { ArrowLeft, Award, CheckCircle2, Clock, History, RefreshCw, Shield, Star, TrendingDown } from "lucide-react";
+import {
+  ArrowLeft,
+  Award,
+  Building2,
+  CheckCircle2,
+  Clock,
+  History,
+  Mail,
+  MapPin,
+  Phone,
+  RefreshCw,
+  Shield,
+  Star,
+  TrendingDown,
+  UserRound,
+} from "lucide-react";
 import { RequireOnboardingStep } from "@/components/auth/RequireOnboardingStep";
 import { QuotationBreakdownModal } from "@/features/quotation-generation/components/QuotationBreakdownModal";
 import { fmtPeso } from "@/lib/dev/provisional/quotationBreakdownFixtures";
 import { refreshQuotePrices, setAcceptedTier, useSavedProjects } from "@/lib/dev/provisional/savedProjectsStore";
 import type { SavedProjectRecord, SavedQuoteVersion } from "@/lib/dev/provisional/savedProjectsTypes";
 import { PROVISIONAL_TIERS, type ProvisionalTier } from "@/lib/dev/provisional/quotationBreakdownTypes";
+import { useClients } from "@/hooks/useClients";
 
 
 // 
 const TIER_META: Record<ProvisionalTier, { accent: string; headerBg: string; accentBg: string; badge: string }> = {
   Practical: { accent: "text-primary", headerBg: "bg-primary", accentBg: "bg-orange-50", badge: "Recommended" },
-  Premium: { accent: "text-indigo-600", headerBg: "bg-indigo-600", accentBg: "bg-indigo-50", badge: "Best Quality" },
+  Premium: { accent: "text-[#0000CD]", headerBg: "bg-[#0000CD]", accentBg: "bg-[#0000CD]/5", badge: "Best Quality" },
 };
 
 function formatDateTime(iso: string) {
@@ -38,6 +54,15 @@ function formatDateTimeWithTime(iso: string | null | undefined) {
 function versionLabel(v: SavedQuoteVersion): string {
   const iso = v.price_reference_date;
   return iso ? formatDateTime(iso) : (v.version_number === 1 ? "Original" : `Version ${v.version_number}`);
+}
+
+function clientInitials(name: string): string {
+  return name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part.charAt(0).toUpperCase())
+    .join("") || "CL";
 }
 
 function QuoteSummaryCard({
@@ -65,7 +90,7 @@ function QuoteSummaryCard({
   const displayedVersionLabel = isOriginal && project.status === "Draft" ? "Draft estimate" : versionLabel(displayed);
 
   return (
-    <div className={`flex flex-1 flex-col overflow-hidden rounded-2xl border-2 bg-white shadow-sm ${accepted ? "border-green-300" : "border-gray-100"}`}>
+    <div className={`flex flex-1 flex-col overflow-hidden rounded-2xl border-2 bg-white ${tier === "Premium" ? "" : "shadow-sm"} ${accepted ? (tier === "Premium" ? "border-[#0000CD]" : "border-green-300") : "border-gray-100"}`}>
       <div className={`${meta.headerBg} px-5 py-4 text-white`}>
         <div className="flex items-center justify-between">
           <div>
@@ -168,6 +193,7 @@ function QuoteSummaryCard({
 function ProjectDetailContent({ projectId }: { projectId: string }) {
   const router = useRouter();
   const projects = useSavedProjects();
+  const { clients, isLoading: clientsLoading, error: clientsError } = useClients();
   const project = projects.find((p) => p.project_id === projectId);
   const [breakdown, setBreakdown] = useState<{ tier: ProvisionalTier; versionId: string } | null>(null);
 
@@ -190,6 +216,7 @@ function ProjectDetailContent({ projectId }: { projectId: string }) {
   const quoteEntries = PROVISIONAL_TIERS
     .map((tier) => [tier, project.quotes[tier]] as const)
     .filter((entry): entry is readonly [ProvisionalTier, NonNullable<SavedProjectRecord["quotes"][ProvisionalTier]>] => Boolean(entry[1]));
+  const client = clients.find((entry) => entry.client_id === project.client_id) ?? null;
 
   const handleRefresh = () => {
     refreshQuotePrices(project.project_id, "Practical");
@@ -243,6 +270,77 @@ function ProjectDetailContent({ projectId }: { projectId: string }) {
           </button>
         </div>
       </div>
+
+      <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm" aria-labelledby="client-details-heading">
+        {clientsLoading ? (
+          <p className="py-4 text-center text-sm text-gray-400">Loading client details...</p>
+        ) : clientsError ? (
+          <div className="py-4 text-center">
+            <p className="text-sm font-semibold text-red-500">Couldn&apos;t load client details</p>
+            <p className="mt-1 text-xs text-gray-400">{clientsError.message}</p>
+          </div>
+        ) : !client ? (
+          <div className="py-4 text-center">
+            <p id="client-details-heading" className="text-sm font-semibold text-gray-700">{project.client_name}</p>
+            <p className="mt-1 text-xs text-gray-400">The full client record is unavailable.</p>
+          </div>
+        ) : (
+          <>
+            <div className="flex flex-wrap items-start justify-between gap-4 border-b border-gray-100 pb-4">
+              <div className="flex min-w-0 items-center gap-3">
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-orange-50 text-sm font-bold text-primary">
+                  {clientInitials(client.client_name)}
+                </div>
+                <div className="min-w-0">
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">Client Details</p>
+                  <h2 id="client-details-heading" className="truncate text-lg font-semibold text-gray-900">{client.client_name}</h2>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="rounded-full bg-orange-50 px-2.5 py-1 text-[11px] font-semibold text-primary">{client.client_type}</span>
+                <span className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${client.status === "Active" ? "bg-green-50 text-green-700" : "bg-gray-100 text-gray-500"}`}>
+                  {client.status}
+                </span>
+              </div>
+            </div>
+
+            <div className="grid gap-4 py-4 sm:grid-cols-2 xl:grid-cols-4">
+              {[
+                { icon: UserRound, label: "Contact Person", value: client.contact_person || "Not provided" },
+                { icon: Mail, label: "Email", value: client.contact_email || "Not provided" },
+                { icon: Phone, label: "Phone", value: client.contact_number || "Not provided" },
+                { icon: MapPin, label: "Address", value: client.client_address || "Not provided" },
+              ].map(({ icon: Icon, label, value }) => (
+                <div key={label} className="flex min-w-0 items-start gap-2.5">
+                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-orange-50 text-primary">
+                    <Icon className="h-4 w-4" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">{label}</p>
+                    <p className="mt-0.5 break-words text-sm font-medium text-gray-700">{value}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="grid gap-3 border-t border-gray-100 pt-4 sm:grid-cols-2">
+              <div className="flex items-start gap-2.5 rounded-xl bg-gray-50 p-3">
+                <Building2 className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+                <div>
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">Default Downpayment</p>
+                  <p className="mt-0.5 text-sm font-medium text-gray-700">
+                    {client.default_downpayment_percentage == null ? "Not provided" : `${client.default_downpayment_percentage}%`}
+                  </p>
+                </div>
+              </div>
+              <div className="rounded-xl bg-gray-50 p-3">
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">Notes</p>
+                <p className="mt-0.5 text-sm text-gray-700">{client.notes || "No notes"}</p>
+              </div>
+            </div>
+          </>
+        )}
+      </section>
 
       <div className="grid gap-5 lg:grid-cols-2">
         {quoteEntries.map(([tier]) => (

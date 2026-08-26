@@ -167,6 +167,26 @@ input[type="password"]::-ms-clear {
   animation: bs-gradient-shift 12s ease-in-out infinite;
 }
 
+.project-tier-gradient {
+  background-size: 220% 220%;
+  animation: project-tier-scroll 8s linear infinite;
+}
+
+@keyframes project-tier-scroll {
+  from {
+    background-position: 200% 50%;
+  }
+  to {
+    background-position: 0% 50%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .project-tier-gradient {
+    animation: none;
+  }
+}
+
 /* ── Quotation Generation ambient glow system ─────────────────────────────────
    Shared by the workflow's background (features/quotation-generation/components/
    AmbientBackground.tsx — very subtle, pastel, recedes) and the client insight card

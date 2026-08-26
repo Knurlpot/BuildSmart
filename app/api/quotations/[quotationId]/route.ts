@@ -14,7 +14,7 @@ export async function GET(request: NextRequest, { params }: Params) {
 
   const quoteResult = await pool.query(
     `SELECT quote_id, company_id, user_id, client_id, project_name, project_location,
-            project_region, input_method, status, total_material_cost::float AS total_material_cost,
+            project_region, input_method, status, accepted_tier, total_material_cost::float AS total_material_cost,
             total_service_cost::float AS total_service_cost, grand_total::float AS grand_total,
             created_at::text AS created_at, updated_at::text AS updated_at
      FROM quotation
@@ -25,12 +25,15 @@ export async function GET(request: NextRequest, { params }: Params) {
   if (!quotation) return NextResponse.json({ error: "Quotation not found." }, { status: 404 });
 
   const items = await pool.query(
-    `SELECT qi.quote_item_id, qi.quote_id, qi.item_code, qi.supplier_id, i.item_name,
+    `SELECT qi.quote_item_id, qi.quote_id, qi.item_code,
+            NULLIF(to_jsonb(qi)->>'supplier_id', '')::integer AS supplier_id, i.item_name,
             qi.quantity::float AS quantity, qi.unit_cost::float AS unit_cost,
             qi.markup_percentage::float AS markup_percentage,
             qi.final_unit_price::float AS final_unit_price, qi.total_cost::float AS total_cost,
-            qi.source_type, qi.source_price_id, qi.last_refreshed_at::text AS last_refreshed_at,
-            qi.is_price_locked, qi.original_unit_cost::float AS original_unit_cost
+            qi.source_type, NULLIF(to_jsonb(qi)->>'source_price_id', '')::integer AS source_price_id,
+            to_jsonb(qi)->>'last_refreshed_at' AS last_refreshed_at,
+            COALESCE(NULLIF(to_jsonb(qi)->>'is_price_locked', '')::boolean, FALSE) AS is_price_locked,
+            COALESCE(NULLIF(to_jsonb(qi)->>'original_unit_cost', '')::numeric, qi.unit_cost)::float AS original_unit_cost
      FROM quotation_items qi
      JOIN items i ON i.item_code = qi.item_code
      WHERE qi.quote_id = $1
@@ -68,7 +71,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
      SET input_method = $1, updated_at = CURRENT_TIMESTAMP
      WHERE quote_id = $2 AND company_id = $3 AND user_id = $4
      RETURNING quote_id, company_id, user_id, client_id, project_name, project_location,
-               project_region, input_method, status, total_material_cost::float AS total_material_cost,
+               project_region, input_method, status, accepted_tier, total_material_cost::float AS total_material_cost,
                total_service_cost::float AS total_service_cost, grand_total::float AS grand_total,
                created_at::text AS created_at, updated_at::text AS updated_at`,
     [body.input_method, quoteId, auth.companyId, auth.userId]
@@ -88,11 +91,11 @@ export async function DELETE(request: NextRequest, { params }: Params) {
 
   const result = await pool.query(
     `DELETE FROM quotation
-     WHERE quote_id = $1 AND company_id = $2 AND user_id = $3 AND status = 'Draft'
+     WHERE quote_id = $1 AND company_id = $2 AND user_id = $3
      RETURNING quote_id`,
     [quoteId, auth.companyId, auth.userId]
   );
 
-  if (!result.rows[0]) return NextResponse.json({ error: "Draft quotation not found." }, { status: 404 });
+  if (!result.rows[0]) return NextResponse.json({ error: "Quotation not found." }, { status: 404 });
   return NextResponse.json({ deleted: true, quote_id: result.rows[0].quote_id });
 }

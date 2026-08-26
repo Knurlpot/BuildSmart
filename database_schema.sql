@@ -240,6 +240,7 @@ CREATE TABLE quotation (
     input_method VARCHAR(30) NOT NULL CHECK (input_method IN ('Manual', 'Blueprint', 'Hybrid')),
     blueprint_file_path VARCHAR(255),
     status VARCHAR(20) NOT NULL DEFAULT 'Draft' CHECK (status IN ('Draft', 'Final')),
+    accepted_tier VARCHAR(20) CHECK (accepted_tier IN ('Practical', 'Premium')),
     total_material_cost DECIMAL(15,2) NOT NULL DEFAULT 0 CHECK (total_material_cost >= 0),
     total_service_cost DECIMAL(15,2) NOT NULL DEFAULT 0 CHECK (total_service_cost >= 0),
     grand_total DECIMAL(15,2) NOT NULL DEFAULT 0 CHECK (grand_total >= 0),

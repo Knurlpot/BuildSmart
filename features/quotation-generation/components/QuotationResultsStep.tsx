@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Award, CheckCircle2, Clock, Database, FileText, PenLine, Save, Shield, SlidersHorizontal, Star, TrendingDown } from "lucide-react";
+import { Award, Building2, CheckCircle2, Clock, Database, FileText, Mail, MapPin, PenLine, Phone, Save, Shield, SlidersHorizontal, Star, TrendingDown, UserRound } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -46,15 +46,15 @@ const TIER_META: Record<ProvisionalTier, { tagline: string; badge: string; accen
     tagline: "Cost-effective solution with quality materials",
     badge: "Recommended",
     accent: "text-primary",
-    headerBg: "bg-primary",
+    headerBg: "project-tier-gradient bg-linear-to-r from-primary via-orange-400 to-primary",
     accentBg: "bg-orange-50",
   },
   Premium: {
     tagline: "High-spec materials with expedited delivery",
     badge: "Best Quality",
-    accent: "text-indigo-600",
-    headerBg: "bg-indigo-600",
-    accentBg: "bg-indigo-50",
+    accent: "text-[#0000CD]",
+    headerBg: "project-tier-gradient bg-linear-to-r from-[#0000CD] via-[#4169E1] to-[#0000CD]",
+    accentBg: "bg-[#0000CD]/5",
   },
 };
 
@@ -242,7 +242,8 @@ function QuoteCard({
           onClick={onAccept}
           className="mt-2 flex w-full items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white py-2.5 text-sm font-bold text-gray-600 transition hover:border-primary hover:text-primary"
         >
-          <CheckCircle2 className="h-4 w-4" /> Accept {tier} Quotation
+          {unresolvedCount > 0 ? <PenLine className="h-4 w-4" /> : <CheckCircle2 className="h-4 w-4" />}
+          {unresolvedCount > 0 ? `Resolve ${unresolvedCount} Missing Price${unresolvedCount === 1 ? "" : "s"}` : `Accept ${tier} Quotation`}
         </button>
       </div>
     </div>
@@ -254,7 +255,7 @@ function QuoteCard({
 // depends on that don't exist in the schema yet), the READ-ONLY detailed breakdown (Part A),
 // and the revision flow (editing lives only in Minor Revision, Part D). Everything
 // downstream of `segments` is mock-derived — see quotationBreakdownFixtures.ts.
-export function QuotationResultsStep({ quotation, segments, blueprintFloors, onStructuralRevision, onSaveDraft, onFinalize }: QuotationResultsStepProps) {
+export function QuotationResultsStep({ client, quotation, segments, blueprintFloors, onStructuralRevision, onSaveDraft, onFinalize }: QuotationResultsStepProps) {
   const { strategies: pricingStrategies } = usePricingStrategies();
   const { rules: materialRules, isLoading: materialRulesLoading } = useMaterialRules();
   const { rules: laborRules } = useLaborRules();
@@ -278,6 +279,7 @@ export function QuotationResultsStep({ quotation, segments, blueprintFloors, onS
   const [revisionTypeOpen, setRevisionTypeOpen] = useState(false);
   const [minorRevisionTier, setMinorRevisionTier] = useState<ProvisionalTier | null>(null);
   const [structuralConfirmOpen, setStructuralConfirmOpen] = useState(false);
+  const [acceptError, setAcceptError] = useState<string | null>(null);
 
   const includedSegments = segments.filter(isSegmentIncluded);
   const totalArea = includedSegments.reduce((sum, s) => sum + s.area_sqm, 0);
@@ -339,19 +341,30 @@ export function QuotationResultsStep({ quotation, segments, blueprintFloors, onS
     const result = tierResults[tier];
     if (!result) return;
 
-    await apiClient(`/api/quotations/${quotation.quote_id}/accept`, {
-      method: "POST",
-      credentials: "include",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        tier,
-        items: effectiveTierItems[tier] ?? [],
-        total_material_cost: result.materials_subtotal,
-        total_service_cost: result.service_cost.subtotal,
-        grand_total: result.grand_total,
-      }),
-    });
-    onFinalize();
+    if (result.items.some((item) => item.unit_price === null || item.total_cost === null)) {
+      setAcceptError(null);
+      setMinorRevisionTier(tier);
+      return;
+    }
+
+    setAcceptError(null);
+    try {
+      await apiClient(`/api/quotations/${quotation.quote_id}/accept`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          tier,
+          items: effectiveTierItems[tier] ?? [],
+          total_material_cost: result.materials_subtotal,
+          total_service_cost: result.service_cost.subtotal,
+          grand_total: result.grand_total,
+        }),
+      });
+      onFinalize();
+    } catch (error) {
+      setAcceptError(error instanceof Error ? error.message : "Could not accept this quotation.");
+    }
   };
 
   return (
@@ -407,6 +420,50 @@ export function QuotationResultsStep({ quotation, segments, blueprintFloors, onS
           Fallback: {fallbackRule}
         </span>
       </div>
+
+      <section className="rounded-2xl border border-gray-100 bg-white px-5 py-4 shadow-sm" aria-labelledby="client-details-heading">
+        <div className="flex flex-wrap items-start justify-between gap-3 border-b border-gray-100 pb-3">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-orange-50 text-primary">
+              <Building2 className="h-5 w-5" />
+            </div>
+            <div>
+              <p id="client-details-heading" className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">
+                Client details
+              </p>
+              <h3 className="text-base font-semibold text-gray-900">{client.client_name}</h3>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="rounded-full bg-orange-50 px-2.5 py-1 text-[10px] font-semibold text-primary">{client.client_type}</span>
+            <span className={`rounded-full px-2.5 py-1 text-[10px] font-semibold ${client.status === "Active" ? "bg-green-50 text-green-700" : "bg-gray-100 text-gray-600"}`}>
+              {client.status}
+            </span>
+          </div>
+        </div>
+        <div className="grid gap-x-6 gap-y-3 pt-3 sm:grid-cols-2 xl:grid-cols-4">
+          {[
+            { icon: UserRound, label: "Contact person", value: client.contact_person },
+            { icon: Mail, label: "Email", value: client.contact_email },
+            { icon: Phone, label: "Phone", value: client.contact_number },
+            { icon: MapPin, label: "Address", value: client.client_address },
+          ].map(({ icon: Icon, label, value }) => (
+            <div key={label} className="flex min-w-0 items-start gap-2.5">
+              <Icon className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+              <div className="min-w-0">
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">{label}</p>
+                <p className="truncate text-xs font-medium text-gray-700" title={value || "Not provided"}>{value || "Not provided"}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {acceptError && (
+        <p role="alert" className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
+          {acceptError}
+        </p>
+      )}
 
       <div className="flex flex-col gap-5 lg:flex-row">
         {activeTiers.map((tier) => {

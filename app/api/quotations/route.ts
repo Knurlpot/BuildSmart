@@ -8,7 +8,7 @@ export async function GET(request: NextRequest) {
 
   const result = await pool.query(
     `SELECT q.quote_id, q.company_id, q.user_id, q.client_id, c.client_name,
-            q.project_name, q.project_location, q.project_region, q.input_method, q.status,
+            q.project_name, q.project_location, q.project_region, q.input_method, q.status, q.accepted_tier,
             q.total_material_cost::float AS total_material_cost,
             q.total_service_cost::float AS total_service_cost,
             q.grand_total::float AS grand_total,

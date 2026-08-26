@@ -21,6 +21,7 @@ export interface Quotation {
   input_method: 'Manual' | 'Blueprint' | 'Hybrid';
   blueprint_file_path?: string | null;
   status: 'Draft' | 'Final';
+  accepted_tier?: 'Practical' | 'Premium' | null;
   total_material_cost: number;
   total_service_cost: number;
   grand_total: number;
