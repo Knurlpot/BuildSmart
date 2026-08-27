@@ -367,76 +367,78 @@ export function QuotationResultsStep({ client, quotation, segments, blueprintFlo
 
   return (
     <div className="flex flex-col gap-5">
-      <button
-        type="button"
-        onClick={onBack}
-        title="Back"
-        aria-label="Back"
-        className="flex h-10 w-10 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-700 shadow-sm transition hover:border-primary hover:text-primary"
-      >
-        <ArrowLeft className="h-4 w-4" />
-      </button>
-      <section className="rounded-2xl border border-gray-100 bg-white px-5 py-4 shadow-sm" aria-labelledby="client-details-heading">
-        <div className="flex flex-wrap items-start justify-between gap-4 border-b border-gray-100 pb-3">
-          <div className="flex min-w-0 flex-1 flex-wrap items-center gap-4">
-            <div className="flex min-w-0 items-center gap-3">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-orange-50 text-primary">
-              <Building2 className="h-5 w-5" />
+      <div className="flex items-start gap-3">
+        <button
+          type="button"
+          onClick={onBack}
+          title="Back"
+          aria-label="Back"
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-700 shadow-sm transition hover:border-primary hover:text-primary"
+        >
+          <ArrowLeft className="h-4 w-4" />
+        </button>
+        <section className="min-w-0 flex-1 rounded-2xl border border-gray-100 bg-white px-5 py-4 shadow-sm" aria-labelledby="client-details-heading">
+          <div className="flex flex-wrap items-start justify-between gap-4 border-b border-gray-100 pb-3">
+            <div className="flex min-w-0 flex-1 flex-wrap items-center gap-4">
+              <div className="flex min-w-0 items-center gap-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-orange-50 text-primary">
+                  <Building2 className="h-5 w-5" />
+                </div>
+                <div className="min-w-0">
+                  <p id="client-details-heading" className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">
+                    Client
+                  </p>
+                  <h3 className="truncate text-base font-semibold text-gray-900">{client.client_name}</h3>
+                </div>
+              </div>
+              <div className="grid min-w-0 flex-1 gap-3 sm:grid-cols-2">
+                {[
+                  ["Project Name", quotation.project_name],
+                  ["Project Location", quotation.project_location],
+                ].map(([label, value]) => (
+                  <div key={label} className="min-w-0 rounded-xl bg-gray-50 px-3 py-2">
+                    <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">{label}</p>
+                    <p className="mt-0.5 truncate text-sm font-medium text-gray-700" title={value}>{value}</p>
+                  </div>
+                ))}
+              </div>
             </div>
-            <div className="min-w-0">
-              <p id="client-details-heading" className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">
-                Client
-              </p>
-              <h3 className="truncate text-base font-semibold text-gray-900">{client.client_name}</h3>
+            <div className="flex items-center gap-2">
+              <span className={`rounded-full px-2.5 py-1 text-[10px] font-semibold ${client.status === "Active" ? "bg-green-50 text-green-700" : "bg-gray-100 text-gray-600"}`}>
+                {client.status}
+              </span>
+              <button
+                type="button"
+                onClick={() => setClientDetailsOpen((open) => !open)}
+                title={clientDetailsOpen ? "Hide client contact details" : "Show client contact details"}
+                aria-label={clientDetailsOpen ? "Hide client contact details" : "Show client contact details"}
+                aria-expanded={clientDetailsOpen}
+                className="flex h-8 w-8 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-500 transition hover:border-primary hover:text-primary"
+              >
+                <ChevronDown className={`h-3.5 w-3.5 transition-transform ${clientDetailsOpen ? "rotate-180" : ""}`} />
+              </button>
             </div>
-            </div>
-            <div className="grid min-w-0 flex-1 gap-3 sm:grid-cols-2">
+          </div>
+          {clientDetailsOpen && (
+            <div className="grid gap-x-6 gap-y-3 pt-3 sm:grid-cols-2 xl:grid-cols-4">
               {[
-                ["Project Name", quotation.project_name],
-                ["Project Location", quotation.project_location],
-              ].map(([label, value]) => (
-                <div key={label} className="min-w-0 rounded-xl bg-gray-50 px-3 py-2">
-                  <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">{label}</p>
-                  <p className="mt-0.5 truncate text-sm font-medium text-gray-700" title={value}>{value}</p>
+                { icon: UserRound, label: "Contact person", value: client.contact_person },
+                { icon: Mail, label: "Email", value: client.contact_email },
+                { icon: Phone, label: "Phone", value: client.contact_number },
+                { icon: MapPin, label: "Address", value: client.client_address },
+              ].map(({ icon: Icon, label, value }) => (
+                <div key={label} className="flex min-w-0 items-start gap-2.5">
+                  <Icon className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+                  <div className="min-w-0">
+                    <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">{label}</p>
+                    <p className="truncate text-xs font-medium text-gray-700" title={value || "Not provided"}>{value || "Not provided"}</p>
+                  </div>
                 </div>
               ))}
             </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className={`rounded-full px-2.5 py-1 text-[10px] font-semibold ${client.status === "Active" ? "bg-green-50 text-green-700" : "bg-gray-100 text-gray-600"}`}>
-              {client.status}
-            </span>
-            <button
-              type="button"
-              onClick={() => setClientDetailsOpen((open) => !open)}
-              title={clientDetailsOpen ? "Hide client contact details" : "Show client contact details"}
-              aria-label={clientDetailsOpen ? "Hide client contact details" : "Show client contact details"}
-              aria-expanded={clientDetailsOpen}
-              className="flex h-8 w-8 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-500 transition hover:border-primary hover:text-primary"
-            >
-              <ChevronDown className={`h-3.5 w-3.5 transition-transform ${clientDetailsOpen ? "rotate-180" : ""}`} />
-            </button>
-          </div>
-        </div>
-        {clientDetailsOpen && (
-          <div className="grid gap-x-6 gap-y-3 pt-3 sm:grid-cols-2 xl:grid-cols-4">
-            {[
-              { icon: UserRound, label: "Contact person", value: client.contact_person },
-              { icon: Mail, label: "Email", value: client.contact_email },
-              { icon: Phone, label: "Phone", value: client.contact_number },
-              { icon: MapPin, label: "Address", value: client.client_address },
-            ].map(({ icon: Icon, label, value }) => (
-              <div key={label} className="flex min-w-0 items-start gap-2.5">
-                <Icon className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
-                <div className="min-w-0">
-                  <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">{label}</p>
-                  <p className="truncate text-xs font-medium text-gray-700" title={value || "Not provided"}>{value || "Not provided"}</p>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </section>
+          )}
+        </section>
+      </div>
 
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
