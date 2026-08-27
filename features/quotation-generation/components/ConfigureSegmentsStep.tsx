@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { AlertTriangle, ArrowLeft, CheckCircle2, Circle, Sparkles, Zap } from "lucide-react";
 import { useSaveSegments, useUpdateQuotationInputMethod } from "@/hooks/useQuotationGeneration";
 import { useMaterialRules } from "@/lib/dev/provisional/useCompanyRulesProvisional";
@@ -288,14 +288,19 @@ export function ConfigureSegmentsStep({ quoteId, segments, onChange, onSaved, on
   const configuredCount = includedSegments.filter(isSegmentConfigured).length;
   const allConfigured = includedSegments.length > 0 && configuredCount === includedSegments.length;
   const selected = segments.find((s) => s.draft_id === selectedId) ?? null;
-  const treatmentOptions = Array.from(
-    new Set(
-      materialRules
-        .filter((rule) => rule.is_active)
-        .map((rule) => rule.treatment_type?.trim())
-        .filter((value): value is string => !!value)
-    )
-  ).sort();
+  const treatmentOptions = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          materialRules
+            .filter((rule) => rule.is_active)
+            .map((rule) => rule.treatment_type?.trim())
+            .filter((value): value is string => !!value)
+        )
+      ).sort(),
+    [materialRules]
+  );
+  const treatmentOptionsKey = treatmentOptions.join("|");
 
   const updateSegment = (draftId: string, patch: Partial<DraftSegment>) => {
     onChange(segments.map((s) => (s.draft_id === draftId ? { ...s, ...patch } : s)));
@@ -383,7 +388,7 @@ export function ConfigureSegmentsStep({ quoteId, segments, onChange, onSaved, on
         </div>
         <div className="flex-1 overflow-y-auto p-5">
           {selected ? (
-            <SegmentConfigForm key={`${selected.draft_id}-${applyRevision}`} segment={selected} treatmentOptions={treatmentOptions} onSave={(patch) => updateSegment(selected.draft_id, patch)} />
+            <SegmentConfigForm key={`${selected.draft_id}-${treatmentOptionsKey}-${applyRevision}`} segment={selected} treatmentOptions={treatmentOptions} onSave={(patch) => updateSegment(selected.draft_id, patch)} />
           ) : (
             <div className="flex h-full items-center justify-center text-sm text-gray-400">No segments to configure.</div>
           )}

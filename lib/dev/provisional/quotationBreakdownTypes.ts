@@ -123,6 +123,7 @@ export interface ProvisionalItemLine {
 // per segment) standing in for what a real quotation_service_cost row would hold.
 export interface ProvisionalServiceCost {
   labor_cost: number;
+  rush_job_cost: number;
   equipment_cost: number;
   contingency_cost: number;
   other_cost: number; // "PPE, mobilization" per Part B

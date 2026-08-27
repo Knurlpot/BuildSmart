@@ -116,30 +116,25 @@ export function deleteSavedProject(projectId: string) {
 export function saveFinalizedQuotation(input: FinalizedQuotationInput): SavedProjectRecord {
   const now = new Date().toISOString();
   const projectId = `proj-${Date.now()}`;
-  const quotes = Object.fromEntries(
-    Object.entries(input.tierItems).flatMap(([tier, items]) => {
-      if (!items) return [];
-      const typedTier = tier as ProvisionalTier;
-      const result = computeTierResult(typedTier, items, {
-        segments: input.segments,
-        materialRules: input.materialRules,
-        laborRules: input.laborRules,
-      });
-      return [
-        [
-          typedTier,
-          {
-            tier: typedTier,
-            result,
-            versions: [newVersion(typedTier, result, 1, now)],
-            pricelist_basis_at_finalize: input.pricelistBasis,
-            finalized_at: now,
-            is_selected: typedTier === input.acceptedTier,
-          },
-        ],
-      ];
-    })
-  ) as SavedProjectRecord["quotes"];
+  const acceptedItems = input.tierItems[input.acceptedTier];
+  if (!acceptedItems) {
+    throw new Error(`Cannot save finalized quotation without ${input.acceptedTier} items.`);
+  }
+  const result = computeTierResult(input.acceptedTier, acceptedItems, {
+    segments: input.segments,
+    materialRules: input.materialRules,
+    laborRules: input.laborRules,
+  });
+  const quotes = {
+    [input.acceptedTier]: {
+      tier: input.acceptedTier,
+      result,
+      versions: [newVersion(input.acceptedTier, result, 1, now)],
+      pricelist_basis_at_finalize: input.pricelistBasis,
+      finalized_at: now,
+      is_selected: true,
+    },
+  } as SavedProjectRecord["quotes"];
   const project: SavedProjectRecord = {
     project_id: projectId,
     source_quote_id: input.quoteId ?? null,

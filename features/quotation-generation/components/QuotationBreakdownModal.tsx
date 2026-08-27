@@ -273,6 +273,7 @@ function BoqTab({ items }: { items: ProvisionalItemLine[] }) {
 
 function CostSummaryTab({ result }: { result: ProvisionalQuotationTierResult }) {
   const unresolvedCount = result.items.filter((l) => l.unit_price === null).length;
+  const rushJobCost = result.service_cost.rush_job_cost ?? 0;
   const rows: { label: string; value: number; bold?: boolean }[] = [
     { label: "Materials Subtotal", value: result.materials_subtotal },
     { label: "Labor", value: result.service_cost.labor_cost },
@@ -280,6 +281,7 @@ function CostSummaryTab({ result }: { result: ProvisionalQuotationTierResult }) 
     { label: "Contingency / Other (PPE, mobilization)", value: result.service_cost.contingency_cost + result.service_cost.other_cost },
     { label: `Overhead (OCM, ${result.ocm_percentage}%)`, value: result.ocm_amount },
     { label: `Profit / Markup (${result.profit_margin_percentage}%)`, value: result.profit_amount },
+    ...(rushJobCost > 0 ? [{ label: "Rush Job", value: rushJobCost }] : []),
   ];
 
   return (

@@ -180,6 +180,8 @@ const TREATMENT_ITEM_FIXTURES: Record<string, ItemFixtureDef[]> = {
 // here only as a plausible fixture default, not a configured value read from a real row.
 export const VAT_RATE_PERCENTAGE = 12;
 const DEFAULT_DOWNPAYMENT_PERCENTAGE = 30;
+const DEFAULT_RUSH_MULTIPLIER_PERCENTAGE = 25;
+const DEFAULT_GENERAL_LABOR_RATE = 750;
 
 interface TierPricingFixture {
   ocm_percentage: number;
@@ -450,7 +452,7 @@ export function retargetItemLinesBasis(
  * contingency_cost/other_cost are NOT itemized per segment — see quotationBreakdownTypes.ts
  * ProvisionalServiceCost). labor_cost always equals the sum of this tier's Labor-category
  * item lines, so the summary and the BOQ never disagree. */
-function deriveMockServiceCost(items: ProvisionalItemLine[], materialsSubtotal: number, tier: ProvisionalTier): ProvisionalServiceCost {
+function deriveMockServiceCost(items: ProvisionalItemLine[], materialsSubtotal: number, tier: ProvisionalTier, rushJobCost = 0): ProvisionalServiceCost {
   const normalizedTier = normalizeTier(tier);
   const laborCost = round2(items.filter((l) => l.category === 'Labor').reduce((sum, l) => sum + (l.total_cost ?? 0), 0));
   const equipmentPct = normalizedTier === 'Practical' ? 0.06 : 0.08;
@@ -461,11 +463,63 @@ function deriveMockServiceCost(items: ProvisionalItemLine[], materialsSubtotal: 
   const otherCost = round2(materialsSubtotal * otherPct);
   return {
     labor_cost: laborCost,
+    rush_job_cost: round2(rushJobCost),
     equipment_cost: equipmentCost,
     contingency_cost: contingencyCost,
     other_cost: otherCost,
-    subtotal: round2(laborCost + equipmentCost + contingencyCost + otherCost),
+    subtotal: round2(laborCost + rushJobCost + equipmentCost + contingencyCost + otherCost),
   };
+}
+
+function rushMultiplierForTreatment(treatmentType: string | null, laborRules: LaborRule[] = []): number {
+  if (!treatmentType) return DEFAULT_RUSH_MULTIPLIER_PERCENTAGE;
+  const treatment = treatmentType.trim().toLowerCase();
+  const rule = laborRules.find(
+    (entry) =>
+      entry.is_active &&
+      entry.treatment_type?.trim().toLowerCase() === treatment &&
+      typeof entry.rush_multiplier_percentage === 'number' &&
+      entry.rush_multiplier_percentage > 0
+  );
+  return rule?.rush_multiplier_percentage ?? DEFAULT_RUSH_MULTIPLIER_PERCENTAGE;
+}
+
+function laborRateForTreatment(treatmentType: string | null, laborRules: LaborRule[] = []): number {
+  const treatment = treatmentType?.trim().toLowerCase();
+  const treatmentRule = treatment
+    ? laborRules.find((entry) => entry.is_active && entry.treatment_type?.trim().toLowerCase() === treatment)
+    : null;
+  const generalRule = laborRules.find((entry) => entry.is_active && entry.treatment_type === null && entry.labor_trade === null);
+  return treatmentRule?.labor_rate ?? generalRule?.labor_rate ?? DEFAULT_GENERAL_LABOR_RATE;
+}
+
+function deriveRushJobCost(items: ProvisionalItemLine[], segments: DraftSegment[], laborRules: LaborRule[] = []): number {
+  const rushedSegments = segments.filter((segment) => isSegmentIncluded(segment) && segment.is_rush);
+  const rushedSegmentIds = new Set(rushedSegments.map((segment) => segment.draft_id));
+
+  if (rushedSegmentIds.size === 0) return 0;
+
+  const laborLineRushCost = items
+    .filter((item) => item.category === 'Labor' && rushedSegmentIds.has(item.segment_draft_id) && item.total_cost !== null)
+    .reduce((sum, item) => {
+      const multiplier = item.rush_multiplier_percentage ?? rushMultiplierForTreatment(item.treatment_type, laborRules);
+      return sum + item.total_cost! * (multiplier / 100);
+    }, 0);
+
+  const segmentsWithLaborLines = new Set(
+    items
+      .filter((item) => item.category === 'Labor' && rushedSegmentIds.has(item.segment_draft_id))
+      .map((item) => item.segment_draft_id)
+  );
+  const fallbackRushCost = rushedSegments
+    .filter((segment) => !segmentsWithLaborLines.has(segment.draft_id))
+    .reduce((sum, segment) => {
+      const laborRate = laborRateForTreatment(segment.treatment_type, laborRules);
+      const multiplier = rushMultiplierForTreatment(segment.treatment_type, laborRules);
+      return sum + segment.area_sqm * laborRate * (multiplier / 100);
+    }, 0);
+
+  return round2(laborLineRushCost + fallbackRushCost);
 }
 
 /** Recomputes total_cost for ONE item line after a Minor Revision edit (quantity, unit
@@ -510,7 +564,8 @@ export function computeTierResult(
   const downpaymentPercentage = options?.downpaymentPercentage ?? DEFAULT_DOWNPAYMENT_PERCENTAGE;
 
   const materialsSubtotal = round2(items.filter((l) => l.category === 'Material').reduce((sum, l) => sum + (l.total_cost ?? 0), 0));
-  const serviceCost = deriveMockServiceCost(items, materialsSubtotal, tier);
+  const rushJobCost = deriveRushJobCost(items, options?.segments ?? [], options?.laborRules);
+  const serviceCost = deriveMockServiceCost(items, materialsSubtotal, tier, rushJobCost);
 
   const baseForMarkup = materialsSubtotal + serviceCost.subtotal;
   const ocmAmount = round2(baseForMarkup * (pricingFixture.ocm_percentage / 100));

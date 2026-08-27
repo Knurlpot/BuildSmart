@@ -92,6 +92,10 @@ function materialGradeLabel(label: string): string {
   return label.split(" · ")[0] ?? label;
 }
 
+function isAcceptedProjectTier(project: SavedProjectRecord, tier: ProvisionalTier): boolean {
+  return project.accepted_tier === tier || project.quotes[tier]?.is_selected === true;
+}
+
 function QuoteSummaryCard({
   project,
   tier,
@@ -109,7 +113,7 @@ function QuoteSummaryCard({
   const snapshot = project.quotes[tier];
   const [viewingVersionId, setViewingVersionId] = useState<string | null>(null);
   if (!snapshot) return null;
-  const accepted = snapshot.is_selected === true || project.accepted_tier === tier;
+  const accepted = isAcceptedProjectTier(project, tier);
   const canChooseAcceptedTier = project.status !== "Final";
   const versions = snapshot.versions;
   const latest = versions[versions.length - 1];
@@ -246,7 +250,11 @@ function ProjectDetailContent({ projectId }: { projectId: string }) {
   };
   const quoteEntries = PROVISIONAL_TIERS
     .map((tier) => [tier, project.quotes[tier]] as const)
-    .filter((entry): entry is readonly [ProvisionalTier, NonNullable<SavedProjectRecord["quotes"][ProvisionalTier]>] => Boolean(entry[1]));
+    .filter((entry): entry is readonly [ProvisionalTier, NonNullable<SavedProjectRecord["quotes"][ProvisionalTier]>] => {
+      const [tier, quote] = entry;
+      if (!quote) return false;
+      return project.status !== "Final" || isAcceptedProjectTier(project, tier);
+    });
   const client = clients.find((entry) => entry.client_id === project.client_id) ?? null;
   const warrantyLabel = warrantyLabelFromMaterialRules(project, materialRules);
 
