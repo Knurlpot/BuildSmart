@@ -26,6 +26,7 @@ const STATIC_TITLES: Record<string, { title: string; subtitle?: string }> = {
 
 function resolveTitle(pathname: string) {
   if (STATIC_TITLES[pathname]) return STATIC_TITLES[pathname];
+  if (pathname !== "/quotations/new" && /^\/quotations\/[^/]+$/.test(pathname)) return { title: "Open Projects" };
   const item = NAV_ITEMS.find((i) => pathname === i.href || pathname.startsWith(`${i.href}/`));
   if (item) return { title: item.label, subtitle: item.description };
   return { title: "BuildSmart" };

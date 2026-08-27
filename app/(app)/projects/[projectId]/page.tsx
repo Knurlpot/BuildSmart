@@ -31,8 +31,16 @@ import { useClients } from "@/hooks/useClients";
 
 // 
 const TIER_META: Record<ProvisionalTier, { accent: string; headerBg: string; accentBg: string }> = {
-  Practical: { accent: "text-primary", headerBg: "bg-primary", accentBg: "bg-orange-50" },
-  Premium: { accent: "text-[#0000CD]", headerBg: "bg-[#0000CD]", accentBg: "bg-[#0000CD]/5" },
+  Practical: {
+    accent: "text-primary",
+    headerBg: "project-tier-gradient bg-linear-to-r from-primary via-orange-400 to-primary",
+    accentBg: "bg-orange-50",
+  },
+  Premium: {
+    accent: "text-[#0000CD]",
+    headerBg: "project-tier-gradient bg-linear-to-r from-[#0000CD] via-[#4169E1] to-[#0000CD]",
+    accentBg: "bg-[#0000CD]/5",
+  },
 };
 
 function formatDateTime(iso: string) {
@@ -123,7 +131,7 @@ function QuoteSummaryCard({
   const displayedVersionLabel = isOriginal && project.status === "Draft" ? "Draft estimate" : versionLabel(displayed);
 
   return (
-    <div className={`flex flex-1 flex-col overflow-hidden rounded-2xl border-2 bg-white ${tier === "Premium" ? "" : "shadow-sm"} ${accepted ? "border-green-500 ring-2 ring-green-200" : "border-gray-100"}`}>
+    <div className="flex h-full flex-1 flex-col overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm">
       <div className={`${meta.headerBg} px-5 py-4 text-white`}>
         <div className="flex items-center justify-between">
           <div>
@@ -230,7 +238,7 @@ function ProjectDetailContent({ projectId }: { projectId: string }) {
   const { rules: materialRules } = useMaterialRules();
   const project = projects.find((p) => p.project_id === projectId);
   const [breakdown, setBreakdown] = useState<{ tier: ProvisionalTier; versionId: string } | null>(null);
-  const [clientDetailsOpen, setClientDetailsOpen] = useState(false);
+  const [clientDetailsOpen, setClientDetailsOpen] = useState(true);
 
   if (!project) {
     return (
@@ -276,7 +284,8 @@ function ProjectDetailContent({ projectId }: { projectId: string }) {
         </button>
       </div>
 
-      <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm" aria-labelledby="client-details-heading">
+      <div className="grid items-stretch gap-5 lg:grid-cols-2">
+        <section className="flex h-full flex-col justify-between rounded-2xl border border-gray-200 bg-white p-5 shadow-sm" aria-labelledby="client-details-heading">
         {clientsLoading ? (
           <p className="py-4 text-center text-sm text-gray-400">Loading client details...</p>
         ) : clientsError ? (
@@ -328,7 +337,7 @@ function ProjectDetailContent({ projectId }: { projectId: string }) {
             </div>
 
             {clientDetailsOpen && (
-              <div className="grid gap-4 py-4 sm:grid-cols-2 xl:grid-cols-4">
+              <div className="grid gap-x-6 gap-y-5 py-4 sm:grid-cols-2">
                 {[
                 { icon: UserRound, label: "Contact Person", value: client.contact_person || "Not provided" },
                 { icon: Mail, label: "Email", value: client.contact_email || "Not provided" },
@@ -360,7 +369,7 @@ function ProjectDetailContent({ projectId }: { projectId: string }) {
               ))}
             </div>
 
-            <div className="grid gap-3 border-t border-gray-100 pt-4 sm:grid-cols-2 lg:grid-cols-5">
+            <div className="grid gap-3 border-t border-gray-100 pt-4 sm:grid-cols-2 lg:grid-cols-3">
               {[
                 ["Project Status", project.status],
                 ["Region", project.project_region],
@@ -379,19 +388,20 @@ function ProjectDetailContent({ projectId }: { projectId: string }) {
             </div>
           </>
         )}
-      </section>
+        </section>
 
-      <div className="grid gap-5 lg:grid-cols-2">
-        {quoteEntries.map(([tier]) => (
-          <QuoteSummaryCard
-            key={tier}
-            project={project}
-            tier={tier}
-            warrantyLabel={warrantyLabel}
-            onViewBreakdown={(versionId) => setBreakdown({ tier, versionId })}
-            onToggleAccepted={() => handleToggleAccepted(tier)}
-          />
-        ))}
+        <div className="grid h-full gap-5">
+          {quoteEntries.map(([tier]) => (
+            <QuoteSummaryCard
+              key={tier}
+              project={project}
+              tier={tier}
+              warrantyLabel={warrantyLabel}
+              onViewBreakdown={(versionId) => setBreakdown({ tier, versionId })}
+              onToggleAccepted={() => handleToggleAccepted(tier)}
+            />
+          ))}
+        </div>
       </div>
 
       {breakdown &&
