@@ -159,6 +159,9 @@ export function ManageExistingRulesTab({ onViewRule }: ManageExistingRulesTabPro
 
     return Array.from(grouped, ([treatmentType, materials]) => {
       const itemNames = materials.map((rule) => rule.preferred_item_name).sort((a, b) => a.localeCompare(b));
+      const tierCounts = ["Practical", "Standard", "Premium"]
+        .map((tier) => `${tier}: ${materials.filter((rule) => (rule.treatment_tier ?? "Standard") === tier).length}`)
+        .join(" · ");
       const latestEffective = materials
         .map((rule) => rule.effective_date)
         .sort()
@@ -168,7 +171,7 @@ export function ManageExistingRulesTab({ onViewRule }: ManageExistingRulesTabPro
         rule_id: treatmentType,
         rule_kind: "material-rule" as const,
         label: treatmentType,
-        detail: `${materials.length} material${materials.length === 1 ? "" : "s"} · ${itemNames.join(", ")}`,
+        detail: `${materials.length} material${materials.length === 1 ? "" : "s"} · ${tierCounts} · ${itemNames.join(", ")}`,
         status: materials.some((rule) => rule.is_active) ? "Active" as const : "Disabled" as const,
         effective_date: latestEffective,
       };

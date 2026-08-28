@@ -12,6 +12,7 @@ import type {
   SupplierRuleEntry,
   UnitRule,
   ExistingRuleSummary,
+  MaterialTreatmentTier,
   PriceSource,
 } from "@/lib/dev/provisional/companyRulesTypes";
 import { CATEGORY_TYPES, type CategoryType } from "@/types/entities/category";
@@ -71,6 +72,10 @@ function materialFallbackToCompanyRuleFallback(fallback: unknown) {
   return "Manual";
 }
 
+function materialTreatmentTier(value: unknown): MaterialTreatmentTier {
+  return value === "Practical" || value === "Premium" ? value : "Standard";
+}
+
 function quotationTierToStrategyType(tier: unknown) {
   if (tier === "Premium" || tier === "Best") return "Premium";
   return "Practical";
@@ -110,7 +115,7 @@ export async function fetchCompanyRules(companyId: number): Promise<CompanyRules
       [companyId]
     ),
     pool.query(
-      `SELECT cr.rule_id, cr.rule_name, cr.checklist_items, cr.status, cr.date_created,
+      `SELECT cr.rule_id, cr.rule_name, cr.checklist_items, cr.strategy_type, cr.status, cr.date_created,
               rcd.material_priority, rcd.fallback_rule, c.category_type, i.item_name
        FROM company_rule cr
        JOIN rule_category_detail rcd ON rcd.rule_id = cr.rule_id
@@ -188,6 +193,7 @@ export async function fetchCompanyRules(companyId: number): Promise<CompanyRules
     return {
       rule_id: `mr-${row.rule_id}`,
       treatment_type: typeof parsed.treatment_type === "string" ? parsed.treatment_type : null,
+      treatment_tier: materialTreatmentTier(parsed.treatment_tier ?? row.strategy_type),
       warranty_years: typeof parsed.warranty_years === "number" ? parsed.warranty_years : null,
       lifespan_years: typeof parsed.lifespan_years === "number" ? parsed.lifespan_years : null,
       category: row.category_type,
@@ -283,7 +289,7 @@ export async function fetchCompanyRules(companyId: number): Promise<CompanyRules
         rule_id: rule.rule_id,
         rule_kind: "material-rule" as const,
         label: rule.preferred_item_name,
-        detail: `${rule.category} · ${rule.material_priority} - ${rule.priority_source} · ${rule.fallback_rule}`,
+        detail: `${rule.category} · ${rule.treatment_tier} · priority ${rule.material_priority} - ${rule.priority_source} · ${rule.fallback_rule}`,
         effective_date: rule.effective_date,
         status: rule.is_active ? "Active" as const : "Disabled" as const,
       })),
@@ -373,7 +379,7 @@ export async function createRule(companyId: number, kind: RuleKindParam, body: R
       const rule = await client.query<{ rule_id: number }>(
         `INSERT INTO company_rule (company_id, rule_name, specialization, scope_of_work, work_type, checklist_items,
           primary_source, fallback_rule, strategy_type)
-         VALUES ($1, $2, $3, $4, 'Material Rule', $5, $6, $7, 'Standard') RETURNING rule_id`,
+         VALUES ($1, $2, $3, $4, 'Material Rule', $5, $6, $7, $8) RETURNING rule_id`,
         [
           companyId,
           body.preferred_item_name,
@@ -383,11 +389,13 @@ export async function createRule(companyId: number, kind: RuleKindParam, body: R
             preferred_item_code: body.preferred_item_code,
             priority_source: source,
             treatment_type: body.treatment_type ?? null,
+            treatment_tier: materialTreatmentTier(body.treatment_tier),
             warranty_years: body.warranty_years ?? null,
             lifespan_years: body.lifespan_years ?? null,
           }),
           sourceToCompanyRuleSource(source),
           materialFallbackToCompanyRuleFallback(body.fallback_rule),
+          materialTreatmentTier(body.treatment_tier),
         ]
       );
       await client.query(
@@ -664,7 +672,8 @@ export async function updateRule(companyId: number, kind: RuleKindParam, ruleId:
              scope_of_work = $2,
              checklist_items = $3,
              primary_source = $4,
-             fallback_rule = $5
+             fallback_rule = $5,
+             strategy_type = $8
          WHERE company_id = $6 AND rule_id = $7 AND work_type = 'Material Rule'`,
         [
           body.preferred_item_name,
@@ -673,6 +682,7 @@ export async function updateRule(companyId: number, kind: RuleKindParam, ruleId:
             preferred_item_code: body.preferred_item_code,
             priority_source: source,
             treatment_type: body.treatment_type ?? null,
+            treatment_tier: materialTreatmentTier(body.treatment_tier),
             warranty_years: body.warranty_years ?? null,
             lifespan_years: body.lifespan_years ?? null,
           }),
@@ -680,6 +690,7 @@ export async function updateRule(companyId: number, kind: RuleKindParam, ruleId:
           materialFallbackToCompanyRuleFallback(body.fallback_rule),
           companyId,
           id,
+          materialTreatmentTier(body.treatment_tier),
         ]
       );
       if (updatedRule.rowCount === 0) throw new Error("Material rule not found");

@@ -76,9 +76,12 @@ export const MATERIAL_FALLBACK_RULES = [
 export type MaterialFallbackRule = (typeof MATERIAL_FALLBACK_RULES)[number];
 export const PRICE_SOURCES = ['DPWH', 'PSA', 'Supplier', 'Internal'] as const;
 export type PriceSource = (typeof PRICE_SOURCES)[number];
+export const MATERIAL_TREATMENT_TIERS = ['Practical', 'Standard', 'Premium'] as const;
+export type MaterialTreatmentTier = (typeof MATERIAL_TREATMENT_TIERS)[number];
 
 export interface MaterialRuleEntry extends RuleEnvelope {
   treatment_type: string | null;
+  treatment_tier: MaterialTreatmentTier;
   warranty_years: number | null;
   lifespan_years: number | null;
   category: CategoryType; // -> rule_material.category_id. Filtering metadata, not the organizing key.

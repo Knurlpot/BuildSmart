@@ -6,7 +6,7 @@ import { RuleListDetailPanel } from "./RuleListDetailPanel";
 import { useMaterialRules, useCheckRuleUsage, stagingId } from "@/lib/dev/provisional/useCompanyRulesProvisional";
 import { useEditableRuleList } from "@/lib/dev/provisional/useEditableRuleList";
 import { apiClient } from "@/lib/api/client";
-import type { MaterialRuleEntry } from "@/lib/dev/provisional/companyRulesTypes";
+import { MATERIAL_TREATMENT_TIERS, type MaterialRuleEntry, type MaterialTreatmentTier } from "@/lib/dev/provisional/companyRulesTypes";
 import { useItemsCatalog } from "@/hooks/useItemsCatalog";
 import { usePricelistCatalog, type SavedPriceRecord } from "@/hooks/usePricelistCatalog";
 import { usePricelistPublishedSource, type DpwhCatalogRow } from "@/hooks/usePricelistPublishedSource";
@@ -82,6 +82,7 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
   const [categoryFilter, setCategoryFilter] = useState<CategoryType | "">("");
   const [checkedCatalogKeys, setCheckedCatalogKeys] = useState<Set<string>>(new Set());
   const [treatmentType, setTreatmentType] = useState("");
+  const [treatmentTier, setTreatmentTier] = useState<MaterialTreatmentTier>("Standard");
   const [warrantyYears, setWarrantyYears] = useState<number | "">("");
   const [lifespanYears, setLifespanYears] = useState<number | "">("");
   const [selectedGroup, setSelectedGroup] = useState<string | null>(null);
@@ -177,6 +178,7 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
     setCategoryFilter("");
     setCheckedCatalogKeys(new Set());
     setTreatmentType("");
+    setTreatmentTier("Standard");
     setWarrantyYears("");
     setLifespanYears("");
     setTouched(false);
@@ -194,6 +196,7 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
     const firstWithLifespan = groupRules.find((rule) => rule.lifespan_years !== null);
     setMode("edit-group");
     setTreatmentType(groupName === "No treatment type" ? "" : groupName);
+    setTreatmentTier(groupRules[0]?.treatment_tier ?? "Standard");
     setWarrantyYears(firstWithWarranty?.warranty_years ?? "");
     setLifespanYears(firstWithLifespan?.lifespan_years ?? "");
     setTouched(false);
@@ -219,6 +222,7 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
         if (!category) throw new Error(`Could not resolve the category for ${item.item_name}.`);
         const payload = {
           treatment_type: treatmentType.trim() || null,
+          treatment_tier: treatmentTier,
           warranty_years: Number(warrantyYears),
           lifespan_years: Number(lifespanYears),
           category,
@@ -251,8 +255,9 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
     let savedAny = false;
     for (const rule of selectedGroupRules) {
       const payload = {
-        treatment_type: nextGroup,
-        warranty_years: Number(warrantyYears),
+          treatment_type: nextGroup,
+          treatment_tier: treatmentTier,
+          warranty_years: Number(warrantyYears),
         lifespan_years: Number(lifespanYears),
         category: rule.category,
         preferred_item_code: rule.preferred_item_code,
@@ -291,6 +296,19 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
       ? null
       : selectedGroup ?? selected?.treatment_type?.trim() ?? visibleGroupedRules[0]?.[0] ?? null;
   const selectedGroupRules = groupedRules.find(([group]) => group === selectedGroupName)?.[1] ?? [];
+  const groupWarrantyLabel = (groupRules: MaterialRuleEntry[]) => {
+    const years = Math.max(0, ...groupRules.map((rule) => rule.warranty_years ?? 0));
+    return years > 0 ? `${years} year${years === 1 ? "" : "s"}` : "None";
+  };
+  const groupLifespanLabel = (groupRules: MaterialRuleEntry[]) => {
+    const years = Math.max(0, ...groupRules.map((rule) => rule.lifespan_years ?? 0));
+    return years > 0 ? `${years} year${years === 1 ? "" : "s"}` : "Not set";
+  };
+  const groupTierLabel = (groupRules: MaterialRuleEntry[]) => {
+    const tiers = MATERIAL_TREATMENT_TIERS.filter((tier) => groupRules.some((rule) => (rule.treatment_tier ?? "Standard") === tier));
+    return tiers.length > 0 ? tiers.join(", ") : "Standard";
+  };
+  const groupStatusLabel = (groupRules: MaterialRuleEntry[]) => groupRules.some((rule) => rule.is_active) ? "Active" : "Disabled";
   const groupEditValid =
     !!selectedGroupName &&
     selectedGroupRules.length > 0 &&
@@ -376,20 +394,26 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
           </div>
         }
         renderListItem={([group, groupRules]) => (
-          <div className="flex flex-col gap-0.5">
+          <div className="flex flex-col gap-1">
             <div className="flex items-center justify-between gap-2">
               <span className="truncate text-sm font-semibold text-gray-800">{group}</span>
-              <span
-                className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
-                  groupRules.some((rule) => rule.is_active) ? "bg-green-50 text-green-700" : "bg-gray-100 text-gray-400"
-                }`}
-              >
-                {groupRules.some((rule) => rule.is_active) ? "Active" : "Disabled"}
-              </span>
+              <div className="flex shrink-0 items-center gap-1.5">
+                <span
+                  className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                    groupRules.some((rule) => rule.is_active) ? "bg-green-50 text-green-700" : "bg-gray-100 text-gray-400"
+                  }`}
+                >
+                  {groupStatusLabel(groupRules)}
+                </span>
+                <span className="rounded-full bg-orange-50 px-2 py-0.5 text-[10px] font-bold text-primary">
+                  {groupTierLabel(groupRules)}
+                </span>
+              </div>
             </div>
-            <span className="text-xs text-gray-400">
-              {groupRules.length} material{groupRules.length === 1 ? "" : "s"}
-            </span>
+            <div className="grid gap-0.5 text-xs text-gray-400">
+              <span>Warranty: {groupWarrantyLabel(groupRules)}</span>
+              <span>Lifespan: {groupLifespanLabel(groupRules)}</span>
+            </div>
           </div>
         )}
         detail={
@@ -523,6 +547,31 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
                 )}
               </div>
 
+              <div className="flex flex-col gap-1.5">
+                <label className="text-xs font-semibold text-gray-600">
+                  Treatment Level <span className="text-red-500">*</span>
+                </label>
+                <div className="grid grid-cols-3 gap-2">
+                  {MATERIAL_TREATMENT_TIERS.map((tier) => (
+                    <button
+                      key={tier}
+                      type="button"
+                      onClick={() => setTreatmentTier(tier)}
+                      className={`rounded-lg border px-3 py-2 text-xs font-bold transition ${
+                        treatmentTier === tier
+                          ? "border-primary bg-orange-50 text-primary"
+                          : "border-gray-200 bg-white text-gray-500 hover:border-gray-300"
+                      }`}
+                    >
+                      {tier}
+                    </button>
+                  ))}
+                </div>
+                <p className="text-[11px] text-gray-400">
+                  Standard is used first. If no Standard materials exist for a treatment, BuildSmart falls back to Practical, then Premium.
+                </p>
+              </div>
+
               <div className="grid grid-cols-2 gap-3">
                 <div className="flex flex-col gap-1.5">
                   <div className="relative">
@@ -652,6 +701,28 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
                 )}
               </div>
 
+              <div className="flex flex-col gap-1.5">
+                <label className="text-xs font-semibold text-gray-600">
+                  Treatment Level <span className="text-red-500">*</span>
+                </label>
+                <div className="grid grid-cols-3 gap-2">
+                  {MATERIAL_TREATMENT_TIERS.map((tier) => (
+                    <button
+                      key={tier}
+                      type="button"
+                      onClick={() => setTreatmentTier(tier)}
+                      className={`rounded-lg border px-3 py-2 text-xs font-bold transition ${
+                        treatmentTier === tier
+                          ? "border-primary bg-orange-50 text-primary"
+                          : "border-gray-200 bg-white text-gray-500 hover:border-gray-300"
+                      }`}
+                    >
+                      {tier}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
               <div className="grid grid-cols-2 gap-3">
                 <div className="flex flex-col gap-1.5">
                   <div className="relative">
@@ -732,15 +803,16 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <p className="text-lg font-bold text-gray-900">{selectedGroupName}</p>
-                    <p className="text-sm text-gray-500">
-                    {selectedGroupRules.length} material{selectedGroupRules.length === 1 ? "" : "s"} in this treatment group
-                  </p>
-                  <p className="mt-1 text-xs text-gray-400">
-                    Warranty: {Math.max(0, ...selectedGroupRules.map((rule) => rule.warranty_years ?? 0)) || "None"} year
-                    {Math.max(0, ...selectedGroupRules.map((rule) => rule.warranty_years ?? 0)) === 1 ? "" : "s"} · Lifespan:{" "}
-                    {Math.max(0, ...selectedGroupRules.map((rule) => rule.lifespan_years ?? 0)) || "Not set"} year
-                    {Math.max(0, ...selectedGroupRules.map((rule) => rule.lifespan_years ?? 0)) === 1 ? "" : "s"}
-                  </p>
+                    <p className="text-sm text-gray-500">Treatment Type: {selectedGroupName}</p>
+                    <p className="mt-1 text-xs text-gray-400">
+                      Warranty: {groupWarrantyLabel(selectedGroupRules)} · Lifespan: {groupLifespanLabel(selectedGroupRules)}
+                    </p>
+                    <p className="mt-1 text-xs text-gray-400">
+                      Status: {groupStatusLabel(selectedGroupRules)} · Level: {groupTierLabel(selectedGroupRules)}
+                    </p>
+                    <p className="mt-1 text-xs text-gray-400">
+                      Default level: Standard · Fallback: Practical, then Premium
+                    </p>
                 </div>
                   <div className="flex shrink-0 gap-2">
                     <button
@@ -780,6 +852,15 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
                           <p className="truncate text-xs text-gray-400">{rule.category}</p>
                           <p className="mt-0.5 text-[11px] text-gray-400">Effective {rule.effective_date}</p>
                         </div>
+                        <span className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-bold ${
+                          (rule.treatment_tier ?? "Standard") === "Standard"
+                            ? "bg-orange-50 text-primary"
+                            : (rule.treatment_tier ?? "Standard") === "Premium"
+                              ? "bg-blue-50 text-blue-700"
+                              : "bg-gray-100 text-gray-600"
+                        }`}>
+                          {rule.treatment_tier ?? "Standard"}
+                        </span>
                       </div>
                     ))}
                 </div>

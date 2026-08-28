@@ -83,6 +83,7 @@ export const materialRulesFixture: MaterialRuleEntry[] = [
   {
     rule_id: 'mr-1',
     treatment_type: null,
+    treatment_tier: 'Standard',
     warranty_years: null,
     lifespan_years: null,
     category: 'Structural',
@@ -97,6 +98,7 @@ export const materialRulesFixture: MaterialRuleEntry[] = [
   {
     rule_id: 'mr-2',
     treatment_type: null,
+    treatment_tier: 'Standard',
     warranty_years: null,
     lifespan_years: null,
     category: 'Structural',
@@ -111,6 +113,7 @@ export const materialRulesFixture: MaterialRuleEntry[] = [
   {
     rule_id: 'mr-3',
     treatment_type: 'Painting',
+    treatment_tier: 'Standard',
     warranty_years: 1,
     lifespan_years: 4,
     category: 'Finishing',
@@ -125,6 +128,7 @@ export const materialRulesFixture: MaterialRuleEntry[] = [
   {
     rule_id: 'mr-4',
     treatment_type: 'Painting',
+    treatment_tier: 'Standard',
     warranty_years: 1,
     lifespan_years: 3,
     category: 'Finishing',
@@ -296,7 +300,7 @@ export const existingRulesFixture: ExistingRuleSummary[] = [
     rule_id: m.rule_id,
     rule_kind: 'material-rule' as const,
     label: m.preferred_item_name,
-    detail: `${m.category} · priority ${m.material_priority}`,
+    detail: `${m.category} · ${m.treatment_tier} · priority ${m.material_priority}`,
     status: envelopeStatus(m),
     effective_date: m.effective_date,
   })),

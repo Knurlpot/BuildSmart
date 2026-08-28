@@ -409,11 +409,13 @@ export function deriveCompanyRuleItemLines(
 
   for (const seg of segments.filter(isSegmentIncluded)) {
     const treatment = seg.treatment_type?.trim().toLowerCase();
-    const rulesForTreatment = treatment
-      ? activeRules
-          .filter((rule) => rule.treatment_type?.trim().toLowerCase() === treatment)
-          .sort((a, b) => a.material_priority - b.material_priority)
+    const allRulesForTreatment = treatment
+      ? activeRules.filter((rule) => rule.treatment_type?.trim().toLowerCase() === treatment)
       : [];
+    const rulesForTreatment = (["Standard", "Practical", "Premium"] as const)
+      .map((tier) => allRulesForTreatment.filter((rule) => (rule.treatment_tier ?? "Standard") === tier))
+      .find((tierRules) => tierRules.length > 0)
+      ?.sort((a, b) => a.material_priority - b.material_priority) ?? [];
 
     if (rulesForTreatment.length === 0) {
       lines.push(buildMissingRuleLine(seg, basis));
