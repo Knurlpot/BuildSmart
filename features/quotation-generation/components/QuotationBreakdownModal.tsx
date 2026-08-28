@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { AlertTriangle, BarChart2, BookOpen, Check, ChevronDown, ChevronUp, Database, FileText, Layers, Pencil, ShoppingBag, X } from "lucide-react";
+import { AlertTriangle, BarChart2, BookOpen, Check, ChevronDown, ChevronUp, Layers, Pencil, ShoppingBag, X } from "lucide-react";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { fmtPeso } from "@/lib/dev/provisional/quotationBreakdownFixtures";
 import type { ItemCategory, PricelistBasis, ProvisionalItemLine, ProvisionalQuotationTierResult, ProvisionalTier } from "@/lib/dev/provisional/quotationBreakdownTypes";
@@ -15,13 +15,6 @@ interface QuotationBreakdownModalProps {
   tier: ProvisionalTier;
   result: ProvisionalQuotationTierResult;
   pricelistBasis: PricelistBasis;
-  // Omitted (Open Projects' saved-project view) -> the toggle renders as a static,
-  // non-interactive badge instead of clickable buttons. A FINALIZED quote is a frozen
-  // snapshot (see savedProjectsStore.ts's snapshot-integrity note) — letting someone
-  // switch basis and watch a historical quote's numbers change would defeat the entire
-  // point of a snapshot. The live wizard (QuotationResultsStep, pre-finalize) still passes
-  // this and gets the real interactive toggle.
-  onBasisChange?: (basis: PricelistBasis) => void;
   onClose: () => void;
   // Task 7, Part B — Segment Breakdown's split-view blueprint preview (left half). null/
   // undefined = this quote wasn't blueprint-sourced (Quick Measurement/Manual), OR (some
@@ -47,6 +40,15 @@ function SourceBadge({ source }: { source: string }) {
   return <span className={`shrink-0 rounded px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide ${SOURCE_BADGE[source] ?? "bg-gray-100 text-gray-600"}`}>{source}</span>;
 }
 
+function pricelistBasisLabel(basis: PricelistBasis) {
+  return basis === "Uploaded" ? "Supplier" : "DPWH CMPD";
+}
+
+function sourceLabelForLine(line: ProvisionalItemLine) {
+  const selectedSupplier = line.supplier_options.find((supplier) => supplier.supplier_id === line.selected_supplier_id);
+  return selectedSupplier?.supplier_name ?? line.pricing_reference.price_source;
+}
+
 // Part B — one small box per item line: real provenance fields (price_source/region/
 // quarter+year or recorded_at).
 function PricingReferenceBox({ line }: { line: ProvisionalItemLine }) {
@@ -59,7 +61,6 @@ function PricingReferenceBox({ line }: { line: ProvisionalItemLine }) {
         <SourceBadge source={ref.price_source} />
       </div>
       <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-gray-500">
-        <span>Region: {ref.region ?? "—"}</span>
         <span>Recorded: {dateLabel}</span>
       </div>
     </div>
@@ -187,7 +188,7 @@ function SegmentBreakdownTab({ items, segments, blueprintFloors }: { items: Prov
           <SegmentListFallback items={items} hoveredId={hoveredId} onHoverChange={setHoveredId} />
         )}
       </div>
-      <div className="flex flex-col gap-3">
+      <div className={`flex flex-col gap-3 ${segmentIds.length >= 4 ? "max-h-[34rem] overflow-y-auto pr-2" : ""}`}>
         {segmentIds.map((segId) => (
           <SegmentCostDeck
             key={segId}
@@ -255,9 +256,13 @@ function BoqTab({ items }: { items: ProvisionalItemLine[] }) {
                   <td className="px-3 py-2.5 text-gray-500">{line.unit}</td>
                   <td className="px-3 py-2.5 text-right text-gray-700">{line.unit_price !== null ? fmtPeso(line.unit_price) : <span className="font-semibold text-amber-600">Missing price</span>}</td>
                   <td className="px-3 py-2.5">
-                    <div className="flex items-center gap-1.5">
-                      <SourceBadge source={line.pricing_reference.price_source} />
-                      <span className="text-gray-400">{line.pricing_reference.region ?? (line.pricing_reference.recorded_at ? new Date(line.pricing_reference.recorded_at).toLocaleDateString("en-PH", { year: "numeric", month: "short" }) : "—")}</span>
+                    <div className="flex flex-col gap-0.5">
+                      <span className="font-medium text-gray-700">{sourceLabelForLine(line)}</span>
+                      <span className="text-gray-400">
+                        {line.pricing_reference.recorded_at
+                          ? new Date(line.pricing_reference.recorded_at).toLocaleDateString("en-PH", { year: "numeric", month: "short" })
+                          : "—"}
+                      </span>
                     </div>
                   </td>
                   <td className="px-3 py-2.5 text-right font-bold text-gray-900">{line.total_cost !== null ? fmtPeso(line.total_cost) : "—"}</td>
@@ -402,7 +407,7 @@ function BenchmarkingTab({ items }: { items: ProvisionalItemLine[] }) {
   );
 }
 
-export function QuotationBreakdownModal({ tier, result, pricelistBasis, onBasisChange, onClose, blueprintFloors, segments }: QuotationBreakdownModalProps) {
+export function QuotationBreakdownModal({ tier, result, pricelistBasis, onClose, blueprintFloors, segments }: QuotationBreakdownModalProps) {
   const [activeTab, setActiveTab] = useState<TabId>("segments");
   const TABS: { id: TabId; label: string; icon: typeof BookOpen }[] = [
     { id: "segments", label: "Segment Breakdown", icon: Layers },
@@ -432,32 +437,9 @@ export function QuotationBreakdownModal({ tier, result, pricelistBasis, onBasisC
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-2">
               <span className="text-xs font-semibold text-gray-500">Pricelist Basis:</span>
-              {!onBasisChange ? (
-                <span
-                  title="Frozen at finalize. A saved quote's basis cannot be changed."
-                  className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-gray-100 px-3 py-1.5 text-xs font-semibold text-gray-500"
-                >
-                  {pricelistBasis === "Uploaded" ? <FileText className="h-3 w-3" /> : <Database className="h-3 w-3" />}
-                  {pricelistBasis === "Uploaded" ? "Uploaded Pricelist" : "DPWH CMPD"} (as finalized)
-                </span>
-              ) : (
-              <div className="flex overflow-hidden rounded-lg border border-gray-200 bg-white text-xs">
-                <button
-                  type="button"
-                  onClick={() => onBasisChange("Uploaded")}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 font-semibold transition-colors ${pricelistBasis === "Uploaded" ? "bg-primary text-primary-foreground" : "text-gray-500 hover:bg-gray-50"}`}
-                >
-                  <FileText className="h-3 w-3" /> Uploaded Pricelist
-                </button>
-                <button
-                  type="button"
-                  onClick={() => onBasisChange("DPWH")}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 font-semibold transition-colors ${pricelistBasis === "DPWH" ? "bg-blue-600 text-white" : "text-gray-500 hover:bg-gray-50"}`}
-                >
-                  <Database className="h-3 w-3" /> DPWH CMPD
-                </button>
-              </div>
-              )}
+              <span className="rounded-lg border border-gray-200 bg-gray-100 px-3 py-1.5 text-xs font-semibold text-gray-500">
+                {pricelistBasisLabel(pricelistBasis)}
+              </span>
             </div>
             <button type="button" onClick={onClose} className="flex h-8 w-8 items-center justify-center rounded-full hover:bg-gray-200">
               <X className="h-4 w-4 text-gray-600" />

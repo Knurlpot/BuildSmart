@@ -83,7 +83,8 @@ export const materialRulesFixture: MaterialRuleEntry[] = [
   {
     rule_id: 'mr-1',
     treatment_type: null,
-    treatment_tier: 'Standard',
+    treatment_tier: 'Practical',
+    material_rule_name: null,
     warranty_years: null,
     lifespan_years: null,
     category: 'Structural',
@@ -98,7 +99,8 @@ export const materialRulesFixture: MaterialRuleEntry[] = [
   {
     rule_id: 'mr-2',
     treatment_type: null,
-    treatment_tier: 'Standard',
+    treatment_tier: 'Practical',
+    material_rule_name: null,
     warranty_years: null,
     lifespan_years: null,
     category: 'Structural',
@@ -113,7 +115,8 @@ export const materialRulesFixture: MaterialRuleEntry[] = [
   {
     rule_id: 'mr-3',
     treatment_type: 'Painting',
-    treatment_tier: 'Standard',
+    treatment_tier: 'Practical',
+    material_rule_name: 'Practical Painting Materials',
     warranty_years: 1,
     lifespan_years: 4,
     category: 'Finishing',
@@ -128,7 +131,8 @@ export const materialRulesFixture: MaterialRuleEntry[] = [
   {
     rule_id: 'mr-4',
     treatment_type: 'Painting',
-    treatment_tier: 'Standard',
+    treatment_tier: 'Premium',
+    material_rule_name: 'Premium Painting Materials',
     warranty_years: 1,
     lifespan_years: 3,
     category: 'Finishing',

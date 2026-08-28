@@ -159,8 +159,8 @@ export function ManageExistingRulesTab({ onViewRule }: ManageExistingRulesTabPro
 
     return Array.from(grouped, ([treatmentType, materials]) => {
       const itemNames = materials.map((rule) => rule.preferred_item_name).sort((a, b) => a.localeCompare(b));
-      const tierCounts = ["Practical", "Standard", "Premium"]
-        .map((tier) => `${tier}: ${materials.filter((rule) => (rule.treatment_tier ?? "Standard") === tier).length}`)
+      const tierCounts = ["Practical", "Premium"]
+        .map((tier) => `${tier}: ${materials.filter((rule) => (rule.treatment_tier ?? "Practical") === tier).length}`)
         .join(" · ");
       const latestEffective = materials
         .map((rule) => rule.effective_date)

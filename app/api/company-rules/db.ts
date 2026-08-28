@@ -73,7 +73,7 @@ function materialFallbackToCompanyRuleFallback(fallback: unknown) {
 }
 
 function materialTreatmentTier(value: unknown): MaterialTreatmentTier {
-  return value === "Practical" || value === "Premium" ? value : "Standard";
+  return value === "Premium" ? "Premium" : "Practical";
 }
 
 function quotationTierToStrategyType(tier: unknown) {
@@ -194,6 +194,7 @@ export async function fetchCompanyRules(companyId: number): Promise<CompanyRules
       rule_id: `mr-${row.rule_id}`,
       treatment_type: typeof parsed.treatment_type === "string" ? parsed.treatment_type : null,
       treatment_tier: materialTreatmentTier(parsed.treatment_tier ?? row.strategy_type),
+      material_rule_name: typeof parsed.material_rule_name === "string" ? parsed.material_rule_name : null,
       warranty_years: typeof parsed.warranty_years === "number" ? parsed.warranty_years : null,
       lifespan_years: typeof parsed.lifespan_years === "number" ? parsed.lifespan_years : null,
       category: row.category_type,
@@ -390,6 +391,7 @@ export async function createRule(companyId: number, kind: RuleKindParam, body: R
             priority_source: source,
             treatment_type: body.treatment_type ?? null,
             treatment_tier: materialTreatmentTier(body.treatment_tier),
+            material_rule_name: typeof body.material_rule_name === "string" ? body.material_rule_name : null,
             warranty_years: body.warranty_years ?? null,
             lifespan_years: body.lifespan_years ?? null,
           }),
@@ -683,6 +685,7 @@ export async function updateRule(companyId: number, kind: RuleKindParam, ruleId:
             priority_source: source,
             treatment_type: body.treatment_type ?? null,
             treatment_tier: materialTreatmentTier(body.treatment_tier),
+            material_rule_name: typeof body.material_rule_name === "string" ? body.material_rule_name : null,
             warranty_years: body.warranty_years ?? null,
             lifespan_years: body.lifespan_years ?? null,
           }),

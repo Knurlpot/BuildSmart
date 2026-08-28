@@ -69,9 +69,9 @@ const SOURCE_OPTIONS: { value: QuotationPrioritySource; label: string; icon: typ
 ];
 
 const FALLBACK_OPTIONS: { value: QuotationFallbackRule; label: string; helper: string }[] = [
-  { value: "Use next available source", label: "Next Available Source", helper: "Try the selected source first, then use the other source when a line is missing a rate." },
+  { value: "Use next available source", label: "Next Available Source", helper: "For DPWH CMPD only: use Supplier when a DPWH line is missing a rate." },
   { value: "Use lowest uploaded rate", label: "Lowest Uploaded Rate", helper: "Use the lowest matching rate from the uploaded pricelist entries for each material." },
-  { value: "Flag for manual review", label: "Flag for Manual Review", helper: "Keep missing prices visible so they can be resolved from the quotation card." },
+  { value: "Flag for manual review", label: "Flag for Manual Review", helper: "Keep missing prices visible instead of switching price sources." },
 ];
 
 function buildTierItems(tiers: ProvisionalTier[], makeItems: (tier: ProvisionalTier) => ProvisionalItemLine[]) {
@@ -92,14 +92,9 @@ function deriveTierItemsFromRules(
   dpwhPrices: ReturnType<typeof usePricelistPublishedSource>["dpwhCatalog"]["records"] = [],
   tiers: ProvisionalTier[]
 ): Partial<Record<ProvisionalTier, ProvisionalItemLine[]>> {
-  const companyRuleLines = deriveCompanyRuleItemLines(segments, materialRules, unitRules, items, basis, uploadedPrices, dpwhPrices);
-  if (companyRuleLines) {
-    return buildTierItems(tiers, (tier) =>
-      companyRuleLines.map((line) => ({
-        ...line,
-        line_id: `${line.line_id}-${tier.toLowerCase()}`,
-      }))
-    );
+  const companyRuleItems = buildTierItems(tiers, (tier) => deriveCompanyRuleItemLines(segments, tier, materialRules, unitRules, items, basis, uploadedPrices, dpwhPrices) ?? []);
+  if (Object.values(companyRuleItems).some((lines) => (lines?.length ?? 0) > 0)) {
+    return companyRuleItems;
   }
   return initTierItems(segments, basis, tiers);
 }
@@ -126,6 +121,8 @@ function applyQuotationRuleToLines(
   fallbackRule: QuotationFallbackRule
 ): ProvisionalItemLine[] {
   return lines.map((line) => {
+    if (prioritySource === "Uploaded") return line;
+
     const uploadedOptions = line.supplier_options.filter((option) => option.source_type === "Uploaded");
     const dpwhOptions = line.supplier_options.filter((option) => option.source_type === "DPWH");
     const cheapestUploaded = uploadedOptions.length > 0
@@ -313,7 +310,7 @@ export function QuotationResultsStep({ client, quotation, segments, blueprintFlo
 
   const handlePrioritySourceChange = (source: QuotationPrioritySource) => {
     setPrioritySource(source);
-    if (source === "Uploaded") setFallbackRule("Use next available source");
+    if (source === "Uploaded") setFallbackRule("Flag for manual review");
   };
 
   const tierResults = Object.fromEntries(
@@ -508,7 +505,6 @@ export function QuotationResultsStep({ client, quotation, segments, blueprintFlo
           tier={breakdownTier}
           result={tierResults[breakdownTier]!}
           pricelistBasis={pricelistBasis}
-          onBasisChange={handleBasisChange}
           onClose={() => setBreakdownTier(null)}
           segments={segments}
           blueprintFloors={blueprintFloors}
@@ -547,7 +543,7 @@ export function QuotationResultsStep({ client, quotation, segments, blueprintFlo
                     key={option.value}
                     type="button"
                     onClick={() => setFallbackRule(option.value)}
-                    disabled={prioritySource === "Uploaded" && option.value !== "Use next available source"}
+                    disabled={prioritySource === "Uploaded" && option.value !== "Flag for manual review"}
                     className={`rounded-xl border p-3 text-left transition ${
                       fallbackRule === option.value ? "border-primary bg-orange-50" : "border-gray-200 bg-white hover:bg-gray-50"
                     } disabled:cursor-not-allowed disabled:opacity-50`}

@@ -386,13 +386,14 @@ function buildCompanyRuleLine(
     source_type: basis,
     is_overridden: false,
     pricing_reference: pricingReferenceFor(basis),
-    supplier_options: [...uploadedOptions, ...dpwhOptions],
+    supplier_options: basis === 'DPWH' ? dpwhOptions : uploadedOptions,
     selected_supplier_id: selectedPrice?.historicalrec_id ?? null,
   };
 }
 
 export function deriveCompanyRuleItemLines(
   segments: DraftSegment[],
+  tier: ProvisionalTier,
   materialRules: MaterialRuleEntry[],
   unitRules: UnitRule[],
   items: Items[],
@@ -412,10 +413,9 @@ export function deriveCompanyRuleItemLines(
     const allRulesForTreatment = treatment
       ? activeRules.filter((rule) => rule.treatment_type?.trim().toLowerCase() === treatment)
       : [];
-    const rulesForTreatment = (["Standard", "Practical", "Premium"] as const)
-      .map((tier) => allRulesForTreatment.filter((rule) => (rule.treatment_tier ?? "Standard") === tier))
-      .find((tierRules) => tierRules.length > 0)
-      ?.sort((a, b) => a.material_priority - b.material_priority) ?? [];
+    const rulesForTreatment = allRulesForTreatment
+      .filter((rule) => (rule.treatment_tier ?? "Practical") === tier)
+      .sort((a, b) => a.material_priority - b.material_priority);
 
     if (rulesForTreatment.length === 0) {
       lines.push(buildMissingRuleLine(seg, basis));

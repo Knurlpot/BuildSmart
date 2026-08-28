@@ -24,6 +24,10 @@ const DEFAULT_PRIORITY_SOURCE = "Supplier" as const;
 const DEFAULT_FALLBACK_RULE = "Flag for manual review" as const;
 const TREATMENT_OPTIONS = [...TREATMENT_TYPES];
 const DPWH_SUPPLIER_VALUE = "DPWH";
+const tierBadgeClass = (tier: MaterialTreatmentTier) =>
+  tier === "Premium" ? "bg-[#0000CD]/5 text-[#0000CD]" : "bg-orange-50 text-primary";
+const activeTierFilterClass = (tier: MaterialTreatmentTier) =>
+  tier === "Premium" ? "border-[#0000CD]/40 bg-[#0000CD]/5 text-[#0000CD]" : "border-primary bg-orange-50 text-primary";
 
 interface MaterialRulesFormProps {
   focusRuleId?: string | null;
@@ -76,13 +80,14 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
   // Seeded from the prop at construction, not synced via effect: a jump always remounts
   // this component fresh through CompanyRulesShell.
   const [selectedId, setSelectedId] = useState<string | null>(focusRuleId ?? null);
-  const [mode, setMode] = useState<"idle" | "browse" | "configure" | "edit-group">("idle");
+  const [mode, setMode] = useState<"idle" | "details" | "browse" | "configure" | "edit-group">("idle");
   const [search, setSearch] = useState("");
   const [supplierFilter, setSupplierFilter] = useState<string>(DPWH_SUPPLIER_VALUE);
   const [categoryFilter, setCategoryFilter] = useState<CategoryType | "">("");
   const [checkedCatalogKeys, setCheckedCatalogKeys] = useState<Set<string>>(new Set());
   const [treatmentType, setTreatmentType] = useState("");
-  const [treatmentTier, setTreatmentTier] = useState<MaterialTreatmentTier>("Standard");
+  const [treatmentTier, setTreatmentTier] = useState<MaterialTreatmentTier>("Practical");
+  const [materialRuleName, setMaterialRuleName] = useState("");
   const [warrantyYears, setWarrantyYears] = useState<number | "">("");
   const [lifespanYears, setLifespanYears] = useState<number | "">("");
   const [selectedGroup, setSelectedGroup] = useState<string | null>(null);
@@ -170,7 +175,7 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
 
   const startAdd = () => {
     resetCreate();
-    setMode("browse");
+    setMode("details");
     setSelectedId(null);
     setSelectedGroup(null);
     setSearch("");
@@ -178,7 +183,8 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
     setCategoryFilter("");
     setCheckedCatalogKeys(new Set());
     setTreatmentType("");
-    setTreatmentTier("Standard");
+    setTreatmentTier("Practical");
+    setMaterialRuleName("");
     setWarrantyYears("");
     setLifespanYears("");
     setTouched(false);
@@ -190,13 +196,19 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
     setMode("configure");
   };
 
-  const startEditGroup = (groupName: string) => {
-    const groupRules = groupedRules.find(([name]) => name === groupName)?.[1] ?? [];
+  const treatmentDetailsValid =
+    TREATMENT_OPTIONS.includes(treatmentType as (typeof TREATMENT_OPTIONS)[number]) &&
+    materialRuleName.trim().length > 0;
+
+  const startEditGroup = (groupId: string) => {
+    const groupRules = groupedRules.find(([id]) => id === groupId)?.[1] ?? [];
     const firstWithWarranty = groupRules.find((rule) => rule.warranty_years !== null);
     const firstWithLifespan = groupRules.find((rule) => rule.lifespan_years !== null);
     setMode("edit-group");
-    setTreatmentType(groupName === "No treatment type" ? "" : groupName);
-    setTreatmentTier(groupRules[0]?.treatment_tier ?? "Standard");
+    const groupTreatment = groupRules[0]?.treatment_type?.trim() || "No treatment type";
+    setTreatmentType(groupTreatment === "No treatment type" ? "" : groupTreatment);
+    setTreatmentTier(groupRules[0]?.treatment_tier ?? "Practical");
+    setMaterialRuleName(groupRules[0]?.material_rule_name ?? "");
     setWarrantyYears(firstWithWarranty?.warranty_years ?? "");
     setLifespanYears(firstWithLifespan?.lifespan_years ?? "");
     setTouched(false);
@@ -206,6 +218,7 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
   const allConfigValid =
     checkedItems.length > 0 &&
     TREATMENT_OPTIONS.includes(treatmentType as (typeof TREATMENT_OPTIONS)[number]) &&
+    materialRuleName.trim().length > 0 &&
     warrantyYears !== "" &&
     Number(warrantyYears) > 0 &&
     lifespanYears !== "" &&
@@ -223,6 +236,7 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
         const payload = {
           treatment_type: treatmentType.trim() || null,
           treatment_tier: treatmentTier,
+          material_rule_name: materialRuleName.trim(),
           warranty_years: Number(warrantyYears),
           lifespan_years: Number(lifespanYears),
           category,
@@ -241,7 +255,7 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
         });
       }
       setMode("idle");
-      setSelectedGroup(treatmentType.trim() || "No treatment type");
+      setSelectedGroup(`${treatmentType.trim() || "No treatment type"}::${treatmentTier}`);
       setSavedMessage(true);
     } catch {
       // surfaced via editable.saveError below — no fabricated success
@@ -257,6 +271,7 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
       const payload = {
           treatment_type: nextGroup,
           treatment_tier: treatmentTier,
+          material_rule_name: selectedGroupRules[0]?.material_rule_name ?? null,
           warranty_years: Number(warrantyYears),
         lifespan_years: Number(lifespanYears),
         category: rule.category,
@@ -272,7 +287,7 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
     if (savedAny) {
       setMode("idle");
       setSelectedId(null);
-      setSelectedGroup(nextGroup || "No treatment type");
+      setSelectedGroup(`${nextGroup || "No treatment type"}::${treatmentTier}`);
       setSavedMessage(true);
     }
   };
@@ -280,33 +295,48 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
   const selected = allRules.find((r) => r.rule_id === selectedId) ?? null;
   const groupedRules = Array.from(
     allRules.reduce((groups, rule) => {
-      const key = rule.treatment_type?.trim() || "No treatment type";
+      const treatment = rule.treatment_type?.trim() || "No treatment type";
+      const key = `${treatment}::${rule.treatment_tier ?? "Practical"}`;
       const list = groups.get(key) ?? [];
       list.push(rule);
       groups.set(key, list);
       return groups;
     }, new Map<string, MaterialRuleEntry[]>())
-  ).sort(([a], [b]) => a.localeCompare(b));
+  ).sort(([, aRules], [, bRules]) => {
+    const aTreatment = aRules[0]?.treatment_type?.trim() || "No treatment type";
+    const bTreatment = bRules[0]?.treatment_type?.trim() || "No treatment type";
+    const treatmentSort = aTreatment.localeCompare(bTreatment);
+    if (treatmentSort !== 0) return treatmentSort;
+    return (aRules[0]?.treatment_tier ?? "Practical").localeCompare(bRules[0]?.treatment_tier ?? "Practical");
+  });
   const [statusFilter, setStatusFilter] = useState<"active" | "disabled">("active");
+  const [tierFilter, setTierFilter] = useState<MaterialTreatmentTier | null>(null);
   const visibleGroupedRules = groupedRules.filter(([, groupRules]) =>
-    groupRules.some((rule) => rule.is_active) === (statusFilter === "active")
+    groupRules.some((rule) => rule.is_active) === (statusFilter === "active") &&
+    (tierFilter === null || groupRules.some((rule) => (rule.treatment_tier ?? "Practical") === tierFilter))
   );
   const selectedGroupName =
-    mode === "browse" || mode === "configure"
+    mode === "details" || mode === "browse" || mode === "configure"
       ? null
-      : selectedGroup ?? selected?.treatment_type?.trim() ?? visibleGroupedRules[0]?.[0] ?? null;
+      : selectedGroup ?? (selected ? `${selected.treatment_type?.trim() || "No treatment type"}::${selected.treatment_tier ?? "Practical"}` : null) ?? visibleGroupedRules[0]?.[0] ?? null;
   const selectedGroupRules = groupedRules.find(([group]) => group === selectedGroupName)?.[1] ?? [];
+  const treatmentNameForGroup = (groupRules: MaterialRuleEntry[]) => groupRules[0]?.treatment_type?.trim() || "No treatment type";
   const groupWarrantyLabel = (groupRules: MaterialRuleEntry[]) => {
     const years = Math.max(0, ...groupRules.map((rule) => rule.warranty_years ?? 0));
     return years > 0 ? `${years} year${years === 1 ? "" : "s"}` : "None";
   };
+  const groupEffectiveDateLabel = (groupRules: MaterialRuleEntry[]) =>
+    groupRules
+      .map((rule) => rule.effective_date)
+      .sort()
+      .at(-1) ?? "Not set";
   const groupLifespanLabel = (groupRules: MaterialRuleEntry[]) => {
     const years = Math.max(0, ...groupRules.map((rule) => rule.lifespan_years ?? 0));
     return years > 0 ? `${years} year${years === 1 ? "" : "s"}` : "Not set";
   };
   const groupTierLabel = (groupRules: MaterialRuleEntry[]) => {
-    const tiers = MATERIAL_TREATMENT_TIERS.filter((tier) => groupRules.some((rule) => (rule.treatment_tier ?? "Standard") === tier));
-    return tiers.length > 0 ? tiers.join(", ") : "Standard";
+    const tiers = MATERIAL_TREATMENT_TIERS.filter((tier) => groupRules.some((rule) => (rule.treatment_tier ?? "Practical") === tier));
+    return tiers.length > 0 ? tiers.join(", ") : "Practical";
   };
   const groupStatusLabel = (groupRules: MaterialRuleEntry[]) => groupRules.some((rule) => rule.is_active) ? "Active" : "Disabled";
   const groupEditValid =
@@ -371,7 +401,7 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
         emptyHint="Add materials from your catalog and tag them with a treatment type."
         countLabel={`${allRules.length} configured`}
         listHeader={
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-4 gap-2">
             {(["active", "disabled"] as const).map((filter) => (
               <button
                 key={filter}
@@ -391,12 +421,31 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
                 {filter}
               </button>
             ))}
+            {MATERIAL_TREATMENT_TIERS.map((tier) => (
+              <button
+                key={tier}
+                type="button"
+                onClick={() => {
+                  setTierFilter((current) => (current === tier ? null : tier));
+                  setMode("idle");
+                  setSelectedId(null);
+                  setSelectedGroup(null);
+                }}
+                className={`min-h-9 rounded-lg border px-3 py-2 text-center text-xs font-semibold transition ${
+                  tierFilter === tier
+                    ? activeTierFilterClass(tier)
+                    : "border-gray-200 bg-white text-gray-500 hover:border-gray-300"
+                }`}
+              >
+                {tier}
+              </button>
+            ))}
           </div>
         }
-        renderListItem={([group, groupRules]) => (
+        renderListItem={([, groupRules]) => (
           <div className="flex flex-col gap-1">
             <div className="flex items-center justify-between gap-2">
-              <span className="truncate text-sm font-semibold text-gray-800">{group}</span>
+              <span className="truncate text-sm font-semibold text-gray-800">{treatmentNameForGroup(groupRules)}</span>
               <div className="flex shrink-0 items-center gap-1.5">
                 <span
                   className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
@@ -405,7 +454,7 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
                 >
                   {groupStatusLabel(groupRules)}
                 </span>
-                <span className="rounded-full bg-orange-50 px-2 py-0.5 text-[10px] font-bold text-primary">
+                <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${tierBadgeClass((groupRules[0]?.treatment_tier ?? "Practical") as MaterialTreatmentTier)}`}>
                   {groupTierLabel(groupRules)}
                 </span>
               </div>
@@ -413,14 +462,101 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
             <div className="grid gap-0.5 text-xs text-gray-400">
               <span>Warranty: {groupWarrantyLabel(groupRules)}</span>
               <span>Lifespan: {groupLifespanLabel(groupRules)}</span>
+              <span>Effective Date: {groupEffectiveDateLabel(groupRules)}</span>
             </div>
           </div>
         )}
         detail={
-          mode === "browse" ? (
+          mode === "details" ? (
             <div className="flex flex-col gap-3">
               <div className="flex items-center justify-between">
-                <p className="text-sm font-bold text-gray-900">Add Materials</p>
+                <p className="text-sm font-bold text-gray-900">Add Treatment</p>
+                <button type="button" onClick={() => setMode("idle")} className="text-gray-300 hover:text-gray-500">
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+
+              <div className="flex flex-col gap-1.5">
+                <label htmlFor="material-rule-name" className="text-xs font-semibold text-gray-600">
+                  Material Rule Name <span className="text-red-500">*</span>
+                </label>
+                <input
+                  id="material-rule-name"
+                  value={materialRuleName}
+                  onChange={(e) => setMaterialRuleName(e.target.value)}
+                  placeholder="e.g. Premium Exterior Painting System"
+                  className={inputCls}
+                />
+                {touched && materialRuleName.trim().length === 0 && (
+                  <p className="text-xs text-red-500">Material rule name is required.</p>
+                )}
+              </div>
+
+              <div className="flex flex-col gap-1.5">
+                <label htmlFor="material-treatment-type" className="text-xs font-semibold text-gray-600">
+                  Treatment Type <span className="text-red-500">*</span>
+                </label>
+                <select
+                  id="material-treatment-type"
+                  value={treatmentType}
+                  onChange={(e) => setTreatmentType(e.target.value)}
+                  className={inputCls}
+                >
+                  <option value="">Select treatment type...</option>
+                  {TREATMENT_OPTIONS.map((type) => (
+                    <option key={type} value={type}>
+                      {type}
+                    </option>
+                  ))}
+                </select>
+                {touched && !TREATMENT_OPTIONS.includes(treatmentType as (typeof TREATMENT_OPTIONS)[number]) && (
+                  <p className="text-xs text-red-500">Choose one of BuildSmart&apos;s treatment types.</p>
+                )}
+              </div>
+
+              <div className="flex flex-col gap-1.5">
+                <label className="text-xs font-semibold text-gray-600">
+                  Treatment Level <span className="text-red-500">*</span>
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  {MATERIAL_TREATMENT_TIERS.map((tier) => (
+                    <button
+                      key={tier}
+                      type="button"
+                      onClick={() => setTreatmentTier(tier)}
+                      className={`rounded-lg border px-3 py-2 text-xs font-bold transition ${
+                        treatmentTier === tier
+                          ? activeTierFilterClass(tier)
+                          : "border-gray-200 bg-white text-gray-500 hover:border-gray-300"
+                      }`}
+                    >
+                      {tier}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setTouched(true);
+                  if (treatmentDetailsValid) {
+                    setTouched(false);
+                    setMode("browse");
+                  }
+                }}
+                className="w-fit rounded-xl bg-primary px-5 py-2.5 text-sm font-bold text-primary-foreground shadow-sm transition hover:bg-(--primary-hover)"
+              >
+                Continue to Materials
+              </button>
+            </div>
+          ) : mode === "browse" ? (
+            <div className="flex flex-col gap-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-bold text-gray-900">Select Materials</p>
+                  <p className="text-xs text-gray-400">{materialRuleName} · {treatmentType} · {treatmentTier}</p>
+                </div>
                 <button type="button" onClick={() => setMode("idle")} className="text-gray-300 hover:text-gray-500">
                   <X className="h-4 w-4" />
                 </button>
@@ -516,60 +652,13 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
           ) : mode === "configure" ? (
             <div className="flex flex-col gap-3">
               <div className="flex items-center justify-between">
-                <p className="text-sm font-bold text-gray-900">Set Treatment Type</p>
+                <div>
+                  <p className="text-sm font-bold text-gray-900">Warranty & Lifespan</p>
+                  <p className="text-xs text-gray-400">{materialRuleName} · {treatmentType} · {treatmentTier}</p>
+                </div>
                 <button type="button" onClick={() => setMode("idle")} className="text-gray-300 hover:text-gray-500">
                   <X className="h-4 w-4" />
                 </button>
-              </div>
-
-              <div className="flex flex-col gap-1.5">
-                <label htmlFor="material-treatment-type" className="text-xs font-semibold text-gray-600">
-                  Treatment Type <span className="text-red-500">*</span>
-                </label>
-                <select
-                  id="material-treatment-type"
-                  value={treatmentType}
-                  onChange={(e) => setTreatmentType(e.target.value)}
-                  className={inputCls}
-                >
-                  <option value="">Select treatment type...</option>
-                  {TREATMENT_OPTIONS.map((type) => (
-                    <option key={type} value={type}>
-                      {type}
-                    </option>
-                  ))}
-                </select>
-                <p className="text-[11px] text-gray-400">
-                  Quick quotation uses this to match a segment&apos;s treatment to these materials.
-                </p>
-                {touched && !TREATMENT_OPTIONS.includes(treatmentType as (typeof TREATMENT_OPTIONS)[number]) && (
-                  <p className="text-xs text-red-500">Choose one of BuildSmart&apos;s treatment types.</p>
-                )}
-              </div>
-
-              <div className="flex flex-col gap-1.5">
-                <label className="text-xs font-semibold text-gray-600">
-                  Treatment Level <span className="text-red-500">*</span>
-                </label>
-                <div className="grid grid-cols-3 gap-2">
-                  {MATERIAL_TREATMENT_TIERS.map((tier) => (
-                    <button
-                      key={tier}
-                      type="button"
-                      onClick={() => setTreatmentTier(tier)}
-                      className={`rounded-lg border px-3 py-2 text-xs font-bold transition ${
-                        treatmentTier === tier
-                          ? "border-primary bg-orange-50 text-primary"
-                          : "border-gray-200 bg-white text-gray-500 hover:border-gray-300"
-                      }`}
-                    >
-                      {tier}
-                    </button>
-                  ))}
-                </div>
-                <p className="text-[11px] text-gray-400">
-                  Standard is used first. If no Standard materials exist for a treatment, BuildSmart falls back to Practical, then Premium.
-                </p>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
@@ -673,9 +762,9 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
 
               <div className="rounded-xl border border-gray-100 bg-gray-50/60 p-3">
                 <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Treatment Group</p>
-                <p className="text-sm font-semibold text-gray-800">{selectedGroupName}</p>
+                <p className="text-sm font-semibold text-gray-800">{treatmentNameForGroup(selectedGroupRules)}</p>
                 <p className="text-xs text-gray-400">
-                  {selectedGroupRules.length} material{selectedGroupRules.length === 1 ? "" : "s"}
+                  {groupTierLabel(selectedGroupRules)}
                 </p>
               </div>
 
@@ -705,7 +794,7 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
                 <label className="text-xs font-semibold text-gray-600">
                   Treatment Level <span className="text-red-500">*</span>
                 </label>
-                <div className="grid grid-cols-3 gap-2">
+                <div className="grid grid-cols-2 gap-2">
                   {MATERIAL_TREATMENT_TIERS.map((tier) => (
                     <button
                       key={tier}
@@ -802,16 +891,28 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
               <div className="rounded-xl border border-gray-100 bg-gray-50/60 p-4">
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <p className="text-lg font-bold text-gray-900">{selectedGroupName}</p>
-                    <p className="text-sm text-gray-500">Treatment Type: {selectedGroupName}</p>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="text-lg font-bold text-gray-900">{treatmentNameForGroup(selectedGroupRules)}</p>
+                      <span
+                        className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                          selectedGroupRules.some((rule) => rule.is_active) ? "bg-green-50 text-green-700" : "bg-gray-100 text-gray-400"
+                        }`}
+                      >
+                        {groupStatusLabel(selectedGroupRules)}
+                      </span>
+                      <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${tierBadgeClass((selectedGroupRules[0]?.treatment_tier ?? "Practical") as MaterialTreatmentTier)}`}>
+                        {groupTierLabel(selectedGroupRules)}
+                      </span>
+                    </div>
+                    <p className="text-sm text-gray-500">Treatment Type: {treatmentNameForGroup(selectedGroupRules)}</p>
                     <p className="mt-1 text-xs text-gray-400">
-                      Warranty: {groupWarrantyLabel(selectedGroupRules)} · Lifespan: {groupLifespanLabel(selectedGroupRules)}
+                      Warranty: {groupWarrantyLabel(selectedGroupRules)}
                     </p>
                     <p className="mt-1 text-xs text-gray-400">
-                      Status: {groupStatusLabel(selectedGroupRules)} · Level: {groupTierLabel(selectedGroupRules)}
+                      Lifespan: {groupLifespanLabel(selectedGroupRules)}
                     </p>
                     <p className="mt-1 text-xs text-gray-400">
-                      Default level: Standard · Fallback: Practical, then Premium
+                      Effective Date: {groupEffectiveDateLabel(selectedGroupRules)}
                     </p>
                 </div>
                   <div className="flex shrink-0 gap-2">
@@ -850,17 +951,7 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
                         <div className="min-w-0">
                           <p className="truncate text-sm font-semibold text-gray-800">{rule.preferred_item_name}</p>
                           <p className="truncate text-xs text-gray-400">{rule.category}</p>
-                          <p className="mt-0.5 text-[11px] text-gray-400">Effective {rule.effective_date}</p>
                         </div>
-                        <span className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-bold ${
-                          (rule.treatment_tier ?? "Standard") === "Standard"
-                            ? "bg-orange-50 text-primary"
-                            : (rule.treatment_tier ?? "Standard") === "Premium"
-                              ? "bg-blue-50 text-blue-700"
-                              : "bg-gray-100 text-gray-600"
-                        }`}>
-                          {rule.treatment_tier ?? "Standard"}
-                        </span>
                       </div>
                     ))}
                 </div>
