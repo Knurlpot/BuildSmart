@@ -5,7 +5,6 @@ import { useParams, useRouter } from "next/navigation";
 import {
   ArrowLeft,
   Award,
-  ChevronDown,
   CheckCircle2,
   Clock,
   History,
@@ -198,11 +197,6 @@ function QuoteSummaryCard({
               ))}
             </select>
           )}
-          {!isOriginal && (
-            <p className="text-[10px] text-gray-400">
-              The version finalized on {formatDateTime(snapshot.finalized_at)} is preserved. Refreshing never overwrites it.
-            </p>
-          )}
         </div>
       </div>
 
@@ -238,7 +232,6 @@ function ProjectDetailContent({ projectId }: { projectId: string }) {
   const { rules: materialRules } = useMaterialRules();
   const project = projects.find((p) => p.project_id === projectId);
   const [breakdown, setBreakdown] = useState<{ tier: ProvisionalTier; versionId: string } | null>(null);
-  const [clientDetailsOpen, setClientDetailsOpen] = useState(true);
 
   if (!project) {
     return (
@@ -273,7 +266,7 @@ function ProjectDetailContent({ projectId }: { projectId: string }) {
 
   return (
     <div className="flex flex-col gap-5">
-      <div className="flex items-start gap-3">
+      <div className="flex items-start justify-between gap-3">
         <button
           type="button"
           onClick={() => router.push("/projects")}
@@ -281,6 +274,15 @@ function ProjectDetailContent({ projectId }: { projectId: string }) {
           className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-gray-200 bg-white text-gray-500 transition hover:border-primary hover:text-primary"
         >
           <ArrowLeft className="h-4 w-4" />
+        </button>
+        <button
+          type="button"
+          onClick={handleRefresh}
+          title="Refresh Practical and Premium prices"
+          aria-label="Refresh Practical and Premium prices"
+          className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-gray-200 bg-white text-gray-500 transition hover:border-primary hover:text-primary"
+        >
+          <RefreshCw className="h-4 w-4" />
         </button>
       </div>
 
@@ -314,31 +316,11 @@ function ProjectDetailContent({ projectId }: { projectId: string }) {
                 <span className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${client.status === "Active" ? "bg-green-50 text-green-700" : "bg-gray-100 text-gray-500"}`}>
                   {client.status}
                 </span>
-                <button
-                  type="button"
-                  onClick={() => setClientDetailsOpen((open) => !open)}
-                  title={clientDetailsOpen ? "Hide client contact details" : "Show client contact details"}
-                  aria-label={clientDetailsOpen ? "Hide client contact details" : "Show client contact details"}
-                  aria-expanded={clientDetailsOpen}
-                  className="flex h-8 w-8 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-500 transition hover:border-primary hover:text-primary"
-                >
-                  <ChevronDown className={`h-3.5 w-3.5 transition-transform ${clientDetailsOpen ? "rotate-180" : ""}`} />
-                </button>
-                <button
-                  type="button"
-                  onClick={handleRefresh}
-                  title="Refresh Practical and Premium prices"
-                  aria-label="Refresh Practical and Premium prices"
-                  className="flex h-8 w-8 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-500 transition hover:border-primary hover:text-primary"
-                >
-                  <RefreshCw className="h-3.5 w-3.5" />
-                </button>
               </div>
             </div>
 
-            {clientDetailsOpen && (
-              <div className="grid gap-x-6 gap-y-5 py-4 sm:grid-cols-2">
-                {[
+            <div className="grid gap-x-6 gap-y-5 py-4 sm:grid-cols-2">
+              {[
                 { icon: UserRound, label: "Contact Person", value: client.contact_person || "Not provided" },
                 { icon: Mail, label: "Email", value: client.contact_email || "Not provided" },
                 { icon: Phone, label: "Phone", value: client.contact_number || "Not provided" },
@@ -354,10 +336,9 @@ function ProjectDetailContent({ projectId }: { projectId: string }) {
                   </div>
                 </div>
               ))}
-              </div>
-            )}
+            </div>
 
-            <div className={`grid gap-3 sm:grid-cols-2 ${clientDetailsOpen ? "border-t border-gray-100 pt-4" : "py-4"}`}>
+            <div className="grid gap-3 border-t border-gray-100 pt-4 sm:grid-cols-2">
               {[
                 ["Project Name", project.project_name],
                 ["Project Location", project.project_location],
