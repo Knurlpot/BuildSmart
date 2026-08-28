@@ -5,8 +5,7 @@ import { AlertTriangle, ArrowLeft, CheckCircle2, FileText, FileWarning, Upload a
 import { useBlueprintExtraction, useBlueprintRescan } from "@/hooks/useQuotationGeneration";
 import { BlueprintOverlay } from "./BlueprintOverlay";
 import { SegmentEditorList } from "./SegmentEditorList";
-import { confidenceBand, createSegmentFromExtraction, isSegmentIncluded, type DraftSegment, type SegmentPolygon } from "../lib/draftSegment";
-import { resetBlueprintReview, rescanBlueprintReview } from "../lib/blueprintReviewActions.mjs";
+import { confidenceBand, createManualSegment, createSegmentFromExtraction, isSegmentIncluded, type DraftSegment, type SegmentPolygon } from "../lib/draftSegment";
 import type { BlueprintFloor } from "@/lib/dev/provisional/quotationGenerationTypes";
 
 const ACCEPTED_EXTENSIONS = [".pdf", ".dxf"];
@@ -34,6 +33,16 @@ function boundsForPoints(points: [number, number][]): [number, number, number, n
 function segmentPolygons(segment: { polygon_coords: SegmentPolygon | null; polygon_groups?: SegmentPolygon[] | null }): SegmentPolygon[] {
   if (segment.polygon_groups?.length) return segment.polygon_groups;
   return segment.polygon_coords ? [segment.polygon_coords] : [];
+}
+
+function segmentFingerprint(segment: { segment_name: string; area_sqm: number; polygon_coords: SegmentPolygon | null; polygon_groups?: SegmentPolygon[] | null }): string {
+  const bounds = boundsForPoints(segmentPolygons(segment).flat());
+  const roundedBounds = bounds?.map((value) => Math.round(value / 12) * 12).join(",");
+  return [
+    segment.segment_name.trim().toLowerCase(),
+    Math.round(segment.area_sqm * 10) / 10,
+    roundedBounds ?? "no-bounds",
+  ].join("|");
 }
 
 function paddedBounds(
@@ -91,30 +100,68 @@ function splitSingleSheetFloorIntoTabs(floors: BlueprintFloor[]): BlueprintFloor
   const yValues = segmentCenters.map((item) => item.y);
   const xSplit = bestAxisSplit(xValues, 0, floor.image_width) ?? (segmentCenters.length >= 80 ? medianAxisSplit(xValues) : null);
   const ySplit = bestAxisSplit(yValues, 0, floor.image_height) ?? (segmentCenters.length >= 80 ? medianAxisSplit(yValues) : null);
-  if (xSplit === null || ySplit === null) return floors;
+  if (xSplit === null && ySplit === null) return floors;
 
-  const groups = [
-    {
-      name: "Floor Plan 1",
-      bounds: [0, 0, xSplit, ySplit] as [number, number, number, number],
-      items: segmentCenters.filter((item) => item.x <= xSplit && item.y <= ySplit),
-    },
-    {
-      name: "Floor Plan 2",
-      bounds: [xSplit, 0, floor.image_width, ySplit] as [number, number, number, number],
-      items: segmentCenters.filter((item) => item.x > xSplit && item.y <= ySplit),
-    },
-    {
-      name: "Floor Plan 3",
-      bounds: [xSplit, ySplit, floor.image_width, floor.image_height] as [number, number, number, number],
-      items: segmentCenters.filter((item) => item.x > xSplit && item.y > ySplit),
-    },
-    {
-      name: "Ground Floor Plan",
-      bounds: [0, ySplit, xSplit, floor.image_height] as [number, number, number, number],
-      items: segmentCenters.filter((item) => item.x <= xSplit && item.y > ySplit),
-    },
-  ].filter((group) => group.items.length >= Math.max(3, Math.floor(segmentCenters.length * 0.08)));
+  const twoColumnGroups = xSplit === null
+    ? []
+    : [
+        {
+          name: "Ground Floor Plan",
+          bounds: [0, 0, xSplit, floor.image_height] as [number, number, number, number],
+          items: segmentCenters.filter((item) => item.x <= xSplit),
+        },
+        {
+          name: "Second Floor Plan",
+          bounds: [xSplit, 0, floor.image_width, floor.image_height] as [number, number, number, number],
+          items: segmentCenters.filter((item) => item.x > xSplit),
+        },
+      ];
+  const twoRowGroups = ySplit === null
+    ? []
+    : [
+        {
+          name: "Ground Floor Plan",
+          bounds: [0, 0, floor.image_width, ySplit] as [number, number, number, number],
+          items: segmentCenters.filter((item) => item.y <= ySplit),
+        },
+        {
+          name: "Second Floor Plan",
+          bounds: [0, ySplit, floor.image_width, floor.image_height] as [number, number, number, number],
+          items: segmentCenters.filter((item) => item.y > ySplit),
+        },
+      ];
+  const quadrantGroups =
+    xSplit === null || ySplit === null
+      ? []
+      : [
+          {
+            name: "Floor Plan 1",
+            bounds: [0, 0, xSplit, ySplit] as [number, number, number, number],
+            items: segmentCenters.filter((item) => item.x <= xSplit && item.y <= ySplit),
+          },
+          {
+            name: "Floor Plan 2",
+            bounds: [xSplit, 0, floor.image_width, ySplit] as [number, number, number, number],
+            items: segmentCenters.filter((item) => item.x > xSplit && item.y <= ySplit),
+          },
+          {
+            name: "Floor Plan 3",
+            bounds: [xSplit, ySplit, floor.image_width, floor.image_height] as [number, number, number, number],
+            items: segmentCenters.filter((item) => item.x > xSplit && item.y > ySplit),
+          },
+          {
+            name: "Floor Plan 4",
+            bounds: [0, ySplit, xSplit, floor.image_height] as [number, number, number, number],
+            items: segmentCenters.filter((item) => item.x <= xSplit && item.y > ySplit),
+          },
+        ];
+
+  const minimumGroupSize = Math.max(3, Math.floor(segmentCenters.length * 0.08));
+  const candidateGroups = [quadrantGroups, twoColumnGroups, twoRowGroups]
+    .map((candidate) => candidate.filter((group) => group.items.length >= minimumGroupSize))
+    .filter((candidate) => candidate.length >= 2)
+    .sort((a, b) => b.length - a.length || Math.min(...b.map((group) => group.items.length)) - Math.min(...a.map((group) => group.items.length)));
+  const groups = candidateGroups[0] ?? [];
 
   if (groups.length < 2) return floors;
 
@@ -128,13 +175,68 @@ function splitSingleSheetFloorIntoTabs(floors: BlueprintFloor[]): BlueprintFloor
       floor_level: floorLevel,
       floor_name: floorLevel,
       focus_bounds: focusBounds ? paddedBounds(focusBounds, floor.image_width, floor.image_height, group.bounds) : floor.focus_bounds,
-      viewport_bbox: focusBounds ?? floor.viewport_bbox,
+      viewport_bbox: group.bounds,
       segments: group.items.map((item, segmentIndex) => ({
         ...item.segment,
         segment_id: `segment_f${index + 1}_${String(segmentIndex + 1).padStart(2, "0")}`,
       })),
     };
   });
+}
+
+function createManualSegmentForFloor(floor: BlueprintFloor): DraftSegment {
+  const draft = createManualSegment("New Segment");
+  const bounds = floor.focus_bounds ?? floor.viewport_bbox ?? [0, 0, floor.image_width, floor.image_height];
+  const [minX, minY, maxX, maxY] = bounds;
+  const width = Math.max(maxX - minX, 1);
+  const height = Math.max(maxY - minY, 1);
+  const boxWidth = Math.max(width * 0.18, 48);
+  const boxHeight = Math.max(height * 0.18, 48);
+  const centerX = minX + width / 2;
+  const centerY = minY + height / 2;
+  const left = Math.max(0, Math.min(centerX - boxWidth / 2, floor.image_width - boxWidth));
+  const top = Math.max(0, Math.min(centerY - boxHeight / 2, floor.image_height - boxHeight));
+  const polygon: SegmentPolygon = [
+    [left, top],
+    [left + boxWidth, top],
+    [left + boxWidth, top + boxHeight],
+    [left, top + boxHeight],
+  ];
+  return {
+    ...draft,
+    floor_level: floor.floor_level,
+    polygon_coords: polygon,
+    polygon_groups: [polygon],
+    geometry_flagged: true,
+    geometry_warnings: ["Manual highlight added; adjust the shape before confirming."],
+    boundary_estimated: true,
+    confirmed: false,
+  };
+}
+
+function isFullSheetBounds(bounds: [number, number, number, number] | null | undefined, imageWidth: number, imageHeight: number): boolean {
+  if (!bounds) return true;
+  const [minX, minY, maxX, maxY] = bounds;
+  return minX <= imageWidth * 0.02 && minY <= imageHeight * 0.02 && maxX >= imageWidth * 0.98 && maxY >= imageHeight * 0.98;
+}
+
+function displayBoundsForFloor(floors: BlueprintFloor[], floor: BlueprintFloor): [number, number, number, number] | null {
+  const explicitBounds = floor.viewport_bbox ?? floor.focus_bounds ?? null;
+  const sameImageFloors = floors.filter(
+    (candidate) =>
+      candidate.image_url === floor.image_url &&
+      candidate.image_width === floor.image_width &&
+      candidate.image_height === floor.image_height,
+  );
+  if (sameImageFloors.length < 2) return explicitBounds;
+
+  const index = sameImageFloors.findIndex((candidate) => candidate.floor_level === floor.floor_level);
+  const lowerName = floor.floor_level.toLowerCase();
+  if (lowerName.includes("ground")) return [0, 0, floor.image_width / 2, floor.image_height];
+  if (lowerName.includes("second") || lowerName.includes("upper") || index === 1) return [floor.image_width / 2, 0, floor.image_width, floor.image_height];
+  if (index > 1) return null;
+  if (!isFullSheetBounds(explicitBounds, floor.image_width, floor.image_height)) return explicitBounds;
+  return index === 0 ? [0, 0, floor.image_width / 2, floor.image_height] : [floor.image_width / 2, 0, floor.image_width, floor.image_height];
 }
 
 function confidenceSummary(segments: DraftSegment[]) {
@@ -185,7 +287,6 @@ export function BlueprintUploadPanel({
   onBack,
   floors,
   onFloorsChange,
-  originalFloors,
   onOriginalFloorsChange,
   blueprintFilePath,
   onBlueprintFilePathChange,
@@ -199,6 +300,8 @@ export function BlueprintUploadPanel({
   const [selectedFloor, setSelectedFloor] = useState<string | null>(floors?.[0]?.floor_level ?? null);
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [overlayScanning, setOverlayScanning] = useState(false);
+  const [openedFloorLevels, setOpenedFloorLevels] = useState<Set<string>>(new Set());
+  const [confirmedGroupingFloorLevels, setConfirmedGroupingFloorLevels] = useState<Set<string>>(new Set());
   const fileRef = useRef<HTMLInputElement>(null);
 
   const handleFileSelected = (file: File) => {
@@ -220,6 +323,8 @@ export function BlueprintUploadPanel({
     setSelectedFloor(null);
     setHoveredId(null);
     setOverlayScanning(false);
+    setOpenedFloorLevels(new Set());
+    setConfirmedGroupingFloorLevels(new Set());
     setSelectedFile(file);
   };
 
@@ -237,6 +342,8 @@ export function BlueprintUploadPanel({
       onOriginalFloorsChange(splitFloors);
       onBlueprintFilePathChange(result.blueprint_file_path ?? null);
       setSelectedFloor(splitFloors[0]?.floor_level ?? null);
+      setOpenedFloorLevels(new Set());
+      setConfirmedGroupingFloorLevels(new Set());
       // Segments are seeded into the SAME wizard-level list Quick Measurement writes to —
       // "MUST VALIDATE" (edit/delete/group/add) below is just further edits to it, not a
       // separate staging area. Nothing is sent to the backend until Step 3's final save.
@@ -263,52 +370,33 @@ export function BlueprintUploadPanel({
     setHoveredId(null);
   };
 
-  // Part E — the actual restart: every edit/grouping/deletion/manual-add since the first
-  // scan is discarded, replaced with a fresh reconstruction of the original detection.
-  const handleRescanConfirmed = async () => {
+  const handleScanCurrentFloor = async () => {
     if (selectedFile) {
-      const nonBlueprintSegments = segments.filter((segment) => segment.source_method !== "Blueprint");
       try {
-        setOverlayScanning(false);
         const result = await extractBlueprint(quoteId, selectedFile);
         const splitFloors = splitSingleSheetFloorIntoTabs(result.floors);
-        onFloorsChange(splitFloors);
-        onOriginalFloorsChange(splitFloors);
-        setSelectedFloor(splitFloors[0]?.floor_level ?? null);
-        onChange([
-          ...nonBlueprintSegments,
-          ...splitFloors.flatMap((floor) => floor.segments.map((seg) => createSegmentFromExtraction(seg, floor.floor_level))),
-        ]);
-        setHoveredId(null);
+        const rescannedFloor = splitFloors.find((floor) => floor.floor_level === currentFloor.floor_level) ?? splitFloors[0];
+        const existingKeys = new Set(floorSegments.map(segmentFingerprint));
+        const newSegments = rescannedFloor.segments
+          .map((seg) => createSegmentFromExtraction(seg, currentFloor.floor_level))
+          .filter((seg) => !existingKeys.has(segmentFingerprint(seg)));
+        if (newSegments.length > 0) onChange([...segments, ...newSegments]);
         return;
       } catch {
         // surfaced via extractError below; fall back to the saved extraction if present
       }
     }
-    if (!originalFloors) return;
-    const reset = resetBlueprintReview(originalFloors, (nextFloors: BlueprintFloor[]) =>
-      nextFloors.flatMap((floor) => floor.segments.map((seg) => createSegmentFromExtraction(seg, floor.floor_level))),
-    );
-    onChange(reset.segments);
-    onFloorsChange(reset.floors);
-    setSelectedFloor(originalFloors[0]?.floor_level ?? null);
-    setHoveredId(null);
-  };
-
-  const handleGenuineRescan = async () => {
     if (!blueprintFilePath) return;
     try {
-      const rescanned = await rescanBlueprintReview(
-        () => rescanBlueprint(quoteId),
-        (nextFloors: BlueprintFloor[]) => nextFloors.flatMap((floor) => floor.segments.map((seg) => createSegmentFromExtraction(seg, floor.floor_level))),
-      );
-      const result = rescanned.result;
-      onFloorsChange(rescanned.floors);
-      onOriginalFloorsChange(rescanned.floors);
+      const result = await rescanBlueprint(quoteId);
+      const splitFloors = splitSingleSheetFloorIntoTabs(result.floors);
+      const rescannedFloor = splitFloors.find((floor) => floor.floor_level === currentFloor.floor_level) ?? splitFloors[0];
       onBlueprintFilePathChange(result.blueprint_file_path ?? blueprintFilePath);
-      setSelectedFloor(result.floors[0]?.floor_level ?? null);
-      setHoveredId(null);
-      onChange(rescanned.segments);
+      const existingKeys = new Set(floorSegments.map(segmentFingerprint));
+      const newSegments = rescannedFloor.segments
+        .map((seg) => createSegmentFromExtraction(seg, currentFloor.floor_level))
+        .filter((seg) => !existingKeys.has(segmentFingerprint(seg)));
+      if (newSegments.length > 0) onChange([...segments, ...newSegments]);
     } catch {
       // Surfaced below.
     }
@@ -320,6 +408,8 @@ export function BlueprintUploadPanel({
     setSelectedFile(null);
     setSelectedFloor(null);
     setHoveredId(null);
+    setOpenedFloorLevels(new Set());
+    setConfirmedGroupingFloorLevels(new Set());
     onBlueprintFilePathChange(null);
     onFloorsChange(null);
     onOriginalFloorsChange(null);
@@ -447,6 +537,23 @@ export function BlueprintUploadPanel({
 
   const reviewFloors = splitSingleSheetFloorIntoTabs(floors);
   const currentFloor = reviewFloors.find((f) => f.floor_level === selectedFloor) ?? reviewFloors[0];
+  const currentFloorIndex = Math.max(0, reviewFloors.findIndex((f) => f.floor_level === currentFloor.floor_level));
+  const previousFloor = currentFloorIndex > 0 ? reviewFloors[currentFloorIndex - 1] : null;
+  const nextFloor = reviewFloors[currentFloorIndex + 1] ?? null;
+  const isLastFloor = currentFloorIndex === reviewFloors.length - 1;
+  const floorStatusByLevel = new Map(
+    reviewFloors.map((floor) => {
+      const floorRows = segments.filter((segment) => segment.floor_level === floor.floor_level);
+      const includedRows = floorRows.filter(isSegmentIncluded);
+      return [
+        floor.floor_level,
+        includedRows.length === 0 ||
+          includedRows.some((segment) => !segment.confirmed) ||
+          !confirmedGroupingFloorLevels.has(floor.floor_level),
+      ];
+    }),
+  );
+  const floorWasOpened = openedFloorLevels.has(currentFloor.floor_level);
   // Includes segments added via "Add Missing Segment" while on this floor tab, not just
   // blueprint-detected ones — a floor's list is everything tagged with that floor level,
   // detected or added.
@@ -468,21 +575,59 @@ export function BlueprintUploadPanel({
   const floorConfidence = confidenceSummary(floorUnconfirmedIncludedSegments);
   const floorNeedsCloserReview = floorConfidence.medium + floorConfidence.low + floorConfidence.none;
   const floorConfirmedIncludedCount = floorIncludedSegments.filter((s) => s.confirmed).length;
+  const floorAllIncludedConfirmed = floorIncludedSegments.length > 0 && floorConfirmedIncludedCount === floorIncludedSegments.length;
+  const floorVisibleBounds = displayBoundsForFloor(reviewFloors, currentFloor);
   const manualAdds = segments.filter((s) => s.source_method === "Manual");
   // Part F — only segments still in scope for this quote need to be confirmed. Excluding a
   // segment (still visible in the list, never deleted) removes it from this gate.
   const includedSegments = segments.filter(isSegmentIncluded);
   const confirmedIncludedCount = includedSegments.filter((s) => s.confirmed).length;
-  const allIncludedConfirmed = includedSegments.length > 0 && confirmedIncludedCount === includedSegments.length;
+  const allFloorGroupingsConfirmed = reviewFloors.every((floor) => {
+    const floorRows = segments.filter((segment) => segment.floor_level === floor.floor_level && isSegmentIncluded(segment));
+    return floorRows.length > 0 && floorRows.every((segment) => segment.confirmed) && confirmedGroupingFloorLevels.has(floor.floor_level);
+  });
+  const allIncludedConfirmed = includedSegments.length > 0 && confirmedIncludedCount === includedSegments.length && allFloorGroupingsConfirmed;
   const confirmationDisabled = overlayScanning || isRescanning;
+  const isGroupingPhase = floorAllIncludedConfirmed && !confirmedGroupingFloorLevels.has(currentFloor.floor_level);
+  const handleReviewBack = () => {
+    if (isGroupingPhase) {
+      const currentFloorDraftIds = new Set(floorIncludedSegments.map((s) => s.draft_id));
+      setConfirmedGroupingFloorLevels((current) => {
+        const next = new Set(current);
+        next.delete(currentFloor.floor_level);
+        return next;
+      });
+      onChange(segments.map((segment) => (currentFloorDraftIds.has(segment.draft_id) ? { ...segment, confirmed: false } : segment)));
+      return;
+    }
+    if (previousFloor) {
+      setConfirmedGroupingFloorLevels((current) => {
+        const next = new Set(current);
+        next.delete(previousFloor.floor_level);
+        return next;
+      });
+      selectFloor(previousFloor.floor_level);
+      return;
+    }
+    if (!isGroupingPhase) {
+      handleBackToUpload();
+      return;
+    }
+  };
+  const handleOverlayScanStateChange = (scanning: boolean) => {
+    setOverlayScanning(scanning || isRescanning);
+    if (!scanning && !floorWasOpened) {
+      setOpenedFloorLevels((current) => new Set(current).add(currentFloor.floor_level));
+    }
+  };
 
   return (
     <div className="flex flex-col gap-4">
       <div className="flex items-start gap-3">
         <button
           type="button"
-          onClick={handleBackToUpload}
-          title="Back to Upload"
+          onClick={handleReviewBack}
+          title={isGroupingPhase ? "Back to confirming segments" : "Back to Upload"}
           className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-gray-200 bg-white text-gray-500 transition hover:border-primary hover:text-primary"
         >
           <ArrowLeft className="h-4 w-4" />
@@ -510,23 +655,25 @@ export function BlueprintUploadPanel({
               }`}
               title={`${f.floor_level} · ${f.segments.length} segment${f.segments.length === 1 ? "" : "s"}`}
             >
-              {f.floor_level}
+              <span className="inline-flex items-center gap-2">
+                {floorStatusByLevel.get(f.floor_level) && (
+                  <span
+                    className={`h-2 w-2 rounded-full ${f.floor_level === currentFloor.floor_level ? "bg-white" : "bg-primary"}`}
+                    aria-label="Needs review"
+                  />
+                )}
+                {f.floor_level}
+              </span>
               <span className="ml-2 opacity-75">{f.segments.length}</span>
             </button>
           ))}
         </div>
       )}
 
-      <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs text-gray-500">
-        <span className="font-semibold text-gray-700">{currentFloor.floor_level}</span>
-        <span>
-          {floorConfirmedIncludedCount}/{floorIncludedSegments.length} included confirmed on this floor · {floorSegments.length} total segment{floorSegments.length === 1 ? "" : "s"}
-        </span>
-      </div>
-
-      <div className="grid gap-2 rounded-xl border border-gray-200 bg-white px-3 py-3 text-xs text-gray-600 sm:grid-cols-[1fr_auto] sm:items-center">
-        <div className="flex min-w-0 flex-wrap items-center gap-2">
-          {floorNeedsCloserReview > 0 ? (
+      {!floorAllIncludedConfirmed && (
+        <div className="grid gap-2 rounded-xl border border-gray-200 bg-white px-3 py-3 text-xs text-gray-600 sm:grid-cols-[1fr_auto] sm:items-center">
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
+            {floorNeedsCloserReview > 0 ? (
             <>
               <AlertTriangle className="h-4 w-4 shrink-0 text-amber-500" />
               <span className="font-semibold text-gray-800">{floorNeedsCloserReview} segment{floorNeedsCloserReview === 1 ? "" : "s"} need closer review</span>
@@ -540,15 +687,16 @@ export function BlueprintUploadPanel({
                   : "All included segments are high confidence"}
               </span>
             </>
-          )}
+            )}
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            <span className="rounded-full bg-green-100 px-2 py-0.5 font-bold text-green-700">High {floorConfidence.high}</span>
+            <span className="rounded-full bg-amber-100 px-2 py-0.5 font-bold text-amber-700">Medium {floorConfidence.medium}</span>
+            <span className="rounded-full bg-red-100 px-2 py-0.5 font-bold text-red-700">Low {floorConfidence.low}</span>
+            {floorConfidence.none > 0 && <span className="rounded-full bg-gray-100 px-2 py-0.5 font-bold text-gray-600">Unknown {floorConfidence.none}</span>}
+          </div>
         </div>
-        <div className="flex flex-wrap gap-1.5">
-          <span className="rounded-full bg-green-100 px-2 py-0.5 font-bold text-green-700">High {floorConfidence.high}</span>
-          <span className="rounded-full bg-amber-100 px-2 py-0.5 font-bold text-amber-700">Medium {floorConfidence.medium}</span>
-          <span className="rounded-full bg-red-100 px-2 py-0.5 font-bold text-red-700">Low {floorConfidence.low}</span>
-          {floorConfidence.none > 0 && <span className="rounded-full bg-gray-100 px-2 py-0.5 font-bold text-gray-600">Unknown {floorConfidence.none}</span>}
-        </div>
-      </div>
+      )}
 
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-[1.3fr_1fr]">
         {/* Remounts on floor change — a clean slate for scan/zoom/tooltip state rather than
@@ -559,7 +707,7 @@ export function BlueprintUploadPanel({
           imageUrl={currentFloor.image_url}
           imageWidth={currentFloor.image_width}
           imageHeight={currentFloor.image_height}
-          focusBounds={currentFloor.focus_bounds}
+          focusBounds={floorVisibleBounds}
           segments={floorSegments}
           hoveredId={hoveredId}
           onHoverChange={setHoveredId}
@@ -583,11 +731,12 @@ export function BlueprintUploadPanel({
               ),
             );
           }}
-          onResetConfirmed={handleRescanConfirmed}
-          onRescanConfirmed={handleGenuineRescan}
-          canRescan={Boolean(blueprintFilePath)}
+          onScan={handleScanCurrentFloor}
+          canRescan={Boolean(blueprintFilePath || selectedFile)}
           isRescanning={isRescanning}
-          onScanStateChange={(scanning) => setOverlayScanning(scanning || isRescanning)}
+          onScanStateChange={handleOverlayScanStateChange}
+          scanOnMount={!floorWasOpened}
+          disableHighlightEditing={floorAllIncludedConfirmed}
         />
         <SegmentEditorList
           segments={floorSegments}
@@ -609,24 +758,28 @@ export function BlueprintUploadPanel({
           showConfidence
           showConfirmToggle
           showIncludeToggle
-          addLabel="Add Missing Segment"
+          addLabel="Add Segment"
+          createNewSegment={() => createManualSegmentForFloor(currentFloor)}
+          disableAdd={floorAllIncludedConfirmed}
           hoveredId={hoveredId}
           onHoverChange={setHoveredId}
-          // Part D — quote-wide counts (every floor), not just this floor's `floorSegments`
-          // — see SegmentEditorList.tsx's confirmSummary doc for why this can't be derived
-          // inside that component.
           confirmSummary={{
-            confirmedCount: confirmedIncludedCount,
-            includedCount: includedSegments.length,
-            onConfirmAll: () => onChange(segments.map((s) => (isSegmentIncluded(s) ? { ...s, confirmed: true } : s))),
+            confirmedCount: floorConfirmedIncludedCount,
+            includedCount: floorIncludedSegments.length,
+            onConfirmAll: () => {
+              const currentFloorDraftIds = new Set(floorIncludedSegments.map((s) => s.draft_id));
+              onChange(segments.map((s) => (currentFloorDraftIds.has(s.draft_id) ? { ...s, confirmed: true } : s)));
+            },
+            onConfirmGroupings: () => {
+              setConfirmedGroupingFloorLevels((current) => new Set(current).add(currentFloor.floor_level));
+              if (nextFloor) selectFloor(nextFloor.floor_level);
+            },
+            groupingsConfirmed: confirmedGroupingFloorLevels.has(currentFloor.floor_level),
             disabled: confirmationDisabled,
           }}
         />
       </div>
 
-      {!blueprintFilePath && (
-        <p className="text-xs text-amber-700">Saved-file storage is not configured. Reset is available, but genuine rescan is disabled.</p>
-      )}
       {rescanError && (
         <p className="flex items-center gap-1.5 text-xs text-red-600"><AlertTriangle className="h-3.5 w-3.5" /> Rescan failed: {rescanError.message}</p>
       )}
@@ -638,20 +791,22 @@ export function BlueprintUploadPanel({
         </p>
       )}
 
-      <button
-        type="button"
-        onClick={onConfirm}
-        disabled={confirmationDisabled || includedSegments.length === 0 || !allIncludedConfirmed}
-        className="w-fit rounded-xl bg-primary px-6 py-3 text-sm font-bold text-primary-foreground shadow-sm transition hover:bg-(--primary-hover) disabled:opacity-60"
-      >
-        {confirmationDisabled
-          ? "Scanning blueprint..."
-          : includedSegments.length === 0
-          ? "Include at least one segment to continue"
-          : allIncludedConfirmed
-            ? `Confirm ${includedSegments.length} selected segment${includedSegments.length === 1 ? "" : "s"} to continue`
-            : `Confirm all included segments to continue (${confirmedIncludedCount}/${includedSegments.length})`}
-      </button>
+      {isLastFloor && (
+        <button
+          type="button"
+          onClick={onConfirm}
+          disabled={confirmationDisabled || includedSegments.length === 0 || !allIncludedConfirmed}
+          className="w-fit rounded-xl bg-primary px-6 py-3 text-sm font-bold text-primary-foreground shadow-sm transition hover:bg-(--primary-hover) disabled:opacity-60"
+        >
+          {confirmationDisabled
+            ? "Scanning blueprint..."
+            : includedSegments.length === 0
+            ? "Include at least one segment to continue"
+            : allIncludedConfirmed
+              ? "Confirm All Segments"
+              : `Confirm All Segments (${confirmedIncludedCount}/${includedSegments.length})`}
+        </button>
+      )}
     </div>
   );
 }

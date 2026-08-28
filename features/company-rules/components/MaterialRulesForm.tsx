@@ -462,7 +462,6 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
             <div className="grid gap-0.5 text-xs text-gray-400">
               <span>Warranty: {groupWarrantyLabel(groupRules)}</span>
               <span>Lifespan: {groupLifespanLabel(groupRules)}</span>
-              <span>Effective Date: {groupEffectiveDateLabel(groupRules)}</span>
             </div>
           </div>
         )}

@@ -1,8 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { AlertTriangle, Check, Minus, Move, PenLine, Plus, ZoomIn, ZoomOut, RotateCcw, ScanLine } from "lucide-react";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Check, Minus, Move, PenLine, Plus, ZoomIn, ZoomOut, RotateCcw, ScanLine } from "lucide-react";
 import { confidenceBand, type DraftSegment, type SegmentPolygon } from "../lib/draftSegment";
 
 const BAND_COLOR: Record<ReturnType<typeof confidenceBand>, string> = {
@@ -13,7 +12,7 @@ const BAND_COLOR: Record<ReturnType<typeof confidenceBand>, string> = {
 };
 
 const SCAN_DURATION_MS = 4000;
-const ZOOM_MIN = 0.5;
+const ZOOM_MIN = 1;
 const ZOOM_MAX = 2;
 const ZOOM_STEP = 0.25;
 const DEFAULT_ZOOM = 1;
@@ -74,16 +73,12 @@ interface BlueprintOverlayProps {
   hoveredId: string | null;
   onHoverChange: (id: string | null) => void;
   onSegmentPolygonChange?: (draftId: string, polygonCoords: SegmentPolygon, polygonIndex?: number) => void;
-  /** Part E — the actual DATA reset (discarding edits/groupings/deletions/manual adds back
-   * to the original extraction) lives in the parent (BlueprintUploadPanel), which is the
-   * one holding the original extraction result. This component only owns the confirm
-   * dialog + the visual scan-replay; once the user confirms, it calls this AND replays its
-   * own local scan animation. Omitted when `readOnly` — see that prop's doc. */
-  onResetConfirmed?: () => void;
-  onRescanConfirmed?: () => void;
+  onScan?: () => void;
   canRescan?: boolean;
   isRescanning?: boolean;
   onScanStateChange?: (scanning: boolean) => void;
+  scanOnMount?: boolean;
+  disableHighlightEditing?: boolean;
   /** Task 7, Part B — Segment Breakdown reuses this exact component (not a rebuild) to
    * preview an already-generated/saved quote's blueprint. Rescan is a destructive EDIT
    * action that only makes sense during Review Segments (step 3) — hidden here, along with
@@ -122,16 +117,16 @@ export function BlueprintOverlay({
   hoveredId,
   onHoverChange,
   onSegmentPolygonChange,
-  onResetConfirmed,
-  onRescanConfirmed,
+  onScan,
   canRescan = false,
   isRescanning = false,
   onScanStateChange,
+  scanOnMount = false,
+  disableHighlightEditing = false,
   readOnly = false,
 }: BlueprintOverlayProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
-  const [rescanConfirmOpen, setRescanConfirmOpen] = useState(false);
   const [editingHighlights, setEditingHighlights] = useState(false);
   const [draggingPoint, setDraggingPoint] = useState<{ draftId: string; polygonIndex: number; pointIndex: number } | null>(null);
   const [draggingShape, setDraggingShape] = useState<{ draftId: string; polygonIndex: number; lastPoint: [number, number] } | null>(null);
@@ -144,8 +139,9 @@ export function BlueprintOverlay({
   // every polygon immediately, not a ~4s replay of a scan that already happened in step 3.
   const [rescanToken, setRescanToken] = useState(0);
   const [syncedRescanToken, setSyncedRescanToken] = useState(0);
-  const [scanProgress, setScanProgress] = useState(readOnly ? 100 : 0);
-  const [scanning, setScanning] = useState(!readOnly);
+  const shouldScanOnMount = scanOnMount && !readOnly;
+  const [scanProgress, setScanProgress] = useState(shouldScanOnMount ? 0 : 100);
+  const [scanning, setScanning] = useState(shouldScanOnMount);
 
   useEffect(() => {
     onScanStateChange?.(scanning);
@@ -162,7 +158,7 @@ export function BlueprintOverlay({
   }
 
   useEffect(() => {
-    if (readOnly) return;
+    if (readOnly || (!shouldScanOnMount && rescanToken === 0)) return;
     let start: number | null = null;
     let raf: number;
     const step = (ts: number) => {
@@ -177,17 +173,12 @@ export function BlueprintOverlay({
     };
     raf = requestAnimationFrame(step);
     return () => cancelAnimationFrame(raf);
-  }, [rescanToken, readOnly]);
+  }, [rescanToken, readOnly, shouldScanOnMount]);
 
-  const handleResetConfirm = () => {
-    setRescanConfirmOpen(false);
-    onResetConfirmed?.();
+  const handleScan = () => {
+    if (readOnly || !canRescan || isRescanning) return;
+    onScan?.();
     setRescanToken((t) => t + 1);
-  };
-
-  const handleRescanConfirm = () => {
-    setRescanConfirmOpen(false);
-    onRescanConfirmed?.();
   };
 
   // ── Zoom ──
@@ -206,7 +197,7 @@ export function BlueprintOverlay({
   const editableSegment = segments.find((segment) => segment.draft_id === selectedEditId && segmentPolygons(segment).length > 0) ?? null;
   const editablePolygons = editableSegment ? segmentPolygons(editableSegment) : [];
   const editablePolygon = editablePolygons[selectedEditPolygonIndex] ?? editablePolygons[0] ?? null;
-  const canEditHighlights = !readOnly && !!onSegmentPolygonChange;
+  const canEditHighlights = !readOnly && !disableHighlightEditing && !!onSegmentPolygonChange;
 
   const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
     const rect = containerRef.current?.getBoundingClientRect();
@@ -341,16 +332,16 @@ export function BlueprintOverlay({
           </span>
         </div>
         <div className="flex flex-wrap shrink-0 items-center gap-1">
-          {/* Hidden entirely when readOnly — Rescan is an edit action with no meaning
-              outside Review Segments (Task 7, Part B). */}
           {!readOnly && (
             <button
               type="button"
-              onClick={() => setRescanConfirmOpen(true)}
-              title="Reset or rescan"
-              className="flex items-center gap-1 rounded-lg border border-gray-200 bg-white px-2 py-1 text-xs font-semibold text-gray-500 transition hover:border-primary hover:text-primary"
+              onClick={handleScan}
+              disabled={!canRescan || isRescanning}
+              title={canRescan ? "Scan" : "Saved-file storage is not configured"}
+              aria-label="Scan"
+              className="flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-500 transition hover:border-primary hover:text-primary disabled:cursor-not-allowed disabled:opacity-40"
             >
-              <ScanLine className="h-3.5 w-3.5" /> Scan Actions
+              <ScanLine className={`h-3.5 w-3.5 ${isRescanning ? "animate-pulse" : ""}`} />
             </button>
           )}
           {canEditHighlights && (
@@ -363,20 +354,15 @@ export function BlueprintOverlay({
                 setSelectedEditId(null);
                 setHighlightEditTool("move");
               }}
-              title={editingHighlights ? "Finish editing highlights" : "Edit highlight placement"}
-              className={`flex items-center gap-1 rounded-lg border px-2 py-1 text-xs font-semibold transition ${
+              title={editingHighlights ? "Finish editing highlights" : "Edit Highlights"}
+              aria-label={editingHighlights ? "Finish editing highlights" : "Edit Highlights"}
+              className={`flex h-8 w-8 items-center justify-center rounded-lg border transition ${
                 editingHighlights
                   ? "border-primary bg-orange-50 text-primary"
                   : "border-gray-200 bg-white text-gray-500 hover:border-primary hover:text-primary"
               }`}
             >
               {editingHighlights ? <Check className="h-3.5 w-3.5" /> : <PenLine className="h-3.5 w-3.5" />}
-              {editingHighlights ? "Done" : "Edit Highlights"}
-            </button>
-          )}
-          {zoom !== 1 && (
-            <button type="button" onClick={zoomReset} title="Reset zoom" aria-label="Reset zoom" className="rounded-lg border border-gray-200 bg-white p-1.5 text-gray-400 transition hover:text-gray-600">
-              <RotateCcw className="h-3.5 w-3.5" />
             </button>
           )}
           <div className="flex items-center overflow-hidden rounded-lg border border-gray-200 bg-white">
@@ -395,6 +381,11 @@ export function BlueprintOverlay({
               <ZoomIn className="h-3.5 w-3.5" />
             </button>
           </div>
+          {zoom !== 1 && (
+            <button type="button" onClick={zoomReset} title="Reset zoom" aria-label="Reset zoom" className="rounded-lg border border-gray-200 bg-white p-1.5 text-gray-400 transition hover:text-gray-600">
+              <RotateCcw className="h-3.5 w-3.5" />
+            </button>
+          )}
         </div>
       </div>
 
@@ -594,50 +585,6 @@ export function BlueprintOverlay({
           </div>
         )}
       </div>
-
-      {/* Part E — rescanning RESTARTS: warn before discarding edits, don't silently wipe
-          the user's work. Unreachable when readOnly (no button opens it), so skip
-          rendering it at all rather than mount a dialog that can never show. */}
-      {!readOnly && (
-      <Dialog open={rescanConfirmOpen} onOpenChange={setRescanConfirmOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <AlertTriangle className="h-4 w-4 shrink-0 text-amber-500" /> Reset or rescan?
-            </DialogTitle>
-            <DialogDescription>
-              Both actions discard review edits. Reset restores the first result instantly and does not call AI.
-              Rescan processes the saved file again. PDF rescans call Gemini Vision again and may take longer or hit rate limits.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <button
-              type="button"
-              onClick={() => setRescanConfirmOpen(false)}
-              className="rounded-xl border border-gray-200 px-4 py-2 text-sm font-semibold text-gray-600 transition hover:bg-gray-50"
-            >
-              Keep My Changes
-            </button>
-            <button
-              type="button"
-              onClick={handleResetConfirm}
-              className="rounded-xl border border-orange-300 px-4 py-2 text-sm font-bold text-orange-700 transition hover:bg-orange-50"
-            >
-              Reset to Original
-            </button>
-            <button
-              type="button"
-              onClick={handleRescanConfirm}
-              disabled={!canRescan || isRescanning}
-              title={canRescan ? "Runs extraction again" : "Saved-file storage is not configured"}
-              className="rounded-xl bg-red-600 px-4 py-2 text-sm font-bold text-white transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              {isRescanning ? "Rescanning..." : "Rescan Saved File"}
-            </button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-      )}
     </div>
   );
 }

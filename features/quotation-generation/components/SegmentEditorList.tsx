@@ -188,19 +188,18 @@ interface SegmentEditorListProps {
   addLabel?: string;
   hoveredId?: string | null;
   onHoverChange?: (id: string | null) => void;
-  /** Part D — the "X / N included confirmed" + "Confirm All" control, rendered at
-   * the TOP of this panel (above the segment list) rather than in the page header above
-   * it, so it's visible without scrolling a long list. Counts are supplied by the caller
-   * (not derived from `segments` here) because during blueprint review `segments` is only
-   * the CURRENT FLOOR's rows — the confirm gate is quote-wide, across every floor, which
-   * only BlueprintUploadPanel (holding the full wizard-level list) can compute correctly.
-   * Omitted entirely for Quick Measurement, which has no confirm/include concept. */
+  /** Blueprint review's per-floor confirmation control, rendered at the top of the list
+   * so long floor segment sets can be confirmed without hunting through the page. */
   confirmSummary?: {
     confirmedCount: number;
     includedCount: number;
     onConfirmAll: () => void;
+    onConfirmGroupings?: () => void;
+    groupingsConfirmed?: boolean;
     disabled?: boolean;
   } | null;
+  createNewSegment?: () => DraftSegment;
+  disableAdd?: boolean;
 }
 
 // Shared editable list: add / edit / delete / group. Used standalone by Quick
@@ -218,6 +217,8 @@ export function SegmentEditorList({
   hoveredId = null,
   onHoverChange,
   confirmSummary = null,
+  createNewSegment,
+  disableAdd = false,
 }: SegmentEditorListProps) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -235,9 +236,10 @@ export function SegmentEditorList({
   const selectedCount = canGroupSegments ? selectedIds.size : 0;
 
   const startAdd = () => {
-    const draft = createManualSegment();
+    const draft = createNewSegment?.() ?? createManualSegment();
     onChange([...segments, draft]);
     setEditingId(draft.draft_id);
+    onHoverChange?.(draft.draft_id);
   };
 
   const handleSaveRow = (next: DraftSegment) => {
@@ -312,15 +314,29 @@ export function SegmentEditorList({
             allConfirmed ? "border-green-100 bg-green-50" : "border-gray-100 bg-gray-50/60"
           }`}
         >
-          <span
-            className={`rounded-lg px-2.5 py-1 text-xs font-bold ${
-              allConfirmed ? "bg-green-100 text-green-700 ring-1 ring-green-200" : "text-gray-500"
-            }`}
-          >
-            <span className={allConfirmed ? "text-green-700" : "text-gray-700"}>{confirmSummary.confirmedCount}</span> /{" "}
-            {confirmSummary.includedCount} included confirmed
-          </span>
-          {allConfirmed && <span className="text-xs font-semibold text-green-700">Ready for grouping</span>}
+          {allConfirmed ? (
+            <span className="rounded-lg bg-green-100 px-2.5 py-1 text-xs font-bold text-green-700 ring-1 ring-green-200">
+              {confirmSummary.groupingsConfirmed ? "Groupings confirmed" : "Ready for grouping"}
+            </span>
+          ) : (
+            <span className="rounded-lg px-2.5 py-1 text-xs font-bold text-gray-500">
+              <span className="text-gray-700">{confirmSummary.confirmedCount}</span> / {confirmSummary.includedCount} included confirmed
+            </span>
+          )}
+          {allConfirmed && (
+            <div className="flex items-center">
+              {!confirmSummary.groupingsConfirmed && confirmSummary.onConfirmGroupings && (
+                <button
+                  type="button"
+                  onClick={confirmSummary.onConfirmGroupings}
+                  disabled={confirmSummary.disabled}
+                  className="flex items-center gap-1 rounded-lg bg-primary px-2.5 py-1 text-xs font-bold text-primary-foreground transition hover:bg-(--primary-hover) disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <CheckCheck className="h-3.5 w-3.5" /> Confirm Groupings
+                </button>
+              )}
+            </div>
+          )}
           {!allConfirmed && confirmSummary.includedCount > 0 && (
             <button
               type="button"
@@ -335,7 +351,9 @@ export function SegmentEditorList({
       )}
 
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-100 px-4 py-3">
-        <p className="text-xs font-bold uppercase tracking-wider text-gray-400">Segments ({segments.length})</p>
+        <p className="text-xs font-bold uppercase tracking-wider text-gray-400">
+          Confirmed Segments ({segments.filter((segment) => segment.confirmed).length})
+        </p>
         <div className="flex items-center gap-2">
           {selectedCount >= 2 && !grouping && (
             <button
@@ -346,13 +364,15 @@ export function SegmentEditorList({
               <ChevronsUpDown className="h-3 w-3" /> Group {selectedCount} Selected
             </button>
           )}
-          <button
-            type="button"
-            onClick={startAdd}
-            className="flex items-center gap-1 rounded-lg bg-primary px-2.5 py-1 text-xs font-bold text-primary-foreground transition hover:bg-(--primary-hover)"
-          >
-            <Plus className="h-3 w-3" /> {addLabel}
-          </button>
+          {!disableAdd && (
+            <button
+              type="button"
+              onClick={startAdd}
+              className="flex items-center gap-1 rounded-lg bg-primary px-2.5 py-1 text-xs font-bold text-primary-foreground transition hover:bg-(--primary-hover)"
+            >
+              <Plus className="h-3 w-3" /> {addLabel}
+            </button>
+          )}
         </div>
       </div>
 

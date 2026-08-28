@@ -18,10 +18,36 @@ interface SegmentBlueprintPreviewProps {
   onHoverChange: (id: string | null) => void;
 }
 
+function isFullSheetBounds(bounds: [number, number, number, number] | null | undefined, imageWidth: number, imageHeight: number): boolean {
+  if (!bounds) return true;
+  const [minX, minY, maxX, maxY] = bounds;
+  return minX <= imageWidth * 0.02 && minY <= imageHeight * 0.02 && maxX >= imageWidth * 0.98 && maxY >= imageHeight * 0.98;
+}
+
+function displayBoundsForFloor(floors: BlueprintFloor[], floor: BlueprintFloor): [number, number, number, number] | null {
+  const explicitBounds = floor.viewport_bbox ?? floor.focus_bounds ?? null;
+  const sameImageFloors = floors.filter(
+    (candidate) =>
+      candidate.image_url === floor.image_url &&
+      candidate.image_width === floor.image_width &&
+      candidate.image_height === floor.image_height,
+  );
+  if (sameImageFloors.length < 2) return explicitBounds;
+
+  const index = sameImageFloors.findIndex((candidate) => candidate.floor_level === floor.floor_level);
+  const lowerName = floor.floor_level.toLowerCase();
+  if (lowerName.includes("ground")) return [0, 0, floor.image_width / 2, floor.image_height];
+  if (lowerName.includes("second") || lowerName.includes("upper") || index === 1) return [floor.image_width / 2, 0, floor.image_width, floor.image_height];
+  if (index > 1) return null;
+  if (!isFullSheetBounds(explicitBounds, floor.image_width, floor.image_height)) return explicitBounds;
+  return index === 0 ? [0, 0, floor.image_width / 2, floor.image_height] : [floor.image_width / 2, 0, floor.image_width, floor.image_height];
+}
+
 export function SegmentBlueprintPreview({ floors, segments, hoveredId, onHoverChange }: SegmentBlueprintPreviewProps) {
   const [selectedFloor, setSelectedFloor] = useState(floors[0]?.floor_level ?? "");
   const currentFloor = floors.find((f) => f.floor_level === selectedFloor) ?? floors[0];
   const floorSegments = segments.filter((s) => s.floor_level === currentFloor.floor_level && (s.polygon_coords || s.polygon_groups?.length));
+  const floorVisibleBounds = displayBoundsForFloor(floors, currentFloor);
 
   return (
     <div className="flex flex-col gap-3">
@@ -51,7 +77,7 @@ export function SegmentBlueprintPreview({ floors, segments, hoveredId, onHoverCh
         imageUrl={currentFloor.image_url}
         imageWidth={currentFloor.image_width}
         imageHeight={currentFloor.image_height}
-        focusBounds={currentFloor.focus_bounds}
+        focusBounds={floorVisibleBounds}
         segments={floorSegments}
         hoveredId={hoveredId}
         onHoverChange={onHoverChange}

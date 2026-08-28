@@ -230,6 +230,7 @@ export function QuotationGenerationWizard() {
       // preserve scans because they jump straight to the blueprint step.
       setBlueprintFloors(null);
       setOriginalBlueprintFloors(null);
+      setBlueprintFilePath(null);
       setSegments((current) => current.filter((segment) => segment.source_method !== "Blueprint"));
       // Best-effort correction — this quotation was created with input_method: 'Manual' by
       // default (see ClientAndProjectStep); the local step transition below is what
@@ -262,6 +263,17 @@ export function QuotationGenerationWizard() {
   };
 
   const handleBackToMethod = () => setStep("method");
+  const handleBackFromConfigure = () => {
+    if (method === "blueprint") {
+      setBlueprintFloors(null);
+      setOriginalBlueprintFloors(null);
+      setBlueprintFilePath(null);
+      setSegments((current) => current.filter((segment) => segment.source_method !== "Blueprint"));
+      setStep("blueprint");
+      return;
+    }
+    setStep(method ?? "method");
+  };
   const handleBackToClient = async () => {
     await discardDraftQuotation();
     setStep("client");
@@ -319,7 +331,7 @@ export function QuotationGenerationWizard() {
           // then reveals the Practical/Premium results (P2-A).
           setStep("generating");
         }}
-        onBack={() => setStep(method ?? "method")}
+        onBack={handleBackFromConfigure}
       />
     );
   } else if (step === "generating") {
