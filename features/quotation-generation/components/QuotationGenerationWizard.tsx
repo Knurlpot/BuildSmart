@@ -108,6 +108,8 @@ function draftFromSavedSegment(segment: ProjectSegment): DraftSegment {
     confirmed: true,
     included_in_quote: segment.included_in_quote,
     treatment_type: segment.scope_of_work === "Not specified" ? null : segment.scope_of_work,
+    labor_basis: "Auto",
+    labor_trade: null,
     is_rush: false,
     condition_tags: [],
     site_notes: segment.notes ?? "",

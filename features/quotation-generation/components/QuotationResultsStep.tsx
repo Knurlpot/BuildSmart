@@ -86,13 +86,14 @@ function deriveTierItemsFromRules(
   segments: DraftSegment[],
   basis: PricelistBasis,
   materialRules: ReturnType<typeof useMaterialRules>["rules"],
+  laborRules: ReturnType<typeof useLaborRules>["rules"],
   unitRules: ReturnType<typeof useUnitRules>["rules"],
   items: ReturnType<typeof useItemsCatalog>["items"],
   uploadedPrices: ReturnType<typeof usePricelistCatalog>["records"] = [],
   dpwhPrices: ReturnType<typeof usePricelistPublishedSource>["dpwhCatalog"]["records"] = [],
   tiers: ProvisionalTier[]
 ): Partial<Record<ProvisionalTier, ProvisionalItemLine[]>> {
-  const companyRuleItems = buildTierItems(tiers, (tier) => deriveCompanyRuleItemLines(segments, tier, materialRules, unitRules, items, basis, uploadedPrices, dpwhPrices) ?? []);
+  const companyRuleItems = buildTierItems(tiers, (tier) => deriveCompanyRuleItemLines(segments, tier, materialRules, laborRules, unitRules, items, basis, uploadedPrices, dpwhPrices) ?? []);
   if (Object.values(companyRuleItems).some((lines) => (lines?.length ?? 0) > 0)) {
     return companyRuleItems;
   }
@@ -124,14 +125,10 @@ function applyQuotationRuleToLines(
     if (prioritySource === "Uploaded") return line;
 
     const uploadedOptions = line.supplier_options.filter((option) => option.source_type === "Uploaded");
-    const dpwhOptions = line.supplier_options.filter((option) => option.source_type === "DPWH");
     const cheapestUploaded = uploadedOptions.length > 0
       ? [...uploadedOptions].sort((a, b) => a.unit_price - b.unit_price)[0]
       : null;
-    const cheapestDpwh = dpwhOptions.length > 0
-      ? [...dpwhOptions].sort((a, b) => a.unit_price - b.unit_price)[0]
-      : null;
-    const nextAvailable = prioritySource === "Uploaded" ? cheapestDpwh : cheapestUploaded;
+    const nextAvailable = cheapestUploaded;
     const chosenOption =
       fallbackRule === "Use lowest uploaded rate"
         ? cheapestUploaded
@@ -284,8 +281,8 @@ export function QuotationResultsStep({ client, quotation, segments, blueprintFlo
   }, [loadDpwhPrices, loadUploadedPrices]);
 
   const autoTierItems = useMemo(
-    () => deriveTierItemsFromRules(segments, pricelistBasis, materialRules, unitRules, items, uploadedPrices, dpwhPrices, activeTiers),
-    [activeTiers, items, materialRules, pricelistBasis, segments, unitRules, uploadedPrices, dpwhPrices]
+    () => deriveTierItemsFromRules(segments, pricelistBasis, materialRules, laborRules, unitRules, items, uploadedPrices, dpwhPrices, activeTiers),
+    [activeTiers, items, laborRules, materialRules, pricelistBasis, segments, unitRules, uploadedPrices, dpwhPrices]
   );
   const effectiveTierItems = hasManualLineEdits ? tierItems : autoTierItems;
 
@@ -295,13 +292,13 @@ export function QuotationResultsStep({ client, quotation, segments, blueprintFlo
   const handleBasisChange = (basis: PricelistBasis) => {
     setPricelistBasis(basis);
     setHasManualLineEdits(true);
-    setTierItems(deriveTierItemsFromRules(segments, basis, materialRules, unitRules, items, uploadedPrices, dpwhPrices, activeTiers));
+    setTierItems(deriveTierItemsFromRules(segments, basis, materialRules, laborRules, unitRules, items, uploadedPrices, dpwhPrices, activeTiers));
   };
 
   const handleApplyQuotationRules = () => {
     setHasManualLineEdits(true);
     handleBasisChange(prioritySource);
-    const next = deriveTierItemsFromRules(segments, prioritySource, materialRules, unitRules, items, uploadedPrices, dpwhPrices, activeTiers);
+    const next = deriveTierItemsFromRules(segments, prioritySource, materialRules, laborRules, unitRules, items, uploadedPrices, dpwhPrices, activeTiers);
     setTierItems(
       buildTierItems(activeTiers, (tier) => applyQuotationRuleToLines(next[tier] ?? [], prioritySource, fallbackRule))
     );

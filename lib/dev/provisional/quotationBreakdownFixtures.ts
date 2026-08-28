@@ -9,7 +9,7 @@
 import { stagingId } from './quotationGenerationTypes';
 import type { DraftSegment } from '@/features/quotation-generation/lib/draftSegment';
 import { isSegmentIncluded } from '@/features/quotation-generation/lib/draftSegment';
-import type { LaborRule, MaterialRuleEntry, UnitRule } from './companyRulesTypes';
+import type { LaborRule, LaborRuleScope, MaterialRuleEntry, UnitRule } from './companyRulesTypes';
 import type {
   ItemCategory,
   PricelistBasis,
@@ -391,10 +391,102 @@ function buildCompanyRuleLine(
   };
 }
 
+function laborRuleLabel(rule: LaborRule, scope: LaborRuleScope): string {
+  if (scope === 'Treatment') return rule.treatment_type ?? 'Treatment labor';
+  if (scope === 'Trade') return rule.region ? `${rule.labor_trade} - ${rule.region}` : (rule.labor_trade ?? 'Trade labor');
+  return 'General labor';
+}
+
+function findGeneralLaborRule(laborRules: LaborRule[]): LaborRule | null {
+  return laborRules.find((rule) => rule.is_active && rule.treatment_type === null && rule.labor_trade === null) ?? null;
+}
+
+function findTreatmentLaborRule(seg: DraftSegment, laborRules: LaborRule[]): LaborRule | null {
+  const treatment = seg.treatment_type?.trim().toLowerCase();
+  if (!treatment) return null;
+  return laborRules.find((rule) => rule.is_active && rule.treatment_type?.trim().toLowerCase() === treatment) ?? null;
+}
+
+function findTradeLaborRule(seg: DraftSegment, laborRules: LaborRule[]): LaborRule | null {
+  const trade = seg.labor_trade?.trim().toLowerCase();
+  if (!trade) return null;
+  return laborRules.find((rule) => rule.is_active && rule.labor_trade?.trim().toLowerCase() === trade && rule.region === null) ??
+    laborRules.find((rule) => rule.is_active && rule.labor_trade?.trim().toLowerCase() === trade) ??
+    null;
+}
+
+function resolveLaborRule(seg: DraftSegment, laborRules: LaborRule[]): { rule: LaborRule; scope: LaborRuleScope } | null {
+  const basis = seg.labor_basis ?? 'Auto';
+  if (basis === 'Treatment') {
+    const rule = findTreatmentLaborRule(seg, laborRules);
+    return rule ? { rule, scope: 'Treatment' } : null;
+  }
+  if (basis === 'Trade') {
+    const rule = findTradeLaborRule(seg, laborRules);
+    return rule ? { rule, scope: 'Trade' } : null;
+  }
+  if (basis === 'General') {
+    const rule = findGeneralLaborRule(laborRules);
+    return rule ? { rule, scope: 'General' } : null;
+  }
+
+  const treatmentRule = findTreatmentLaborRule(seg, laborRules);
+  if (treatmentRule) return { rule: treatmentRule, scope: 'Treatment' };
+  const tradeRule = findTradeLaborRule(seg, laborRules);
+  if (tradeRule) return { rule: tradeRule, scope: 'Trade' };
+  const generalRule = findGeneralLaborRule(laborRules);
+  return generalRule ? { rule: generalRule, scope: 'General' } : null;
+}
+
+function buildLaborRuleLine(seg: DraftSegment, laborRules: LaborRule[], basis: PricelistBasis): ProvisionalItemLine | null {
+  const resolved = resolveLaborRule(seg, laborRules);
+  if (!resolved) return null;
+
+  const { rule, scope } = resolved;
+  const productivity = rule.productivity_sqm_per_day && rule.productivity_sqm_per_day > 0 ? rule.productivity_sqm_per_day : null;
+  const quantity = scope === 'Trade'
+    ? Math.max(rule.min_duration_days ?? 1, productivity ? Math.ceil(seg.area_sqm / productivity) : 1)
+    : seg.area_sqm;
+  const unit = scope === 'Trade' ? 'day' : 'sqm';
+  const itemName = scope === 'Trade'
+    ? `Labor - ${rule.labor_trade ?? 'Trade crew'}`
+    : scope === 'Treatment'
+      ? `Labor - ${rule.treatment_type ?? seg.treatment_type ?? 'Treatment'}`
+      : 'Labor - General';
+
+  return {
+    line_id: stagingId('item'),
+    segment_draft_id: seg.draft_id,
+    segment_name: seg.segment_name,
+    floor_level: seg.floor_level,
+    treatment_type: seg.treatment_type,
+    category: 'Labor',
+    item_code: `LAB-${scope.toUpperCase()}`,
+    item_name: itemName,
+    unit,
+    derived_area_sqm: seg.area_sqm,
+    derived_coverage_per_sqm: scope === 'Trade' ? null : 1,
+    derived_wastage_percentage: 0,
+    quantity,
+    unit_price: rule.labor_rate,
+    total_cost: round2(quantity * rule.labor_rate),
+    source_type: basis,
+    is_overridden: false,
+    pricing_reference: pricingReferenceFor(basis),
+    labor_rule_scope: scope,
+    labor_rule_label: laborRuleLabel(rule, scope),
+    rush_multiplier_percentage: rule.rush_multiplier_percentage,
+    productivity_index: rule.productivity_index,
+    supplier_options: [],
+    selected_supplier_id: null,
+  };
+}
+
 export function deriveCompanyRuleItemLines(
   segments: DraftSegment[],
   tier: ProvisionalTier,
   materialRules: MaterialRuleEntry[],
+  laborRules: LaborRule[],
   unitRules: UnitRule[],
   items: Items[],
   basis: PricelistBasis,
@@ -402,7 +494,8 @@ export function deriveCompanyRuleItemLines(
   dpwhPrices: DpwhCatalogRow[] = []
 ): ProvisionalItemLine[] | null {
   const activeRules = materialRules.filter((rule) => rule.is_active && rule.treatment_type?.trim());
-  if (activeRules.length === 0) return null;
+  const hasActiveLaborRules = laborRules.some((rule) => rule.is_active);
+  if (activeRules.length === 0 && !hasActiveLaborRules) return null;
 
   const itemByCode = new Map(items.map((item) => [String(item.item_code), item]));
   const lines: ProvisionalItemLine[] = [];
@@ -419,6 +512,11 @@ export function deriveCompanyRuleItemLines(
 
     if (rulesForTreatment.length === 0) {
       lines.push(buildMissingRuleLine(seg, basis));
+      const laborLine = buildLaborRuleLine(seg, laborRules, basis);
+      if (laborLine) {
+        matchedAnyTreatment = true;
+        lines.push(laborLine);
+      }
       continue;
     }
 
@@ -426,6 +524,8 @@ export function deriveCompanyRuleItemLines(
     for (const rule of rulesForTreatment) {
       lines.push(buildCompanyRuleLine(seg, rule, itemByCode.get(String(rule.preferred_item_code)), matchingUnitRule(rule, unitRules), basis, uploadedPrices, dpwhPrices));
     }
+    const laborLine = buildLaborRuleLine(seg, laborRules, basis);
+    if (laborLine) lines.push(laborLine);
   }
 
   return matchedAnyTreatment ? lines : null;
@@ -524,6 +624,17 @@ function deriveRushJobCost(items: ProvisionalItemLine[], segments: DraftSegment[
   return round2(laborLineRushCost + fallbackRushCost);
 }
 
+function formatWeekCount(weeks: number): string {
+  return `${weeks} week${weeks === 1 ? '' : 's'}`;
+}
+
+function formatTimelineWeekRange(workDays: number, totalDays: number): string {
+  const workWeeks = Math.max(1, Math.ceil(workDays / 5));
+  const totalWeeks = Math.max(workWeeks, Math.ceil(totalDays / 5));
+  if (workWeeks === totalWeeks) return formatWeekCount(totalWeeks);
+  return `${workWeeks}-${totalWeeks} weeks`;
+}
+
 /** Recomputes total_cost for ONE item line after a Minor Revision edit (quantity, unit
  * price, or switching supplier). Callers own the item array in local state; this just keeps
  * one line internally consistent. Only callable from Minor Revision — the Breakdown view
@@ -598,8 +709,11 @@ export function computeTierResult(
   const templateBufferDays = Math.max(0, ...matchedLaborRules.map((rule) => rule.safety_buffer_days ?? 0));
   const floorBufferDays = Math.max(0, new Set(includedSegments.map((segment) => segment.floor_level || 'Ground Floor')).size - 1);
   const rushAdjustmentDays = includedSegments.some((segment) => segment.is_rush) ? -1 : 0;
-  const durationDays = productivity !== null
-    ? Math.max(1, Math.max(templateMinDays, Math.ceil(area / productivity)) + templateBufferDays + floorBufferDays + rushAdjustmentDays)
+  const workDays = productivity !== null
+    ? Math.max(1, Math.max(templateMinDays, Math.ceil(area / productivity)) + rushAdjustmentDays)
+    : null;
+  const durationDays = workDays !== null
+    ? Math.max(workDays, workDays + templateBufferDays + floorBufferDays)
     : null;
   const warrantyYears = Math.max(0, ...matchedMaterialRules.map((rule) => rule.warranty_years ?? 0));
   const lifespanYears = Math.max(0, ...matchedMaterialRules.map((rule) => rule.lifespan_years ?? 0));
@@ -619,7 +733,7 @@ export function computeTierResult(
     downpayment_percentage: downpaymentPercentage,
     downpayment_amount: downpaymentAmount,
     grand_total: grandTotal,
-    timeline_label: durationDays !== null ? `${durationDays} working day${durationDays === 1 ? '' : 's'} incl. buffer` : pricingFixture.timeline_label,
+    timeline_label: workDays !== null && durationDays !== null ? formatTimelineWeekRange(workDays, durationDays) : pricingFixture.timeline_label,
     warranty_label: warrantyYears > 0 ? `${warrantyYears}-year warranty` : pricingFixture.warranty_label,
     lifespan_label: lifespanYears > 0 ? `${lifespanYears}-year lifespan` : pricingFixture.lifespan_label,
     material_grade_label: pricingFixture.material_grade_label,
