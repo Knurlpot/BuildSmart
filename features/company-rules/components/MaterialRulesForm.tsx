@@ -401,45 +401,49 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
         emptyHint="Add materials from your catalog and tag them with a treatment type."
         countLabel={`${allRules.length} configured`}
         listHeader={
-          <div className="grid grid-cols-4 gap-2">
-            {(["active", "disabled"] as const).map((filter) => (
-              <button
-                key={filter}
-                type="button"
-                onClick={() => {
-                  setStatusFilter(filter);
-                  setMode("idle");
-                  setSelectedId(null);
-                  setSelectedGroup(null);
-                }}
-                className={`min-h-9 rounded-lg border px-3 py-2 text-center text-xs font-semibold capitalize transition ${
-                  statusFilter === filter
-                    ? "border-primary bg-orange-50 text-primary"
-                    : "border-gray-200 bg-white text-gray-500 hover:border-gray-300"
-                }`}
-              >
-                {filter}
-              </button>
-            ))}
-            {MATERIAL_TREATMENT_TIERS.map((tier) => (
-              <button
-                key={tier}
-                type="button"
-                onClick={() => {
-                  setTierFilter((current) => (current === tier ? null : tier));
-                  setMode("idle");
-                  setSelectedId(null);
-                  setSelectedGroup(null);
-                }}
-                className={`min-h-9 rounded-lg border px-3 py-2 text-center text-xs font-semibold transition ${
-                  tierFilter === tier
-                    ? activeTierFilterClass(tier)
-                    : "border-gray-200 bg-white text-gray-500 hover:border-gray-300"
-                }`}
-              >
-                {tier}
-              </button>
-            ))}
+          <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-2 gap-2">
+              {(["active", "disabled"] as const).map((filter) => (
+                <button
+                  key={filter}
+                  type="button"
+                  onClick={() => {
+                    setStatusFilter(filter);
+                    setMode("idle");
+                    setSelectedId(null);
+                    setSelectedGroup(null);
+                  }}
+                  className={`min-h-9 rounded-lg border px-3 py-2 text-center text-xs font-semibold capitalize transition ${
+                    statusFilter === filter
+                      ? "border-primary bg-orange-50 text-primary"
+                      : "border-gray-200 bg-white text-gray-500 hover:border-gray-300"
+                  }`}
+                >
+                  {filter}
+                </button>
+              ))}
+            </div>
+            <div className="grid grid-cols-2 gap-2 border-l border-gray-200 pl-2">
+              {MATERIAL_TREATMENT_TIERS.map((tier) => (
+                <button
+                  key={tier}
+                  type="button"
+                  onClick={() => {
+                    setTierFilter((current) => (current === tier ? null : tier));
+                    setMode("idle");
+                    setSelectedId(null);
+                    setSelectedGroup(null);
+                  }}
+                  className={`min-h-9 rounded-lg border px-3 py-2 text-center text-xs font-semibold transition ${
+                    tierFilter === tier
+                      ? activeTierFilterClass(tier)
+                      : "border-gray-200 bg-white text-gray-500 hover:border-gray-300"
+                  }`}
+                >
+                  {tier}
+                </button>
+              ))}
+            </div>
           </div>
         }
         renderListItem={([, groupRules]) => (
