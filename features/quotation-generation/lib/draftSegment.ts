@@ -12,6 +12,7 @@ import { stagingId, type ExtractedSegment } from '@/lib/dev/provisional/quotatio
 // sqm is; see draftSegmentToPayload's comment on why this is the least-lossy option given the
 // schema has no separate "linear meters" column.
 export type SegmentEntryMode = 'dimensions' | 'total_sqm' | 'l_shape' | 'running_meter';
+export type LaborBasis = 'Auto' | 'Treatment' | 'Trade' | 'General';
 
 // A segment's own source is always cleanly one or the other — 'Hybrid' only describes a
 // QUOTATION whose segment set mixes the two (see computeQuotationInputMethod below), even
@@ -60,6 +61,8 @@ export interface DraftSegment {
   included_in_quote: boolean;
   // Step 3 config — PROVISIONAL, no schema column yet (see quotationGenerationTypes.ts).
   treatment_type: string | null;
+  labor_basis: LaborBasis;
+  labor_trade: string | null;
   is_rush: boolean;
   condition_tags: SegmentConditionTag[];
   // Maps to the real project_segments.notes column at submit time.
@@ -125,6 +128,8 @@ export function createManualSegment(defaultName = ''): DraftSegment {
     confirmed: true,
     included_in_quote: true,
     treatment_type: null,
+    labor_basis: 'Auto',
+    labor_trade: null,
     is_rush: false,
     condition_tags: [],
     site_notes: '',
@@ -150,6 +155,8 @@ export function createSegmentFromExtraction(extracted: ExtractedSegment, floorLe
     confirmed: false,
     included_in_quote: true,
     treatment_type: null,
+    labor_basis: 'Auto',
+    labor_trade: null,
     is_rush: false,
     condition_tags: [],
     site_notes: '',
@@ -187,6 +194,8 @@ export function mergeSegments(segments: DraftSegment[], newName: string): DraftS
     // merged result stays included.
     included_in_quote: true,
     treatment_type: null,
+    labor_basis: 'Auto',
+    labor_trade: null,
     is_rush: false,
     condition_tags: [],
     site_notes: '',
@@ -194,7 +203,9 @@ export function mergeSegments(segments: DraftSegment[], newName: string): DraftS
 }
 
 export function isSegmentConfigured(seg: DraftSegment): boolean {
-  return !!seg.treatment_type && seg.treatment_type.trim().length > 0;
+  const treatmentConfigured = !!seg.treatment_type && seg.treatment_type.trim().length > 0;
+  const laborConfigured = seg.labor_basis !== 'Trade' || !!seg.labor_trade?.trim();
+  return treatmentConfigured && laborConfigured;
 }
 
 export interface ProjectSegmentPayload {

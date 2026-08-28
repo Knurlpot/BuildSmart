@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { AlertTriangle, ArrowLeft, CheckCircle2, Circle, Sparkles, Zap } from "lucide-react";
 import { useSaveSegments, useUpdateQuotationInputMethod } from "@/hooks/useQuotationGeneration";
-import { useMaterialRules } from "@/lib/dev/provisional/useCompanyRulesProvisional";
+import { useLaborTradeOptions, useMaterialRules } from "@/lib/dev/provisional/useCompanyRulesProvisional";
 import { SEGMENT_CONDITION_TAGS, type SegmentConditionTag } from "@/types/entities/segment-tag";
 import {
   computeQuotationInputMethod,
@@ -19,11 +19,12 @@ const inputCls =
 interface SegmentConfigFormProps {
   segment: DraftSegment;
   treatmentOptions: string[];
+  laborTradeOptions: string[];
   onSave: (patch: Partial<DraftSegment>) => void;
 }
 
 // 
-function SegmentConfigForm({ segment, treatmentOptions, onSave }: SegmentConfigFormProps) {
+function SegmentConfigForm({ segment, treatmentOptions, laborTradeOptions, onSave }: SegmentConfigFormProps) {
   const isKnownTreatment = segment.treatment_type !== null && treatmentOptions.includes(segment.treatment_type);
   const [treatmentChoice, setTreatmentChoice] = useState<string>(
     isKnownTreatment ? segment.treatment_type! : segment.treatment_type ? "Other" : ""
@@ -51,6 +52,42 @@ function SegmentConfigForm({ segment, treatmentOptions, onSave }: SegmentConfigF
           {segment.floor_level || "—"} · {segment.area_sqm.toFixed(1)} sqm
           {segment.confidence_score !== null && ` · ${segment.confidence_score}% confidence`}
         </p>
+      </div>
+
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <div className="flex flex-col gap-1.5">
+          <label className="text-xs font-semibold text-gray-600">Labor Basis</label>
+          <select
+            value={segment.labor_basis ?? "Auto"}
+            onChange={(e) => {
+              const laborBasis = e.target.value as DraftSegment["labor_basis"];
+              onSave({
+                labor_basis: laborBasis,
+                labor_trade: laborBasis === "Trade" ? segment.labor_trade : null,
+              });
+            }}
+            className={inputCls}
+          >
+            <option value="Auto">Auto</option>
+            <option value="Treatment">By Treatment</option>
+            <option value="Trade">By Trade</option>
+            <option value="General">General</option>
+          </select>
+        </div>
+        {(segment.labor_basis ?? "Auto") === "Trade" && (
+          <div className="flex flex-col gap-1.5">
+            <label className="text-xs font-semibold text-gray-600">
+              Labor Trade <span className="text-red-500">*</span>
+            </label>
+            <select value={segment.labor_trade ?? ""} onChange={(e) => onSave({ labor_trade: e.target.value || null })} className={inputCls}>
+              <option value="">Select…</option>
+              {laborTradeOptions.map((trade) => (
+                <option key={trade}>{trade}</option>
+              ))}
+            </select>
+            {!segment.labor_trade && <p className="text-xs text-amber-600">Required when labor is priced by trade.</p>}
+          </div>
+        )}
       </div>
 
       <div className="flex flex-col gap-1.5">
@@ -143,14 +180,17 @@ function SegmentConfigForm({ segment, treatmentOptions, onSave }: SegmentConfigF
 interface ApplyToAllPanelProps {
   segmentCount: number;
   treatmentOptions: string[];
-  onApply: (patch: Pick<DraftSegment, "treatment_type" | "condition_tags" | "is_rush">) => void;
+  laborTradeOptions: string[];
+  onApply: (patch: Pick<DraftSegment, "treatment_type" | "labor_basis" | "labor_trade" | "condition_tags" | "is_rush">) => void;
 }
 
 // 
-  function ApplyToAllPanel({ segmentCount, treatmentOptions, onApply }: ApplyToAllPanelProps) {
+  function ApplyToAllPanel({ segmentCount, treatmentOptions, laborTradeOptions, onApply }: ApplyToAllPanelProps) {
   const [open, setOpen] = useState(false);
   const [treatmentChoice, setTreatmentChoice] = useState("");
   const [customTreatment, setCustomTreatment] = useState("");
+  const [laborBasis, setLaborBasis] = useState<DraftSegment["labor_basis"]>("Auto");
+  const [laborTrade, setLaborTrade] = useState("");
   const [tags, setTags] = useState<SegmentConditionTag[]>([]);
   const [isRush, setIsRush] = useState(false);
 
@@ -159,11 +199,14 @@ interface ApplyToAllPanelProps {
   };
 
   const treatmentValid = treatmentChoice === "Other" ? customTreatment.trim().length > 0 : treatmentChoice !== "";
+  const laborValid = laborBasis !== "Trade" || laborTrade.trim().length > 0;
 
   const handleApply = () => {
-    if (!treatmentValid) return;
+    if (!treatmentValid || !laborValid) return;
     onApply({
       treatment_type: treatmentChoice === "Other" ? customTreatment.trim() : treatmentChoice,
+      labor_basis: laborBasis,
+      labor_trade: laborBasis === "Trade" ? laborTrade : null,
       condition_tags: tags,
       is_rush: isRush,
     });
@@ -223,6 +266,40 @@ interface ApplyToAllPanelProps {
         )}
       </div>
 
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <div className="flex flex-col gap-1.5">
+          <label className="text-xs font-semibold text-gray-600">Labor Basis</label>
+          <select
+            value={laborBasis}
+            onChange={(e) => {
+              const next = e.target.value as DraftSegment["labor_basis"];
+              setLaborBasis(next);
+              if (next !== "Trade") setLaborTrade("");
+            }}
+            className={inputCls}
+          >
+            <option value="Auto">Auto</option>
+            <option value="Treatment">By Treatment</option>
+            <option value="Trade">By Trade</option>
+            <option value="General">General</option>
+          </select>
+        </div>
+        {laborBasis === "Trade" && (
+          <div className="flex flex-col gap-1.5">
+            <label className="text-xs font-semibold text-gray-600">
+              Labor Trade <span className="text-red-500">*</span>
+            </label>
+            <select value={laborTrade} onChange={(e) => setLaborTrade(e.target.value)} className={inputCls}>
+              <option value="">Select…</option>
+              {laborTradeOptions.map((trade) => (
+                <option key={trade}>{trade}</option>
+              ))}
+            </select>
+            {!laborValid && <p className="text-xs text-amber-600">Select a trade to apply by trade.</p>}
+          </div>
+        )}
+      </div>
+
       <div className="flex flex-col gap-1.5">
         <label className="text-xs font-semibold text-gray-600">
           Site Conditions <span className="font-normal normal-case text-gray-400">(optional)</span>
@@ -258,7 +335,7 @@ interface ApplyToAllPanelProps {
 
       <button
         type="button"
-        disabled={!treatmentValid}
+        disabled={!treatmentValid || !laborValid}
         onClick={handleApply}
         className="w-fit rounded-lg bg-primary px-4 py-2 text-xs font-bold text-primary-foreground transition hover:bg-(--primary-hover) disabled:opacity-50"
       >
@@ -280,6 +357,7 @@ export function ConfigureSegmentsStep({ quoteId, segments, onChange, onSaved, on
   const { saveSegments, isSaving, saveError } = useSaveSegments();
   const { updateInputMethod } = useUpdateQuotationInputMethod();
   const { rules: materialRules } = useMaterialRules();
+  const { options: laborTradeOptions } = useLaborTradeOptions();
   const [selectedId, setSelectedId] = useState<string | null>(segments[0]?.draft_id ?? null);
   const [applyRevision, setApplyRevision] = useState(0);
 
@@ -306,7 +384,7 @@ export function ConfigureSegmentsStep({ quoteId, segments, onChange, onSaved, on
     onChange(segments.map((s) => (s.draft_id === draftId ? { ...s, ...patch } : s)));
   };
 
-  const applyToAll = (patch: Pick<DraftSegment, "treatment_type" | "condition_tags" | "is_rush">) => {
+  const applyToAll = (patch: Pick<DraftSegment, "treatment_type" | "labor_basis" | "labor_trade" | "condition_tags" | "is_rush">) => {
     onChange(segments.map((s) => ({ ...s, ...patch })));
     setApplyRevision((r) => r + 1);
   };
@@ -345,7 +423,7 @@ export function ConfigureSegmentsStep({ quoteId, segments, onChange, onSaved, on
         </div>
       </div>
 
-      <ApplyToAllPanel segmentCount={segments.length} treatmentOptions={treatmentOptions} onApply={applyToAll} />
+      <ApplyToAllPanel segmentCount={segments.length} treatmentOptions={treatmentOptions} laborTradeOptions={laborTradeOptions} onApply={applyToAll} />
 
 
       <div className="flex overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm" style={{ height: 440 }}>
@@ -388,7 +466,13 @@ export function ConfigureSegmentsStep({ quoteId, segments, onChange, onSaved, on
         </div>
         <div className="flex-1 overflow-y-auto p-5">
           {selected ? (
-            <SegmentConfigForm key={`${selected.draft_id}-${treatmentOptionsKey}-${applyRevision}`} segment={selected} treatmentOptions={treatmentOptions} onSave={(patch) => updateSegment(selected.draft_id, patch)} />
+            <SegmentConfigForm
+              key={`${selected.draft_id}-${treatmentOptionsKey}-${applyRevision}`}
+              segment={selected}
+              treatmentOptions={treatmentOptions}
+              laborTradeOptions={laborTradeOptions}
+              onSave={(patch) => updateSegment(selected.draft_id, patch)}
+            />
           ) : (
             <div className="flex h-full items-center justify-center text-sm text-gray-400">No segments to configure.</div>
           )}

@@ -84,7 +84,7 @@ interface BlueprintOverlayProps {
    * action that only makes sense during Review Segments (step 3) — hidden here, along with
    * the first-mount scan animation (polygons render fully revealed immediately; there's
    * nothing being "discovered" in a view that's just replaying already-reviewed data).
-   * Zoom and hover stay — pure viewing affordances, not edits. Defaults false so every
+   * Hover stays so the preview and segment deck still cross-highlight. Defaults false so every
    * existing caller (BlueprintUploadPanel) is unaffected. */
   readOnly?: boolean;
 }
@@ -319,20 +319,20 @@ export function BlueprintOverlay({
 
   return (
     <div className="flex flex-col gap-2">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex flex-wrap items-center gap-1.5 text-xs font-semibold text-gray-500">
-          <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2 py-0.5">
-            <span className="h-2 w-2 rounded-full" style={{ background: BAND_COLOR.high }} /> High &ge;85%
-          </span>
-          <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2 py-0.5">
-            <span className="h-2 w-2 rounded-full" style={{ background: BAND_COLOR.medium }} /> Medium 60-84%
-          </span>
-          <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2 py-0.5">
-            <span className="h-2 w-2 rounded-full" style={{ background: BAND_COLOR.low }} /> Low &lt;60%
-          </span>
-        </div>
-        <div className="flex flex-wrap shrink-0 items-center gap-1">
-          {!readOnly && (
+      {!readOnly && (
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex flex-wrap items-center gap-1.5 text-xs font-semibold text-gray-500">
+            <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2 py-0.5">
+              <span className="h-2 w-2 rounded-full" style={{ background: BAND_COLOR.high }} /> High &ge;85%
+            </span>
+            <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2 py-0.5">
+              <span className="h-2 w-2 rounded-full" style={{ background: BAND_COLOR.medium }} /> Medium 60-84%
+            </span>
+            <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2 py-0.5">
+              <span className="h-2 w-2 rounded-full" style={{ background: BAND_COLOR.low }} /> Low &lt;60%
+            </span>
+          </div>
+          <div className="flex flex-wrap shrink-0 items-center gap-1">
             <button
               type="button"
               onClick={handleScan}
@@ -343,51 +343,51 @@ export function BlueprintOverlay({
             >
               <ScanLine className={`h-3.5 w-3.5 ${isRescanning ? "animate-pulse" : ""}`} />
             </button>
-          )}
-          {canEditHighlights && (
-            <button
-              type="button"
-              onClick={() => {
-                setEditingHighlights((editing) => !editing);
-                setDraggingPoint(null);
-                setDraggingShape(null);
-                setSelectedEditId(null);
-                setHighlightEditTool("move");
-              }}
-              title={editingHighlights ? "Finish editing highlights" : "Edit Highlights"}
-              aria-label={editingHighlights ? "Finish editing highlights" : "Edit Highlights"}
-              className={`flex h-8 w-8 items-center justify-center rounded-lg border transition ${
-                editingHighlights
-                  ? "border-primary bg-orange-50 text-primary"
-                  : "border-gray-200 bg-white text-gray-500 hover:border-primary hover:text-primary"
-              }`}
-            >
-              {editingHighlights ? <Check className="h-3.5 w-3.5" /> : <PenLine className="h-3.5 w-3.5" />}
-            </button>
-          )}
-          <div className="flex items-center overflow-hidden rounded-lg border border-gray-200 bg-white">
-            <button type="button" onClick={zoomOut} disabled={zoom <= ZOOM_MIN} title="Zoom out" className="p-1.5 text-gray-500 transition hover:bg-gray-50 disabled:opacity-30">
-              <ZoomOut className="h-3.5 w-3.5" />
-            </button>
-            <button
-              type="button"
-              onClick={zoomReset}
-              title="Reset zoom"
-              className="w-12 border-x border-gray-200 py-1.5 text-xs font-bold text-gray-600 transition hover:bg-gray-50"
-            >
-              {Math.round(zoom * 100)}%
-            </button>
-            <button type="button" onClick={zoomIn} disabled={zoom >= ZOOM_MAX} title="Zoom in" className="p-1.5 text-gray-500 transition hover:bg-gray-50 disabled:opacity-30">
-              <ZoomIn className="h-3.5 w-3.5" />
-            </button>
+            {canEditHighlights && (
+              <button
+                type="button"
+                onClick={() => {
+                  setEditingHighlights((editing) => !editing);
+                  setDraggingPoint(null);
+                  setDraggingShape(null);
+                  setSelectedEditId(null);
+                  setHighlightEditTool("move");
+                }}
+                title={editingHighlights ? "Finish editing highlights" : "Edit Highlights"}
+                aria-label={editingHighlights ? "Finish editing highlights" : "Edit Highlights"}
+                className={`flex h-8 w-8 items-center justify-center rounded-lg border transition ${
+                  editingHighlights
+                    ? "border-primary bg-orange-50 text-primary"
+                    : "border-gray-200 bg-white text-gray-500 hover:border-primary hover:text-primary"
+                }`}
+              >
+                {editingHighlights ? <Check className="h-3.5 w-3.5" /> : <PenLine className="h-3.5 w-3.5" />}
+              </button>
+            )}
+            <div className="flex items-center overflow-hidden rounded-lg border border-gray-200 bg-white">
+              <button type="button" onClick={zoomOut} disabled={zoom <= ZOOM_MIN} title="Zoom out" className="p-1.5 text-gray-500 transition hover:bg-gray-50 disabled:opacity-30">
+                <ZoomOut className="h-3.5 w-3.5" />
+              </button>
+              <button
+                type="button"
+                onClick={zoomReset}
+                title="Reset zoom"
+                className="w-12 border-x border-gray-200 py-1.5 text-xs font-bold text-gray-600 transition hover:bg-gray-50"
+              >
+                {Math.round(zoom * 100)}%
+              </button>
+              <button type="button" onClick={zoomIn} disabled={zoom >= ZOOM_MAX} title="Zoom in" className="p-1.5 text-gray-500 transition hover:bg-gray-50 disabled:opacity-30">
+                <ZoomIn className="h-3.5 w-3.5" />
+              </button>
+            </div>
+            {zoom !== 1 && (
+              <button type="button" onClick={zoomReset} title="Reset zoom" aria-label="Reset zoom" className="rounded-lg border border-gray-200 bg-white p-1.5 text-gray-400 transition hover:text-gray-600">
+                <RotateCcw className="h-3.5 w-3.5" />
+              </button>
+            )}
           </div>
-          {zoom !== 1 && (
-            <button type="button" onClick={zoomReset} title="Reset zoom" aria-label="Reset zoom" className="rounded-lg border border-gray-200 bg-white p-1.5 text-gray-400 transition hover:text-gray-600">
-              <RotateCcw className="h-3.5 w-3.5" />
-            </button>
-          )}
         </div>
-      </div>
+      )}
 
       {editingHighlights && editableSegment && (
         <div className="flex flex-wrap items-center gap-2 rounded-lg border border-orange-200 bg-orange-50 px-3 py-2 text-xs text-gray-700">
