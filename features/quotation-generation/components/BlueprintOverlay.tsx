@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import type { ReactNode } from "react";
 import { Check, Minus, Move, PenLine, Plus, ZoomIn, ZoomOut, RotateCcw, ScanLine } from "lucide-react";
 import { confidenceBand, type DraftSegment, type SegmentPolygon } from "../lib/draftSegment";
 
@@ -79,6 +80,7 @@ interface BlueprintOverlayProps {
   onScanStateChange?: (scanning: boolean) => void;
   scanOnMount?: boolean;
   disableHighlightEditing?: boolean;
+  topLeftOverlay?: ReactNode;
   /** Task 7, Part B — Segment Breakdown reuses this exact component (not a rebuild) to
    * preview an already-generated/saved quote's blueprint. Rescan is a destructive EDIT
    * action that only makes sense during Review Segments (step 3) — hidden here, along with
@@ -123,6 +125,7 @@ export function BlueprintOverlay({
   onScanStateChange,
   scanOnMount = false,
   disableHighlightEditing = false,
+  topLeftOverlay,
   readOnly = false,
 }: BlueprintOverlayProps) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -428,14 +431,16 @@ export function BlueprintOverlay({
       <div
         ref={containerRef}
         onMouseMove={handleMouseMove}
-        className="relative overflow-auto rounded-xl border border-slate-800 bg-slate-900"
-        style={{ maxHeight: 560 }}
+        className={`relative rounded-xl border ${readOnly ? "overflow-hidden border-gray-200 bg-white" : "overflow-auto border-slate-800 bg-slate-900"}`}
+        style={readOnly ? { height: "min(56vh, 520px)" } : { maxHeight: 560 }}
       >
+        {topLeftOverlay && <div className="absolute left-2 top-2 z-30 max-w-[calc(100%-1rem)]">{topLeftOverlay}</div>}
         <svg
           ref={svgRef}
           viewBox={croppedViewBox}
-          className="block h-auto"
-          style={{ width: "100%", minWidth: "100%", touchAction: editingHighlights ? "none" : undefined }}
+          preserveAspectRatio="xMidYMid meet"
+          className={readOnly ? "block h-full w-full" : "block h-auto"}
+          style={readOnly ? { touchAction: "none" } : { width: "100%", minWidth: "100%", touchAction: editingHighlights ? "none" : undefined }}
           onPointerMove={handleSvgPointerMove}
           onPointerUp={handleSvgPointerUp}
           onPointerLeave={handleSvgPointerUp}

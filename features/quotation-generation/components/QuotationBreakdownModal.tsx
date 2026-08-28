@@ -180,7 +180,7 @@ function SegmentBreakdownTab({ items, segments, blueprintFloors }: { items: Prov
   const hasBlueprint = !!blueprintFloors && blueprintFloors.length > 0 && !!segments && segments.length > 0;
 
   return (
-    <div className="grid grid-cols-1 gap-5 lg:grid-cols-2 lg:items-start">
+    <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 lg:items-start">
       <div className="lg:sticky lg:top-0">
         {hasBlueprint ? (
           <SegmentBlueprintPreview floors={blueprintFloors!} segments={segments!} hoveredId={hoveredId} onHoverChange={setHoveredId} />
@@ -188,7 +188,7 @@ function SegmentBreakdownTab({ items, segments, blueprintFloors }: { items: Prov
           <SegmentListFallback items={items} hoveredId={hoveredId} onHoverChange={setHoveredId} />
         )}
       </div>
-      <div className={`flex flex-col gap-3 ${segmentIds.length >= 4 ? "max-h-[34rem] overflow-y-auto pr-2" : ""}`}>
+      <div className={`flex flex-col gap-2 ${segmentIds.length >= 4 ? "max-h-[34rem] overflow-y-auto pr-1" : ""}`}>
         {segmentIds.map((segId) => (
           <SegmentCostDeck
             key={segId}
@@ -426,18 +426,18 @@ export function QuotationBreakdownModal({ tier, result, pricelistBasis, onClose,
           default is `sm:max-w-sm`, and twMerge only dedupes conflicting utilities within the
           SAME variant. An unprefixed max-w-* here would lose to that sm: variant at any real
           viewport width, silently capping this at 384px instead of near-full-screen. */}
-      <DialogContent className="flex h-[95vh] w-[96vw] max-w-400 sm:max-w-400 flex-col p-0" showCloseButton={false}>
-        <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-gray-200 bg-gray-50 px-6 py-4">
+      <DialogContent className="flex h-[92vh] w-[94vw] max-w-400 sm:max-w-400 flex-col p-0" showCloseButton={false}>
+        <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-gray-200 bg-gray-50 px-5 py-3">
           <div>
             <h2 className="text-base font-bold text-gray-900">
               Detailed Breakdown: <span className={TIER_ACCENT[tier]}>{tier}</span>
             </h2>
             <p className="text-xs text-gray-500">Full cost transparency · all prices in Philippine Pesos (₱) · mock fixture values</p>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
             <div className="flex items-center gap-2">
               <span className="text-xs font-semibold text-gray-500">Pricelist Basis:</span>
-              <span className="rounded-lg border border-gray-200 bg-gray-100 px-3 py-1.5 text-xs font-semibold text-gray-500">
+              <span className="rounded-lg border border-gray-200 bg-gray-100 px-2.5 py-1 text-xs font-semibold text-gray-500">
                 {pricelistBasisLabel(pricelistBasis)}
               </span>
             </div>
@@ -447,7 +447,7 @@ export function QuotationBreakdownModal({ tier, result, pricelistBasis, onClose,
           </div>
         </div>
 
-        <div className="flex shrink-0 border-b border-gray-200 bg-white px-6">
+        <div className="flex shrink-0 border-b border-gray-200 bg-white px-5">
           {TABS.map((tab) => {
             const Icon = tab.icon;
             const active = activeTab === tab.id;
@@ -456,7 +456,7 @@ export function QuotationBreakdownModal({ tier, result, pricelistBasis, onClose,
                 key={tab.id}
                 type="button"
                 onClick={() => setActiveTab(tab.id)}
-                className={`relative flex items-center gap-1.5 px-4 py-3 text-xs font-semibold transition-colors ${active ? "text-primary" : "text-gray-500 hover:text-gray-700"}`}
+                className={`relative flex items-center gap-1.5 px-3 py-2.5 text-xs font-semibold transition-colors ${active ? "text-primary" : "text-gray-500 hover:text-gray-700"}`}
               >
                 <Icon className="h-3.5 w-3.5" />
                 {tab.label}
@@ -466,7 +466,7 @@ export function QuotationBreakdownModal({ tier, result, pricelistBasis, onClose,
           })}
         </div>
 
-        <div className="flex-1 overflow-y-auto p-6">
+        <div className="flex-1 overflow-y-auto px-4 pb-4 pt-0">
           {activeTab === "segments" && <SegmentBreakdownTab items={result.items} segments={segments} blueprintFloors={blueprintFloors} />}
           {activeTab === "boq" && <BoqTab items={result.items} />}
           {activeTab === "cost-summary" && <CostSummaryTab result={result} />}

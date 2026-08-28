@@ -33,13 +33,13 @@ function displayBoundsForFloor(floors: BlueprintFloor[], floor: BlueprintFloor):
       candidate.image_height === floor.image_height,
   );
   if (sameImageFloors.length < 2) return explicitBounds;
+  if (!isFullSheetBounds(explicitBounds, floor.image_width, floor.image_height)) return explicitBounds;
 
   const index = sameImageFloors.findIndex((candidate) => candidate.floor_level === floor.floor_level);
   const lowerName = floor.floor_level.toLowerCase();
   if (lowerName.includes("ground")) return [0, 0, floor.image_width / 2, floor.image_height];
   if (lowerName.includes("second") || lowerName.includes("upper") || index === 1) return [floor.image_width / 2, 0, floor.image_width, floor.image_height];
   if (index > 1) return null;
-  if (!isFullSheetBounds(explicitBounds, floor.image_width, floor.image_height)) return explicitBounds;
   return index === 0 ? [0, 0, floor.image_width / 2, floor.image_height] : [floor.image_width / 2, 0, floor.image_width, floor.image_height];
 }
 
@@ -47,12 +47,19 @@ export function SegmentBlueprintPreview({ floors, segments, hoveredId, onHoverCh
   const [selectedFloor, setSelectedFloor] = useState(floors[0]?.floor_level ?? "");
   const currentFloor = floors.find((f) => f.floor_level === selectedFloor) ?? floors[0];
   const floorSegments = segments.filter((s) => s.floor_level === currentFloor.floor_level && (s.polygon_coords || s.polygon_groups?.length));
-  const floorVisibleBounds = displayBoundsForFloor(floors, currentFloor);
+  const selectedPoints = floorSegments.flatMap((segment) => segment.polygon_groups?.length ? segment.polygon_groups.flat() : (segment.polygon_coords ?? []));
+  const selectedGeometryBounds = selectedPoints.length > 0
+    ? selectedPoints.reduce<[number, number, number, number]>(
+        ([minX, minY, maxX, maxY], [x, y]) => [Math.min(minX, x), Math.min(minY, y), Math.max(maxX, x), Math.max(maxY, y)],
+        [selectedPoints[0][0], selectedPoints[0][1], selectedPoints[0][0], selectedPoints[0][1]],
+      )
+    : null;
+  const floorVisibleBounds = selectedGeometryBounds ?? displayBoundsForFloor(floors, currentFloor);
 
   return (
-    <div className="flex flex-col gap-3">
+    <div>
       {floors.length > 1 && (
-        <div className="flex max-w-full gap-1 overflow-x-auto rounded-lg border border-gray-200 bg-white p-1">
+        <div className="hidden">
           {floors.map((f) => (
             <button
               key={f.floor_level}
@@ -69,7 +76,7 @@ export function SegmentBlueprintPreview({ floors, segments, hoveredId, onHoverCh
           ))}
         </div>
       )}
-      <div className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs font-semibold text-gray-600">
+      <div className="hidden">
         {currentFloor.floor_level} · {floorSegments.length} segment{floorSegments.length === 1 ? "" : "s"}
       </div>
       <BlueprintOverlay
@@ -81,6 +88,24 @@ export function SegmentBlueprintPreview({ floors, segments, hoveredId, onHoverCh
         segments={floorSegments}
         hoveredId={hoveredId}
         onHoverChange={onHoverChange}
+        topLeftOverlay={
+          floors.length > 1 ? (
+            <div className="flex max-w-full gap-1 overflow-x-auto rounded-lg border border-gray-200 bg-white/95 p-1 shadow-sm backdrop-blur-sm">
+              {floors.map((f) => (
+                <button
+                  key={f.floor_level}
+                  type="button"
+                  onClick={() => setSelectedFloor(f.floor_level)}
+                  className={`shrink-0 rounded-md px-3 py-1 text-[11px] font-semibold transition ${
+                    f.floor_level === currentFloor.floor_level ? "bg-primary text-primary-foreground" : "text-gray-500 hover:bg-gray-50"
+                  }`}
+                >
+                  {f.floor_level}<span className="ml-1.5 opacity-75">{f.segments.length}</span>
+                </button>
+              ))}
+            </div>
+          ) : null
+        }
         readOnly
       />
     </div>

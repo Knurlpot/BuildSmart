@@ -229,13 +229,13 @@ function displayBoundsForFloor(floors: BlueprintFloor[], floor: BlueprintFloor):
       candidate.image_height === floor.image_height,
   );
   if (sameImageFloors.length < 2) return explicitBounds;
+  if (!isFullSheetBounds(explicitBounds, floor.image_width, floor.image_height)) return explicitBounds;
 
   const index = sameImageFloors.findIndex((candidate) => candidate.floor_level === floor.floor_level);
   const lowerName = floor.floor_level.toLowerCase();
   if (lowerName.includes("ground")) return [0, 0, floor.image_width / 2, floor.image_height];
   if (lowerName.includes("second") || lowerName.includes("upper") || index === 1) return [floor.image_width / 2, 0, floor.image_width, floor.image_height];
   if (index > 1) return null;
-  if (!isFullSheetBounds(explicitBounds, floor.image_width, floor.image_height)) return explicitBounds;
   return index === 0 ? [0, 0, floor.image_width / 2, floor.image_height] : [floor.image_width / 2, 0, floor.image_width, floor.image_height];
 }
 
@@ -576,7 +576,10 @@ export function BlueprintUploadPanel({
   const floorNeedsCloserReview = floorConfidence.medium + floorConfidence.low + floorConfidence.none;
   const floorConfirmedIncludedCount = floorIncludedSegments.filter((s) => s.confirmed).length;
   const floorAllIncludedConfirmed = floorIncludedSegments.length > 0 && floorConfirmedIncludedCount === floorIncludedSegments.length;
-  const floorVisibleBounds = displayBoundsForFloor(reviewFloors, currentFloor);
+  const selectedFloorGeometryBounds = boundsForPoints(floorSegments.flatMap((segment) => segmentPolygons(segment)).flat());
+  const floorVisibleBounds = selectedFloorGeometryBounds
+    ? paddedBounds(selectedFloorGeometryBounds, currentFloor.image_width, currentFloor.image_height)
+    : displayBoundsForFloor(reviewFloors, currentFloor);
   const manualAdds = segments.filter((s) => s.source_method === "Manual");
   // Part F — only segments still in scope for this quote need to be confirmed. Excluding a
   // segment (still visible in the list, never deleted) removes it from this gate.
@@ -699,6 +702,29 @@ export function BlueprintUploadPanel({
       )}
 
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-[1.3fr_1fr]">
+        {reviewFloors.length > 1 && (
+          <div className="hidden">
+            {reviewFloors.map((f) => (
+              <button
+                key={f.floor_level}
+                type="button"
+                onClick={() => selectFloor(f.floor_level)}
+                className={`shrink-0 rounded-md px-3 py-1 text-[11px] font-semibold transition ${
+                  f.floor_level === currentFloor.floor_level ? "bg-primary text-primary-foreground" : "text-gray-500 hover:bg-gray-50"
+                }`}
+                title={`${f.floor_level} · ${f.segments.length} segment${f.segments.length === 1 ? "" : "s"}`}
+              >
+                <span className="inline-flex items-center gap-1.5">
+                  {floorStatusByLevel.get(f.floor_level) && (
+                    <span className={`h-1.5 w-1.5 rounded-full ${f.floor_level === currentFloor.floor_level ? "bg-white" : "bg-primary"}`} aria-label="Needs review" />
+                  )}
+                  {f.floor_level}
+                </span>
+                <span className="ml-1.5 opacity-75">{f.segments.length}</span>
+              </button>
+            ))}
+          </div>
+        )}
         {/* Remounts on floor change — a clean slate for scan/zoom/tooltip state rather than
             carrying the previous floor's animation progress or zoom level into a different
             image. */}
