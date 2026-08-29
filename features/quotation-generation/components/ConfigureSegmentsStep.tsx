@@ -55,9 +55,11 @@ function SegmentConfigForm({ segment, treatmentOptions, laborTradeOptions, onSav
       </div>
 
       <div className="flex flex-col gap-2">
-        <div className="flex flex-col gap-3">
-          <div className="flex flex-col gap-1.5">
-          <label className="text-xs font-semibold text-gray-600">Labor Basis</label>
+        <div className={`grid gap-3 ${(segment.labor_basis ?? "Auto") === "Trade" ? "sm:grid-cols-2" : ""}`}>
+          <div className="flex min-w-0 flex-col gap-1.5">
+          <label className="text-xs font-semibold text-gray-600">
+            Labor Basis <span className="text-red-500">*</span>
+          </label>
           <select
             value={segment.labor_basis ?? "Auto"}
             onChange={(e) => {
@@ -76,7 +78,7 @@ function SegmentConfigForm({ segment, treatmentOptions, laborTradeOptions, onSav
           </select>
           </div>
           {(segment.labor_basis ?? "Auto") === "Trade" && (
-            <div className="flex flex-col gap-1.5">
+            <div className="flex min-w-0 flex-col gap-1.5">
             <label className="text-xs font-semibold text-gray-600">
               Labor Trade <span className="text-red-500">*</span>
             </label>
@@ -161,7 +163,7 @@ function SegmentConfigForm({ segment, treatmentOptions, laborTradeOptions, onSav
           value={segment.site_notes}
           onChange={(e) => onSave({ site_notes: e.target.value })}
           rows={2}
-          className={`${inputCls} min-h-14 flex-1 resize-none`}
+          className={`${inputCls} h-25 resize-none`}
         />
       </div>
 
@@ -179,15 +181,16 @@ function SegmentConfigForm({ segment, treatmentOptions, laborTradeOptions, onSav
 }
 
 interface ApplyToAllPanelProps {
+  open: boolean;
   segmentCount: number;
   treatmentOptions: string[];
   laborTradeOptions: string[];
+  onOpenChange: (open: boolean) => void;
   onApply: (patch: Pick<DraftSegment, "treatment_type" | "labor_basis" | "labor_trade" | "condition_tags" | "is_rush">) => void;
 }
 
 // 
-  function ApplyToAllPanel({ segmentCount, treatmentOptions, laborTradeOptions, onApply }: ApplyToAllPanelProps) {
-  const [open, setOpen] = useState(false);
+  function ApplyToAllPanel({ open, segmentCount, treatmentOptions, laborTradeOptions, onOpenChange, onApply }: ApplyToAllPanelProps) {
   const [treatmentChoice, setTreatmentChoice] = useState("");
   const [customTreatment, setCustomTreatment] = useState("");
   const [laborBasis, setLaborBasis] = useState<DraftSegment["labor_basis"]>("Auto");
@@ -211,19 +214,11 @@ interface ApplyToAllPanelProps {
       condition_tags: tags,
       is_rush: isRush,
     });
-    setOpen(false);
+    onOpenChange(false);
   };
 
   if (!open) {
-    return (
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        className="flex w-fit items-center gap-1.5 rounded-lg border border-dashed border-primary/40 bg-orange-50/40 px-3 py-1.5 text-xs font-bold text-primary transition hover:bg-orange-50"
-      >
-        <Zap className="h-3.5 w-3.5" /> Apply to All Segments
-      </button>
-    );
+    return null;
   }
 
   return (
@@ -233,7 +228,7 @@ interface ApplyToAllPanelProps {
           <Sparkles className="h-4 w-4 text-primary" />
           <p className="text-sm font-bold text-gray-900">Apply to All {segmentCount} Segments</p>
         </div>
-        <button type="button" onClick={() => setOpen(false)} className="text-xs font-semibold text-gray-400 transition hover:text-gray-600">
+        <button type="button" onClick={() => onOpenChange(false)} className="text-xs font-semibold text-gray-400 transition hover:text-gray-600">
           Cancel
         </button>
       </div>
@@ -360,6 +355,7 @@ export function ConfigureSegmentsStep({ quoteId, segments, onChange, onSaved, on
   const { rules: materialRules } = useMaterialRules();
   const { options: laborTradeOptions } = useLaborTradeOptions();
   const [selectedId, setSelectedId] = useState<string | null>(segments[0]?.draft_id ?? null);
+  const [applyAllOpen, setApplyAllOpen] = useState(false);
   const [applyRevision, setApplyRevision] = useState(0);
 
   // 
@@ -424,13 +420,27 @@ export function ConfigureSegmentsStep({ quoteId, segments, onChange, onSaved, on
         </div>
       </div>
 
-      <ApplyToAllPanel segmentCount={segments.length} treatmentOptions={treatmentOptions} laborTradeOptions={laborTradeOptions} onApply={applyToAll} />
+      <ApplyToAllPanel
+        open={applyAllOpen}
+        segmentCount={segments.length}
+        treatmentOptions={treatmentOptions}
+        laborTradeOptions={laborTradeOptions}
+        onOpenChange={setApplyAllOpen}
+        onApply={applyToAll}
+      />
 
 
-      <div className="flex h-[400px] overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
+      <div className="flex h-[450px] overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
         <div className="flex w-68 shrink-0 flex-col border-r border-gray-100">
-          <div className="flex min-h-14 items-center border-b border-gray-100 px-4 py-2.5">
+          <div className="flex min-h-14 items-center justify-between gap-2 border-b border-gray-100 px-4 py-2.5">
             <p className="text-xs font-bold uppercase tracking-wider text-gray-400">Segments ({segments.length})</p>
+            <button
+              type="button"
+              onClick={() => setApplyAllOpen(true)}
+              className="flex shrink-0 items-center gap-1 rounded-lg border border-dashed border-primary/40 bg-orange-50/40 px-2 py-1.5 text-[11px] font-bold text-primary transition hover:bg-orange-50"
+            >
+              <Zap className="h-3.5 w-3.5" /> Apply to All
+            </button>
           </div>
           <div className="flex-1 divide-y divide-gray-50 overflow-y-auto">
             {segments.map((seg) => {
