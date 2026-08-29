@@ -22,9 +22,18 @@ function formatFileSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+function isUserVisibleScanWarning(warning: string): boolean {
+  return !(
+    warning.startsWith("DXF units were missing; drawing scale indicates millimeters") ||
+    /^units=[^;]+; unit_confidence=/.test(warning) ||
+    /^elapsed_ms=/.test(warning)
+  );
+}
+
 function blueprintScanWarnings(result: BlueprintExtractionResult): string[] {
   const diagnosticsWarnings = Array.isArray(result.diagnostics?.warnings)
     ? result.diagnostics.warnings.filter((warning): warning is string => typeof warning === "string")
+        .filter(isUserVisibleScanWarning)
     : [];
   const detectedSegments = result.floors.reduce((total, floor) => total + floor.segments.length, 0);
   const missingSegmentsWarning =

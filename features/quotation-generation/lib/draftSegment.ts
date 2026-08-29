@@ -168,12 +168,83 @@ function segmentPolygons(seg: DraftSegment): SegmentPolygon[] {
   return seg.polygon_coords ? [seg.polygon_coords] : [];
 }
 
+function pointKey([x, y]: [number, number]): string {
+  return `${Math.round(x * 100) / 100},${Math.round(y * 100) / 100}`;
+}
+
+function edgeKey(a: [number, number], b: [number, number]): string {
+  return [pointKey(a), pointKey(b)].sort().join("|");
+}
+
+function traceBoundaryLoops(edges: Array<[[number, number], [number, number]]>): SegmentPolygon[] {
+  const adjacency = new Map<string, Array<{ point: [number, number]; edge: string }>>();
+  const pointByKey = new Map<string, [number, number]>();
+  const unused = new Set<string>();
+
+  for (const [a, b] of edges) {
+    const aKey = pointKey(a);
+    const bKey = pointKey(b);
+    const key = `${aKey}|${bKey}`;
+    pointByKey.set(aKey, a);
+    pointByKey.set(bKey, b);
+    unused.add(key);
+    adjacency.set(aKey, [...(adjacency.get(aKey) ?? []), { point: b, edge: key }]);
+    adjacency.set(bKey, [...(adjacency.get(bKey) ?? []), { point: a, edge: key }]);
+  }
+
+  const loops: SegmentPolygon[] = [];
+  while (unused.size > 0) {
+    const firstEdge = unused.values().next().value as string;
+    const [startKey, nextKey] = firstEdge.split("|");
+    const start = pointByKey.get(startKey);
+    const next = pointByKey.get(nextKey);
+    if (!start || !next) {
+      unused.delete(firstEdge);
+      continue;
+    }
+
+    const loop: SegmentPolygon = [start, next];
+    unused.delete(firstEdge);
+    let currentKey = nextKey;
+    let previousKey = startKey;
+
+    while (currentKey !== startKey) {
+      const candidates = (adjacency.get(currentKey) ?? []).filter((candidate) => unused.has(candidate.edge));
+      const candidate = candidates.find((item) => pointKey(item.point) !== previousKey) ?? candidates[0];
+      if (!candidate) break;
+      previousKey = currentKey;
+      currentKey = pointKey(candidate.point);
+      unused.delete(candidate.edge);
+      if (currentKey !== startKey) loop.push(candidate.point);
+    }
+
+    if (currentKey === startKey && loop.length >= 3) loops.push(loop);
+  }
+  return loops;
+}
+
+function combinedHighlightPolygons(polygons: SegmentPolygon[]): SegmentPolygon[] {
+  const edgeCounts = new Map<string, { count: number; edge: [[number, number], [number, number]] }>();
+  for (const polygon of polygons) {
+    for (let index = 0; index < polygon.length; index += 1) {
+      const a = polygon[index];
+      const b = polygon[(index + 1) % polygon.length];
+      const key = edgeKey(a, b);
+      const current = edgeCounts.get(key);
+      edgeCounts.set(key, { count: (current?.count ?? 0) + 1, edge: current?.edge ?? [a, b] });
+    }
+  }
+  const boundaryEdges = [...edgeCounts.values()].filter((entry) => entry.count === 1).map((entry) => entry.edge);
+  const loops = traceBoundaryLoops(boundaryEdges);
+  return loops.length > 0 ? loops : polygons;
+}
+
 /** "Group multiple into one" — sums area, keeps the lowest confidence of the group (the
- * more conservative read), and preserves each source room outline as a multi-polygon
- * staging shape so the blueprint highlight does not disappear after grouping. */
+ * more conservative read), and removes only shared highlight borders where rooms touch. */
 export function mergeSegments(segments: DraftSegment[], newName: string): DraftSegment {
   const confidences = segments.map((s) => s.confidence_score).filter((c): c is number => c !== null);
   const polygonGroups = segments.flatMap(segmentPolygons);
+  const combinedPolygons = combinedHighlightPolygons(polygonGroups);
   return {
     draft_id: stagingId('seg'),
     segment_name: newName,
@@ -182,8 +253,8 @@ export function mergeSegments(segments: DraftSegment[], newName: string): DraftS
     entry_mode: 'total_sqm',
     ...SHAPE_FIELD_DEFAULTS,
     area_sqm: Math.round(segments.reduce((sum, s) => sum + s.area_sqm, 0) * 100) / 100,
-    polygon_coords: polygonGroups[0] ?? null,
-    polygon_groups: polygonGroups.length > 0 ? polygonGroups : null,
+    polygon_coords: combinedPolygons[0] ?? null,
+    polygon_groups: combinedPolygons.length > 0 ? combinedPolygons : null,
     confidence_score: confidences.length > 0 ? Math.min(...confidences) : null,
     geometry_flagged: segments.some((segment) => segment.geometry_flagged),
     geometry_warnings: [...new Set(segments.flatMap((segment) => segment.geometry_warnings))],
@@ -225,6 +296,11 @@ export interface ProjectSegmentPayload {
   notes: string | null;
 }
 
+function segmentPolygonsForStorage(seg: DraftSegment): SegmentPolygon[] {
+  if (seg.polygon_groups?.length) return seg.polygon_groups;
+  return seg.polygon_coords ? [seg.polygon_coords] : [];
+}
+
 const DEFAULT_FLOOR_LEVEL = 'Ground Floor';
 const UNSPECIFIED_TREATMENT_LABEL = 'Not specified';
 
@@ -250,7 +326,7 @@ export function draftSegmentToPayload(seg: DraftSegment): ProjectSegmentPayload 
     length: seg.entry_mode === 'dimensions' ? (seg.length ?? 0) : seg.area_sqm,
     width: seg.entry_mode === 'dimensions' ? (seg.width ?? 0) : 1,
     area_sqm: seg.area_sqm,
-    polygon_coords: seg.polygon_groups?.[0] ? JSON.stringify(seg.polygon_groups[0]) : seg.polygon_coords ? JSON.stringify(seg.polygon_coords) : null,
+    polygon_coords: segmentPolygonsForStorage(seg).length > 0 ? JSON.stringify(segmentPolygonsForStorage(seg)) : null,
     confidence_score: seg.confidence_score,
     // Part F — a specialty contractor may only want SOME detected rooms priced. Excluded
     // segments still submit as real rows (the room was genuinely detected/measured); this

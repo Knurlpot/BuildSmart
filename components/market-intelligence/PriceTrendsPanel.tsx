@@ -107,6 +107,17 @@ type MaterialVariancePoint = {
   variancePct: number;
 };
 
+type SupplierComparisonRow = {
+  supplierId: number;
+  supplierName: string;
+  itemCount: number;
+  lowestCount: number;
+  averagePrice: number;
+  averageVariancePct: number | null;
+  totalQuotedValue: number;
+  favorableCount: number;
+};
+
 type ChartClickPayload = {
   payload?: {
     period?: string;
@@ -345,6 +356,95 @@ export function PriceTrendsPanel({ compact = false }: PriceTrendsPanelProps) {
       markupDriven,
     };
   }, [analysisRows]);
+
+  const supplierComparisons = useMemo<SupplierComparisonRow[]>(() => {
+    const latestDpwhByMaterial = new Map<string, { price: number; periodRank: number }>();
+    const latestSupplierByMaterial = new Map<string, HistoricalPriceRecordRow[]>();
+
+    for (const row of filteredRows) {
+      if (row.price_source !== "DPWH" && row.price_source !== "Supplier") continue;
+      const key = comparisonKey(row);
+      const period = periodOf(row);
+      if (row.price_source === "DPWH") {
+        const current = latestDpwhByMaterial.get(key);
+        if (!current || period.rank > current.periodRank) latestDpwhByMaterial.set(key, { price: row.price, periodRank: period.rank });
+        continue;
+      }
+      if (row.supplier_id === null) continue;
+      const rows = latestSupplierByMaterial.get(key) ?? [];
+      rows.push(row);
+      latestSupplierByMaterial.set(key, rows);
+    }
+
+    const supplierStats = new Map<number, {
+      supplierName: string;
+      itemCount: number;
+      lowestCount: number;
+      totalPrice: number;
+      totalVariancePct: number;
+      varianceCount: number;
+      totalQuotedValue: number;
+      favorableCount: number;
+    }>();
+
+    for (const [key, rows] of latestSupplierByMaterial) {
+      const latestBySupplier = new Map<number, { row: HistoricalPriceRecordRow; rank: number }>();
+      for (const row of rows) {
+        const supplierId = row.supplier_id;
+        if (supplierId === null) continue;
+        const period = periodOf(row);
+        const current = latestBySupplier.get(supplierId);
+        if (!current || period.rank > current.rank) latestBySupplier.set(supplierId, { row, rank: period.rank });
+      }
+
+      const latestRows = [...latestBySupplier.values()].map(({ row }) => row);
+      const lowestPrice = Math.min(...latestRows.map((row) => row.price));
+      const dpwh = latestDpwhByMaterial.get(key);
+
+      for (const row of latestRows) {
+        const supplierId = row.supplier_id;
+        if (supplierId === null) continue;
+        const current = supplierStats.get(supplierId) ?? {
+          supplierName: row.supplier_name || `Supplier #${supplierId}`,
+          itemCount: 0,
+          lowestCount: 0,
+          totalPrice: 0,
+          totalVariancePct: 0,
+          varianceCount: 0,
+          totalQuotedValue: 0,
+          favorableCount: 0,
+        };
+        const variancePct = dpwh && dpwh.price > 0 ? ((row.price - dpwh.price) / dpwh.price) * 100 : null;
+        current.itemCount += 1;
+        current.lowestCount += row.price === lowestPrice ? 1 : 0;
+        current.totalPrice += row.price;
+        current.totalQuotedValue += row.actual_total_cost ?? 0;
+        if (variancePct !== null) {
+          current.totalVariancePct += variancePct;
+          current.varianceCount += 1;
+          current.favorableCount += variancePct <= 0 ? 1 : 0;
+        }
+        supplierStats.set(supplierId, current);
+      }
+    }
+
+    return [...supplierStats.entries()]
+      .map(([supplierId, row]) => ({
+        supplierId,
+        supplierName: row.supplierName,
+        itemCount: row.itemCount,
+        lowestCount: row.lowestCount,
+        averagePrice: row.itemCount > 0 ? row.totalPrice / row.itemCount : 0,
+        averageVariancePct: row.varianceCount > 0 ? row.totalVariancePct / row.varianceCount : null,
+        totalQuotedValue: row.totalQuotedValue,
+        favorableCount: row.favorableCount,
+      }))
+      .sort((a, b) => {
+        const varianceA = a.averageVariancePct ?? Number.POSITIVE_INFINITY;
+        const varianceB = b.averageVariancePct ?? Number.POSITIVE_INFINITY;
+        return varianceA - varianceB || b.lowestCount - a.lowestCount || b.itemCount - a.itemCount;
+      });
+  }, [filteredRows]);
 
   return (
     <div className="flex flex-col gap-5">
@@ -713,11 +813,66 @@ export function PriceTrendsPanel({ compact = false }: PriceTrendsPanelProps) {
 
       {!compact && (
         <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
-          <div className="mb-1 flex items-center gap-2">
-            <Truck className="h-4 w-4 text-gray-400" />
-            <p className="font-bold text-gray-900">Supplier Comparisons</p>
+          <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <div className="mb-1 flex items-center gap-2">
+                <Truck className="h-4 w-4 text-gray-400" />
+                <p className="font-bold text-gray-900">Supplier Comparisons</p>
+              </div>
+              <p className="text-sm text-gray-500">Ranked by latest supplier prices against DPWH baselines for the selected filters.</p>
+            </div>
+            <span className="rounded-full bg-gray-50 px-3 py-1 text-xs font-bold text-gray-500">
+              {supplierComparisons.length} supplier{supplierComparisons.length === 1 ? "" : "s"}
+            </span>
           </div>
-          <p className="text-sm text-gray-400">Not yet wired to a backend endpoint.</p>
+          <QueryState
+            isLoading={historical.isLoading}
+            error={historical.error}
+            isEmpty={supplierComparisons.length === 0}
+            onRetry={historical.refetch}
+            emptyTitle="No supplier prices to compare"
+            emptyHint="Upload supplier pricelists with matching DPWH materials to populate this view."
+            minHeight={140}
+          >
+            <div className="overflow-x-auto rounded-xl border border-gray-100">
+              <table className="min-w-[860px] w-full text-left text-sm">
+                <thead className="border-b border-gray-100 bg-gray-50 text-xs uppercase tracking-wider text-gray-400">
+                  <tr>
+                    <th className="px-4 py-3">Supplier</th>
+                    <th className="px-4 py-3 text-right">Avg Variance</th>
+                    <th className="px-4 py-3 text-right">Avg Price</th>
+                    <th className="px-4 py-3 text-right">Lowest Items</th>
+                    <th className="px-4 py-3 text-right">Favorable Items</th>
+                    <th className="px-4 py-3 text-right">Quote Exposure</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {supplierComparisons.map((row, index) => (
+                    <tr key={row.supplierId} className="text-gray-600">
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-2">
+                          <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-orange-50 text-xs font-extrabold text-primary">
+                            {index + 1}
+                          </span>
+                          <div>
+                            <p className="font-semibold text-gray-900">{row.supplierName}</p>
+                            <p className="text-xs text-gray-400">{row.itemCount} priced item{row.itemCount === 1 ? "" : "s"}</p>
+                          </div>
+                        </div>
+                      </td>
+                      <td className={`px-4 py-3 text-right font-bold ${(row.averageVariancePct ?? 0) > 0 ? "text-red-500" : "text-green-600"}`}>
+                        {row.averageVariancePct === null ? "N/A" : pct(row.averageVariancePct)}
+                      </td>
+                      <td className="px-4 py-3 text-right">{fmt(row.averagePrice)}</td>
+                      <td className="px-4 py-3 text-right font-semibold text-gray-800">{row.lowestCount}</td>
+                      <td className="px-4 py-3 text-right">{row.favorableCount}</td>
+                      <td className="px-4 py-3 text-right">{fmt(row.totalQuotedValue)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </QueryState>
         </div>
       )}
     </div>

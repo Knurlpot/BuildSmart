@@ -6,6 +6,7 @@ type HistoricalPriceRecordResponse = {
   historicalrec_id: number;
   item_code: number;
   supplier_id: number | null;
+  supplier_name: string | null;
   price_source: "DPWH" | "PSA" | "Supplier" | "Internal";
   region: string | null;
   location: string | null;
@@ -52,6 +53,7 @@ export async function GET(request: NextRequest) {
        h.historicalrec_id,
        h.item_code,
        h.supplier_id,
+       s.supplier_name,
        h.price_source,
        h.region,
        h.location,
@@ -68,6 +70,7 @@ export async function GET(request: NextRequest) {
        qu.actual_total_cost
      FROM historical_price_record h
      JOIN items i ON i.item_code = h.item_code
+     LEFT JOIN suppliers s ON s.supplier_id = h.supplier_id
      LEFT JOIN category c ON c.category_id = i.category_id
      LEFT JOIN quote_usage qu ON qu.item_code = h.item_code
      WHERE ${filters.join(" AND ")}

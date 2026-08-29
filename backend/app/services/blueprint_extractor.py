@@ -223,6 +223,9 @@ def _extract_scanned_pdf_preview(content: bytes) -> BlueprintExtractionResult:
                 visual_preview_url=image_url,
             )
         )
+    detected_spaces = sum(len(floor.segments) for floor in floors)
+    if detected_spaces == 0:
+        raise ValueError("No blueprint floor plan or room geometry was detected in this file. Upload a vector PDF or DXF blueprint with readable walls, room labels, or room polygons.")
     if gemini_enabled:
         return BlueprintExtractionResult(
             floors=floors,

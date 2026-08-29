@@ -39,6 +39,64 @@ interface LocalQuotationDraft {
 }
 
 const LOCAL_DRAFTS_KEY = "buildsmart_quotation_drafts_v1";
+const MAX_LOCAL_DRAFTS = 3;
+const LOCAL_DRAFT_WARNING_KEY = "buildsmart_quotation_drafts_warning_v1";
+
+function trimSegmentForLocalDraft(segment: DraftSegment): DraftSegment {
+  return {
+    ...segment,
+    geometry_warnings: segment.geometry_warnings.slice(0, 3),
+  };
+}
+
+function compactFloorsForLocalDraft(floors: BlueprintFloor[] | null): BlueprintFloor[] | null {
+  return floors
+    ? floors.map((floor) => ({
+        ...floor,
+        image_url: "",
+        segments: [],
+      }))
+    : null;
+}
+
+function compactLocalDraft(draft: LocalQuotationDraft, includeBlueprintImages: boolean): LocalQuotationDraft {
+  return {
+    ...draft,
+    segments: draft.segments.map(trimSegmentForLocalDraft),
+    blueprintFloors: includeBlueprintImages ? draft.blueprintFloors : compactFloorsForLocalDraft(draft.blueprintFloors),
+    originalBlueprintFloors: includeBlueprintImages ? draft.originalBlueprintFloors : compactFloorsForLocalDraft(draft.originalBlueprintFloors),
+  };
+}
+
+function pruneLocalDrafts(drafts: Record<string, LocalQuotationDraft>): Record<string, LocalQuotationDraft> {
+  return Object.fromEntries(
+    Object.entries(drafts)
+      .sort(([, a], [, b]) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt))
+      .slice(0, MAX_LOCAL_DRAFTS),
+  );
+}
+
+function rememberLocalDraftWarning(message: string) {
+  if (typeof window === "undefined") return;
+  try {
+    window.sessionStorage.setItem(LOCAL_DRAFT_WARNING_KEY, message);
+  } catch {
+    // Best-effort notice only.
+  }
+}
+
+function safeSetLocalDrafts(drafts: Record<string, LocalQuotationDraft>): boolean {
+  try {
+    window.localStorage.setItem(LOCAL_DRAFTS_KEY, JSON.stringify(drafts));
+    return true;
+  } catch (error) {
+    if (error instanceof DOMException && (error.name === "QuotaExceededError" || error.name === "NS_ERROR_DOM_QUOTA_REACHED")) {
+      rememberLocalDraftWarning("The browser draft cache is full, so blueprint preview images were not saved locally. Your quotation segments are still saved to the project.");
+      return false;
+    }
+    throw error;
+  }
+}
 
 function readLocalQuotationDrafts(): Record<string, LocalQuotationDraft> {
   if (typeof window === "undefined") return {};
@@ -58,38 +116,49 @@ function readLocalQuotationDraft(quoteId: number): LocalQuotationDraft | null {
 
 function writeLocalQuotationDraft(draft: LocalQuotationDraft) {
   if (typeof window === "undefined") return;
-  const drafts = readLocalQuotationDrafts();
-  drafts[String(draft.quoteId)] = draft;
-  window.localStorage.setItem(LOCAL_DRAFTS_KEY, JSON.stringify(drafts));
+  const drafts = pruneLocalDrafts({ ...readLocalQuotationDrafts(), [String(draft.quoteId)]: compactLocalDraft(draft, true) });
+  if (safeSetLocalDrafts(drafts)) return;
+
+  const compactDrafts = pruneLocalDrafts({ ...readLocalQuotationDrafts(), [String(draft.quoteId)]: compactLocalDraft(draft, false) });
+  if (safeSetLocalDrafts(compactDrafts)) return;
+
+  safeSetLocalDrafts({ [String(draft.quoteId)]: compactLocalDraft(draft, false) });
 }
 
 function clearLocalQuotationDraft(quoteId: number) {
   if (typeof window === "undefined") return;
   const drafts = readLocalQuotationDrafts();
   delete drafts[String(quoteId)];
-  window.localStorage.setItem(LOCAL_DRAFTS_KEY, JSON.stringify(drafts));
+  safeSetLocalDrafts(drafts);
 }
 
-function parsePolygon(value?: string | null): [number, number][] | null {
-  if (!value) return null;
+function isPoint(value: unknown): value is [number, number] {
+  return (
+    Array.isArray(value) &&
+    value.length === 2 &&
+    typeof value[0] === "number" &&
+    typeof value[1] === "number"
+  );
+}
+
+function parsePolygonGroups(value?: string | null): [number, number][][] {
+  if (!value) return [];
   try {
     const parsed = JSON.parse(value) as unknown;
-    if (!Array.isArray(parsed)) return null;
-    const points = parsed.filter(
-      (point): point is [number, number] =>
-        Array.isArray(point) &&
-        point.length === 2 &&
-        typeof point[0] === "number" &&
-        typeof point[1] === "number"
-    );
-    return points.length >= 3 ? points : null;
+    if (!Array.isArray(parsed)) return [];
+    if (parsed.every(isPoint)) return parsed.length >= 3 ? [parsed] : [];
+    return parsed
+      .filter(Array.isArray)
+      .map((polygon) => polygon.filter(isPoint))
+      .filter((polygon) => polygon.length >= 3);
   } catch {
-    return null;
+    return [];
   }
 }
 
 function draftFromSavedSegment(segment: ProjectSegment): DraftSegment {
-  const polygon = parsePolygon(segment.polygon_coords);
+  const polygonGroups = parsePolygonGroups(segment.polygon_coords);
+  const polygon = polygonGroups[0] ?? null;
   return {
     draft_id: `seg-${segment.segment_id}`,
     segment_name: segment.segment_name,
@@ -104,7 +173,7 @@ function draftFromSavedSegment(segment: ProjectSegment): DraftSegment {
     notch_width: null,
     area_sqm: segment.area_sqm,
     polygon_coords: polygon,
-    polygon_groups: polygon ? [polygon] : null,
+    polygon_groups: polygonGroups.length > 0 ? polygonGroups : null,
     confidence_score: segment.confidence_score ?? null,
     geometry_flagged: false,
     geometry_warnings: [],

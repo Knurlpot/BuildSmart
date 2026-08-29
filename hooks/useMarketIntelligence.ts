@@ -15,6 +15,7 @@ import { useFetch, type UseFetchResult } from './useFetch';
 import type { HistoricalPriceRecord, MaterialPriceVariance } from '@/types/entities';
 
 export interface HistoricalPriceRecordRow extends HistoricalPriceRecord {
+  supplier_name?: string | null;
   item_name?: string;
   material?: string;
   category_type?: string | null;

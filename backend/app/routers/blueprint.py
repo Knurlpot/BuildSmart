@@ -24,13 +24,13 @@ async def extract_uploaded_blueprint(quotation_id: int, file: UploadFile = File(
         persistence_enabled = storage_is_configured()
         stored_path = None
         persistence_warning = None
+        result = await run_in_threadpool(extract_blueprint, filename, content)
         if persistence_enabled:
             try:
                 stored = persist_blueprint(quotation_id, filename, content, file.content_type)
                 stored_path = stored.path if stored else None
             except Exception:
                 persistence_warning = "The scan completed, but the blueprint file could not be saved."
-        result = await run_in_threadpool(extract_blueprint, filename, content)
         result.persistence_enabled = persistence_enabled
         result.blueprint_file_path = stored_path
         result.persistence_warning = persistence_warning

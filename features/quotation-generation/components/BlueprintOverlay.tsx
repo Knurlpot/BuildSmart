@@ -201,6 +201,7 @@ export function BlueprintOverlay({
   const editablePolygons = editableSegment ? segmentPolygons(editableSegment) : [];
   const editablePolygon = editablePolygons[selectedEditPolygonIndex] ?? editablePolygons[0] ?? null;
   const canEditHighlights = !readOnly && !disableHighlightEditing && !!onSegmentPolygonChange;
+  const highlightEditingActive = editingHighlights && canEditHighlights;
 
   const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
     const rect = containerRef.current?.getBoundingClientRect();
@@ -264,7 +265,7 @@ export function BlueprintOverlay({
   };
 
   const handlePolygonDoubleClick = (e: React.MouseEvent<SVGPolygonElement>, segment: DraftSegment) => {
-    if (!editingHighlights || segmentPolygons(segment).length === 0) return;
+    if (!highlightEditingActive || segmentPolygons(segment).length === 0) return;
     e.preventDefault();
     e.stopPropagation();
     const point = svgPointFromPointer(e as unknown as React.PointerEvent<SVGElement>);
@@ -356,15 +357,15 @@ export function BlueprintOverlay({
                   setSelectedEditId(null);
                   setHighlightEditTool("move");
                 }}
-                title={editingHighlights ? "Finish editing highlights" : "Edit Highlights"}
-                aria-label={editingHighlights ? "Finish editing highlights" : "Edit Highlights"}
+                title={highlightEditingActive ? "Finish editing highlights" : "Edit Highlights"}
+                aria-label={highlightEditingActive ? "Finish editing highlights" : "Edit Highlights"}
                 className={`flex h-8 w-8 items-center justify-center rounded-lg border transition ${
-                  editingHighlights
+                  highlightEditingActive
                     ? "border-primary bg-orange-50 text-primary"
                     : "border-gray-200 bg-white text-gray-500 hover:border-primary hover:text-primary"
                 }`}
               >
-                {editingHighlights ? <Check className="h-3.5 w-3.5" /> : <PenLine className="h-3.5 w-3.5" />}
+                {highlightEditingActive ? <Check className="h-3.5 w-3.5" /> : <PenLine className="h-3.5 w-3.5" />}
               </button>
             )}
             <div className="flex items-center overflow-hidden rounded-lg border border-gray-200 bg-white">
@@ -392,7 +393,7 @@ export function BlueprintOverlay({
         </div>
       )}
 
-      {editingHighlights && editableSegment && (
+      {highlightEditingActive && editableSegment && (
         <div className="flex flex-wrap items-center gap-2 rounded-lg border border-orange-200 bg-orange-50 px-3 py-2 text-xs text-gray-700">
           <span className="max-w-48 truncate font-semibold text-gray-800">{editableSegment.segment_name || "Selected room"}</span>
           <div className="flex overflow-hidden rounded-lg border border-orange-200 bg-white">
@@ -440,7 +441,7 @@ export function BlueprintOverlay({
           viewBox={croppedViewBox}
           preserveAspectRatio="xMidYMid meet"
           className={readOnly ? "block h-full w-full" : "block h-auto"}
-          style={readOnly ? { touchAction: "none" } : { width: "100%", minWidth: "100%", touchAction: editingHighlights ? "none" : undefined }}
+          style={readOnly ? { touchAction: "none" } : { width: "100%", minWidth: "100%", touchAction: highlightEditingActive ? "none" : undefined }}
           onPointerMove={handleSvgPointerMove}
           onPointerUp={handleSvgPointerUp}
           onPointerLeave={handleSvgPointerUp}
@@ -461,8 +462,8 @@ export function BlueprintOverlay({
                 if (points.length < 3) return null;
                 const revealed = !scanning || polygonCenterY(points) <= scanLineY;
                 const selected = selectedEditId === seg.draft_id && selectedEditPolygonIndex === polygonIndex;
-                const showOutline = !grouped || editingHighlights || selected;
-                const groupedFillGap = grouped && !editingHighlights && revealed;
+                const showOutline = !grouped || highlightEditingActive || selected;
+                const groupedFillGap = grouped && !highlightEditingActive && revealed;
 
                 return (
                   <polygon
@@ -470,16 +471,16 @@ export function BlueprintOverlay({
                     points={pointsToSvg(points)}
                     onMouseEnter={() => onHoverChange(seg.draft_id)}
                     onMouseLeave={() => {
-                      if (!editingHighlights) onHoverChange(null);
+                      if (!highlightEditingActive) onHoverChange(null);
                     }}
                     onClick={() => {
-                      if (!editingHighlights) return;
+                      if (!highlightEditingActive) return;
                       setSelectedEditId(seg.draft_id);
                       setSelectedEditPolygonIndex(polygonIndex);
                       onHoverChange(seg.draft_id);
                     }}
                     onPointerDown={(e) => {
-                      if (!editingHighlights || selectedEditId !== seg.draft_id || selectedEditPolygonIndex !== polygonIndex) return;
+                      if (!highlightEditingActive || selectedEditId !== seg.draft_id || selectedEditPolygonIndex !== polygonIndex) return;
                       e.preventDefault();
                       e.stopPropagation();
                       const point = svgPointFromPointer(e);
@@ -498,25 +499,25 @@ export function BlueprintOverlay({
                       handlePolygonDoubleClick(e, seg);
                     }}
                     fill={color}
-                    fillOpacity={hovered || selected ? (estimated ? 0.18 : 0.24) : revealed ? (estimated ? 0.08 : 0.12) : editingHighlights ? 0.04 : 0}
+                    fillOpacity={hovered || selected ? (estimated ? 0.18 : 0.24) : revealed ? (estimated ? 0.08 : 0.12) : highlightEditingActive ? 0.04 : 0}
                     stroke={color}
                     strokeWidth={
                       groupedFillGap
                         ? 10
                         : showOutline
-                          ? (hovered || selected || editingHighlights ? (estimated ? 5 : 6) : revealed ? (estimated ? 2.5 : 3.5) : 0)
+                          ? (hovered || selected || highlightEditingActive ? (estimated ? 5 : 6) : revealed ? (estimated ? 2.5 : 3.5) : 0)
                           : 0
                     }
                     strokeLinejoin="round"
                     strokeOpacity={groupedFillGap ? (hovered ? 0.24 : 0.12) : showOutline ? (hovered || selected ? 0.95 : revealed ? 0.8 : 0) : 0}
                     strokeDasharray={estimated ? "12 8" : undefined}
-                    className={`${editingHighlights && highlightEditTool === "move-shape" && selected ? "cursor-grab active:cursor-grabbing" : "cursor-pointer"} transition-opacity`}
+                    className={`${highlightEditingActive && highlightEditTool === "move-shape" && selected ? "cursor-grab active:cursor-grabbing" : "cursor-pointer"} transition-opacity`}
                   />
                 );
               });
             })}
           </g>
-          {editingHighlights && editableSegment && editablePolygon && (
+          {highlightEditingActive && editableSegment && editablePolygon && (
             <g>
               {editablePolygon.map(([x, y], index) => (
                 <circle
@@ -574,7 +575,7 @@ export function BlueprintOverlay({
           </div>
         )}
 
-        {editingHighlights && !editableSegment && (
+        {highlightEditingActive && !editableSegment && (
           <div className="pointer-events-none absolute left-3 top-3 rounded-lg border border-orange-200 bg-white/95 px-3 py-2 text-xs font-semibold text-gray-700 shadow-sm">
             Click a room highlight to edit its shape.
           </div>

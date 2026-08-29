@@ -22,12 +22,29 @@ type DraftItemsPayload = {
   grand_total: number;
 };
 
+type NormalizedDraftLine = {
+  item_code: number;
+  item_name: string;
+  unit: string;
+  quantity: number;
+  unit_price: number;
+  total_cost: number;
+  source_type: "DPWH" | "Supplier" | "Internal";
+  supplier_id: number | null;
+  source_price_id: number | null;
+};
+
 function badRequest(message: string) {
   return NextResponse.json({ error: message }, { status: 400 });
 }
 
 function clean(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
+}
+
+function parseInteger(value: unknown) {
+  const parsed = Number(value);
+  return Number.isInteger(parsed) ? parsed : null;
 }
 
 export async function POST(request: NextRequest, { params }: Params) {
@@ -58,7 +75,7 @@ export async function POST(request: NextRequest, { params }: Params) {
 
       await client.query("DELETE FROM quotation_items WHERE quote_id = $1", [quoteId]);
 
-      const insertedItems = [];
+      const mergedItems = new Map<number, NormalizedDraftLine>();
       for (const line of materialItems) {
         const rawItemCode = Number(line.item_code);
         let itemCode = Number.isInteger(rawItemCode) ? rawItemCode : null;
@@ -85,7 +102,15 @@ export async function POST(request: NextRequest, { params }: Params) {
         }
         if (itemCode === null) throw new Error(`Could not save material ${line.item_name}.`);
 
-        const supplierId = Number.isInteger(Number(line.selected_supplier_id)) ? Number(line.selected_supplier_id) : null;
+        const requestedSupplierId = line.source_type === "DPWH" ? null : parseInteger(line.selected_supplier_id);
+        const supplier =
+          requestedSupplierId === null
+            ? null
+            : await client.query<{ supplier_id: number }>(
+                "SELECT supplier_id FROM suppliers WHERE supplier_id = $1 AND status = 'Active' LIMIT 1",
+                [requestedSupplierId]
+              );
+        const supplierId = supplier?.rows[0]?.supplier_id ?? null;
         const dbSourceType = line.source_type === "DPWH" ? "DPWH" : supplierId === null ? "Internal" : "Supplier";
         const sourcePrice = supplierId === null
           ? null
@@ -100,9 +125,43 @@ export async function POST(request: NextRequest, { params }: Params) {
               [itemCode, supplierId]
             );
         const sourcePriceId = sourcePrice?.rows[0]?.historicalrec_id ?? null;
-        const unitCost = Number(Number(line.unit_price).toFixed(2));
+        const quantity = Number(line.quantity);
         const totalCost = Number(Number(line.total_cost).toFixed(2));
+        const existing = mergedItems.get(itemCode);
+        if (existing) {
+          const nextQuantity = existing.quantity + quantity;
+          const nextTotal = existing.total_cost + totalCost;
+          const sameSupplier = existing.supplier_id === supplierId;
+          const sameSource = existing.source_type === dbSourceType;
+          mergedItems.set(itemCode, {
+            ...existing,
+            quantity: nextQuantity,
+            total_cost: nextTotal,
+            unit_price: nextQuantity > 0 ? nextTotal / nextQuantity : existing.unit_price,
+            source_type: sameSource ? existing.source_type : "Internal",
+            supplier_id: sameSupplier ? existing.supplier_id : null,
+            source_price_id: sameSupplier ? existing.source_price_id : null,
+          });
+          continue;
+        }
 
+        mergedItems.set(itemCode, {
+          item_code: itemCode,
+          item_name: line.item_name,
+          unit: line.unit,
+          quantity,
+          unit_price: Number(line.unit_price),
+          total_cost: totalCost,
+          source_type: dbSourceType,
+          supplier_id: supplierId,
+          source_price_id: sourcePriceId,
+        });
+      }
+
+      const insertedItems = [];
+      for (const line of mergedItems.values()) {
+        const unitCost = Number(line.unit_price.toFixed(2));
+        const totalCost = Number(line.total_cost.toFixed(2));
         const itemResult = await client.query(
           `INSERT INTO quotation_items (
              quote_id, item_code, supplier_id, quantity, unit_cost, markup_percentage,
@@ -114,7 +173,7 @@ export async function POST(request: NextRequest, { params }: Params) {
                      final_unit_price::float AS final_unit_price, total_cost::float AS total_cost,
                      source_type, source_price_id, last_refreshed_at::text AS last_refreshed_at,
                      is_price_locked, original_unit_cost::float AS original_unit_cost`,
-          [quoteId, itemCode, supplierId, Number(line.quantity), unitCost, totalCost, dbSourceType, sourcePriceId]
+          [quoteId, line.item_code, line.supplier_id, line.quantity, unitCost, totalCost, line.source_type, line.source_price_id]
         );
         insertedItems.push(itemResult.rows[0]);
       }

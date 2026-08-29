@@ -338,18 +338,13 @@ def test_rejects_empty_file():
         extract_blueprint("floor-plan.pdf", b"")
 
 
-def test_scanned_pdf_page_is_rendered_without_ai_room_inference(monkeypatch):
+def test_scanned_pdf_without_detected_blueprint_spaces_is_rejected(monkeypatch):
     monkeypatch.delenv("GEMINI_API_KEY", raising=False)
     pdf = io.BytesIO()
     Image.new("RGB", (200, 100), "white").save(pdf, format="PDF")
 
-    result = extract_blueprint("floor-plan.pdf", pdf.getvalue())
-
-    assert result.floors[0].floor_level == "Page 1"
-    assert result.floors[0].image_url.startswith("data:image/png;base64,")
-    assert result.floors[0].segments == []
-    assert result.diagnostics is not None
-    assert "no deterministic vector room geometry" in result.diagnostics["warnings"][0]
+    with pytest.raises(ValueError, match="No blueprint floor plan or room geometry"):
+        extract_blueprint("floor-plan.pdf", pdf.getvalue())
 
 
 def test_scanned_pdf_uses_gemini_single_floor_space_schema(monkeypatch):
