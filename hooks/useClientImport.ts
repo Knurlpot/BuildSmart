@@ -95,7 +95,7 @@ export function useClientImport() {
     setRows((prev) => prev.filter((r) => r.row_key !== rowKey));
   };
 
-  const approve = () => commit.mutate('/api/clients/import/commit', { columns, rows }, 'POST');
+  const approveRows = (selectedRows: ExtractedClientRow[]) => commit.mutate('/api/clients/import/commit', { columns, rows: selectedRows }, 'POST');
 
   const reset = () => {
     setRows([]);
@@ -111,7 +111,7 @@ export function useClientImport() {
     uploadFiles,
     isUploading: upload.isLoading,
     uploadError: upload.error,
-    approve,
+    approveRows,
     isCommitting: commit.isLoading,
     commitError: commit.error,
     commitResult: commit.data,

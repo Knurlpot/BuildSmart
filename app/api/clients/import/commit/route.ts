@@ -51,7 +51,7 @@ export async function POST(request: NextRequest) {
            company_id, client_name, contact_person, contact_email, contact_number,
            client_address, client_type, default_downpayment_percentage, notes
          )
-         VALUES ($1, $2, $3, $4, $5, $6, COALESCE($7, 'New'), NULL, $8)`,
+         VALUES ($1, $2, $3, $4, $5, $6, COALESCE($7, 'Returning'), NULL, $8)`,
         [
           companyId,
           cleanText(row.client_name),

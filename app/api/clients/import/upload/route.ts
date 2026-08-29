@@ -88,7 +88,7 @@ export async function POST(request: NextRequest) {
         contact_email: valueFor(mapped, row, "contact_email"),
         contact_number: valueFor(mapped, row, "contact_number"),
         client_address: valueFor(mapped, row, "client_address"),
-        client_type: validClientType(valueFor(mapped, row, "client_type")),
+        client_type: validClientType(valueFor(mapped, row, "client_type")) ?? "Returning",
         default_downpayment_percentage: downpaymentValue(valueFor(mapped, row, "default_downpayment_percentage")),
         notes: valueFor(mapped, row, "notes"),
         needs_mapping: !clientName.trim(),

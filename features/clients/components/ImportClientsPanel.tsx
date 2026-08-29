@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { AlertTriangle, CheckCircle2, ChevronLeft, File as FileIcon, Upload as UploadIcon, Users, X } from "lucide-react";
+import { AlertTriangle, Check, CheckCircle2, ChevronLeft, File as FileIcon, Loader2, Pencil, Trash2, Upload as UploadIcon, X } from "lucide-react";
 import {
   CLIENT_IMPORT_SOFT_ROW_CAP,
   clientRowNeedsAttention,
@@ -129,7 +129,7 @@ function ReviewStep({
   onUpdateRow,
   onRemoveRow,
   onBack,
-  onApprove,
+  onApproveSelected,
   isCommitting,
   commitError,
 }: {
@@ -137,170 +137,281 @@ function ReviewStep({
   onUpdateRow: (rowKey: string, patch: Partial<ExtractedClientRow>) => void;
   onRemoveRow: (rowKey: string) => void;
   onBack: () => void;
-  onApprove: () => void;
+  onApproveSelected: (rows: ExtractedClientRow[]) => void;
   isCommitting: boolean;
   commitError: Error | null;
 }) {
-  const [attentionOnly, setAttentionOnly] = useState(false);
+  const [isEditingAll, setIsEditingAll] = useState(false);
+  const [selectedRowKeys, setSelectedRowKeys] = useState<Set<string>>(new Set());
   const attentionCount = useMemo(() => rows.filter(clientRowNeedsAttention).length, [rows]);
-  const visibleRows = useMemo(() => (attentionOnly ? rows.filter(clientRowNeedsAttention) : rows), [attentionOnly, rows]);
+  const visibleRows = rows;
   const overCap = rows.length > CLIENT_IMPORT_SOFT_ROW_CAP;
-  const canImport = rows.length > 0 && rows.every((row) => !clientRowNeedsAttention(row));
+  const selectedRows = useMemo(() => rows.filter((row) => selectedRowKeys.has(row.row_key)), [rows, selectedRowKeys]);
+  const selectedCount = selectedRows.length;
+  const selectedAttentionCount = useMemo(() => selectedRows.filter(clientRowNeedsAttention).length, [selectedRows]);
+  const allVisibleRowsSelected = visibleRows.length > 0 && visibleRows.every((row) => selectedRowKeys.has(row.row_key));
+  const canApproveSelected = selectedRows.length > 0 && selectedAttentionCount === 0;
+
+  const toggleRowSelection = (rowKey: string) => {
+    setSelectedRowKeys((current) => {
+      const next = new Set(current);
+      if (next.has(rowKey)) {
+        next.delete(rowKey);
+      } else {
+        next.add(rowKey);
+      }
+      return next;
+    });
+  };
+
+  const toggleSelectAllVisible = () => {
+    setSelectedRowKeys((current) => {
+      const next = new Set(current);
+      if (allVisibleRowsSelected) {
+        visibleRows.forEach((row) => next.delete(row.row_key));
+      } else {
+        visibleRows.forEach((row) => next.add(row.row_key));
+      }
+      return next;
+    });
+  };
+
+  const deleteSelectedRows = () => {
+    selectedRows.forEach((row) => onRemoveRow(row.row_key));
+    setSelectedRowKeys(new Set());
+  };
 
   return (
     <div className="flex flex-col gap-5">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h3 className="text-base font-bold text-gray-900">Map &amp; Confirm</h3>
-          <p className="text-xs text-gray-500">Review each client, fill in anything missing, then import.</p>
+      <div className="rounded-2xl border border-gray-200 bg-white p-5">
+        <div className="mb-4 flex items-center justify-between">
+          <div className="flex items-start gap-3">
+            <button
+              type="button"
+              onClick={onBack}
+              aria-label="Back"
+              title="Back"
+              className="mt-0.5 inline-flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-600 transition hover:bg-gray-50"
+            >
+              <ChevronLeft className="h-3.5 w-3.5" />
+            </button>
+            <div>
+              <p className="text-sm font-bold text-gray-900">Pending Review</p>
+              <p className="text-xs text-gray-500">Review the records from the client list.</p>
+            </div>
+          </div>
+          <div className="flex shrink-0 flex-wrap items-center gap-2">
+            <button
+              type="button"
+              disabled={isCommitting || !canApproveSelected}
+              onClick={() => onApproveSelected(selectedRows)}
+              className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-bold text-primary-foreground shadow-sm transition hover:bg-(--primary-hover) disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {isCommitting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+              {isCommitting ? "Approving..." : `Approve Selected (${selectedCount})`}
+            </button>
+            <button
+              type="button"
+              onClick={toggleSelectAllVisible}
+              disabled={visibleRows.length === 0 || isCommitting}
+              className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-600 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {allVisibleRowsSelected ? "Deselect All" : "Select All"}
+            </button>
+            <button
+              type="button"
+              onClick={() => setIsEditingAll((current) => !current)}
+              disabled={rows.length === 0 || isCommitting}
+              aria-label={isEditingAll ? "Cancel editing" : "Edit"}
+              title={isEditingAll ? "Cancel editing" : "Edit"}
+              className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-600 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <Pencil className="h-3.5 w-3.5" />
+            </button>
+            <button
+              type="button"
+              onClick={deleteSelectedRows}
+              disabled={selectedCount === 0 || isCommitting}
+              aria-label={selectedCount > 0 ? `Delete selected (${selectedCount})` : "Delete"}
+              title={selectedCount > 0 ? `Delete selected (${selectedCount})` : "Delete"}
+              className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-600 transition hover:bg-red-50 hover:text-red-500 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </button>
+          </div>
         </div>
-        <button
-          type="button"
-          onClick={onBack}
-          className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-600 transition hover:bg-gray-50"
-        >
-          <ChevronLeft className="h-4 w-4" /> Back
-        </button>
-      </div>
 
-      {overCap && (
-        <div className="flex items-center gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
-          <AlertTriangle className="h-4 w-4 shrink-0" />
-          This upload has more than {CLIENT_IMPORT_SOFT_ROW_CAP.toLocaleString()} rows. Large uploads should be split into smaller files.
-        </div>
-      )}
-
-      <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-gray-200 bg-white p-4">
-        <p className="text-sm text-gray-600">
-          <strong>{rows.length}</strong> row{rows.length !== 1 ? "s" : ""} total
-        </p>
-        {attentionCount > 0 && (
-          <span className="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-bold text-amber-700">
-            {attentionCount} need{attentionCount !== 1 ? "" : "s"} attention
-          </span>
+        {overCap && (
+          <div className="mb-4 flex items-center gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
+            <AlertTriangle className="h-4 w-4 shrink-0" />
+            This upload has more than {CLIENT_IMPORT_SOFT_ROW_CAP.toLocaleString()} rows. Large uploads should be split into smaller files.
+          </div>
         )}
-        <label className="ml-auto flex items-center gap-2 text-sm text-gray-600">
-          <input
-            type="checkbox"
-            checked={attentionOnly}
-            onChange={(e) => setAttentionOnly(e.target.checked)}
-            className="h-4 w-4 rounded border-gray-300 accent-primary"
-          />
-          Show only rows needing attention
-        </label>
-      </div>
 
-      <div className="overflow-x-auto rounded-2xl border border-gray-200 bg-white shadow-sm">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-gray-100 bg-gray-50/60 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
-              <th className="px-4 py-3">Client Name *</th>
-              <th className="px-4 py-3">Contact Person *</th>
-              <th className="px-4 py-3">Email</th>
-              <th className="px-4 py-3">Contact Number *</th>
-              <th className="px-4 py-3">Address *</th>
-              <th className="px-4 py-3">Type</th>
-              <th className="px-4 py-3"></th>
-            </tr>
-          </thead>
-          <tbody>
-            {visibleRows.map((row) => {
-              const attention = clientRowNeedsAttention(row);
-              return (
-                <tr key={row.row_key} className={`border-b border-gray-50 ${attention ? "bg-amber-50/40" : ""}`}>
-                  <td className="px-4 py-2.5">
-                    <input
-                      value={row.client_name}
-                      onChange={(e) => onUpdateRow(row.row_key, { client_name: e.target.value })}
-                      placeholder="Required"
-                      className={`w-full rounded-lg border px-2.5 py-1.5 text-sm outline-none focus:ring-2 focus:ring-primary/20 ${
-                        !row.client_name.trim() ? "border-red-300 bg-red-50" : "border-gray-200 bg-gray-50 focus:border-primary focus:bg-white"
-                      }`}
-                    />
-                  </td>
-                  <td className="px-4 py-2.5">
-                    <input
-                      value={row.contact_person ?? ""}
-                      onChange={(e) => onUpdateRow(row.row_key, { contact_person: e.target.value })}
-                      placeholder="Required"
-                      className={`w-44 rounded-lg border px-2.5 py-1.5 text-sm outline-none focus:ring-2 focus:ring-primary/20 ${
-                        !row.contact_person?.trim() ? "border-red-300 bg-red-50" : "border-gray-200 bg-gray-50 focus:border-primary focus:bg-white"
-                      }`}
-                    />
-                  </td>
-                  <td className="px-4 py-2.5">
-                    <input
-                      value={row.contact_email ?? ""}
-                      onChange={(e) => onUpdateRow(row.row_key, { contact_email: e.target.value })}
-                      placeholder="Optional"
-                      className="w-52 rounded-lg border border-gray-200 bg-gray-50 px-2.5 py-1.5 text-sm outline-none focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/20"
-                    />
-                  </td>
-                  <td className="px-4 py-2.5">
-                    <input
-                      value={row.contact_number ?? ""}
-                      onChange={(e) => onUpdateRow(row.row_key, { contact_number: e.target.value })}
-                      placeholder="Required"
-                      className={`w-40 rounded-lg border px-2.5 py-1.5 text-sm outline-none focus:ring-2 focus:ring-primary/20 ${
-                        !row.contact_number?.trim() ? "border-red-300 bg-red-50" : "border-gray-200 bg-gray-50 focus:border-primary focus:bg-white"
-                      }`}
-                    />
-                  </td>
-                  <td className="px-4 py-2.5">
-                    <input
-                      value={row.client_address ?? ""}
-                      onChange={(e) => onUpdateRow(row.row_key, { client_address: e.target.value })}
-                      placeholder="Required"
-                      className={`w-56 rounded-lg border px-2.5 py-1.5 text-sm outline-none focus:ring-2 focus:ring-primary/20 ${
-                        !row.client_address?.trim() ? "border-red-300 bg-red-50" : "border-gray-200 bg-gray-50 focus:border-primary focus:bg-white"
-                      }`}
-                    />
-                  </td>
-                  <td className="px-4 py-2.5">
-                    <select
-                      value={row.client_type ?? ""}
-                      onChange={(e) => onUpdateRow(row.row_key, { client_type: (e.target.value || null) as ExtractedClientRow["client_type"] })}
-                      className="rounded-lg border border-gray-200 bg-gray-50 px-2.5 py-1.5 text-xs outline-none focus:border-primary focus:bg-white"
-                    >
-                      <option value="">— blank —</option>
-                      {CLIENT_TYPES.map((t) => (
-                        <option key={t} value={t}>
-                          {t}
-                        </option>
-                      ))}
-                    </select>
-                  </td>
-                  <td className="px-4 py-2.5 text-right">
-                    <button
-                      type="button"
-                      onClick={() => onRemoveRow(row.row_key)}
-                      title="Remove this row from the import"
-                      className="rounded p-1 text-gray-300 transition hover:bg-red-50 hover:text-red-500"
-                    >
-                      <X className="h-3.5 w-3.5" />
-                    </button>
-                  </td>
+        <section className="rounded-xl border border-gray-100 p-4">
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-wider text-gray-400">Imported Clients</p>
+              <p className="text-xs text-gray-500">
+                {rows.length} record{rows.length === 1 ? "" : "s"} awaiting review
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-3">
+              {attentionCount > 0 && (
+                <span className="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-bold text-amber-700">
+                  {attentionCount} need{attentionCount !== 1 ? "" : "s"} attention
+                </span>
+              )}
+            </div>
+          </div>
+
+          <div className="overflow-visible">
+            <table className="w-full table-fixed text-left text-sm">
+              <thead>
+                <tr className="border-b border-gray-100 text-xs uppercase tracking-wide text-gray-400">
+                  <th className="w-[4%] py-2 pr-2" />
+                  <th className="w-[16%] py-2 pr-3">Client Name *</th>
+                  <th className="w-[14%] py-2 pr-3">Contact Person *</th>
+                  <th className="w-[16%] py-2 pr-3">Email</th>
+                  <th className="w-[13%] py-2 pr-3">Contact Number *</th>
+                  <th className="w-[20%] py-2 pr-3">Address *</th>
+                  <th className="w-[10%] py-2 pr-3">Type</th>
+                  <th className="w-[7%] py-2" />
                 </tr>
-              );
-            })}
-          </tbody>
-        </table>
+              </thead>
+              <tbody className="divide-y divide-gray-50">
+                {visibleRows.map((row) => {
+                  const attention = clientRowNeedsAttention(row);
+                  return (
+                    <tr key={row.row_key} className={attention ? "bg-amber-50/40" : ""}>
+                      <td className="py-2 pr-2 align-top">
+                        <input
+                          type="checkbox"
+                          checked={selectedRowKeys.has(row.row_key)}
+                          onChange={() => toggleRowSelection(row.row_key)}
+                          aria-label={`Select ${row.client_name || "client record"}`}
+                          className="mt-2 h-4 w-4 rounded border-gray-300 accent-primary"
+                        />
+                      </td>
+                      <td className="py-2 pr-3 align-top">
+                        {isEditingAll ? (
+                          <input
+                            value={row.client_name}
+                            onChange={(e) => onUpdateRow(row.row_key, { client_name: e.target.value })}
+                            placeholder="Required"
+                            className={`w-full min-w-0 rounded-lg border px-2 py-1.5 text-sm outline-none focus:ring-2 focus:ring-primary/20 ${
+                              !row.client_name.trim() ? "border-red-300 bg-red-50" : "border-gray-200 bg-gray-50 focus:border-primary focus:bg-white"
+                            }`}
+                          />
+                        ) : (
+                          <p className="break-words text-sm font-medium text-gray-800">{row.client_name || "Required"}</p>
+                        )}
+                      </td>
+                      <td className="py-2 pr-3 align-top">
+                        {isEditingAll ? (
+                          <input
+                            value={row.contact_person ?? ""}
+                            onChange={(e) => onUpdateRow(row.row_key, { contact_person: e.target.value })}
+                            placeholder="Required"
+                            className={`w-full min-w-0 rounded-lg border px-2 py-1.5 text-sm outline-none focus:ring-2 focus:ring-primary/20 ${
+                              !row.contact_person?.trim() ? "border-red-300 bg-red-50" : "border-gray-200 bg-gray-50 focus:border-primary focus:bg-white"
+                            }`}
+                          />
+                        ) : (
+                          <p className="break-words text-sm text-gray-700">{row.contact_person || "Required"}</p>
+                        )}
+                      </td>
+                      <td className="py-2 pr-3 align-top">
+                        {isEditingAll ? (
+                          <input
+                            value={row.contact_email ?? ""}
+                            onChange={(e) => onUpdateRow(row.row_key, { contact_email: e.target.value })}
+                            placeholder="Optional"
+                            className="w-full min-w-0 rounded-lg border border-gray-200 bg-gray-50 px-2 py-1.5 text-sm outline-none focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/20"
+                          />
+                        ) : (
+                          <p className="break-words text-sm text-gray-700">{row.contact_email || "Optional"}</p>
+                        )}
+                      </td>
+                      <td className="py-2 pr-3 align-top">
+                        {isEditingAll ? (
+                          <input
+                            value={row.contact_number ?? ""}
+                            onChange={(e) => onUpdateRow(row.row_key, { contact_number: e.target.value })}
+                            placeholder="Required"
+                            className={`w-full min-w-0 rounded-lg border px-2 py-1.5 text-sm outline-none focus:ring-2 focus:ring-primary/20 ${
+                              !row.contact_number?.trim() ? "border-red-300 bg-red-50" : "border-gray-200 bg-gray-50 focus:border-primary focus:bg-white"
+                            }`}
+                          />
+                        ) : (
+                          <p className="break-words text-sm text-gray-700">{row.contact_number || "Required"}</p>
+                        )}
+                      </td>
+                      <td className="py-2 pr-3 align-top">
+                        {isEditingAll ? (
+                          <textarea
+                            value={row.client_address ?? ""}
+                            onChange={(e) => onUpdateRow(row.row_key, { client_address: e.target.value })}
+                            placeholder="Required"
+                            rows={2}
+                            className={`w-full min-w-0 resize-none rounded-lg border px-2 py-1.5 text-sm outline-none focus:ring-2 focus:ring-primary/20 ${
+                              !row.client_address?.trim() ? "border-red-300 bg-red-50" : "border-gray-200 bg-gray-50 focus:border-primary focus:bg-white"
+                            }`}
+                          />
+                        ) : (
+                          <p className="break-words text-sm text-gray-700">{row.client_address || "Required"}</p>
+                        )}
+                      </td>
+                      <td className="py-2 pr-3 align-top">
+                        {isEditingAll ? (
+                          <select
+                            value={row.client_type ?? ""}
+                            onChange={(e) => onUpdateRow(row.row_key, { client_type: (e.target.value || null) as ExtractedClientRow["client_type"] })}
+                            className="w-full min-w-0 rounded-lg border border-gray-200 bg-gray-50 px-2 py-1.5 text-xs outline-none focus:border-primary focus:bg-white"
+                          >
+                            <option value="">Blank</option>
+                            {CLIENT_TYPES.map((t) => (
+                              <option key={t} value={t}>
+                                {t}
+                              </option>
+                            ))}
+                          </select>
+                        ) : (
+                          <p className="break-words text-sm text-gray-700">{row.client_type || "Blank"}</p>
+                        )}
+                      </td>
+                      <td className="py-2 text-right align-top">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            onRemoveRow(row.row_key);
+                            setSelectedRowKeys((current) => {
+                              const next = new Set(current);
+                              next.delete(row.row_key);
+                              return next;
+                            });
+                          }}
+                          title="Remove this row from the import"
+                          className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-600 transition hover:bg-red-50 hover:text-red-500"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </section>
       </div>
 
       {commitError && (
         <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">Import failed: {commitError.message}</div>
       )}
-
-      <div className="flex items-center gap-3">
-        <button
-          type="button"
-          disabled={isCommitting || !canImport}
-          onClick={onApprove}
-          className="w-fit rounded-xl bg-primary px-6 py-3 text-sm font-bold text-primary-foreground shadow-sm transition hover:bg-(--primary-hover) disabled:opacity-60"
-        >
-          {isCommitting ? "Importing…" : `Import ${rows.length} Client${rows.length !== 1 ? "s" : ""}`}
-        </button>
-      </div>
+      {selectedCount > 0 && selectedAttentionCount > 0 && (
+        <p className="text-xs text-gray-400">Resolve all flagged selected rows before approving.</p>
+      )}
     </div>
   );
 }
@@ -314,7 +425,7 @@ export function ImportClientsPanel({
   initialFiles?: File[];
   importKey?: number;
 }) {
-  const { rows, updateRow, removeRow, uploadFiles, isUploading, uploadError, approve, isCommitting, commitError, commitResult } =
+  const { rows, updateRow, removeRow, uploadFiles, isUploading, uploadError, approveRows, isCommitting, commitError, commitResult } =
     useClientImport();
   const [step, setStep] = useState<1 | 2>(1);
   const [files, setFiles] = useState<File[]>([]);
@@ -347,8 +458,8 @@ export function ImportClientsPanel({
       .catch(() => {});
   }, [hasPickerFiles, importKey, initialFiles, uploadFiles]);
 
-  const handleApprove = () => {
-    approve()
+  const handleApproveSelected = (selectedRows: ExtractedClientRow[]) => {
+    approveRows(selectedRows)
       .then(() => onImported?.())
       .catch(() => {});
   };
@@ -369,52 +480,53 @@ export function ImportClientsPanel({
     );
   }
 
+  if (step === 2) {
+    return (
+      <ReviewStep
+        rows={rows}
+        onUpdateRow={updateRow}
+        onRemoveRow={removeRow}
+        onBack={() => setStep(1)}
+        onApproveSelected={handleApproveSelected}
+        isCommitting={isCommitting}
+        commitError={commitError}
+      />
+    );
+  }
+
   return (
     <div className="flex flex-col gap-5 rounded-2xl border border-gray-200 bg-white p-5">
       <div className="flex items-center gap-2">
-        <Users className="h-4 w-4 text-primary" />
+        <UploadIcon className="h-4 w-4 text-primary" />
         <h2 className="text-sm font-bold text-gray-900">Import Clients from Spreadsheet</h2>
       </div>
-      {step === 1 && (
-        hasPickerFiles ? (
-          <div className="flex flex-col gap-3 rounded-2xl border border-gray-200 bg-gray-50 p-5">
-            <div className="flex items-center gap-3">
-              <FileIcon className="h-4 w-4 shrink-0 text-gray-400" />
-              <div className="min-w-0">
-                <p className="text-sm font-semibold text-gray-700">
-                  {isUploading ? "Processing spreadsheet..." : "Spreadsheet selected"}
-                </p>
-                <p className="truncate text-xs text-gray-400">{selectedFiles.map((file) => file.name).join(", ")}</p>
-              </div>
+      {hasPickerFiles ? (
+        <div className="flex flex-col gap-3 rounded-2xl border border-gray-200 bg-gray-50 p-5">
+          <div className="flex items-center gap-3">
+            <FileIcon className="h-4 w-4 shrink-0 text-gray-400" />
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-gray-700">
+                {isUploading ? "Processing spreadsheet..." : "Spreadsheet selected"}
+              </p>
+              <p className="truncate text-xs text-gray-400">{selectedFiles.map((file) => file.name).join(", ")}</p>
             </div>
-            {uploadError && (
-              <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-                <span>Couldn&apos;t process these files: {uploadError.message}</span>
-              </div>
-            )}
           </div>
-        ) : (
-          <UploadStep
-            files={files}
-            addFiles={addFiles}
-            removeFile={removeFile}
-            dragging={dragging}
-            setDragging={setDragging}
-            onConfirm={handleConfirmUpload}
-            isUploading={isUploading}
-            uploadError={uploadError}
-          />
-        )
-      )}
-      {step === 2 && (
-        <ReviewStep
-          rows={rows}
-          onUpdateRow={updateRow}
-          onRemoveRow={removeRow}
-          onBack={() => setStep(1)}
-          onApprove={handleApprove}
-          isCommitting={isCommitting}
-          commitError={commitError}
+          {uploadError && (
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+              <span>Couldn&apos;t process these files: {uploadError.message}</span>
+            </div>
+          )}
+        </div>
+      ) : (
+        <UploadStep
+          files={files}
+          addFiles={addFiles}
+          removeFile={removeFile}
+          dragging={dragging}
+          setDragging={setDragging}
+          onConfirm={handleConfirmUpload}
+          isUploading={isUploading}
+          uploadError={uploadError}
         />
       )}
     </div>
