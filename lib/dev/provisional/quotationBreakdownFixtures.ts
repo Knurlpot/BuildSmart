@@ -288,7 +288,7 @@ function buildMissingRuleLine(seg: DraftSegment, basis: PricelistBasis): Provisi
     treatment_type: seg.treatment_type,
     category: 'Material',
     item_code: 'UNRATED',
-    item_name: seg.treatment_type ? `${seg.treatment_type} (no rate on file)` : 'Treatment not specified (no rate on file)',
+    item_name: 'Material (no rate on file)',
     unit: 'sqm',
     derived_area_sqm: seg.area_sqm,
     derived_coverage_per_sqm: 1.0,

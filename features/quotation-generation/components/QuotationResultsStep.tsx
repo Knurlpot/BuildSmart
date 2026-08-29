@@ -36,10 +36,18 @@ interface QuotationResultsStepProps {
   onStructuralRevision: () => void;
   onBack: () => void;
   /** Saves the current unfinished quotation as Draft and returns to Open Projects. */
-  onSaveDraft: () => void;
+  onSaveDraft: (draft: {
+    tierItems: Partial<Record<ProvisionalTier, ProvisionalItemLine[]>>;
+    pricelistBasis: PricelistBasis;
+    hasManualLineEdits: boolean;
+    tierResults: Partial<Record<ProvisionalTier, ProvisionalQuotationTierResult>>;
+  }) => void | Promise<void>;
   /** Fires once the finalized project has actually been saved (P2-B) — caller only needs
    * to move the wizard on; the save itself already happened here. */
   onFinalize: () => void;
+  initialTierItems?: Partial<Record<ProvisionalTier, ProvisionalItemLine[]>> | null;
+  initialPricelistBasis?: PricelistBasis | null;
+  initialHasManualLineEdits?: boolean;
 }
 
 const TIER_META: Record<ProvisionalTier, { tagline: string; badge: string; accent: string; headerBg: string; accentBg: string }> = {
@@ -69,7 +77,7 @@ const SOURCE_OPTIONS: { value: QuotationPrioritySource; label: string; icon: typ
 ];
 
 const FALLBACK_OPTIONS: { value: QuotationFallbackRule; label: string; helper: string }[] = [
-  { value: "Use next available source", label: "Next Available Source", helper: "For DPWH CMPD only: use Supplier when a DPWH line is missing a rate." },
+  { value: "Use next available source", label: "Next Available Source", helper: "For Supplier only: use another existing supplier material record when available." },
   { value: "Use lowest uploaded rate", label: "Lowest Uploaded Rate", helper: "Use the lowest matching rate from the uploaded pricelist entries for each material." },
   { value: "Flag for manual review", label: "Flag for Manual Review", helper: "Keep missing prices visible instead of switching price sources." },
 ];
@@ -122,7 +130,7 @@ function applyQuotationRuleToLines(
   fallbackRule: QuotationFallbackRule
 ): ProvisionalItemLine[] {
   return lines.map((line) => {
-    if (prioritySource === "Uploaded") return line;
+    if (prioritySource === "DPWH") return line;
 
     const uploadedOptions = line.supplier_options.filter((option) => option.source_type === "Uploaded");
     const cheapestUploaded = uploadedOptions.length > 0
@@ -247,7 +255,19 @@ function QuoteCard({
 // depends on that don't exist in the schema yet), the READ-ONLY detailed breakdown (Part A),
 // and the missing-price resolution flow. Everything
 // downstream of `segments` is mock-derived — see quotationBreakdownFixtures.ts.
-export function QuotationResultsStep({ client, quotation, segments, blueprintFloors, onStructuralRevision, onBack, onSaveDraft, onFinalize }: QuotationResultsStepProps) {
+export function QuotationResultsStep({
+  client,
+  quotation,
+  segments,
+  blueprintFloors,
+  onStructuralRevision,
+  onBack,
+  onSaveDraft,
+  onFinalize,
+  initialTierItems,
+  initialPricelistBasis,
+  initialHasManualLineEdits,
+}: QuotationResultsStepProps) {
   const { strategies: pricingStrategies } = usePricingStrategies();
   const { rules: materialRules } = useMaterialRules();
   const { rules: laborRules } = useLaborRules();
@@ -259,10 +279,10 @@ export function QuotationResultsStep({ client, quotation, segments, blueprintFlo
     records: dpwhPrices,
     load: loadDpwhPrices,
   } = dpwhCatalog;
-  const [pricelistBasis, setPricelistBasis] = useState<PricelistBasis>(DEFAULT_BASIS);
+  const [pricelistBasis, setPricelistBasis] = useState<PricelistBasis>(initialPricelistBasis ?? DEFAULT_BASIS);
   const activeTiers = useMemo(() => uniqueActiveTiers(pricingStrategies), [pricingStrategies]);
-  const [tierItems, setTierItems] = useState(() => initTierItems(segments, DEFAULT_BASIS, PROVISIONAL_TIERS));
-  const [hasManualLineEdits, setHasManualLineEdits] = useState(false);
+  const [tierItems, setTierItems] = useState(() => initialTierItems ?? initTierItems(segments, initialPricelistBasis ?? DEFAULT_BASIS, PROVISIONAL_TIERS));
+  const [hasManualLineEdits, setHasManualLineEdits] = useState(Boolean(initialHasManualLineEdits || initialTierItems));
   const [breakdownTier, setBreakdownTier] = useState<ProvisionalTier | null>(null);
   const [ruleDialogOpen, setRuleDialogOpen] = useState(false);
   const [prioritySource, setPrioritySource] = useState<QuotationPrioritySource>("Uploaded");
@@ -286,6 +306,14 @@ export function QuotationResultsStep({ client, quotation, segments, blueprintFlo
   );
   const effectiveTierItems = hasManualLineEdits ? tierItems : autoTierItems;
 
+  const updateTierItems = (tier: ProvisionalTier, nextItems: ProvisionalItemLine[]) => {
+    setHasManualLineEdits(true);
+    setTierItems((prev) => ({
+      ...(hasManualLineEdits ? prev : autoTierItems),
+      [tier]: nextItems,
+    }));
+  };
+
   // Part B/D — the Uploaded/DPWH toggle is shared by the read-only Breakdown view AND
   // Missing-price resolution; switching it re-prices every NON-overridden line to the new basis for
   // BOTH tiers at once (see retargetItemLinesBasis's doc — a manual override always wins).
@@ -307,7 +335,9 @@ export function QuotationResultsStep({ client, quotation, segments, blueprintFlo
 
   const handlePrioritySourceChange = (source: QuotationPrioritySource) => {
     setPrioritySource(source);
-    if (source === "Uploaded") setFallbackRule("Flag for manual review");
+    if (source === "DPWH" && fallbackRule === "Use next available source") {
+      setFallbackRule("Flag for manual review");
+    }
   };
 
   const tierResults = Object.fromEntries(
@@ -438,8 +468,8 @@ export function QuotationResultsStep({ client, quotation, segments, blueprintFlo
         <div>
           <h2 className="text-lg font-bold text-gray-900">Generated Quotations</h2>
           <p className="mt-0.5 text-sm text-gray-500">
-            Based on <span className="font-semibold text-gray-700">{includedSegments.length} segments · {totalArea.toFixed(1)} sqm · {floors} floor{floors === 1 ? "" : "s"}</span>.
-            choose the plan that fits your budget.
+            Based on <span className="font-semibold text-gray-700">{includedSegments.length} segment{includedSegments.length === 1 ? "" : "s"} · {totalArea.toFixed(1)} sqm · {floors} floor{floors === 1 ? "" : "s"}</span>.
+            Choose the Plan for you!
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -463,7 +493,7 @@ export function QuotationResultsStep({ client, quotation, segments, blueprintFlo
           </button>
           <button
             type="button"
-            onClick={onSaveDraft}
+            onClick={() => void onSaveDraft({ tierItems: effectiveTierItems, pricelistBasis, hasManualLineEdits: true, tierResults })}
             title="Save Draft"
             aria-label="Save Draft"
             className="flex h-10 w-10 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-700 shadow-sm transition hover:border-primary hover:text-primary"
@@ -535,20 +565,23 @@ export function QuotationResultsStep({ client, quotation, segments, blueprintFlo
             <div>
               <p className="mb-2 text-xs font-bold uppercase tracking-wide text-gray-500">Fallback Rule</p>
               <div className="flex flex-col gap-2">
-                {FALLBACK_OPTIONS.map((option) => (
-                  <button
-                    key={option.value}
-                    type="button"
-                    onClick={() => setFallbackRule(option.value)}
-                    disabled={prioritySource === "Uploaded" && option.value !== "Flag for manual review"}
-                    className={`rounded-xl border p-3 text-left transition ${
-                      fallbackRule === option.value ? "border-primary bg-orange-50" : "border-gray-200 bg-white hover:bg-gray-50"
-                    } disabled:cursor-not-allowed disabled:opacity-50`}
-                  >
-                    <span className={`text-sm font-bold ${fallbackRule === option.value ? "text-primary" : "text-gray-800"}`}>{option.label}</span>
-                    <span className="mt-0.5 block text-xs text-gray-500">{option.helper}</span>
-                  </button>
-                ))}
+                {FALLBACK_OPTIONS.map((option) => {
+                  const disabled = prioritySource === "DPWH" && option.value === "Use next available source";
+                  return (
+                    <button
+                      key={option.value}
+                      type="button"
+                      onClick={() => setFallbackRule(option.value)}
+                      disabled={disabled}
+                      className={`rounded-xl border p-3 text-left transition ${
+                        fallbackRule === option.value ? "border-primary bg-orange-50" : "border-gray-200 bg-white hover:bg-gray-50"
+                      } disabled:cursor-not-allowed disabled:opacity-50`}
+                    >
+                      <span className={`text-sm font-bold ${fallbackRule === option.value ? "text-primary" : "text-gray-800"}`}>{option.label}</span>
+                      <span className="mt-0.5 block text-xs text-gray-500">{option.helper}</span>
+                    </button>
+                  );
+                })}
               </div>
             </div>
           </div>
@@ -573,13 +606,12 @@ export function QuotationResultsStep({ client, quotation, segments, blueprintFlo
 
       {minorRevisionTier && (
         <MinorRevisionPanel
+          key={minorRevisionTier}
           tier={minorRevisionTier}
           originalItems={autoTierItems[minorRevisionTier] ?? []}
           items={effectiveTierItems[minorRevisionTier] ?? []}
-          onItemsChange={(next) => {
-            setHasManualLineEdits(true);
-            setTierItems((prev) => ({ ...prev, [minorRevisionTier]: next }));
-          }}
+          onItemsChange={updateTierItems}
+          onTierChange={setMinorRevisionTier}
           onClose={() => setMinorRevisionTier(null)}
           onApply={() => setMinorRevisionTier(null)}
         />

@@ -17,6 +17,7 @@ import { buildWorkflowSteps, type InputMethod, type WizardPhase } from "../lib/w
 import type { Quotation, Client } from "@/types/entities";
 import type { DraftSegment } from "../lib/draftSegment";
 import type { BlueprintFloor } from "@/lib/dev/provisional/quotationGenerationTypes";
+import type { PricelistBasis, ProvisionalItemLine, ProvisionalTier } from "@/lib/dev/provisional/quotationBreakdownTypes";
 import type { ProjectSegment } from "@/types/entities/project-segment";
 
 interface ResumeQuotationPayload extends Quotation {
@@ -31,6 +32,9 @@ interface LocalQuotationDraft {
   blueprintFloors: BlueprintFloor[] | null;
   originalBlueprintFloors: BlueprintFloor[] | null;
   blueprintFilePath: string | null;
+  tierItems?: Partial<Record<ProvisionalTier, ProvisionalItemLine[]>>;
+  pricelistBasis?: PricelistBasis;
+  hasManualLineEdits?: boolean;
   updatedAt: string;
 }
 
@@ -125,6 +129,7 @@ export function QuotationGenerationWizard() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const resumeQuoteId = searchParams.get("resumeQuoteId");
+  const isResumingOpenProject = Boolean(resumeQuoteId);
   const { updateInputMethod } = useUpdateQuotationInputMethod();
   const { deleteDraftQuotation } = useDeleteDraftQuotation();
 
@@ -140,6 +145,9 @@ export function QuotationGenerationWizard() {
   const [blueprintFloors, setBlueprintFloors] = useState<BlueprintFloor[] | null>(null);
   const [blueprintFilePath, setBlueprintFilePath] = useState<string | null>(null);
   const [originalBlueprintFloors, setOriginalBlueprintFloors] = useState<BlueprintFloor[] | null>(null);
+  const [draftTierItems, setDraftTierItems] = useState<Partial<Record<ProvisionalTier, ProvisionalItemLine[]>> | null>(null);
+  const [draftPricelistBasis, setDraftPricelistBasis] = useState<PricelistBasis | null>(null);
+  const [draftHasManualLineEdits, setDraftHasManualLineEdits] = useState(false);
   const [resumeError, setResumeError] = useState<string | null>(null);
   const [isResuming, setIsResuming] = useState(() => Boolean(resumeQuoteId));
 
@@ -166,6 +174,9 @@ export function QuotationGenerationWizard() {
         setBlueprintFloors(localDraft?.blueprintFloors ?? null);
         setOriginalBlueprintFloors(localDraft?.originalBlueprintFloors ?? null);
         setBlueprintFilePath(localDraft?.blueprintFilePath ?? null);
+        setDraftTierItems(localDraft?.tierItems ?? null);
+        setDraftPricelistBasis(localDraft?.pricelistBasis ?? null);
+        setDraftHasManualLineEdits(Boolean(localDraft?.hasManualLineEdits || localDraft?.tierItems));
         setStep(
           localDraft?.step && localDraft.step !== "client" && localDraft.step !== "method" && localDraft.step !== "finalized"
             ? localDraft.step
@@ -198,9 +209,12 @@ export function QuotationGenerationWizard() {
       blueprintFloors,
       originalBlueprintFloors,
       blueprintFilePath,
+      tierItems: draftTierItems ?? undefined,
+      pricelistBasis: draftPricelistBasis ?? undefined,
+      hasManualLineEdits: draftHasManualLineEdits,
       updatedAt: new Date().toISOString(),
     });
-  }, [blueprintFilePath, blueprintFloors, method, originalBlueprintFloors, quotation, segments, step]);
+  }, [blueprintFilePath, blueprintFloors, draftHasManualLineEdits, draftPricelistBasis, draftTierItems, method, originalBlueprintFloors, quotation, segments, step]);
 
   // Registers the path-aware step sequence on the GLOBAL header (components/layout/
   // Header.tsx's `workflow` prop) for as long as this wizard stays mounted — see
@@ -253,6 +267,9 @@ export function QuotationGenerationWizard() {
     setSegments([]);
     setBlueprintFloors(null);
     setOriginalBlueprintFloors(null);
+    setDraftTierItems(null);
+    setDraftPricelistBasis(null);
+    setDraftHasManualLineEdits(false);
   };
 
   const discardDraftQuotation = async () => {
@@ -358,12 +375,54 @@ export function QuotationGenerationWizard() {
         // whichever path this quotation actually used, segments intact (nothing here
         // clears them; the user re-reviews/re-confirms from where they left off).
         onStructuralRevision={() => setStep(method ?? "method")}
-        onBack={() => setStep("configure")}
-        onSaveDraft={() => router.push("/projects")}
+        onBack={() => {
+          if (isResumingOpenProject) {
+            router.replace("/projects");
+            return;
+          }
+          setStep("configure");
+        }}
+        onSaveDraft={async (draft) => {
+          setDraftTierItems(draft.tierItems);
+          setDraftPricelistBasis(draft.pricelistBasis);
+          setDraftHasManualLineEdits(draft.hasManualLineEdits);
+          const draftTier = quotation.accepted_tier ?? "Practical";
+          const result = draft.tierResults[draftTier] ?? draft.tierResults.Practical ?? draft.tierResults.Premium;
+          if (result) {
+            await apiClient(`/api/quotations/${quotation.quote_id}/draft-items`, {
+              method: "POST",
+              credentials: "include",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                items: result.items,
+                total_material_cost: result.materials_subtotal,
+                total_service_cost: result.service_cost.subtotal,
+                grand_total: result.grand_total,
+              }),
+            });
+          }
+          writeLocalQuotationDraft({
+            quoteId: quotation.quote_id,
+            step: "results",
+            method,
+            segments,
+            blueprintFloors,
+            originalBlueprintFloors,
+            blueprintFilePath,
+            tierItems: draft.tierItems,
+            pricelistBasis: draft.pricelistBasis,
+            hasManualLineEdits: draft.hasManualLineEdits,
+            updatedAt: new Date().toISOString(),
+          });
+          router.replace("/projects");
+        }}
         onFinalize={() => {
           clearLocalQuotationDraft(quotation.quote_id);
-          router.push("/projects");
+          router.replace("/projects");
         }}
+        initialTierItems={draftTierItems}
+        initialPricelistBasis={draftPricelistBasis}
+        initialHasManualLineEdits={draftHasManualLineEdits}
       />
     );
   } else {

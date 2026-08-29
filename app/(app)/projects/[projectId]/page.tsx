@@ -238,7 +238,7 @@ function ProjectDetailContent({ projectId }: { projectId: string }) {
       <div className="flex flex-col items-center gap-3 py-16 text-center">
         <p className="text-sm font-semibold text-gray-500">Project not found</p>
         <p className="text-xs text-gray-400">It may have been removed, or this link is stale.</p>
-        <button type="button" onClick={() => router.push("/projects")} className="mt-2 text-sm font-semibold text-primary hover:underline">
+        <button type="button" onClick={() => router.replace("/projects")} className="mt-2 text-sm font-semibold text-primary hover:underline">
           Back to Open Projects
         </button>
       </div>
@@ -269,7 +269,7 @@ function ProjectDetailContent({ projectId }: { projectId: string }) {
       <div className="flex items-start justify-between gap-3">
         <button
           type="button"
-          onClick={() => router.push("/projects")}
+          onClick={() => router.replace("/projects")}
           title="Back to Open Projects"
           className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-gray-200 bg-white text-gray-500 transition hover:border-primary hover:text-primary"
         >

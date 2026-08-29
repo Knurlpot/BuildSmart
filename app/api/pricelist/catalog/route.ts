@@ -53,7 +53,6 @@ export async function GET(request: NextRequest) {
      LEFT JOIN category c ON c.category_id = i.category_id
      LEFT JOIN suppliers s ON s.supplier_id = h.supplier_id
      WHERE h.price_source = 'Supplier'
-       AND i.item_source = 'Supplier'
        AND (i.company_id IS NULL OR i.company_id = (SELECT company_id FROM users WHERE user_id = $1))
      ORDER BY h.effective_date DESC, h.recorded_at DESC, h.historicalrec_id DESC`,
     values

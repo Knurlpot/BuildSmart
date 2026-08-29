@@ -112,7 +112,7 @@ function SegmentCostDeck({ segLines, defaultOpen, hovered, onHoverChange }: { se
               </div>
               <p className="text-xs text-gray-500">
                 {line.unit_price === null ? (
-                  <span className="font-semibold text-amber-600">No rate on file. Resolve it from the quotation card.</span>
+                  <span className="font-semibold text-amber-600">No rate on file.</span>
                 ) : line.category === "Material" ? (
                   <>
                     {line.derived_area_sqm?.toFixed(1)} sqm × {line.derived_coverage_per_sqm?.toFixed(2)} coverage ×{" "}
@@ -176,7 +176,8 @@ function SegmentListFallback({ items, hoveredId, onHoverChange }: { items: Provi
 // to SegmentListFallback; right half is one collapsible cost deck per segment.
 function SegmentBreakdownTab({ items, segments, blueprintFloors }: { items: ProvisionalItemLine[]; segments?: DraftSegment[]; blueprintFloors?: BlueprintFloor[] | null }) {
   const [hoveredId, setHoveredId] = useState<string | null>(null);
-  const segmentIds = Array.from(new Set(items.map((l) => l.segment_draft_id)));
+  const materialItems = items.filter((line) => line.category === "Material");
+  const segmentIds = Array.from(new Set(materialItems.map((l) => l.segment_draft_id)));
   const hasBlueprint = !!blueprintFloors && blueprintFloors.length > 0 && !!segments && segments.length > 0;
 
   return (
@@ -185,14 +186,14 @@ function SegmentBreakdownTab({ items, segments, blueprintFloors }: { items: Prov
         {hasBlueprint ? (
           <SegmentBlueprintPreview floors={blueprintFloors!} segments={segments!} hoveredId={hoveredId} onHoverChange={setHoveredId} />
         ) : (
-          <SegmentListFallback items={items} hoveredId={hoveredId} onHoverChange={setHoveredId} />
+          <SegmentListFallback items={materialItems} hoveredId={hoveredId} onHoverChange={setHoveredId} />
         )}
       </div>
       <div className={`flex flex-col gap-2 ${segmentIds.length >= 4 ? "max-h-[34rem] overflow-y-auto pr-1" : ""}`}>
         {segmentIds.map((segId) => (
           <SegmentCostDeck
             key={segId}
-            segLines={items.filter((l) => l.segment_draft_id === segId)}
+            segLines={materialItems.filter((l) => l.segment_draft_id === segId)}
             defaultOpen={false}
             hovered={hoveredId === segId}
             onHoverChange={setHoveredId}
@@ -204,8 +205,9 @@ function SegmentBreakdownTab({ items, segments, blueprintFloors }: { items: Prov
 }
 
 function BoqTab({ items }: { items: ProvisionalItemLine[] }) {
+  const materialItems = items.filter((line) => line.category === "Material");
   const segmentGroups = Array.from(
-    items.reduce((groups, line) => {
+    materialItems.reduce((groups, line) => {
       const key = line.segment_draft_id || line.segment_name;
       groups.set(key, [...(groups.get(key) ?? []), line]);
       return groups;
@@ -216,7 +218,7 @@ function BoqTab({ items }: { items: ProvisionalItemLine[] }) {
   return (
     <div className="flex flex-col gap-3">
       <p className="text-xs text-gray-500">
-        These are the materials needed for the project.
+        Materials needed:
       </p>
       <div className="overflow-x-auto rounded-xl border border-gray-100">
         <table className="w-full text-xs">
@@ -279,14 +281,17 @@ function BoqTab({ items }: { items: ProvisionalItemLine[] }) {
 function CostSummaryTab({ result }: { result: ProvisionalQuotationTierResult }) {
   const unresolvedCount = result.items.filter((l) => l.unit_price === null).length;
   const rushJobCost = result.service_cost.rush_job_cost ?? 0;
+  const rushPercentage = result.service_cost.labor_cost > 0 ? Math.round((rushJobCost / result.service_cost.labor_cost) * 100) : 0;
   const rows: { label: string; value: number; bold?: boolean }[] = [
     { label: "Materials Subtotal", value: result.materials_subtotal },
-    { label: "Labor", value: result.service_cost.labor_cost },
+    {
+      label: rushJobCost > 0 ? `Labor (${rushPercentage}% Rush Job)` : "Labor",
+      value: result.service_cost.labor_cost + rushJobCost,
+    },
     { label: "Equipment", value: result.service_cost.equipment_cost },
     { label: "Contingency / Other (PPE, mobilization)", value: result.service_cost.contingency_cost + result.service_cost.other_cost },
     { label: `Overhead (OCM, ${result.ocm_percentage}%)`, value: result.ocm_amount },
     { label: `Profit / Markup (${result.profit_margin_percentage}%)`, value: result.profit_amount },
-    ...(rushJobCost > 0 ? [{ label: "Rush Job", value: rushJobCost }] : []),
   ];
 
   return (
@@ -294,8 +299,7 @@ function CostSummaryTab({ result }: { result: ProvisionalQuotationTierResult }) 
       {unresolvedCount > 0 && (
         <div className="flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-700">
           <AlertTriangle className="h-4 w-4 shrink-0" />
-          {unresolvedCount} line{unresolvedCount === 1 ? "" : "s"} still missing a rate and excluded from every total below
-          until resolved from the quotation card.
+          Missing {unresolvedCount} Rate{unresolvedCount === 1 ? "" : "s"}. Excluded from the Total below.
         </div>
       )}
       <div className="rounded-xl border border-gray-100 bg-white p-5 shadow-sm">
@@ -320,10 +324,6 @@ function CostSummaryTab({ result }: { result: ProvisionalQuotationTierResult }) 
           <span className={`text-2xl font-extrabold ${TIER_ACCENT[result.tier]}`}>{fmtPeso(result.grand_total)}</span>
         </div>
       </div>
-      <p className="text-[11px] text-gray-400">
-        VAT is shown as a separate bottom-line figure, never folded into a line item. Every figure above is a mock
-        fixture value; no real pricelist/supplier/rule lookup produced it.
-      </p>
     </div>
   );
 }
@@ -349,7 +349,7 @@ function BenchmarkingTab({ items }: { items: ProvisionalItemLine[] }) {
             <div>
               <p className="text-sm font-bold text-gray-900">{line.item_name}</p>
               <p className="text-xs text-gray-400">
-                {line.segment_name} · needs {line.quantity.toFixed(1)} {line.unit}
+                {line.segment_name} · {line.quantity.toFixed(1)} {line.unit}
               </p>
             </div>
             <button
@@ -432,7 +432,7 @@ export function QuotationBreakdownModal({ tier, result, pricelistBasis, onClose,
             <h2 className="text-base font-bold text-gray-900">
               Detailed Breakdown: <span className={TIER_ACCENT[tier]}>{tier}</span>
             </h2>
-            <p className="text-xs text-gray-500">Full cost transparency · all prices in Philippine Pesos (₱) · mock fixture values</p>
+            <p className="text-xs text-gray-500">Full cost transparency · all prices in Philippine Pesos (₱)</p>
           </div>
           <div className="flex items-center gap-2">
             <div className="flex items-center gap-2">

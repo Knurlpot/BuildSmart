@@ -4,14 +4,16 @@ import { useState } from "react";
 import { flushSync } from "react-dom";
 import { AlertTriangle, Check, ChevronDown, Edit2, RefreshCw, X } from "lucide-react";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { apiClient } from "@/lib/api/client";
 import { computeTierResult, fmtPeso, recomputeItemLine } from "@/lib/dev/provisional/quotationBreakdownFixtures";
 import { PROVISIONAL_TIERS, type ProvisionalItemLine, type ProvisionalTier } from "@/lib/dev/provisional/quotationBreakdownTypes";
+import { useSuppliers } from "@/hooks/useSuppliers";
 
 interface MinorRevisionPanelProps {
   tier: ProvisionalTier;
   originalItems: ProvisionalItemLine[];
   items: ProvisionalItemLine[];
-  onItemsChange: (next: ProvisionalItemLine[]) => void;
+  onItemsChange: (tier: ProvisionalTier, next: ProvisionalItemLine[]) => void;
   onTierChange?: (tier: ProvisionalTier) => void;
   onClose: () => void;
   onApply: () => void;
@@ -164,42 +166,71 @@ function SupplierPicker({ line, onSelect }: { line: ProvisionalItemLine; onSelec
   );
 }
 
-function MissingRuleRow({ line, onResolve }: { line: ProvisionalItemLine; onResolve: (unitPrice: number) => void }) {
-  const [value, setValue] = useState("");
-  const parsed = parseMoneyInput(value);
-  const valid = value.trim() !== "" && parsed > 0;
-  const commit = () => {
-    if (valid) onResolve(Math.round(parsed * 100) / 100);
-  };
+type MissingPriceSaveMode = "quote-only" | "supplier-price";
+type MissingPriceDraft = {
+  value: string;
+  saveMode: MissingPriceSaveMode;
+  supplierId: number | null;
+};
+
+function MissingRuleRow({
+  line,
+  draft,
+  onDraftChange,
+}: {
+  line: ProvisionalItemLine;
+  draft: MissingPriceDraft;
+  onDraftChange: (patch: Partial<MissingPriceDraft>) => void;
+}) {
+  const { suppliers, isLoading: suppliersLoading } = useSuppliers();
   return (
     <div className="flex flex-col gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3">
       <p className="flex items-start gap-1.5 text-xs font-semibold text-amber-700">
         <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
         No rate on file for &quot;{line.item_name}&quot; ({line.segment_name}). Enter a unit price to continue.
-        Nothing is guessed on your behalf.
       </p>
       <div className="flex flex-wrap items-center gap-2">
         <div className="relative">
           <span className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-gray-400">₱</span>
           <input
-            value={value}
-            onChange={(e) => setValue(formatMoneyInput(e.target.value))}
-            onBlur={commit}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                e.currentTarget.blur();
-              }
-            }}
+            value={draft.value}
+            onChange={(e) => onDraftChange({ value: formatMoneyInput(e.target.value) })}
             type="text"
             inputMode="decimal"
             placeholder="Unit price"
             className="w-32 rounded-lg border border-gray-200 bg-white py-1.5 pl-6 pr-2 text-xs outline-none [appearance:textfield] focus:border-primary focus:ring-2 focus:ring-primary/20 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
           />
         </div>
+        <div className="flex overflow-hidden rounded-lg border border-amber-200 bg-white text-xs">
+          {(["quote-only", "supplier-price"] as const).map((mode) => (
+            <button
+              key={mode}
+              type="button"
+              onClick={() => onDraftChange({ saveMode: mode, supplierId: mode === "quote-only" ? null : draft.supplierId })}
+              className={`px-3 py-1.5 font-semibold transition ${
+                draft.saveMode === mode ? "bg-primary text-primary-foreground" : "text-gray-500 hover:bg-gray-50"
+              } disabled:cursor-not-allowed disabled:opacity-50`}
+            >
+              {mode === "quote-only" ? "Quotation Only" : "Save Supplier Price"}
+            </button>
+          ))}
+        </div>
+        {draft.saveMode === "supplier-price" && (
+          <select
+            value={draft.supplierId ?? ""}
+            onChange={(e) => onDraftChange({ supplierId: e.target.value ? Number(e.target.value) : null })}
+            disabled={suppliersLoading}
+            className="min-w-56 rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-xs text-gray-700 outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+          >
+            <option value="">{suppliersLoading ? "Loading suppliers..." : "Select supplier"}</option>
+            {suppliers.map((supplier) => (
+              <option key={supplier.supplier_id} value={supplier.supplier_id}>
+                {supplier.supplier_name}
+              </option>
+            ))}
+          </select>
+        )}
       </div>
-      <p className="text-[11px] text-amber-600">
-        This saves the price to this quotation option. Add or update CPRM Material/Unit Rules separately if this should become a reusable company rule.
-      </p>
     </div>
   );
 }
@@ -211,9 +242,10 @@ function MissingRuleRow({ line, onResolve }: { line: ProvisionalItemLine; onReso
 // regenerate against yet.
 export function MinorRevisionPanel({ tier, originalItems, items, onItemsChange, onTierChange, onClose, onApply }: MinorRevisionPanelProps) {
   const [workingItems, setWorkingItems] = useState(items);
-  const originalTotal = computeTierResult(tier, originalItems).grand_total;
-  const revisedTotal = computeTierResult(tier, workingItems).grand_total;
-  const diff = revisedTotal - originalTotal;
+  const [missingPriceDrafts, setMissingPriceDrafts] = useState<Record<string, MissingPriceDraft>>({});
+  const [isApplying, setIsApplying] = useState(false);
+  const [applyError, setApplyError] = useState<string | null>(null);
+  const materialItems = workingItems.filter((line) => line.category === "Material");
 
   const patchLine = (lineId: string, patch: Parameters<typeof recomputeItemLine>[1]) => {
     flushSync(() => {
@@ -221,8 +253,108 @@ export function MinorRevisionPanel({ tier, originalItems, items, onItemsChange, 
     });
   };
 
+  const draftForLine = (lineId: string): MissingPriceDraft =>
+    missingPriceDrafts[lineId] ?? { value: "", saveMode: "quote-only", supplierId: null };
+
+  const updateMissingPriceDraft = (lineId: string, patch: Partial<MissingPriceDraft>) => {
+    setMissingPriceDrafts((current) => ({
+      ...current,
+      [lineId]: { ...(current[lineId] ?? { value: "", saveMode: "quote-only", supplierId: null }), ...patch },
+    }));
+  };
+
+  const saveSupplierPrice = (line: ProvisionalItemLine, unitPrice: number, supplierId: number) =>
+    apiClient<{ historicalrec_id: number; item_code: number }>("/api/historical-price-records", {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        item_code: Number.isInteger(Number(line.item_code)) ? Number(line.item_code) : null,
+        item_name: line.item_name === "Material (no rate on file)" && line.treatment_type ? `${line.treatment_type} Material` : line.item_name,
+        unit: line.unit,
+        supplier_id: supplierId,
+        price: unitPrice,
+      }),
+    });
+
+  const buildResolvedLine = (line: ProvisionalItemLine, unitPrice: number, supplierId: number | null, savedItemCode?: number): ProvisionalItemLine => {
+    const lineWithItemCode = savedItemCode ? { ...line, item_code: String(savedItemCode) } : line;
+    if (supplierId === null) return recomputeItemLine(lineWithItemCode, { unit_price: unitPrice });
+    const existingSupplier = lineWithItemCode.supplier_options.find((supplier) => supplier.supplier_id === supplierId);
+    return recomputeItemLine(
+      {
+        ...lineWithItemCode,
+        source_type: "Uploaded",
+        selected_supplier_id: supplierId,
+        supplier_options: existingSupplier
+          ? lineWithItemCode.supplier_options.map((supplier) => supplier.supplier_id === supplierId ? { ...supplier, unit_price: unitPrice } : supplier)
+          : [
+              ...lineWithItemCode.supplier_options,
+              {
+                supplier_id: supplierId,
+                supplier_name: `Supplier #${supplierId}`,
+                brand: null,
+                location: null,
+                unit_price: unitPrice,
+                quantity_available: null,
+                source_type: "Uploaded",
+              },
+            ],
+      },
+      { unit_price: unitPrice }
+    );
+  };
+
+  const missingMaterialItems = workingItems.filter((line) => line.category === "Material" && line.unit_price === null);
+  const allMissingPricesHaveDrafts = missingMaterialItems.every((line) => parseMoneyInput(draftForLine(line.line_id).value) > 0);
+  const previewItems = allMissingPricesHaveDrafts
+    ? workingItems.map((line) => {
+        if (line.category !== "Material" || line.unit_price !== null) return line;
+        const unitPrice = Math.round(parseMoneyInput(draftForLine(line.line_id).value) * 100) / 100;
+        return buildResolvedLine(line, unitPrice, null);
+      })
+    : workingItems;
+  const originalTotal = computeTierResult(tier, originalItems).grand_total;
+  const revisedTotal = computeTierResult(tier, previewItems).grand_total;
+  const diff = revisedTotal - originalTotal;
+
   const commitWorkingItems = () => {
-    onItemsChange(workingItems);
+    onItemsChange(tier, workingItems);
+  };
+
+  const handleApplyRevisions = async () => {
+    if (isApplying) return;
+    setIsApplying(true);
+    setApplyError(null);
+    try {
+      const resolved = new Map<string, { unitPrice: number; supplierId: number | null; itemCode?: number }>();
+
+      for (const line of missingMaterialItems) {
+        const draft = draftForLine(line.line_id);
+        const unitPrice = Math.round(parseMoneyInput(draft.value) * 100) / 100;
+        if (!(unitPrice > 0)) {
+          throw new Error(`Enter a unit price for ${line.item_name}.`);
+        }
+        if (draft.saveMode === "supplier-price") {
+          if (draft.supplierId === null) throw new Error(`Select a supplier for ${line.item_name}.`);
+          const saved = await saveSupplierPrice(line, unitPrice, draft.supplierId);
+          resolved.set(line.line_id, { unitPrice, supplierId: draft.supplierId, itemCode: saved.item_code });
+        } else {
+          resolved.set(line.line_id, { unitPrice, supplierId: null });
+        }
+      }
+
+      const nextItems = workingItems.map((line) => {
+        const resolvedLine = resolved.get(line.line_id);
+        return resolvedLine ? buildResolvedLine(line, resolvedLine.unitPrice, resolvedLine.supplierId, resolvedLine.itemCode) : line;
+      });
+      onItemsChange(tier, nextItems);
+      onApply();
+    } catch (error) {
+      setApplyError(error instanceof Error ? error.message : "Could not apply revisions.");
+    } finally {
+      setIsApplying(false);
+    }
   };
 
   return (
@@ -272,7 +404,7 @@ export function MinorRevisionPanel({ tier, originalItems, items, onItemsChange, 
             <thead className="sticky top-0 z-10">
               <tr className="border-b border-gray-200 bg-gray-100">
                 <th className="px-4 py-3 text-left font-semibold text-gray-500">Segment</th>
-                <th className="px-4 py-3 text-left font-semibold text-gray-500">Material / Labor</th>
+                <th className="px-4 py-3 text-left font-semibold text-gray-500">Material</th>
                 <th className="px-4 py-3 text-right font-semibold text-gray-500">Qty</th>
                 <th className="px-4 py-3 text-left font-semibold text-gray-500 min-w-55">Supplier</th>
                 <th className="px-4 py-3 text-right font-semibold text-gray-500">Unit Price</th>
@@ -280,7 +412,7 @@ export function MinorRevisionPanel({ tier, originalItems, items, onItemsChange, 
               </tr>
             </thead>
             <tbody>
-              {workingItems.map((line) => {
+              {materialItems.map((line) => {
                 const original = originalItems.find((o) => o.line_id === line.line_id);
                 const changed = original && Math.abs((line.total_cost ?? 0) - (original.total_cost ?? 0)) > 1;
                 if (line.unit_price === null) {
@@ -288,7 +420,11 @@ export function MinorRevisionPanel({ tier, originalItems, items, onItemsChange, 
                     <tr key={line.line_id} className="border-b border-gray-100 bg-amber-50/30">
                       <td className="px-4 py-2.5 text-gray-500">{line.segment_name}</td>
                       <td colSpan={5} className="px-4 py-2.5">
-                        <MissingRuleRow line={line} onResolve={(unitPrice) => patchLine(line.line_id, { unit_price: unitPrice })} />
+                        <MissingRuleRow
+                          line={line}
+                          draft={draftForLine(line.line_id)}
+                          onDraftChange={(patch) => updateMissingPriceDraft(line.line_id, patch)}
+                        />
                       </td>
                     </tr>
                   );
@@ -338,6 +474,7 @@ export function MinorRevisionPanel({ tier, originalItems, items, onItemsChange, 
             )}
           </div>
           <div className="flex items-center gap-3">
+            {applyError && <p className="max-w-md text-xs font-semibold text-red-600">{applyError}</p>}
             <button type="button" onClick={() => setWorkingItems(originalItems)} className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-600 transition hover:bg-gray-50">
               <RefreshCw className="h-3.5 w-3.5" /> Reset
             </button>
@@ -346,13 +483,11 @@ export function MinorRevisionPanel({ tier, originalItems, items, onItemsChange, 
             </button>
             <button
               type="button"
-              onClick={() => {
-                commitWorkingItems();
-                onApply();
-              }}
+              onClick={() => void handleApplyRevisions()}
+              disabled={isApplying}
               className="flex items-center gap-2 rounded-lg bg-primary px-5 py-2 text-sm font-semibold text-primary-foreground transition hover:bg-(--primary-hover)"
             >
-              <Check className="h-4 w-4" /> Apply Revisions
+              <Check className="h-4 w-4" /> {isApplying ? "Applying..." : "Apply Revisions"}
             </button>
           </div>
         </div>
