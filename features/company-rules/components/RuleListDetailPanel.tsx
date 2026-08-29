@@ -98,7 +98,7 @@ export function RuleListDetailPanel<T>({
         </QueryState>
         </div>
 
-        <div className="min-h-[28rem] rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">{detail}</div>
+        <div className="self-start rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">{detail}</div>
       </div>
     </div>
   );

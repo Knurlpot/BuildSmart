@@ -3,7 +3,7 @@
 // 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Ellipsis, Eye, FileText, FolderOpen, ListFilter, Plus, Search, Trash2, Upload, Users, X } from "lucide-react";
+import { ChevronUp, Eye, FileText, FolderOpen, ListFilter, Plus, Search, Trash2, Upload, Users, X } from "lucide-react";
 import { RequireOnboardingStep } from "@/components/auth/RequireOnboardingStep";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -469,22 +469,8 @@ function OpenProjectsTabs() {
   } | null>(null);
   const [clientCount, setClientCount] = useState(0);
   const [showClientImport, setShowClientImport] = useState(false);
-  const [actionsMenuOpen, setActionsMenuOpen] = useState(false);
   const [clientImportFiles, setClientImportFiles] = useState<File[]>([]);
   const [clientImportKey, setClientImportKey] = useState(0);
-  const actionsMenuRef = useRef<HTMLDivElement>(null);
-  const clientImportInputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    if (!actionsMenuOpen) return;
-    const handleClickOutside = (event: MouseEvent) => {
-      if (actionsMenuRef.current && !actionsMenuRef.current.contains(event.target as Node)) {
-        setActionsMenuOpen(false);
-      }
-    };
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, [actionsMenuOpen]);
 
   return (
     <Tabs value={activeTab} onValueChange={setActiveTab} className="flex flex-col gap-5">
@@ -516,22 +502,6 @@ function OpenProjectsTabs() {
           )}
         </div>
         <div className="flex items-center gap-2">
-          <input
-            ref={clientImportInputRef}
-            type="file"
-            multiple
-            accept=".csv"
-            className="hidden"
-            onChange={(event) => {
-              const files = event.target.files ? Array.from(event.target.files) : [];
-              if (files.length > 0) {
-                setClientImportFiles(files);
-                setClientImportKey((key) => key + 1);
-                setShowClientImport(true);
-              }
-              event.target.value = "";
-            }}
-          />
           <button
             type="button"
             onClick={projectsMeta?.onCreateNew}
@@ -540,31 +510,21 @@ function OpenProjectsTabs() {
             <Plus className="h-4 w-4" /> Create New
           </button>
           {activeTab === "clients" && (
-            <div ref={actionsMenuRef} className="relative">
-              <button
-                type="button"
-                onClick={() => setActionsMenuOpen((open) => !open)}
-                aria-label="Client actions"
-                className="flex h-10 w-10 items-center justify-center rounded-xl border border-gray-200 bg-white text-gray-500 shadow-sm transition hover:border-gray-300 hover:text-gray-700"
-              >
-                <Ellipsis className="h-5 w-5" />
-              </button>
-              {actionsMenuOpen && (
-                <div className="absolute right-0 top-full z-20 mt-2 w-64 overflow-hidden rounded-xl border border-gray-200 bg-white py-1 shadow-lg">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setActionsMenuOpen(false);
-                      clientImportInputRef.current?.click();
-                    }}
-                    className="flex w-full items-center gap-2 px-3.5 py-2.5 text-left text-sm font-semibold text-gray-600 transition hover:bg-gray-50 hover:text-primary"
-                  >
-                    <Upload className="h-4 w-4" />
-                    Import Client
-                  </button>
-                </div>
-              )}
-            </div>
+            <button
+              type="button"
+              onClick={() => {
+                if (!showClientImport) {
+                  setClientImportFiles([]);
+                  setClientImportKey((key) => key + 1);
+                }
+                setShowClientImport((visible) => !visible);
+              }}
+              aria-expanded={showClientImport}
+              className="flex h-10 items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm font-semibold text-gray-600 shadow-sm transition hover:border-primary hover:text-primary"
+            >
+              <Upload className="h-4 w-4" /> Import Clients
+              {showClientImport && <ChevronUp className="h-4 w-4" />}
+            </button>
           )}
         </div>
       </div>
@@ -572,7 +532,12 @@ function OpenProjectsTabs() {
         <OpenProjectsContent onMetaChange={setProjectsMeta} />
       </TabsContent>
       <TabsContent value="clients">
-        <MyClientsTab onClientCountChange={setClientCount} showImport={showClientImport} importFiles={clientImportFiles} importKey={clientImportKey} />
+        <MyClientsTab
+          onClientCountChange={setClientCount}
+          showImport={showClientImport}
+          importFiles={clientImportFiles}
+          importKey={clientImportKey}
+        />
       </TabsContent>
     </Tabs>
   );

@@ -54,7 +54,7 @@ function SegmentConfigForm({ segment, treatmentOptions, laborTradeOptions, onSav
         </p>
       </div>
 
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+      <div className="flex flex-col gap-3">
         <div className="flex flex-col gap-1.5">
           <label className="text-xs font-semibold text-gray-600">Labor Basis</label>
           <select
@@ -66,7 +66,7 @@ function SegmentConfigForm({ segment, treatmentOptions, laborTradeOptions, onSav
                 labor_trade: laborBasis === "Trade" ? segment.labor_trade : null,
               });
             }}
-            className={inputCls}
+            className={`${inputCls} select-chevron`}
           >
             <option value="Auto">Auto</option>
             <option value="Treatment">By Treatment</option>
@@ -79,7 +79,7 @@ function SegmentConfigForm({ segment, treatmentOptions, laborTradeOptions, onSav
             <label className="text-xs font-semibold text-gray-600">
               Labor Trade <span className="text-red-500">*</span>
             </label>
-            <select value={segment.labor_trade ?? ""} onChange={(e) => onSave({ labor_trade: e.target.value || null })} className={inputCls}>
+            <select value={segment.labor_trade ?? ""} onChange={(e) => onSave({ labor_trade: e.target.value || null })} className={`${inputCls} select-chevron`}>
               <option value="">Select…</option>
               {laborTradeOptions.map((trade) => (
                 <option key={trade}>{trade}</option>
@@ -101,7 +101,7 @@ function SegmentConfigForm({ segment, treatmentOptions, laborTradeOptions, onSav
             setTreatmentChoice(next);
             commitTreatment(next, customTreatment);
           }}
-          className={inputCls}
+          className={`${inputCls} select-chevron`}
         >
           <option value="">Select…</option>
           {treatmentOptions.map((t) => (
@@ -243,7 +243,7 @@ interface ApplyToAllPanelProps {
 
       <div className="flex flex-col gap-1.5">
         <label className="text-xs font-semibold text-gray-600">Treatment Type</label>
-        <select value={treatmentChoice} onChange={(e) => setTreatmentChoice(e.target.value)} className={inputCls}>
+        <select value={treatmentChoice} onChange={(e) => setTreatmentChoice(e.target.value)} className={`${inputCls} select-chevron`}>
           <option value="">Select…</option>
           {treatmentOptions.map((t) => (
             <option key={t}>{t}</option>
@@ -266,7 +266,7 @@ interface ApplyToAllPanelProps {
         )}
       </div>
 
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+      <div className="flex flex-col gap-3">
         <div className="flex flex-col gap-1.5">
           <label className="text-xs font-semibold text-gray-600">Labor Basis</label>
           <select
@@ -276,7 +276,7 @@ interface ApplyToAllPanelProps {
               setLaborBasis(next);
               if (next !== "Trade") setLaborTrade("");
             }}
-            className={inputCls}
+            className={`${inputCls} select-chevron`}
           >
             <option value="Auto">Auto</option>
             <option value="Treatment">By Treatment</option>
@@ -289,7 +289,7 @@ interface ApplyToAllPanelProps {
             <label className="text-xs font-semibold text-gray-600">
               Labor Trade <span className="text-red-500">*</span>
             </label>
-            <select value={laborTrade} onChange={(e) => setLaborTrade(e.target.value)} className={inputCls}>
+            <select value={laborTrade} onChange={(e) => setLaborTrade(e.target.value)} className={`${inputCls} select-chevron`}>
               <option value="">Select…</option>
               {laborTradeOptions.map((trade) => (
                 <option key={trade}>{trade}</option>

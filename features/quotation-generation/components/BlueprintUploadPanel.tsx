@@ -322,6 +322,7 @@ export function BlueprintUploadPanel({
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [selectedFloor, setSelectedFloor] = useState<string | null>(floors?.[0]?.floor_level ?? null);
   const [hoveredId, setHoveredId] = useState<string | null>(null);
+  const [groupingSelectedIds, setGroupingSelectedIds] = useState<Set<string>>(new Set());
   const [overlayScanning, setOverlayScanning] = useState(false);
   const [openedFloorLevels, setOpenedFloorLevels] = useState<Set<string>>(new Set());
   const [confirmedGroupingFloorLevels, setConfirmedGroupingFloorLevels] = useState<Set<string>>(new Set());
@@ -346,6 +347,7 @@ export function BlueprintUploadPanel({
     onChange(segments.filter((segment) => segment.source_method !== "Blueprint"));
     setSelectedFloor(null);
     setHoveredId(null);
+    setGroupingSelectedIds(new Set());
     setOverlayScanning(false);
     setOpenedFloorLevels(new Set());
     setConfirmedGroupingFloorLevels(new Set());
@@ -394,6 +396,7 @@ export function BlueprintUploadPanel({
     // that isn't even on screen anymore. The scan + zoom reset the same way, for the same
     // reason, by remounting BlueprintOverlay (key={floorLevel} below).
     setHoveredId(null);
+    setGroupingSelectedIds(new Set());
   };
 
   const handleScanCurrentFloor = async () => {
@@ -777,6 +780,7 @@ export function BlueprintUploadPanel({
           segments={floorSegments}
           hoveredId={hoveredId}
           onHoverChange={setHoveredId}
+          groupingSelectedIds={groupingSelectedIds}
           onSegmentPolygonChange={(draftId, polygonCoords, polygonIndex = 0) => {
             onChange(
               segments.map((segment) =>
@@ -829,6 +833,7 @@ export function BlueprintUploadPanel({
           disableAdd={floorAllIncludedConfirmed}
           hoveredId={hoveredId}
           onHoverChange={setHoveredId}
+          onGroupingSelectionChange={setGroupingSelectedIds}
           confirmSummary={{
             confirmedCount: floorConfirmedIncludedCount,
             includedCount: floorIncludedSegments.length,

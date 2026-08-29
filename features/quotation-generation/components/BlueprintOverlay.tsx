@@ -63,6 +63,27 @@ const segmentPolygons = (segment: DraftSegment): SegmentPolygon[] => {
   return segment.polygon_coords ? [segment.polygon_coords] : [];
 };
 
+const convexHull = (points: SegmentPolygon): SegmentPolygon => {
+  const unique = [...new Map(points.map((point) => [`${point[0]}:${point[1]}`, point])).values()].sort(
+    (left, right) => left[0] - right[0] || left[1] - right[1],
+  );
+  if (unique.length <= 3) return unique;
+  const cross = (origin: [number, number], a: [number, number], b: [number, number]) =>
+    (a[0] - origin[0]) * (b[1] - origin[1]) - (a[1] - origin[1]) * (b[0] - origin[0]);
+  const lower: SegmentPolygon = [];
+  for (const point of unique) {
+    while (lower.length >= 2 && cross(lower[lower.length - 2], lower[lower.length - 1], point) <= 0) lower.pop();
+    lower.push(point);
+  }
+  const upper: SegmentPolygon = [];
+  for (let index = unique.length - 1; index >= 0; index -= 1) {
+    const point = unique[index];
+    while (upper.length >= 2 && cross(upper[upper.length - 2], upper[upper.length - 1], point) <= 0) upper.pop();
+    upper.push(point);
+  }
+  return [...lower.slice(0, -1), ...upper.slice(0, -1)];
+};
+
 interface BlueprintOverlayProps {
   imageUrl: string;
   imageWidth: number;
@@ -73,6 +94,7 @@ interface BlueprintOverlayProps {
   segments: DraftSegment[];
   hoveredId: string | null;
   onHoverChange: (id: string | null) => void;
+  groupingSelectedIds?: ReadonlySet<string>;
   onSegmentPolygonChange?: (draftId: string, polygonCoords: SegmentPolygon, polygonIndex?: number) => void;
   onScan?: () => void;
   canRescan?: boolean;
@@ -118,6 +140,7 @@ export function BlueprintOverlay({
   segments,
   hoveredId,
   onHoverChange,
+  groupingSelectedIds,
   onSegmentPolygonChange,
   onScan,
   canRescan = false,
@@ -278,6 +301,11 @@ export function BlueprintOverlay({
   const tooltipTop = cursor && cursor.y + TOOLTIP_HEIGHT + 20 > cursor.containerHeight ? cursor.y - TOOLTIP_HEIGHT - 14 : (cursor?.y ?? 0) + 14;
 
   const scanLineY = (scanProgress / 100) * imageHeight;
+  const groupingSelectionHull = convexHull(
+    segments
+      .filter((segment) => groupingSelectedIds?.has(segment.draft_id))
+      .flatMap((segment) => segmentPolygons(segment).flat()),
+  );
   const segmentPoints = segments.flatMap((seg) => segmentPolygons(seg)).flat();
   const segmentCropBounds =
     segmentPoints.length > 0
@@ -457,6 +485,7 @@ export function BlueprintOverlay({
               const hovered = hoveredId === seg.draft_id;
               const estimated = seg.boundary_estimated;
               const grouped = polygons.length > 1;
+              const groupingSelected = groupingSelectedIds?.has(seg.draft_id) ?? false;
 
               return polygons.map((points, polygonIndex) => {
                 if (points.length < 3) return null;
@@ -499,17 +528,19 @@ export function BlueprintOverlay({
                       handlePolygonDoubleClick(e, seg);
                     }}
                     fill={color}
-                    fillOpacity={hovered || selected ? (estimated ? 0.18 : 0.24) : revealed ? (estimated ? 0.08 : 0.12) : highlightEditingActive ? 0.04 : 0}
+                    fillOpacity={groupingSelected ? 0 : hovered || selected ? (estimated ? 0.18 : 0.24) : revealed ? (estimated ? 0.08 : 0.12) : highlightEditingActive ? 0.04 : 0}
                     stroke={color}
                     strokeWidth={
-                      groupedFillGap
+                      groupingSelected
+                        ? 0
+                        : groupedFillGap
                         ? 10
                         : showOutline
                           ? (hovered || selected || highlightEditingActive ? (estimated ? 5 : 6) : revealed ? (estimated ? 2.5 : 3.5) : 0)
                           : 0
                     }
                     strokeLinejoin="round"
-                    strokeOpacity={groupedFillGap ? (hovered ? 0.24 : 0.12) : showOutline ? (hovered || selected ? 0.95 : revealed ? 0.8 : 0) : 0}
+                    strokeOpacity={groupingSelected ? 0 : groupedFillGap ? (hovered ? 0.24 : 0.12) : showOutline ? (hovered || selected ? 0.95 : revealed ? 0.8 : 0) : 0}
                     strokeDasharray={estimated ? "12 8" : undefined}
                     className={`${highlightEditingActive && highlightEditTool === "move-shape" && selected ? "cursor-grab active:cursor-grabbing" : "cursor-pointer"} transition-opacity`}
                   />
@@ -517,6 +548,17 @@ export function BlueprintOverlay({
               });
             })}
           </g>
+          {groupingSelectionHull.length >= 3 && (
+            <polygon
+              points={pointsToSvg(groupingSelectionHull)}
+              fill="#16a34a"
+              fillOpacity={0.24}
+              stroke="#16a34a"
+              strokeWidth={8}
+              strokeLinejoin="round"
+              pointerEvents="none"
+            />
+          )}
           {highlightEditingActive && editableSegment && editablePolygon && (
             <g>
               {editablePolygon.map(([x, y], index) => (

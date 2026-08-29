@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, CheckCircle2, ChevronLeft, File as FileIcon, Upload as UploadIcon, Users, X } from "lucide-react";
 import {
   CLIENT_IMPORT_SOFT_ROW_CAP,
@@ -141,7 +141,9 @@ function ReviewStep({
   isCommitting: boolean;
   commitError: Error | null;
 }) {
-  const attentionCount = rows.filter(clientRowNeedsAttention).length;
+  const [attentionOnly, setAttentionOnly] = useState(false);
+  const attentionCount = useMemo(() => rows.filter(clientRowNeedsAttention).length, [rows]);
+  const visibleRows = useMemo(() => (attentionOnly ? rows.filter(clientRowNeedsAttention) : rows), [attentionOnly, rows]);
   const overCap = rows.length > CLIENT_IMPORT_SOFT_ROW_CAP;
   const canImport = rows.length > 0 && rows.every((row) => !clientRowNeedsAttention(row));
 
@@ -149,8 +151,8 @@ function ReviewStep({
     <div className="flex flex-col gap-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h3 className="text-base font-bold text-gray-900">Review Records</h3>
-          <p className="text-xs text-gray-500">Review each row before importing. Blank cells stay blank.</p>
+          <h3 className="text-base font-bold text-gray-900">Map &amp; Confirm</h3>
+          <p className="text-xs text-gray-500">Review each client, fill in anything missing, then import.</p>
         </div>
         <button
           type="button"
@@ -177,9 +179,18 @@ function ReviewStep({
             {attentionCount} need{attentionCount !== 1 ? "" : "s"} attention
           </span>
         )}
+        <label className="ml-auto flex items-center gap-2 text-sm text-gray-600">
+          <input
+            type="checkbox"
+            checked={attentionOnly}
+            onChange={(e) => setAttentionOnly(e.target.checked)}
+            className="h-4 w-4 rounded border-gray-300 accent-primary"
+          />
+          Show only rows needing attention
+        </label>
       </div>
 
-      <div className="overflow-x-auto rounded-2xl border border-gray-200 bg-white">
+      <div className="overflow-x-auto rounded-2xl border border-gray-200 bg-white shadow-sm">
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-gray-100 bg-gray-50/60 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
@@ -193,7 +204,7 @@ function ReviewStep({
             </tr>
           </thead>
           <tbody>
-            {rows.map((row) => {
+            {visibleRows.map((row) => {
               const attention = clientRowNeedsAttention(row);
               return (
                 <tr key={row.row_key} className={`border-b border-gray-50 ${attention ? "bg-amber-50/40" : ""}`}>
@@ -280,12 +291,12 @@ function ReviewStep({
         <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">Import failed: {commitError.message}</div>
       )}
 
-      <div className="flex justify-end">
+      <div className="flex items-center gap-3">
         <button
           type="button"
           disabled={isCommitting || !canImport}
           onClick={onApprove}
-          className="rounded-xl bg-primary px-5 py-2.5 text-sm font-bold text-primary-foreground shadow-sm transition hover:bg-(--primary-hover) disabled:opacity-60"
+          className="w-fit rounded-xl bg-primary px-6 py-3 text-sm font-bold text-primary-foreground shadow-sm transition hover:bg-(--primary-hover) disabled:opacity-60"
         >
           {isCommitting ? "Importing…" : `Import ${rows.length} Client${rows.length !== 1 ? "s" : ""}`}
         </button>

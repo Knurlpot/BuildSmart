@@ -188,6 +188,7 @@ interface SegmentEditorListProps {
   addLabel?: string;
   hoveredId?: string | null;
   onHoverChange?: (id: string | null) => void;
+  onGroupingSelectionChange?: (ids: Set<string>) => void;
   /** Blueprint review's per-floor confirmation control, rendered at the top of the list
    * so long floor segment sets can be confirmed without hunting through the page. */
   confirmSummary?: {
@@ -216,6 +217,7 @@ export function SegmentEditorList({
   addLabel = "Add Segment",
   hoveredId = null,
   onHoverChange,
+  onGroupingSelectionChange,
   confirmSummary = null,
   createNewSegment,
   disableAdd = false,
@@ -262,6 +264,7 @@ export function SegmentEditorList({
     setSelectedIds((prev) => {
       const next = new Set(prev);
       next.delete(draftId);
+      onGroupingSelectionChange?.(next);
       return next;
     });
   };
@@ -271,6 +274,7 @@ export function SegmentEditorList({
       const next = new Set(prev);
       if (next.has(draftId)) next.delete(draftId);
       else next.add(draftId);
+      onGroupingSelectionChange?.(next);
       return next;
     });
   };
@@ -279,6 +283,7 @@ export function SegmentEditorList({
     const segment = segments.find((s) => s.draft_id === draftId);
     if (segment?.confirmed) {
       setSelectedIds(new Set());
+      onGroupingSelectionChange?.(new Set());
       setGrouping(false);
       setGroupName("");
     }
@@ -295,6 +300,7 @@ export function SegmentEditorList({
     const merged = mergeSegments(toMerge, groupName.trim());
     onChange([...segments.filter((s) => !selectedIds.has(s.draft_id)), merged]);
     setSelectedIds(new Set());
+    onGroupingSelectionChange?.(new Set());
     setGroupName("");
     setGrouping(false);
   };
@@ -412,8 +418,11 @@ export function SegmentEditorList({
         </div>
       ) : (
         <div className="flex max-h-130 flex-col divide-y divide-gray-100 overflow-y-auto">
-          {reviewSegments.map((seg) =>
-            editingId === seg.draft_id ? (
+          {reviewSegments.map((seg, index) => {
+            const groupSelected = selectedIds.has(seg.draft_id);
+            const previousSelected = index > 0 && selectedIds.has(reviewSegments[index - 1].draft_id);
+            const nextSelected = index < reviewSegments.length - 1 && selectedIds.has(reviewSegments[index + 1].draft_id);
+            return editingId === seg.draft_id ? (
               <div key={seg.draft_id} className="p-3">
                 <SegmentRowForm draft={seg} onSave={handleSaveRow} onCancel={() => handleCancelRow(seg.draft_id)} />
               </div>
@@ -426,7 +435,7 @@ export function SegmentEditorList({
                 }}
                 onMouseEnter={() => onHoverChange?.(seg.draft_id)}
                 onMouseLeave={() => onHoverChange?.(null)}
-                className={`flex items-center gap-3 px-4 py-2.5 transition ${seg.geometry_flagged && !seg.confirmed ? "bg-red-50/70 ring-1 ring-inset ring-red-200" : ""} ${
+                className={`flex items-center gap-3 px-4 py-2.5 transition ${groupSelected ? `border-x-2 border-green-400 bg-green-100/80 ${!previousSelected ? "border-t-2" : ""} ${!nextSelected ? "border-b-2" : ""}` : seg.geometry_flagged && !seg.confirmed ? "bg-red-50/70 ring-1 ring-inset ring-red-200" : ""} ${
                   hoveredId === seg.draft_id && !seg.confirmed ? "bg-orange-50/60" : ""
                 } ${showIncludeToggle && !seg.included_in_quote ? "opacity-50" : ""}`}
               >
@@ -450,7 +459,7 @@ export function SegmentEditorList({
                     checked={selectedIds.has(seg.draft_id)}
                     onChange={() => toggleSelect(seg.draft_id)}
                     title="Select for grouping"
-                    className="h-4 w-4 shrink-0 rounded border-gray-300 text-primary focus:ring-2 focus:ring-primary/30"
+                    className="h-4 w-4 shrink-0 rounded border-gray-300 accent-green-600 focus:ring-2 focus:ring-green-500/30"
                   />
                 )}
                 <div className="min-w-0 flex-1">
@@ -499,8 +508,8 @@ export function SegmentEditorList({
                   <Trash2 className="h-3.5 w-3.5" />
                 </button>
               </div>
-            )
-          )}
+            );
+          })}
         </div>
       )}
     </div>

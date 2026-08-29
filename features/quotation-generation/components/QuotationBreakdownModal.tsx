@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { AlertTriangle, BarChart2, BookOpen, Check, ChevronDown, ChevronUp, Layers, Pencil, ShoppingBag, X } from "lucide-react";
+import { AlertTriangle, BarChart2, BookOpen, Check, ChevronDown, ChevronUp, Layers, Pencil, ShoppingBag, TrendingDown, X } from "lucide-react";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { fmtPeso } from "@/lib/dev/provisional/quotationBreakdownFixtures";
 import type { ItemCategory, PricelistBasis, ProvisionalItemLine, ProvisionalQuotationTierResult, ProvisionalTier } from "@/lib/dev/provisional/quotationBreakdownTypes";
@@ -333,15 +333,38 @@ function CostSummaryTab({ result }: { result: ProvisionalQuotationTierResult }) 
 // "Available"/"Can Fulfil?" column here anymore. Comparing suppliers by price, plus the
 // Uploaded-Pricelist-vs-DPWH toggle in the header above, is the whole of this tab.
 function BenchmarkingTab({ items }: { items: ProvisionalItemLine[] }) {
-  const withSuppliers = items.filter((l) => l.supplier_options.length > 0);
+  const withSuppliers = items.filter((line) => line.category === "Material" && line.supplier_options.length > 0);
   const [editingLineId, setEditingLineId] = useState<string | null>(null);
   const [selectedSuppliers, setSelectedSuppliers] = useState<Record<string, string | number | null>>({});
+  const offerCount = withSuppliers.reduce((total, line) => total + line.supplier_options.length, 0);
+  const selectedTotal = withSuppliers.reduce((total, line) => {
+    const selectedId = selectedSuppliers[line.line_id] ?? line.selected_supplier_id;
+    const selected = line.supplier_options.find((supplier) => supplier.supplier_id === selectedId);
+    return total + (selected?.unit_price ?? line.unit_price ?? 0) * line.quantity;
+  }, 0);
+  const lowestTotal = withSuppliers.reduce((total, line) => {
+    const lowest = Math.min(...line.supplier_options.map((supplier) => supplier.unit_price));
+    return total + lowest * line.quantity;
+  }, 0);
+  const potentialSavings = Math.max(0, selectedTotal - lowestTotal);
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex items-center gap-2 rounded-xl border border-blue-100 bg-blue-50 px-4 py-3 text-xs text-blue-700">
-        <ShoppingBag className="h-4 w-4 shrink-0" />
-        Comparing suppliers by price against what this quote actually needs.
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <div className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
+          <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Materials compared</p>
+          <p className="mt-1 text-xl font-bold text-gray-900">{withSuppliers.length}</p>
+        </div>
+        <div className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
+          <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Supplier prices</p>
+          <p className="mt-1 text-xl font-bold text-gray-900">{offerCount}</p>
+        </div>
+        <div className="rounded-xl border border-green-100 bg-green-50/60 p-4 shadow-sm">
+          <p className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-green-700">
+            <TrendingDown className="h-3.5 w-3.5" /> Potential savings
+          </p>
+          <p className="mt-1 text-xl font-bold text-green-700">{fmtPeso(potentialSavings)}</p>
+        </div>
       </div>
       {withSuppliers.map((line) => (
         <div key={line.line_id} className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
@@ -367,18 +390,23 @@ function BenchmarkingTab({ items }: { items: ProvisionalItemLine[] }) {
               <thead>
                 <tr className="border-b border-gray-200 bg-gray-50">
                   <th className="px-3 py-2 text-left font-semibold text-gray-500">Supplier</th>
+                  <th className="px-3 py-2 text-left font-semibold text-gray-500">Brand</th>
+                  <th className="px-3 py-2 text-left font-semibold text-gray-500">Location</th>
                   <th className="px-3 py-2 text-right font-semibold text-gray-500">Unit Price</th>
+                  <th className="px-3 py-2 text-right font-semibold text-gray-500">Line Total</th>
+                  <th className="px-3 py-2 text-right font-semibold text-gray-500">Difference</th>
                 </tr>
               </thead>
               <tbody>
                 {[...line.supplier_options]
                   .sort((a, b) => a.unit_price - b.unit_price)
-                  .map((sup) => {
+                  .map((sup, index, sorted) => {
                     const selectedSupplier = selectedSuppliers[line.line_id] ?? line.selected_supplier_id;
                     const isSelected = sup.supplier_id === selectedSupplier;
+                    const difference = sup.unit_price - (sorted[0]?.unit_price ?? sup.unit_price);
                     return (
                       <tr
-                        key={sup.supplier_id}
+                        key={`${sup.supplier_id}-${index}`}
                         className={`border-b border-gray-100 last:border-0 ${isSelected ? "bg-orange-50/40" : ""} ${editingLineId === line.line_id ? "cursor-pointer hover:bg-gray-50" : ""}`}
                         onClick={() => {
                           if (editingLineId !== line.line_id) return;
@@ -386,14 +414,19 @@ function BenchmarkingTab({ items }: { items: ProvisionalItemLine[] }) {
                         }}
                       >
                         <td className="px-3 py-2">
-                          <div className="flex flex-col gap-0.5">
-                            <div className="font-medium text-gray-800">
-                              {sup.supplier_name} {isSelected && <span className="ml-1 rounded-full bg-primary/10 px-1.5 py-0.5 text-[9px] font-bold text-primary">Selected</span>}
-                            </div>
-                            <div className="text-[11px] text-gray-400">{sup.location ?? "Location not specified"}</div>
+                          <div className="flex items-center gap-1.5 font-medium text-gray-800">
+                            <span>{sup.supplier_name}</span>
+                            {index === 0 && <span className="rounded-full bg-green-100 px-1.5 py-0.5 text-[9px] font-bold text-green-700">Lowest</span>}
+                            {isSelected && <span className="rounded-full bg-primary/10 px-1.5 py-0.5 text-[9px] font-bold text-primary">Selected</span>}
                           </div>
                         </td>
-                        <td className="px-3 py-2 text-right text-gray-700">{fmtPeso(sup.unit_price)}</td>
+                        <td className="px-3 py-2 text-gray-500">{sup.brand || "Not specified"}</td>
+                        <td className="px-3 py-2 text-gray-500">{sup.location || "Not specified"}</td>
+                        <td className="px-3 py-2 text-right font-semibold text-gray-700">{fmtPeso(sup.unit_price)}</td>
+                        <td className="px-3 py-2 text-right font-semibold text-gray-900">{fmtPeso(sup.unit_price * line.quantity)}</td>
+                        <td className={`px-3 py-2 text-right font-semibold ${difference === 0 ? "text-green-700" : "text-gray-500"}`}>
+                          {difference === 0 ? "Best price" : `+${fmtPeso(difference * line.quantity)}`}
+                        </td>
                       </tr>
                     );
                   })}
@@ -402,7 +435,13 @@ function BenchmarkingTab({ items }: { items: ProvisionalItemLine[] }) {
           </div>
         </div>
       ))}
-      {withSuppliers.length === 0 && <p className="text-sm text-gray-400">No priced items with supplier options to compare yet.</p>}
+      {withSuppliers.length === 0 && (
+        <div className="flex flex-col items-center rounded-xl border border-gray-100 bg-white p-10 text-center shadow-sm">
+          <ShoppingBag className="h-8 w-8 text-gray-300" />
+          <p className="mt-3 text-sm font-semibold text-gray-700">No supplier prices to compare</p>
+          <p className="mt-1 text-xs text-gray-400">Upload supplier pricelists for the materials in this quotation.</p>
+        </div>
+      )}
     </div>
   );
 }
