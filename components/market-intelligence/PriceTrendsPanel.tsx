@@ -1,11 +1,12 @@
 "use client";
 
 // 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { Filter, Globe2, Info, Landmark, Minus, Truck, TrendingDown, TrendingUp } from "lucide-react";
+import { Bot, Filter, Globe2, Info, Landmark, Minus, Truck, TrendingDown, TrendingUp } from "lucide-react";
 import { QueryState } from "@/components/feedback/QueryState";
 import { useMarketIntelligence, type HistoricalPriceRecordRow } from "@/hooks/useMarketIntelligence";
+import { apiClient } from "@/lib/api/client";
 import { mapToPsaCmrpiCommodityGroup, type CmrpiMappingResult } from "@/lib/psa-cmrpi-mapping";
 import { REGIONS } from "@/lib/regions";
 import type { MaterialPriceVariance } from "@/types/entities";
@@ -118,6 +119,17 @@ type SupplierComparisonRow = {
   favorableCount: number;
 };
 
+type MarketSummaryResponse = {
+  summary: string;
+  source: "gemini" | "fallback";
+};
+
+type ResolvedSummary = {
+  key: string;
+  data: MarketSummaryResponse | null;
+  error: Error | null;
+};
+
 type ChartClickPayload = {
   payload?: {
     period?: string;
@@ -139,6 +151,8 @@ export function PriceTrendsPanel({ compact = false }: PriceTrendsPanelProps) {
   const [region, setRegion] = useState("All");
   const [categoryFilter, setCategoryFilter] = useState("All");
   const [selectedVariance, setSelectedVariance] = useState<DrilldownSelection | null>(null);
+  const [aiSummaryReloadToken, setAiSummaryReloadToken] = useState(0);
+  const [aiSummaryResolved, setAiSummaryResolved] = useState<ResolvedSummary>({ key: "", data: null, error: null });
 
   const { historical, variances } = useMarketIntelligence({
     region,
@@ -446,6 +460,72 @@ export function PriceTrendsPanel({ compact = false }: PriceTrendsPanelProps) {
       });
   }, [filteredRows]);
 
+  const aiSummaryPayload = useMemo(() => ({
+    region,
+    category_filter: categoryFilter,
+    average_variance_pct: varianceSummary.averagePct,
+    average_unit_difference: varianceSummary.averageUnitVariance,
+    comparable_count: varianceSummary.comparableCount,
+    unfavorable_count: varianceSummary.unfavorable,
+    market_driven_count: varianceSummary.marketDriven,
+    markup_driven_count: varianceSummary.markupDriven,
+    favorable_count: analysisRows.filter((row) => row.status === "Favorable").length,
+    top_categories: categoryVariance.categories
+      .map((category) => {
+        const values = categoryVariance.materialPoints.filter((point) => point.category === category).map((point) => point.variancePct);
+        if (values.length === 0) return null;
+        return {
+          category,
+          average_variance_pct: values.reduce((sum, value) => sum + value, 0) / values.length,
+        };
+      })
+      .filter((entry): entry is { category: string; average_variance_pct: number } => entry !== null)
+      .sort((a, b) => Math.abs(b.average_variance_pct) - Math.abs(a.average_variance_pct))
+      .slice(0, 3),
+    top_suppliers: supplierComparisons.slice(0, 3).map((supplier) => ({
+      supplier_name: supplier.supplierName,
+      average_variance_pct: supplier.averageVariancePct,
+      favorable_count: supplier.favorableCount,
+      item_count: supplier.itemCount,
+    })),
+    top_items: analysisRows.slice(0, 5).map((row) => ({
+      item_name: row.itemName,
+      category: row.category,
+      deviation_pct: row.deviationPct,
+      primary_driver: row.primaryDriver,
+    })),
+  }), [analysisRows, categoryFilter, categoryVariance.categories, categoryVariance.materialPoints, region, supplierComparisons, varianceSummary.averagePct, varianceSummary.averageUnitVariance, varianceSummary.comparableCount, varianceSummary.marketDriven, varianceSummary.markupDriven, varianceSummary.unfavorable]);
+  const canGenerateAiSummary = analysisRows.length > 0 || supplierComparisons.length > 0;
+  const aiSummaryRequestKey = canGenerateAiSummary ? `${JSON.stringify(aiSummaryPayload)}::${aiSummaryReloadToken}` : "";
+  const displayedAiSummary = canGenerateAiSummary && aiSummaryResolved.key === aiSummaryRequestKey ? aiSummaryResolved.data : null;
+  const displayedAiSummaryError = canGenerateAiSummary && aiSummaryResolved.key === aiSummaryRequestKey ? aiSummaryResolved.error : null;
+  const displayedAiSummaryLoading = canGenerateAiSummary && aiSummaryResolved.key !== aiSummaryRequestKey;
+
+  useEffect(() => {
+    if (historical.isLoading || variances.isLoading) return;
+    if (!canGenerateAiSummary) return;
+
+    const controller = new AbortController();
+    const key = `${JSON.stringify(aiSummaryPayload)}::${aiSummaryReloadToken}`;
+
+    apiClient<MarketSummaryResponse>("/api/market-insights/summary", {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(aiSummaryPayload),
+      signal: controller.signal,
+    })
+      .then((data) => {
+        if (!controller.signal.aborted) setAiSummaryResolved({ key, data, error: null });
+      })
+      .catch((error) => {
+        if (controller.signal.aborted) return;
+        setAiSummaryResolved({ key, data: null, error: error instanceof Error ? error : new Error("Could not load AI summary.") });
+      });
+
+    return () => controller.abort();
+  }, [aiSummaryPayload, aiSummaryReloadToken, canGenerateAiSummary, historical.isLoading, variances.isLoading]);
+
   return (
     <div className="flex flex-col gap-5">
       <div className="flex shrink-0 flex-wrap items-center gap-3 rounded-2xl border border-gray-200 bg-white p-4">
@@ -494,6 +574,26 @@ export function PriceTrendsPanel({ compact = false }: PriceTrendsPanelProps) {
             Compares uploaded Supplier rates against DPWH CMPD baseline rates adjusted
             by the latest PSA CMRPI commodity movement.
           </p>
+        </div>
+        <div className="mb-6 rounded-2xl border border-orange-100 bg-orange-50/60 p-4">
+          <div className="mb-2 flex items-center gap-2">
+            <Bot className="h-4 w-4 text-primary" />
+            <p className="text-sm font-bold text-gray-900">AI Summary</p>
+            {displayedAiSummary?.source === "gemini" && <span className="rounded-full bg-white px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-primary">Gemini</span>}
+          </div>
+          <QueryState
+            isLoading={displayedAiSummaryLoading}
+            error={displayedAiSummaryError}
+            isEmpty={!displayedAiSummary?.summary}
+            onRetry={() => {
+              setAiSummaryReloadToken((token) => token + 1);
+            }}
+            emptyTitle="No AI summary yet"
+            emptyHint="Load supplier and benchmark data to generate a summary."
+            minHeight={120}
+          >
+            <p className="whitespace-pre-line text-sm leading-relaxed text-gray-700">{displayedAiSummary?.summary}</p>
+          </QueryState>
         </div>
         <div className="mb-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
           <div className="rounded-xl border border-gray-100 bg-gray-50 p-4">
