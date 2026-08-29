@@ -233,6 +233,10 @@ export function SegmentEditorList({
     rowRefs.current.get(hoveredId)?.scrollIntoView({ behavior: "smooth", block: "nearest" });
   }, [hoveredId]);
 
+  useEffect(() => {
+    onGroupingSelectionChange?.(new Set(selectedIds));
+  }, [onGroupingSelectionChange, selectedIds]);
+
   const allConfirmed = confirmSummary !== null && confirmSummary.includedCount > 0 && confirmSummary.confirmedCount === confirmSummary.includedCount;
   const canGroupSegments = !showConfirmToggle || allConfirmed;
   const selectedCount = canGroupSegments ? selectedIds.size : 0;
@@ -264,7 +268,6 @@ export function SegmentEditorList({
     setSelectedIds((prev) => {
       const next = new Set(prev);
       next.delete(draftId);
-      onGroupingSelectionChange?.(next);
       return next;
     });
   };
@@ -274,7 +277,6 @@ export function SegmentEditorList({
       const next = new Set(prev);
       if (next.has(draftId)) next.delete(draftId);
       else next.add(draftId);
-      onGroupingSelectionChange?.(next);
       return next;
     });
   };
@@ -283,7 +285,6 @@ export function SegmentEditorList({
     const segment = segments.find((s) => s.draft_id === draftId);
     if (segment?.confirmed) {
       setSelectedIds(new Set());
-      onGroupingSelectionChange?.(new Set());
       setGrouping(false);
       setGroupName("");
     }
@@ -300,7 +301,6 @@ export function SegmentEditorList({
     const merged = mergeSegments(toMerge, groupName.trim());
     onChange([...segments.filter((s) => !selectedIds.has(s.draft_id)), merged]);
     setSelectedIds(new Set());
-    onGroupingSelectionChange?.(new Set());
     setGroupName("");
     setGrouping(false);
   };

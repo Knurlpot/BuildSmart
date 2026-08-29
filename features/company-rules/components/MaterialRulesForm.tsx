@@ -500,7 +500,7 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
         )}
         detail={
           mode === "details" ? (
-            <div className="flex min-h-[26rem] flex-col gap-3">
+            <div className="flex flex-col gap-3">
               <div className="flex items-center justify-between">
                 <p className="text-sm font-bold text-gray-900">Add Treatment</p>
                 <button type="button" onClick={() => setMode("idle")} className="text-gray-300 hover:text-gray-500">
@@ -637,7 +637,7 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
               </div>
             </div>
           ) : mode === "browse" ? (
-            <div className="flex min-h-[26rem] flex-col gap-3">
+            <div className="flex flex-col gap-3">
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm font-bold text-gray-900">Select Materials</p>
@@ -738,7 +738,7 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
               )}
             </div>
           ) : mode === "configure" ? (
-            <div className="flex min-h-[26rem] flex-col gap-3">
+            <div className="flex flex-col gap-3">
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm font-bold text-gray-900">Review Materials</p>

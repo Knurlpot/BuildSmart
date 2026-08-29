@@ -14,7 +14,7 @@ import {
 } from "../lib/draftSegment";
 
 const inputCls =
-  "w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm outline-none transition focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/20";
+  "w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-sm outline-none transition focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/20";
 
 interface SegmentConfigFormProps {
   segment: DraftSegment;
@@ -44,8 +44,8 @@ function SegmentConfigForm({ segment, treatmentOptions, laborTradeOptions, onSav
   };
 
   return (
-    <div className="flex flex-col gap-4">
-      <div className="rounded-xl border border-gray-100 bg-gray-50/60 p-3">
+    <div className="flex h-full flex-col gap-2">
+      <div className="rounded-xl border border-gray-100 bg-gray-50/60 px-3 py-2">
         <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Segment</p>
         <p className="text-sm font-semibold text-gray-800">{segment.segment_name}</p>
         <p className="text-xs text-gray-400">
@@ -54,8 +54,9 @@ function SegmentConfigForm({ segment, treatmentOptions, laborTradeOptions, onSav
         </p>
       </div>
 
-      <div className="flex flex-col gap-3">
-        <div className="flex flex-col gap-1.5">
+      <div className="flex flex-col gap-2">
+        <div className="flex flex-col gap-3">
+          <div className="flex flex-col gap-1.5">
           <label className="text-xs font-semibold text-gray-600">Labor Basis</label>
           <select
             value={segment.labor_basis ?? "Auto"}
@@ -73,9 +74,9 @@ function SegmentConfigForm({ segment, treatmentOptions, laborTradeOptions, onSav
             <option value="Trade">By Trade</option>
             <option value="General">General</option>
           </select>
-        </div>
-        {(segment.labor_basis ?? "Auto") === "Trade" && (
-          <div className="flex flex-col gap-1.5">
+          </div>
+          {(segment.labor_basis ?? "Auto") === "Trade" && (
+            <div className="flex flex-col gap-1.5">
             <label className="text-xs font-semibold text-gray-600">
               Labor Trade <span className="text-red-500">*</span>
             </label>
@@ -86,15 +87,15 @@ function SegmentConfigForm({ segment, treatmentOptions, laborTradeOptions, onSav
               ))}
             </select>
             {!segment.labor_trade && <p className="text-xs text-amber-600">Required when labor is priced by trade.</p>}
-          </div>
-        )}
-      </div>
+            </div>
+          )}
+        </div>
 
-      <div className="flex flex-col gap-1.5">
-        <label className="text-xs font-semibold text-gray-600">
-          Treatment Type <span className="text-red-500">*</span>
-        </label>
-        <select
+        <div className="flex w-full flex-col gap-1.5">
+          <label className="text-xs font-semibold text-gray-600">
+            Treatment Type <span className="text-red-500">*</span>
+          </label>
+          <select
           value={treatmentChoice}
           onChange={(e) => {
             const next = e.target.value;
@@ -108,9 +109,9 @@ function SegmentConfigForm({ segment, treatmentOptions, laborTradeOptions, onSav
             <option key={t}>{t}</option>
           ))}
           <option value="Other">Others</option>
-        </select>
-        {treatmentChoice === "Other" && (
-          <input
+          </select>
+          {treatmentChoice === "Other" && (
+            <input
             value={customTreatment}
             onChange={(e) => {
               setCustomTreatment(e.target.value);
@@ -119,21 +120,21 @@ function SegmentConfigForm({ segment, treatmentOptions, laborTradeOptions, onSav
             placeholder="Describe the treatment"
             className={inputCls}
             autoFocus
-          />
-        )}
-        {treatmentOptions.length === 0 && (
-          <p className="text-[11px] text-amber-600">
-            Add treatment groups in Preferences &amp; Rules &gt; Material Rules first.
-          </p>
-        )}
-        {!segment.treatment_type && <p className="text-xs text-amber-600">Required before this segment can be saved.</p>}
+            />
+          )}
+          {treatmentOptions.length === 0 && (
+            <p className="text-[11px] text-amber-600">
+              Add treatment groups in Preferences &amp; Rules &gt; Material Rules first.
+            </p>
+          )}
+        </div>
       </div>
 
       <div className="flex flex-col gap-1.5">
         <label className="text-xs font-semibold text-gray-600">
           Site Conditions <span className="font-normal normal-case text-gray-400">(optional)</span>
         </label>
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap gap-1.5">
           {SEGMENT_CONDITION_TAGS.map((tag) => {
             const checked = segment.condition_tags.includes(tag);
             return (
@@ -141,7 +142,7 @@ function SegmentConfigForm({ segment, treatmentOptions, laborTradeOptions, onSav
                 key={tag}
                 type="button"
                 onClick={() => toggleTag(tag)}
-                className={`rounded-full border px-3 py-1 text-xs font-semibold transition ${
+                className={`rounded-full border px-2.5 py-0.5 text-xs font-semibold transition ${
                   checked ? "border-primary bg-orange-50 text-primary" : "border-gray-200 bg-white text-gray-500 hover:border-gray-300"
                 }`}
               >
@@ -152,15 +153,15 @@ function SegmentConfigForm({ segment, treatmentOptions, laborTradeOptions, onSav
         </div>
       </div>
 
-      <div className="flex flex-col gap-1.5">
+      <div className="flex min-h-0 flex-1 flex-col gap-1.5">
         <label className="text-xs font-semibold text-gray-600">
           Notes <span className="font-normal normal-case text-gray-400">(optional)</span>
         </label>
         <textarea
           value={segment.site_notes}
           onChange={(e) => onSave({ site_notes: e.target.value })}
-          rows={3}
-          className={`${inputCls} resize-none`}
+          rows={2}
+          className={`${inputCls} min-h-14 flex-1 resize-none`}
         />
       </div>
 
@@ -426,9 +427,9 @@ export function ConfigureSegmentsStep({ quoteId, segments, onChange, onSaved, on
       <ApplyToAllPanel segmentCount={segments.length} treatmentOptions={treatmentOptions} laborTradeOptions={laborTradeOptions} onApply={applyToAll} />
 
 
-      <div className="flex overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm" style={{ height: 440 }}>
-        <div className="flex w-80 shrink-0 flex-col border-r border-gray-100">
-          <div className="border-b border-gray-100 px-4 py-3">
+      <div className="flex h-[400px] overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
+        <div className="flex w-68 shrink-0 flex-col border-r border-gray-100">
+          <div className="flex min-h-14 items-center border-b border-gray-100 px-4 py-2.5">
             <p className="text-xs font-bold uppercase tracking-wider text-gray-400">Segments ({segments.length})</p>
           </div>
           <div className="flex-1 divide-y divide-gray-50 overflow-y-auto">
@@ -441,7 +442,7 @@ export function ConfigureSegmentsStep({ quoteId, segments, onChange, onSaved, on
                   key={seg.draft_id}
                   type="button"
                   onClick={() => setSelectedId(seg.draft_id)}
-                  className={`flex w-full items-center gap-2.5 px-4 py-3 text-left transition ${
+                  className={`flex w-full items-center gap-2.5 px-4 py-2.5 text-left transition ${
                     isSelected ? "bg-orange-50/60" : "hover:bg-gray-50"
                   } ${!included ? "opacity-60" : ""}`}
                 >
@@ -464,7 +465,7 @@ export function ConfigureSegmentsStep({ quoteId, segments, onChange, onSaved, on
             })}
           </div>
         </div>
-        <div className="flex-1 overflow-y-auto p-5">
+        <div className="flex-1 overflow-y-auto p-4">
           {selected ? (
             <SegmentConfigForm
               key={`${selected.draft_id}-${treatmentOptionsKey}-${applyRevision}`}

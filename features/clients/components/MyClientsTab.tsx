@@ -1,7 +1,8 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
-import { Building2, Ellipsis, Eye, Mail, MapPin, Pencil, Phone, Search, Trash2, UserRound } from "lucide-react";
+import { Building2, Ellipsis, Mail, Pencil, Phone, Search, Trash2, UserRound } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { apiClient } from "@/lib/api/client";
 import { useClients } from "@/hooks/useClients";
@@ -51,10 +52,10 @@ interface MyClientsTabProps {
 }
 
 export function MyClientsTab({ onClientCountChange, showImport = false, importFiles, importKey }: MyClientsTabProps) {
+  const router = useRouter();
   const { clients, isLoading, error, refetch } = useClients();
   const [search, setSearch] = useState("");
   const [openMenuId, setOpenMenuId] = useState<number | null>(null);
-  const [viewClient, setViewClient] = useState<Client | null>(null);
   const [editClient, setEditClient] = useState<Client | null>(null);
   const [editForm, setEditForm] = useState<ClientEditForm | null>(null);
   const [isSavingEdit, setIsSavingEdit] = useState(false);
@@ -170,7 +171,18 @@ export function MyClientsTab({ onClientCountChange, showImport = false, importFi
       ) : (
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
           {filtered.map((client) => (
-            <article key={client.client_id} className="group rounded-2xl border border-gray-100 bg-white p-5 shadow-sm transition-all hover:border-gray-200 hover:shadow-md">
+            <article
+              key={client.client_id}
+              role="link"
+              tabIndex={0}
+              onClick={() => router.push(`/clients/${client.client_id}`)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  router.push(`/clients/${client.client_id}`);
+                }
+              }}
+              className="group cursor-pointer rounded-2xl border border-gray-100 bg-white p-5 shadow-sm transition-all hover:border-gray-200 hover:shadow-md"
+            >
               <div className="flex items-start justify-between gap-4">
                 <div className="flex min-w-0 items-center gap-3">
                   <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-orange-50 text-sm font-semibold text-primary">{clientInitials(client.client_name)}</div>
@@ -184,7 +196,10 @@ export function MyClientsTab({ onClientCountChange, showImport = false, importFi
                   <div className="relative">
                     <button
                       type="button"
-                      onClick={() => setOpenMenuId((current) => (current === client.client_id ? null : client.client_id))}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        setOpenMenuId((current) => (current === client.client_id ? null : client.client_id));
+                      }}
                       className="flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-500 transition hover:border-primary hover:text-primary"
                       aria-label={`Actions for ${client.client_name}`}
                       title="Actions"
@@ -195,24 +210,18 @@ export function MyClientsTab({ onClientCountChange, showImport = false, importFi
                       <div className="absolute right-0 top-full z-20 mt-2 w-36 overflow-hidden rounded-xl border border-gray-200 bg-white py-1 shadow-lg">
                         <button
                           type="button"
-                          onClick={() => {
-                            setOpenMenuId(null);
-                            setViewClient(client);
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            openEdit(client);
                           }}
-                          className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm font-medium text-gray-700 transition hover:bg-gray-50"
-                        >
-                          <Eye className="h-4 w-4" /> View
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => openEdit(client)}
                           className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm font-medium text-gray-700 transition hover:bg-gray-50"
                         >
                           <Pencil className="h-4 w-4" /> Edit
                         </button>
                         <button
                           type="button"
-                          onClick={() => {
+                          onClick={(event) => {
+                            event.stopPropagation();
                             setOpenMenuId(null);
                             setDeleteError(null);
                             setDeleteTarget(client);
@@ -236,60 +245,6 @@ export function MyClientsTab({ onClientCountChange, showImport = false, importFi
           ))}
         </div>
       )}
-
-      <Dialog open={viewClient !== null} onOpenChange={(open) => !open && setViewClient(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{viewClient?.client_name}</DialogTitle>
-            <DialogDescription>Client information on file.</DialogDescription>
-          </DialogHeader>
-          {viewClient && (
-            <div className="grid gap-3 text-sm">
-              <div className="flex items-start gap-2.5 text-gray-700">
-                <UserRound className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Contact Person</p>
-                  <p>{viewClient.contact_person || "Not on file"}</p>
-                </div>
-              </div>
-              <div className="flex items-start gap-2.5 text-gray-700">
-                <Mail className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Email</p>
-                  <p>{viewClient.contact_email || "Not on file"}</p>
-                </div>
-              </div>
-              <div className="flex items-start gap-2.5 text-gray-700">
-                <Phone className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Contact Number</p>
-                  <p>{viewClient.contact_number || "Not on file"}</p>
-                </div>
-              </div>
-              <div className="flex items-start gap-2.5 text-gray-700">
-                <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Address</p>
-                  <p>{viewClient.client_address || "Not on file"}</p>
-                </div>
-              </div>
-              <div className="flex items-start gap-2.5 text-gray-700">
-                <Building2 className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Client Type</p>
-                  <p>{viewClient.client_type}</p>
-                </div>
-              </div>
-              {viewClient.notes && (
-                <div className="rounded-xl border border-gray-100 bg-gray-50 p-3 text-gray-700">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Notes</p>
-                  <p className="mt-1">{viewClient.notes}</p>
-                </div>
-              )}
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
 
       <Dialog
         open={editClient !== null}

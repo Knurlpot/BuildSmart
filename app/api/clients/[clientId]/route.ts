@@ -28,6 +28,29 @@ function cleanText(value: unknown) {
   return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
+export async function GET(request: NextRequest, { params }: Params) {
+  const companyId = await companyIdFor(request);
+  if (!companyId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  const { clientId } = await params;
+  const id = Number(clientId);
+  if (!Number.isInteger(id)) return NextResponse.json({ error: "Invalid client id." }, { status: 400 });
+
+  const result = await pool.query(
+    `SELECT client_id, company_id, client_name, contact_person, contact_email,
+            contact_number, client_address, client_type,
+            default_downpayment_percentage::float AS default_downpayment_percentage,
+            notes, status, created_at::text AS created_at
+     FROM client
+     WHERE client_id = $1 AND company_id = $2
+     LIMIT 1`,
+    [id, companyId]
+  );
+  if (!result.rows[0]) return NextResponse.json({ error: "Client not found." }, { status: 404 });
+
+  return NextResponse.json(result.rows[0]);
+}
+
 export async function PATCH(request: NextRequest, { params }: Params) {
   const companyId = await companyIdFor(request);
   if (!companyId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
