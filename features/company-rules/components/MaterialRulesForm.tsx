@@ -948,7 +948,9 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
                         {groupTierLabel(selectedGroupRules)}
                       </span>
                     </div>
-                    <p className="text-sm text-gray-500">Treatment Type: {treatmentNameForGroup(selectedGroupRules)}</p>
+                    <p className="text-sm text-gray-500">
+                      {selectedGroupRules.length} material{selectedGroupRules.length === 1 ? "" : "s"}
+                    </p>
                     <p className="mt-1 text-xs text-gray-400">
                       Warranty: {groupWarrantyLabel(selectedGroupRules)}
                     </p>
@@ -986,7 +988,11 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
                     Couldn&apos;t disable: {disableError.message}
                   </div>
                 )}
-                <div className="mt-4 divide-y divide-gray-100 overflow-hidden rounded-xl border border-gray-100 bg-white">
+                <div
+                  className={`mt-4 divide-y divide-gray-100 overflow-hidden rounded-xl border border-gray-100 bg-white ${
+                    selectedGroupRules.length >= 5 ? "h-[15rem] overflow-y-auto" : "min-h-[15rem]"
+                  }`}
+                >
                   {selectedGroupRules
                     .slice()
                     .sort((a, b) => a.preferred_item_name.localeCompare(b.preferred_item_name))
