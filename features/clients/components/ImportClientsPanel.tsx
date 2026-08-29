@@ -270,13 +270,12 @@ function ReviewStep({
               <thead>
                 <tr className="border-b border-gray-100 text-xs uppercase tracking-wide text-gray-400">
                   <th className="w-[4%] py-2 pr-2" />
-                  <th className="w-[16%] py-2 pr-3">Client Name *</th>
+                  <th className="w-[12%] py-2 pr-3">Client Name *</th>
                   <th className="w-[14%] py-2 pr-3">Contact Person *</th>
-                  <th className="w-[16%] py-2 pr-3">Email</th>
+                  <th className="w-[16%] py-2 pr-3">Email *</th>
                   <th className="w-[13%] py-2 pr-3">Contact Number *</th>
-                  <th className="w-[20%] py-2 pr-3">Address *</th>
+                  <th className="w-[27%] py-2 pr-3">Address *</th>
                   <th className="w-[10%] py-2 pr-3">Type</th>
-                  <th className="w-[7%] py-2" />
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
@@ -379,23 +378,6 @@ function ReviewStep({
                         ) : (
                           <p className="break-words text-sm text-gray-700">{row.client_type || "Blank"}</p>
                         )}
-                      </td>
-                      <td className="py-2 text-right align-top">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            onRemoveRow(row.row_key);
-                            setSelectedRowKeys((current) => {
-                              const next = new Set(current);
-                              next.delete(row.row_key);
-                              return next;
-                            });
-                          }}
-                          title="Remove this row from the import"
-                          className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-600 transition hover:bg-red-50 hover:text-red-500"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </button>
                       </td>
                     </tr>
                   );
