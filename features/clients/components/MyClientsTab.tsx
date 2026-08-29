@@ -1,10 +1,12 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Building2, Mail, Phone, Search, UserRound } from "lucide-react";
+import { Building2, Ellipsis, Eye, Mail, MapPin, Pencil, Phone, Search, Trash2, UserRound } from "lucide-react";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { apiClient } from "@/lib/api/client";
 import { useClients } from "@/hooks/useClients";
 import { ImportClientsPanel } from "./ImportClientsPanel";
-import type { Client } from "@/types/entities";
+import { CLIENT_TYPES, type Client } from "@/types/entities";
 
 function StatusBadge({ status }: { status: Client["status"] }) {
   return (
@@ -19,6 +21,28 @@ function clientInitials(name: string): string {
   return initials || "CL";
 }
 
+type ClientEditForm = {
+  client_name: string;
+  contact_person: string;
+  contact_email: string;
+  contact_number: string;
+  client_address: string;
+  client_type: Client["client_type"];
+  notes: string;
+};
+
+function editFormFor(client: Client): ClientEditForm {
+  return {
+    client_name: client.client_name,
+    contact_person: client.contact_person ?? "",
+    contact_email: client.contact_email ?? "",
+    contact_number: client.contact_number ?? "",
+    client_address: client.client_address ?? "",
+    client_type: client.client_type,
+    notes: client.notes ?? "",
+  };
+}
+
 interface MyClientsTabProps {
   onClientCountChange?: (count: number) => void;
   showImport?: boolean;
@@ -29,6 +53,15 @@ interface MyClientsTabProps {
 export function MyClientsTab({ onClientCountChange, showImport = false, importFiles, importKey }: MyClientsTabProps) {
   const { clients, isLoading, error, refetch } = useClients();
   const [search, setSearch] = useState("");
+  const [openMenuId, setOpenMenuId] = useState<number | null>(null);
+  const [viewClient, setViewClient] = useState<Client | null>(null);
+  const [editClient, setEditClient] = useState<Client | null>(null);
+  const [editForm, setEditForm] = useState<ClientEditForm | null>(null);
+  const [isSavingEdit, setIsSavingEdit] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<Client | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const filtered = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -43,6 +76,59 @@ export function MyClientsTab({ onClientCountChange, showImport = false, importFi
   useEffect(() => {
     onClientCountChange?.(clients.length);
   }, [clients.length, onClientCountChange]);
+
+  const handleDelete = async () => {
+    if (!deleteTarget || isDeleting) return;
+    setIsDeleting(true);
+    setDeleteError(null);
+    try {
+      await apiClient(`/api/clients/${deleteTarget.client_id}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+      setDeleteTarget(null);
+      await refetch();
+    } catch (error) {
+      setDeleteError(error instanceof Error ? error.message : "Could not delete this client.");
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  const openEdit = (client: Client) => {
+    setOpenMenuId(null);
+    setEditClient(client);
+    setEditForm(editFormFor(client));
+    setEditError(null);
+  };
+
+  const patchEditForm = (patch: Partial<ClientEditForm>) => {
+    setEditForm((current) => (current ? { ...current, ...patch } : current));
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editClient || !editForm || isSavingEdit) return;
+    if (!editForm.client_name.trim()) {
+      setEditError("Client name is required.");
+      return;
+    }
+    setIsSavingEdit(true);
+    setEditError(null);
+    try {
+      await apiClient(`/api/clients/${editClient.client_id}`, {
+        method: "PATCH",
+        credentials: "include",
+        body: JSON.stringify(editForm),
+      });
+      setEditClient(null);
+      setEditForm(null);
+      await refetch();
+    } catch (error) {
+      setEditError(error instanceof Error ? error.message : "Could not update this client.");
+    } finally {
+      setIsSavingEdit(false);
+    }
+  };
 
   return (
     <div className="flex flex-col gap-5">
@@ -93,7 +179,52 @@ export function MyClientsTab({ onClientCountChange, showImport = false, importFi
                     <p className="mt-1 flex items-center gap-1.5 text-xs text-gray-400"><Building2 className="h-3.5 w-3.5 shrink-0" /><span className="truncate">{client.client_type}</span></p>
                   </div>
                 </div>
-                <StatusBadge status={client.status} />
+                <div className="flex shrink-0 items-center gap-2">
+                  <StatusBadge status={client.status} />
+                  <div className="relative">
+                    <button
+                      type="button"
+                      onClick={() => setOpenMenuId((current) => (current === client.client_id ? null : client.client_id))}
+                      className="flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-500 transition hover:border-primary hover:text-primary"
+                      aria-label={`Actions for ${client.client_name}`}
+                      title="Actions"
+                    >
+                      <Ellipsis className="h-4 w-4" />
+                    </button>
+                    {openMenuId === client.client_id && (
+                      <div className="absolute right-0 top-full z-20 mt-2 w-36 overflow-hidden rounded-xl border border-gray-200 bg-white py-1 shadow-lg">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setOpenMenuId(null);
+                            setViewClient(client);
+                          }}
+                          className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm font-medium text-gray-700 transition hover:bg-gray-50"
+                        >
+                          <Eye className="h-4 w-4" /> View
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => openEdit(client)}
+                          className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm font-medium text-gray-700 transition hover:bg-gray-50"
+                        >
+                          <Pencil className="h-4 w-4" /> Edit
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setOpenMenuId(null);
+                            setDeleteError(null);
+                            setDeleteTarget(client);
+                          }}
+                          className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm font-medium text-red-600 transition hover:bg-red-50"
+                        >
+                          <Trash2 className="h-4 w-4" /> Delete
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
               </div>
 
               <div className="mt-5 space-y-2.5">
@@ -101,17 +232,187 @@ export function MyClientsTab({ onClientCountChange, showImport = false, importFi
                 <div className="flex items-center gap-2.5 text-sm text-gray-600"><Mail className="h-4 w-4 shrink-0 text-primary" /><span className="truncate">{client.contact_email || "No email on file"}</span></div>
                 <div className="flex items-center gap-2.5 text-sm text-gray-600"><Phone className="h-4 w-4 shrink-0 text-primary" /><span className="truncate">{client.contact_number || "No phone on file"}</span></div>
               </div>
-
-              <div className="mt-5 border-t border-gray-100 pt-4">
-                <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">Downpayment on File</p>
-                <p className="mt-1 text-sm font-medium text-gray-700">
-                  {client.default_downpayment_percentage !== null && client.default_downpayment_percentage !== undefined ? `${client.default_downpayment_percentage}%` : "Not on file"}
-                </p>
-              </div>
             </article>
           ))}
         </div>
       )}
+
+      <Dialog open={viewClient !== null} onOpenChange={(open) => !open && setViewClient(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{viewClient?.client_name}</DialogTitle>
+            <DialogDescription>Client information on file.</DialogDescription>
+          </DialogHeader>
+          {viewClient && (
+            <div className="grid gap-3 text-sm">
+              <div className="flex items-start gap-2.5 text-gray-700">
+                <UserRound className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Contact Person</p>
+                  <p>{viewClient.contact_person || "Not on file"}</p>
+                </div>
+              </div>
+              <div className="flex items-start gap-2.5 text-gray-700">
+                <Mail className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Email</p>
+                  <p>{viewClient.contact_email || "Not on file"}</p>
+                </div>
+              </div>
+              <div className="flex items-start gap-2.5 text-gray-700">
+                <Phone className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Contact Number</p>
+                  <p>{viewClient.contact_number || "Not on file"}</p>
+                </div>
+              </div>
+              <div className="flex items-start gap-2.5 text-gray-700">
+                <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Address</p>
+                  <p>{viewClient.client_address || "Not on file"}</p>
+                </div>
+              </div>
+              <div className="flex items-start gap-2.5 text-gray-700">
+                <Building2 className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Client Type</p>
+                  <p>{viewClient.client_type}</p>
+                </div>
+              </div>
+              {viewClient.notes && (
+                <div className="rounded-xl border border-gray-100 bg-gray-50 p-3 text-gray-700">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Notes</p>
+                  <p className="mt-1">{viewClient.notes}</p>
+                </div>
+              )}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={editClient !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setEditClient(null);
+            setEditForm(null);
+            setEditError(null);
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit Client</DialogTitle>
+            <DialogDescription>Update the client information on file.</DialogDescription>
+          </DialogHeader>
+          {editForm && (
+            <div className="grid gap-3">
+              <input
+                value={editForm.client_name}
+                onChange={(event) => patchEditForm({ client_name: event.target.value })}
+                placeholder="Client name"
+                className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm outline-none transition focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/20"
+              />
+              <input
+                value={editForm.contact_person}
+                onChange={(event) => patchEditForm({ contact_person: event.target.value })}
+                placeholder="Contact person"
+                className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm outline-none transition focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/20"
+              />
+              <div className="grid gap-3 sm:grid-cols-2">
+                <input
+                  value={editForm.contact_email}
+                  onChange={(event) => patchEditForm({ contact_email: event.target.value })}
+                  placeholder="Email"
+                  className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm outline-none transition focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/20"
+                />
+                <input
+                  value={editForm.contact_number}
+                  onChange={(event) => patchEditForm({ contact_number: event.target.value })}
+                  placeholder="Contact number"
+                  className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm outline-none transition focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/20"
+                />
+              </div>
+              <input
+                value={editForm.client_address}
+                onChange={(event) => patchEditForm({ client_address: event.target.value })}
+                placeholder="Address"
+                className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm outline-none transition focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/20"
+              />
+              <select
+                value={editForm.client_type}
+                onChange={(event) => patchEditForm({ client_type: event.target.value as Client["client_type"] })}
+                className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm outline-none transition focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/20"
+              >
+                {CLIENT_TYPES.map((type) => (
+                  <option key={type} value={type}>
+                    {type}
+                  </option>
+                ))}
+              </select>
+              <textarea
+                value={editForm.notes}
+                onChange={(event) => patchEditForm({ notes: event.target.value })}
+                placeholder="Notes"
+                rows={3}
+                className="resize-none rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm outline-none transition focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/20"
+              />
+            </div>
+          )}
+          {editError && <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{editError}</div>}
+          <DialogFooter>
+            <button
+              type="button"
+              onClick={() => {
+                setEditClient(null);
+                setEditForm(null);
+                setEditError(null);
+              }}
+              className="rounded-xl border border-gray-200 bg-white px-4 py-2 text-sm font-semibold text-gray-700 transition hover:bg-gray-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={handleSaveEdit}
+              disabled={isSavingEdit}
+              className="rounded-xl bg-primary px-4 py-2 text-sm font-bold text-primary-foreground transition hover:bg-(--primary-hover) disabled:opacity-60"
+            >
+              {isSavingEdit ? "Saving..." : "Save Changes"}
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={deleteTarget !== null} onOpenChange={(open) => !open && setDeleteTarget(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete client?</DialogTitle>
+            <DialogDescription>
+              {deleteTarget ? `Delete ${deleteTarget.client_name} and detach this client from related records?` : "This cannot be undone."}
+            </DialogDescription>
+          </DialogHeader>
+          {deleteError && <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{deleteError}</div>}
+          <DialogFooter>
+            <button
+              type="button"
+              onClick={() => setDeleteTarget(null)}
+              className="rounded-xl border border-gray-200 bg-white px-4 py-2 text-sm font-semibold text-gray-700 transition hover:bg-gray-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={handleDelete}
+              disabled={isDeleting}
+              className="rounded-xl bg-red-600 px-4 py-2 text-sm font-bold text-white transition hover:bg-red-700 disabled:opacity-60"
+            >
+              {isDeleting ? "Deleting..." : "Delete"}
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

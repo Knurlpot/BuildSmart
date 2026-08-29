@@ -31,18 +31,10 @@ export type ClientImportField =
   | 'default_downpayment_percentage'
   | 'notes';
 
-// Only client_name is NOT NULL on the real `client` table — every other column is
-// nullable, including client_type (DB default 'New' applies server-side only if the column
-// is genuinely absent from the row; an explicitly blank mapped cell still stays null here,
-// never silently upgraded to 'New' by the frontend).
-export const CLIENT_IMPORT_REQUIRED_FIELDS: ClientImportField[] = ['client_name'];
+export const CLIENT_IMPORT_REQUIRED_FIELDS: ClientImportField[] = ['client_name', 'contact_person', 'contact_number', 'client_address'];
 export const CLIENT_IMPORT_OPTIONAL_FIELDS: ClientImportField[] = [
-  'contact_person',
   'contact_email',
-  'contact_number',
-  'client_address',
   'client_type',
-  'default_downpayment_percentage',
   'notes',
 ];
 
@@ -75,7 +67,7 @@ export interface ClientImportCommitResponse {
 }
 
 export function clientRowNeedsAttention(row: ExtractedClientRow): boolean {
-  return row.needs_mapping || !row.client_name.trim();
+  return row.needs_mapping || !row.client_name.trim() || !row.contact_person?.trim() || !row.contact_number?.trim() || !row.client_address?.trim();
 }
 
 export const CLIENT_IMPORT_SOFT_ROW_CAP = 5000;
@@ -93,10 +85,6 @@ export function useClientImport() {
     setColumns(res.columns ?? []);
     setRows(res.rows ?? []);
     return res;
-  };
-
-  const updateColumnMapping = (rawColumn: string, mappedField: ClientImportField | null) => {
-    setColumns((prev) => prev.map((c) => (c.raw_column === rawColumn ? { ...c, mapped_field: mappedField } : c)));
   };
 
   const updateRow = (rowKey: string, patch: Partial<ExtractedClientRow>) => {
@@ -120,8 +108,6 @@ export function useClientImport() {
     rows,
     updateRow,
     removeRow,
-    columns,
-    updateColumnMapping,
     uploadFiles,
     isUploading: upload.isLoading,
     uploadError: upload.error,

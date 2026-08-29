@@ -87,7 +87,6 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
   const [checkedCatalogKeys, setCheckedCatalogKeys] = useState<Set<string>>(new Set());
   const [treatmentType, setTreatmentType] = useState("");
   const [treatmentTier, setTreatmentTier] = useState<MaterialTreatmentTier>("Practical");
-  const [materialRuleName, setMaterialRuleName] = useState("");
   const [warrantyYears, setWarrantyYears] = useState<number | "">("");
   const [lifespanYears, setLifespanYears] = useState<number | "">("");
   const [selectedGroup, setSelectedGroup] = useState<string | null>(null);
@@ -184,7 +183,6 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
     setCheckedCatalogKeys(new Set());
     setTreatmentType("");
     setTreatmentTier("Practical");
-    setMaterialRuleName("");
     setWarrantyYears("");
     setLifespanYears("");
     setTouched(false);
@@ -196,9 +194,32 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
     setMode("configure");
   };
 
+  const activeTreatmentTierExists = allRules.some(
+    (rule) =>
+      rule.is_active &&
+      rule.treatment_type?.trim() === treatmentType.trim() &&
+      (rule.treatment_tier ?? "Practical") === treatmentTier
+  );
+  const activeTiersForTreatment = (type: string) =>
+    new Set(
+      allRules
+        .filter((rule) => rule.is_active && rule.treatment_type?.trim() === type.trim())
+        .map((rule) => rule.treatment_tier ?? "Practical")
+    );
+  const availableTreatmentOptions = TREATMENT_OPTIONS.filter(
+    (type) => activeTiersForTreatment(type).size < MATERIAL_TREATMENT_TIERS.length
+  );
+  const availableTiersForSelectedTreatment = MATERIAL_TREATMENT_TIERS.filter(
+    (tier) => !activeTiersForTreatment(treatmentType).has(tier)
+  );
+
   const treatmentDetailsValid =
-    TREATMENT_OPTIONS.includes(treatmentType as (typeof TREATMENT_OPTIONS)[number]) &&
-    materialRuleName.trim().length > 0;
+    availableTreatmentOptions.includes(treatmentType as (typeof availableTreatmentOptions)[number]) &&
+    !activeTreatmentTierExists &&
+    warrantyYears !== "" &&
+    Number(warrantyYears) > 0 &&
+    lifespanYears !== "" &&
+    Number(lifespanYears) > 0;
 
   const startEditGroup = (groupId: string) => {
     const groupRules = groupedRules.find(([id]) => id === groupId)?.[1] ?? [];
@@ -208,7 +229,6 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
     const groupTreatment = groupRules[0]?.treatment_type?.trim() || "No treatment type";
     setTreatmentType(groupTreatment === "No treatment type" ? "" : groupTreatment);
     setTreatmentTier(groupRules[0]?.treatment_tier ?? "Practical");
-    setMaterialRuleName(groupRules[0]?.material_rule_name ?? "");
     setWarrantyYears(firstWithWarranty?.warranty_years ?? "");
     setLifespanYears(firstWithLifespan?.lifespan_years ?? "");
     setTouched(false);
@@ -217,8 +237,8 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
 
   const allConfigValid =
     checkedItems.length > 0 &&
-    TREATMENT_OPTIONS.includes(treatmentType as (typeof TREATMENT_OPTIONS)[number]) &&
-    materialRuleName.trim().length > 0 &&
+    availableTreatmentOptions.includes(treatmentType as (typeof availableTreatmentOptions)[number]) &&
+    !activeTreatmentTierExists &&
     warrantyYears !== "" &&
     Number(warrantyYears) > 0 &&
     lifespanYears !== "" &&
@@ -236,7 +256,7 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
         const payload = {
           treatment_type: treatmentType.trim() || null,
           treatment_tier: treatmentTier,
-          material_rule_name: materialRuleName.trim(),
+          material_rule_name: null,
           warranty_years: Number(warrantyYears),
           lifespan_years: Number(lifespanYears),
           category,
@@ -271,7 +291,7 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
       const payload = {
           treatment_type: nextGroup,
           treatment_tier: treatmentTier,
-          material_rule_name: selectedGroupRules[0]?.material_rule_name ?? null,
+          material_rule_name: null,
           warranty_years: Number(warrantyYears),
         lifespan_years: Number(lifespanYears),
         category: rule.category,
@@ -339,10 +359,19 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
     return tiers.length > 0 ? tiers.join(", ") : "Practical";
   };
   const groupStatusLabel = (groupRules: MaterialRuleEntry[]) => groupRules.some((rule) => rule.is_active) ? "Active" : "Disabled";
+  const selectedGroupRuleIds = new Set(selectedGroupRules.map((rule) => rule.rule_id));
+  const groupEditDuplicateExists = allRules.some(
+    (rule) =>
+      rule.is_active &&
+      !selectedGroupRuleIds.has(rule.rule_id) &&
+      rule.treatment_type?.trim() === treatmentType.trim() &&
+      (rule.treatment_tier ?? "Practical") === treatmentTier
+  );
   const groupEditValid =
     !!selectedGroupName &&
     selectedGroupRules.length > 0 &&
     TREATMENT_OPTIONS.includes(treatmentType as (typeof TREATMENT_OPTIONS)[number]) &&
+    !groupEditDuplicateExists &&
     warrantyYears !== "" &&
     Number(warrantyYears) > 0 &&
     lifespanYears !== "" &&
@@ -471,50 +500,12 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
         )}
         detail={
           mode === "details" ? (
-            <div className="flex flex-col gap-3">
+            <div className="flex min-h-[26rem] flex-col gap-3">
               <div className="flex items-center justify-between">
                 <p className="text-sm font-bold text-gray-900">Add Treatment</p>
                 <button type="button" onClick={() => setMode("idle")} className="text-gray-300 hover:text-gray-500">
                   <X className="h-4 w-4" />
                 </button>
-              </div>
-
-              <div className="flex flex-col gap-1.5">
-                <label htmlFor="material-rule-name" className="text-xs font-semibold text-gray-600">
-                  Material Rule Name <span className="text-red-500">*</span>
-                </label>
-                <input
-                  id="material-rule-name"
-                  value={materialRuleName}
-                  onChange={(e) => setMaterialRuleName(e.target.value)}
-                  placeholder="e.g. Premium Exterior Painting System"
-                  className={inputCls}
-                />
-                {touched && materialRuleName.trim().length === 0 && (
-                  <p className="text-xs text-red-500">Material rule name is required.</p>
-                )}
-              </div>
-
-              <div className="flex flex-col gap-1.5">
-                <label htmlFor="material-treatment-type" className="text-xs font-semibold text-gray-600">
-                  Treatment Type <span className="text-red-500">*</span>
-                </label>
-                <select
-                  id="material-treatment-type"
-                  value={treatmentType}
-                  onChange={(e) => setTreatmentType(e.target.value)}
-                  className={inputCls}
-                >
-                  <option value="">Select treatment type...</option>
-                  {TREATMENT_OPTIONS.map((type) => (
-                    <option key={type} value={type}>
-                      {type}
-                    </option>
-                  ))}
-                </select>
-                {touched && !TREATMENT_OPTIONS.includes(treatmentType as (typeof TREATMENT_OPTIONS)[number]) && (
-                  <p className="text-xs text-red-500">Choose one of BuildSmart&apos;s treatment types.</p>
-                )}
               </div>
 
               <div className="flex flex-col gap-1.5">
@@ -526,12 +517,13 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
                     <button
                       key={tier}
                       type="button"
+                      disabled={!availableTiersForSelectedTreatment.includes(tier)}
                       onClick={() => setTreatmentTier(tier)}
                       className={`rounded-lg border px-3 py-2 text-xs font-bold transition ${
                         treatmentTier === tier
                           ? activeTierFilterClass(tier)
                           : "border-gray-200 bg-white text-gray-500 hover:border-gray-300"
-                      }`}
+                      } disabled:cursor-not-allowed disabled:border-gray-100 disabled:bg-gray-50 disabled:text-gray-300`}
                     >
                       {tier}
                     </button>
@@ -539,26 +531,117 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
                 </div>
               </div>
 
-              <button
-                type="button"
-                onClick={() => {
-                  setTouched(true);
-                  if (treatmentDetailsValid) {
-                    setTouched(false);
-                    setMode("browse");
-                  }
-                }}
-                className="w-fit rounded-xl bg-primary px-5 py-2.5 text-sm font-bold text-primary-foreground shadow-sm transition hover:bg-(--primary-hover)"
-              >
-                Continue to Materials
-              </button>
+              <div className="flex flex-col gap-1.5">
+                <div className="relative">
+                  <select
+                    id="material-treatment-type"
+                    value={treatmentType}
+                    onChange={(e) => {
+                      const nextTreatment = e.target.value;
+                      setTreatmentType(nextTreatment);
+                      const nextAvailableTiers = MATERIAL_TREATMENT_TIERS.filter(
+                        (tier) => !activeTiersForTreatment(nextTreatment).has(tier)
+                      );
+                      setTreatmentTier(nextAvailableTiers[0] ?? "Practical");
+                    }}
+                    className="peer w-full rounded-lg border border-gray-200 bg-gray-50 px-3 pb-2 pt-5 text-sm outline-none transition focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/20"
+                  >
+                    <option value="">Select...</option>
+                    {availableTreatmentOptions.map((type) => (
+                      <option key={type} value={type}>
+                        {type}
+                      </option>
+                    ))}
+                  </select>
+                  <label
+                    htmlFor="material-treatment-type"
+                    className="pointer-events-none absolute left-3 top-1.5 text-[10px] font-semibold text-gray-500 transition-all peer-focus:text-primary"
+                  >
+                    Treatment Type <span className="text-red-500">*</span>
+                  </label>
+                </div>
+                {touched && !TREATMENT_OPTIONS.includes(treatmentType as (typeof TREATMENT_OPTIONS)[number]) && (
+                  <p className="text-xs text-red-500">Choose one of BuildSmart&apos;s treatment types.</p>
+                )}
+                {activeTreatmentTierExists && (
+                  <p className="text-xs text-red-500">
+                    This treatment already has an active {treatmentTier} rule. Update or disable the existing one first.
+                  </p>
+                )}
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="flex flex-col gap-1.5">
+                  <div className="relative">
+                    <input
+                      id="material-warranty-years"
+                      type="text"
+                      inputMode="decimal"
+                      value={warrantyYears}
+                      onChange={(e) => {
+                        const next = e.target.value.replace(/[^\d.]/g, "");
+                        setWarrantyYears(next === "" ? "" : Number(next));
+                      }}
+                      placeholder=" "
+                      className="peer w-full rounded-lg border border-gray-200 bg-gray-50 px-3 pb-2 pt-5 text-sm outline-none transition focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/20"
+                    />
+                    <label
+                      htmlFor="material-warranty-years"
+                      className="pointer-events-none absolute left-3 top-1.5 text-[10px] font-semibold text-gray-500 transition-all peer-placeholder-shown:top-1/2 peer-placeholder-shown:-translate-y-1/2 peer-placeholder-shown:text-sm peer-placeholder-shown:font-medium peer-focus:top-1.5 peer-focus:translate-y-0 peer-focus:text-[10px] peer-focus:font-semibold peer-focus:text-primary"
+                    >
+                      Warranty Years <span className="text-red-500">*</span>
+                    </label>
+                  </div>
+                  {touched && (warrantyYears === "" || Number(warrantyYears) <= 0) && <p className="text-xs text-red-500">Warranty years is required.</p>}
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <div className="relative">
+                    <input
+                      id="material-lifespan-years"
+                      type="text"
+                      inputMode="decimal"
+                      value={lifespanYears}
+                      onChange={(e) => {
+                        const next = e.target.value.replace(/[^\d.]/g, "");
+                        setLifespanYears(next === "" ? "" : Number(next));
+                      }}
+                      placeholder=" "
+                      className="peer w-full rounded-lg border border-gray-200 bg-gray-50 px-3 pb-2 pt-5 text-sm outline-none transition focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/20"
+                    />
+                    <label
+                      htmlFor="material-lifespan-years"
+                      className="pointer-events-none absolute left-3 top-1.5 text-[10px] font-semibold text-gray-500 transition-all peer-placeholder-shown:top-1/2 peer-placeholder-shown:-translate-y-1/2 peer-placeholder-shown:text-sm peer-placeholder-shown:font-medium peer-focus:top-1.5 peer-focus:translate-y-0 peer-focus:text-[10px] peer-focus:font-semibold peer-focus:text-primary"
+                    >
+                      Expected Lifespan Years <span className="text-red-500">*</span>
+                    </label>
+                  </div>
+                  {touched && (lifespanYears === "" || Number(lifespanYears) <= 0) && <p className="text-xs text-red-500">Expected lifespan years is required.</p>}
+                </div>
+              </div>
+
+              <div className="mt-auto flex justify-end pt-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setTouched(true);
+                    if (treatmentDetailsValid) {
+                      setTouched(false);
+                      setMode("browse");
+                    }
+                  }}
+                  disabled={activeTreatmentTierExists}
+                  className="w-fit rounded-xl bg-primary px-5 py-2.5 text-sm font-bold text-primary-foreground shadow-sm transition hover:bg-(--primary-hover) disabled:opacity-60"
+                >
+                  Continue to Materials
+                </button>
+              </div>
             </div>
           ) : mode === "browse" ? (
-            <div className="flex flex-col gap-3">
+            <div className="flex min-h-[26rem] flex-col gap-3">
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm font-bold text-gray-900">Select Materials</p>
-                  <p className="text-xs text-gray-400">{materialRuleName} · {treatmentType} · {treatmentTier}</p>
+                  <p className="text-xs text-gray-400">{treatmentType} · {treatmentTier}</p>
                 </div>
                 <button type="button" onClick={() => setMode("idle")} className="text-gray-300 hover:text-gray-500">
                   <X className="h-4 w-4" />
@@ -638,79 +721,32 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
                 </div>
               )}
 
-              <button
-                type="button"
-                disabled={checkedItems.length === 0 || categoriesLoading || !!categoriesError}
-                onClick={goToConfigure}
-                className="w-fit rounded-xl bg-primary px-5 py-2.5 text-sm font-bold text-primary-foreground shadow-sm transition hover:bg-(--primary-hover) disabled:opacity-60"
-              >
-                {categoriesLoading
-                  ? "Loading categories..."
-                  : `Continue with ${checkedItems.length} selected`}
-              </button>
+              <div className="mt-auto flex justify-end pt-2">
+                <button
+                  type="button"
+                  disabled={checkedItems.length === 0 || categoriesLoading || !!categoriesError}
+                  onClick={goToConfigure}
+                  className="w-fit rounded-xl bg-primary px-5 py-2.5 text-sm font-bold text-primary-foreground shadow-sm transition hover:bg-(--primary-hover) disabled:opacity-60"
+                >
+                  {categoriesLoading
+                    ? "Loading categories..."
+                    : `Continue with ${checkedItems.length} selected`}
+                </button>
+              </div>
               {categoriesError && (
                 <p className="text-xs text-red-500">Couldn&apos;t load material categories: {categoriesError.message}</p>
               )}
             </div>
           ) : mode === "configure" ? (
-            <div className="flex flex-col gap-3">
+            <div className="flex min-h-[26rem] flex-col gap-3">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm font-bold text-gray-900">Warranty & Lifespan</p>
-                  <p className="text-xs text-gray-400">{materialRuleName} · {treatmentType} · {treatmentTier}</p>
+                  <p className="text-sm font-bold text-gray-900">Review Materials</p>
+                  <p className="text-xs text-gray-400">{treatmentType} · {treatmentTier}</p>
                 </div>
                 <button type="button" onClick={() => setMode("idle")} className="text-gray-300 hover:text-gray-500">
                   <X className="h-4 w-4" />
                 </button>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div className="flex flex-col gap-1.5">
-                  <div className="relative">
-                    <input
-                      id="material-warranty-years"
-                      type="text"
-                      inputMode="decimal"
-                      value={warrantyYears}
-                      onChange={(e) => {
-                        const next = e.target.value.replace(/[^\d.]/g, "");
-                        setWarrantyYears(next === "" ? "" : Number(next));
-                      }}
-                      placeholder=" "
-                      className="peer w-full rounded-lg border border-gray-200 bg-gray-50 px-3 pb-2 pt-5 text-sm outline-none transition focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/20"
-                    />
-                    <label
-                      htmlFor="material-warranty-years"
-                      className="pointer-events-none absolute left-3 top-1.5 text-[10px] font-semibold text-gray-500 transition-all peer-placeholder-shown:top-1/2 peer-placeholder-shown:-translate-y-1/2 peer-placeholder-shown:text-sm peer-placeholder-shown:font-medium peer-focus:top-1.5 peer-focus:translate-y-0 peer-focus:text-[10px] peer-focus:font-semibold peer-focus:text-primary"
-                    >
-                      Warranty Years <span className="text-red-500">*</span>
-                    </label>
-                  </div>
-                  {touched && (warrantyYears === "" || Number(warrantyYears) <= 0) && <p className="text-xs text-red-500">Warranty years is required.</p>}
-                </div>
-                <div className="flex flex-col gap-1.5">
-                  <div className="relative">
-                    <input
-                      id="material-lifespan-years"
-                      type="text"
-                      inputMode="decimal"
-                      value={lifespanYears}
-                      onChange={(e) => {
-                        const next = e.target.value.replace(/[^\d.]/g, "");
-                        setLifespanYears(next === "" ? "" : Number(next));
-                      }}
-                      placeholder=" "
-                      className="peer w-full rounded-lg border border-gray-200 bg-gray-50 px-3 pb-2 pt-5 text-sm outline-none transition focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/20"
-                    />
-                    <label
-                      htmlFor="material-lifespan-years"
-                      className="pointer-events-none absolute left-3 top-1.5 text-[10px] font-semibold text-gray-500 transition-all peer-placeholder-shown:top-1/2 peer-placeholder-shown:-translate-y-1/2 peer-placeholder-shown:text-sm peer-placeholder-shown:font-medium peer-focus:top-1.5 peer-focus:translate-y-0 peer-focus:text-[10px] peer-focus:font-semibold peer-focus:text-primary"
-                    >
-                      Expected Lifespan Years <span className="text-red-500">*</span>
-                    </label>
-                  </div>
-                  {touched && (lifespanYears === "" || Number(lifespanYears) <= 0) && <p className="text-xs text-red-500">Expected lifespan years is required.</p>}
-                </div>
               </div>
 
               <div className="rounded-xl border border-gray-100 bg-gray-50/60 p-3">
@@ -736,7 +772,7 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
                 </div>
               )}
 
-              <div className="flex gap-3">
+              <div className="mt-auto flex gap-3 pt-2">
                 <button
                   type="button"
                   onClick={() => setMode("browse")}
@@ -790,6 +826,11 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
                 </select>
                 {touched && !TREATMENT_OPTIONS.includes(treatmentType as (typeof TREATMENT_OPTIONS)[number]) && (
                   <p className="text-xs text-red-500">Choose one of BuildSmart&apos;s treatment types.</p>
+                )}
+                {groupEditDuplicateExists && (
+                  <p className="text-xs text-red-500">
+                    This treatment already has an active {treatmentTier} rule. Update or disable that existing one first.
+                  </p>
                 )}
               </div>
 
@@ -874,7 +915,7 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
                 <button
                   type="button"
                   onClick={handleSaveGroupEdit}
-                  disabled={editable.isSaving}
+                  disabled={editable.isSaving || groupEditDuplicateExists}
                   className="w-fit rounded-xl bg-primary px-5 py-2.5 text-sm font-bold text-primary-foreground shadow-sm transition hover:bg-(--primary-hover) disabled:opacity-60"
                 >
                   {editable.isSaving ? "Saving…" : "Save Changes"}

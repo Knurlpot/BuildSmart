@@ -1,31 +1,16 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { AlertTriangle, CheckCircle2, ChevronLeft, ChevronRight, File as FileIcon, Upload as UploadIcon, Users, X } from "lucide-react";
+import { AlertTriangle, CheckCircle2, ChevronLeft, File as FileIcon, Upload as UploadIcon, Users, X } from "lucide-react";
 import {
-  CLIENT_IMPORT_OPTIONAL_FIELDS,
-  CLIENT_IMPORT_REQUIRED_FIELDS,
   CLIENT_IMPORT_SOFT_ROW_CAP,
   clientRowNeedsAttention,
   useClientImport,
-  type ClientImportField,
-  type DetectedClientColumn,
   type ExtractedClientRow,
 } from "@/hooks/useClientImport";
 import { CLIENT_TYPES } from "@/types/entities";
 
-const ACCEPTED_EXTENSIONS = [".csv", ".xlsx"];
-
-const FIELD_LABELS: Record<ClientImportField, string> = {
-  client_name: "Client / Company Name",
-  contact_person: "Contact Person",
-  contact_email: "Contact Email",
-  contact_number: "Contact Number",
-  client_address: "Address",
-  client_type: "Client Type",
-  default_downpayment_percentage: "Downpayment on File (%)",
-  notes: "Notes",
-};
+const ACCEPTED_EXTENSIONS = [".csv"];
 
 function formatSize(bytes: number) {
   if (bytes < 1024) return `${bytes} B`;
@@ -85,10 +70,10 @@ function UploadStep({
         <UploadIcon className="h-8 w-8 text-gray-400" />
         <div className="text-center">
           <p className="text-sm font-semibold text-gray-700">Drag &amp; drop your client list here</p>
-          <p className="text-xs text-gray-400">or click to browse (CSV or XLSX)</p>
+          <p className="text-xs text-gray-400">or click to browse (CSV)</p>
         </div>
         <div className="flex gap-1.5">
-          {["CSV", "XLSX"].map((f) => (
+          {["CSV"].map((f) => (
             <span key={f} className="rounded-full border border-gray-200 bg-white px-2.5 py-0.5 text-[10px] font-bold text-gray-500">
               {f}
             </span>
@@ -139,90 +124,6 @@ function UploadStep({
   );
 }
 
-function MappingStep({
-  columns,
-  rowCount,
-  onUpdateMapping,
-  onBack,
-  onContinue,
-}: {
-  columns: DetectedClientColumn[];
-  rowCount: number;
-  onUpdateMapping: (rawColumn: string, mappedField: ClientImportField | null) => void;
-  onBack: () => void;
-  onContinue: () => void;
-}) {
-  const FieldRow = ({ field, required }: { field: ClientImportField; required: boolean }) => {
-    const mappedColumn = columns.find((c) => c.mapped_field === field);
-    const handleChange = (rawColumn: string) => {
-      if (mappedColumn && mappedColumn.raw_column !== rawColumn) onUpdateMapping(mappedColumn.raw_column, null);
-      if (rawColumn === "") return;
-      onUpdateMapping(rawColumn, field);
-    };
-    return (
-      <div className="flex items-center gap-4 px-4 py-2.5">
-        <span className="flex w-52 shrink-0 items-center gap-1.5 text-sm font-semibold text-gray-700">
-          {FIELD_LABELS[field]}
-          {required ? <span className="text-red-500">*</span> : <span className="text-[10px] font-medium text-gray-400">(optional)</span>}
-        </span>
-        <select
-          value={mappedColumn?.raw_column ?? ""}
-          onChange={(e) => handleChange(e.target.value)}
-          className="flex-1 rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-sm outline-none transition focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/20"
-        >
-          <option value="">— Skip this column —</option>
-          {columns.map((c) => (
-            <option key={c.raw_column} value={c.raw_column} disabled={c.mapped_field !== null && c.mapped_field !== field}>
-              {c.raw_column}
-              {c.mapped_field !== null && c.mapped_field !== field ? ` (used for ${FIELD_LABELS[c.mapped_field]})` : ""}
-            </option>
-          ))}
-        </select>
-      </div>
-    );
-  };
-
-  return (
-    <div className="flex flex-col gap-5">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h3 className="text-base font-bold text-gray-900">Review &amp; Detect</h3>
-          <p className="text-xs text-gray-500">
-            Match each detected column to a client field ({rowCount} row{rowCount !== 1 ? "s" : ""} detected).
-          </p>
-        </div>
-        <div className="flex gap-2">
-          <button
-            type="button"
-            onClick={onBack}
-            className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-600 transition hover:bg-gray-50"
-          >
-            <ChevronLeft className="h-4 w-4" /> Back
-          </button>
-          <button
-            type="button"
-            onClick={onContinue}
-            className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-bold text-primary-foreground transition hover:bg-(--primary-hover)"
-          >
-            Map &amp; Confirm <ChevronRight className="h-4 w-4" />
-          </button>
-        </div>
-      </div>
-
-      <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white">
-        <div className="flex flex-col divide-y divide-gray-100">
-          {CLIENT_IMPORT_REQUIRED_FIELDS.map((f) => (
-            <FieldRow key={f} field={f} required />
-          ))}
-          {CLIENT_IMPORT_OPTIONAL_FIELDS.map((f) => (
-            <FieldRow key={f} field={f} required={false} />
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-}
-
 function ReviewStep({
   rows,
   onUpdateRow,
@@ -242,12 +143,13 @@ function ReviewStep({
 }) {
   const attentionCount = rows.filter(clientRowNeedsAttention).length;
   const overCap = rows.length > CLIENT_IMPORT_SOFT_ROW_CAP;
+  const canImport = rows.length > 0 && rows.every((row) => !clientRowNeedsAttention(row));
 
   return (
     <div className="flex flex-col gap-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h3 className="text-base font-bold text-gray-900">Map &amp; Confirm</h3>
+          <h3 className="text-base font-bold text-gray-900">Review Records</h3>
           <p className="text-xs text-gray-500">Review each row before importing. Blank cells stay blank.</p>
         </div>
         <button
@@ -282,9 +184,11 @@ function ReviewStep({
           <thead>
             <tr className="border-b border-gray-100 bg-gray-50/60 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
               <th className="px-4 py-3">Client Name *</th>
-              <th className="px-4 py-3">Contact</th>
+              <th className="px-4 py-3">Contact Person *</th>
+              <th className="px-4 py-3">Email</th>
+              <th className="px-4 py-3">Contact Number *</th>
+              <th className="px-4 py-3">Address *</th>
               <th className="px-4 py-3">Type</th>
-              <th className="px-4 py-3">Downpayment on File</th>
               <th className="px-4 py-3"></th>
             </tr>
           </thead>
@@ -303,9 +207,43 @@ function ReviewStep({
                       }`}
                     />
                   </td>
-                  <td className="px-4 py-2.5 text-xs text-gray-600">
-                    <div>{row.contact_person ?? <span className="text-gray-300">—</span>}</div>
-                    <div className="text-gray-400">{row.contact_email ?? row.contact_number ?? ""}</div>
+                  <td className="px-4 py-2.5">
+                    <input
+                      value={row.contact_person ?? ""}
+                      onChange={(e) => onUpdateRow(row.row_key, { contact_person: e.target.value })}
+                      placeholder="Required"
+                      className={`w-44 rounded-lg border px-2.5 py-1.5 text-sm outline-none focus:ring-2 focus:ring-primary/20 ${
+                        !row.contact_person?.trim() ? "border-red-300 bg-red-50" : "border-gray-200 bg-gray-50 focus:border-primary focus:bg-white"
+                      }`}
+                    />
+                  </td>
+                  <td className="px-4 py-2.5">
+                    <input
+                      value={row.contact_email ?? ""}
+                      onChange={(e) => onUpdateRow(row.row_key, { contact_email: e.target.value })}
+                      placeholder="Optional"
+                      className="w-52 rounded-lg border border-gray-200 bg-gray-50 px-2.5 py-1.5 text-sm outline-none focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/20"
+                    />
+                  </td>
+                  <td className="px-4 py-2.5">
+                    <input
+                      value={row.contact_number ?? ""}
+                      onChange={(e) => onUpdateRow(row.row_key, { contact_number: e.target.value })}
+                      placeholder="Required"
+                      className={`w-40 rounded-lg border px-2.5 py-1.5 text-sm outline-none focus:ring-2 focus:ring-primary/20 ${
+                        !row.contact_number?.trim() ? "border-red-300 bg-red-50" : "border-gray-200 bg-gray-50 focus:border-primary focus:bg-white"
+                      }`}
+                    />
+                  </td>
+                  <td className="px-4 py-2.5">
+                    <input
+                      value={row.client_address ?? ""}
+                      onChange={(e) => onUpdateRow(row.row_key, { client_address: e.target.value })}
+                      placeholder="Required"
+                      className={`w-56 rounded-lg border px-2.5 py-1.5 text-sm outline-none focus:ring-2 focus:ring-primary/20 ${
+                        !row.client_address?.trim() ? "border-red-300 bg-red-50" : "border-gray-200 bg-gray-50 focus:border-primary focus:bg-white"
+                      }`}
+                    />
                   </td>
                   <td className="px-4 py-2.5">
                     <select
@@ -320,9 +258,6 @@ function ReviewStep({
                         </option>
                       ))}
                     </select>
-                  </td>
-                  <td className="px-4 py-2.5 text-xs text-gray-600">
-                    {row.default_downpayment_percentage !== null ? `${row.default_downpayment_percentage}%` : <span className="text-gray-300">—</span>}
                   </td>
                   <td className="px-4 py-2.5 text-right">
                     <button
@@ -348,7 +283,7 @@ function ReviewStep({
       <div className="flex justify-end">
         <button
           type="button"
-          disabled={isCommitting || rows.length === 0 || rows.some((r) => !r.client_name.trim())}
+          disabled={isCommitting || !canImport}
           onClick={onApprove}
           className="rounded-xl bg-primary px-5 py-2.5 text-sm font-bold text-primary-foreground shadow-sm transition hover:bg-(--primary-hover) disabled:opacity-60"
         >
@@ -368,9 +303,9 @@ export function ImportClientsPanel({
   initialFiles?: File[];
   importKey?: number;
 }) {
-  const { rows, updateRow, removeRow, columns, updateColumnMapping, uploadFiles, isUploading, uploadError, approve, isCommitting, commitError, commitResult, reset } =
+  const { rows, updateRow, removeRow, uploadFiles, isUploading, uploadError, approve, isCommitting, commitError, commitResult } =
     useClientImport();
-  const [step, setStep] = useState<1 | 2 | 3>(1);
+  const [step, setStep] = useState<1 | 2>(1);
   const [files, setFiles] = useState<File[]>([]);
   const [dragging, setDragging] = useState(false);
   const processedImportKeyRef = useRef<number | null>(null);
@@ -401,12 +336,6 @@ export function ImportClientsPanel({
       .catch(() => {});
   }, [hasPickerFiles, importKey, initialFiles, uploadFiles]);
 
-  const handleUploadAnother = () => {
-    reset();
-    setFiles([]);
-    setStep(1);
-  };
-
   const handleApprove = () => {
     approve()
       .then(() => onImported?.())
@@ -425,13 +354,6 @@ export function ImportClientsPanel({
             {commitResult.saved_count} client{commitResult.saved_count !== 1 ? "s" : ""} added to My Clients.
           </p>
         </div>
-        <button
-          type="button"
-          onClick={handleUploadAnother}
-          className="flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-5 py-2.5 text-sm font-semibold text-gray-700 transition hover:bg-gray-50"
-        >
-          <UploadIcon className="h-4 w-4" /> Import Another File
-        </button>
       </div>
     );
   }
@@ -473,13 +395,12 @@ export function ImportClientsPanel({
           />
         )
       )}
-      {step === 2 && <MappingStep columns={columns} rowCount={rows.length} onUpdateMapping={updateColumnMapping} onBack={() => setStep(1)} onContinue={() => setStep(3)} />}
-      {step === 3 && (
+      {step === 2 && (
         <ReviewStep
           rows={rows}
           onUpdateRow={updateRow}
           onRemoveRow={removeRow}
-          onBack={() => setStep(2)}
+          onBack={() => setStep(1)}
           onApprove={handleApprove}
           isCommitting={isCommitting}
           commitError={commitError}

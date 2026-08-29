@@ -51,6 +51,11 @@ function formatPeso(value: number) {
   return new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP", maximumFractionDigits: 0 }).format(value);
 }
 
+function formatProjectTotal(project: OpenProjectRow) {
+  if (project.status === "Draft" && project.grand_total === 0) return "₱-";
+  return formatPeso(project.grand_total);
+}
+
 function clientInitials(name: string): string {
   const initials = name
     .split(/\s+/)
@@ -384,7 +389,7 @@ function OpenProjectsContent({ onMetaChange }: OpenProjectsContentProps) {
                   </div>
                   <div className="min-w-0">
                     <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">Total</p>
-                    <p className="mt-1 truncate text-xs font-medium text-gray-600">{formatPeso(project.grand_total)}</p>
+                    <p className="mt-1 truncate text-xs font-medium text-gray-600">{formatProjectTotal(project)}</p>
                   </div>
                   <div className="min-w-0">
                     <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">Created</p>
@@ -515,7 +520,7 @@ function OpenProjectsTabs() {
             ref={clientImportInputRef}
             type="file"
             multiple
-            accept=".csv,.xlsx"
+            accept=".csv"
             className="hidden"
             onChange={(event) => {
               const files = event.target.files ? Array.from(event.target.files) : [];

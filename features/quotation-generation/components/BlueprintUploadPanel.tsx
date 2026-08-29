@@ -6,7 +6,7 @@ import { useBlueprintExtraction, useBlueprintRescan } from "@/hooks/useQuotation
 import { BlueprintOverlay } from "./BlueprintOverlay";
 import { SegmentEditorList } from "./SegmentEditorList";
 import { confidenceBand, createManualSegment, createSegmentFromExtraction, isSegmentIncluded, type DraftSegment, type SegmentPolygon } from "../lib/draftSegment";
-import type { BlueprintFloor } from "@/lib/dev/provisional/quotationGenerationTypes";
+import type { BlueprintExtractionResult, BlueprintFloor } from "@/lib/dev/provisional/quotationGenerationTypes";
 
 const ACCEPTED_EXTENSIONS = [".pdf", ".dxf"];
 const MAX_FILE_BYTES = 25 * 1024 * 1024;
@@ -20,6 +20,20 @@ function formatFileSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function blueprintScanWarnings(result: BlueprintExtractionResult): string[] {
+  const diagnosticsWarnings = Array.isArray(result.diagnostics?.warnings)
+    ? result.diagnostics.warnings.filter((warning): warning is string => typeof warning === "string")
+    : [];
+  const detectedSegments = result.floors.reduce((total, floor) => total + floor.segments.length, 0);
+  const missingSegmentsWarning =
+    detectedSegments === 0
+      ? [
+          "No spaces were detected from this blueprint. Add segments manually, upload a vector PDF or DXF, or enable the vision scanner for scanned PDFs.",
+        ]
+      : [];
+  return [...diagnosticsWarnings, ...missingSegmentsWarning];
 }
 
 function boundsForPoints(points: [number, number][]): [number, number, number, number] | null {
@@ -302,6 +316,7 @@ export function BlueprintUploadPanel({
   const [overlayScanning, setOverlayScanning] = useState(false);
   const [openedFloorLevels, setOpenedFloorLevels] = useState<Set<string>>(new Set());
   const [confirmedGroupingFloorLevels, setConfirmedGroupingFloorLevels] = useState<Set<string>>(new Set());
+  const [scanWarnings, setScanWarnings] = useState<string[]>([]);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const handleFileSelected = (file: File) => {
@@ -325,6 +340,7 @@ export function BlueprintUploadPanel({
     setOverlayScanning(false);
     setOpenedFloorLevels(new Set());
     setConfirmedGroupingFloorLevels(new Set());
+    setScanWarnings([]);
     setSelectedFile(file);
   };
 
@@ -338,6 +354,7 @@ export function BlueprintUploadPanel({
       setOverlayScanning(false);
       const result = await extractBlueprint(quoteId, selectedFile);
       const splitFloors = splitSingleSheetFloorIntoTabs(result.floors);
+      setScanWarnings(blueprintScanWarnings(result));
       onFloorsChange(splitFloors);
       onOriginalFloorsChange(splitFloors);
       onBlueprintFilePathChange(result.blueprint_file_path ?? null);
@@ -375,6 +392,7 @@ export function BlueprintUploadPanel({
       try {
         const result = await extractBlueprint(quoteId, selectedFile);
         const splitFloors = splitSingleSheetFloorIntoTabs(result.floors);
+        setScanWarnings(blueprintScanWarnings(result));
         const rescannedFloor = splitFloors.find((floor) => floor.floor_level === currentFloor.floor_level) ?? splitFloors[0];
         const existingKeys = new Set(floorSegments.map(segmentFingerprint));
         const newSegments = rescannedFloor.segments
@@ -390,6 +408,7 @@ export function BlueprintUploadPanel({
     try {
       const result = await rescanBlueprint(quoteId);
       const splitFloors = splitSingleSheetFloorIntoTabs(result.floors);
+      setScanWarnings(blueprintScanWarnings(result));
       const rescannedFloor = splitFloors.find((floor) => floor.floor_level === currentFloor.floor_level) ?? splitFloors[0];
       onBlueprintFilePathChange(result.blueprint_file_path ?? blueprintFilePath);
       const existingKeys = new Set(floorSegments.map(segmentFingerprint));
@@ -410,6 +429,7 @@ export function BlueprintUploadPanel({
     setHoveredId(null);
     setOpenedFloorLevels(new Set());
     setConfirmedGroupingFloorLevels(new Set());
+    setScanWarnings([]);
     onBlueprintFilePathChange(null);
     onFloorsChange(null);
     onOriginalFloorsChange(null);
@@ -670,6 +690,17 @@ export function BlueprintUploadPanel({
               <span className="ml-2 opacity-75">{f.segments.length}</span>
             </button>
           ))}
+        </div>
+      )}
+
+      {scanWarnings.length > 0 && (
+        <div className="flex gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+          <div className="min-w-0 space-y-1">
+            {scanWarnings.map((warning) => (
+              <p key={warning}>{warning}</p>
+            ))}
+          </div>
         </div>
       )}
 
