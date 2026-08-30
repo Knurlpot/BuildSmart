@@ -106,7 +106,7 @@ function ClientDetailsContent() {
     setDeleteError(null);
     try {
       await apiClient(`/api/clients/${validId}`, { method: "DELETE", credentials: "include" });
-      router.push("/projects");
+      router.push("/projects?tab=clients");
     } catch (removeError) {
       setDeleteError(removeError instanceof Error ? removeError.message : "Could not delete this client.");
       setIsDeleting(false);
@@ -122,7 +122,7 @@ function ClientDetailsContent() {
       <div className="rounded-2xl border border-red-100 bg-white p-8 text-center shadow-sm">
         <p className="font-semibold text-red-600">Couldn&apos;t load this client</p>
         <p className="mt-1 text-sm text-gray-500">{error?.message || "Client not found."}</p>
-        <Link href="/projects" className="mt-4 inline-flex text-sm font-semibold text-primary hover:underline">Return to Open Projects</Link>
+        <Link href="/projects?tab=clients" className="mt-4 inline-flex text-sm font-semibold text-primary hover:underline">Return to My Clients</Link>
       </div>
     );
   }
@@ -130,7 +130,7 @@ function ClientDetailsContent() {
   return (
     <div className="flex flex-col gap-5">
       <Link
-        href="/projects"
+        href="/projects?tab=clients"
         aria-label="Back to clients"
         title="Back to clients"
         className="flex h-10 w-10 items-center justify-center rounded-xl border border-gray-200 bg-white text-gray-500 transition hover:border-primary hover:text-primary"
@@ -157,9 +157,11 @@ function ClientDetailsContent() {
             <button
               type="button"
               onClick={() => openEdit(client)}
-              className="flex h-9 items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 text-sm font-semibold text-gray-600 transition hover:border-primary hover:text-primary"
+              aria-label="Edit client"
+              title="Edit client"
+              className="flex h-9 w-9 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-600 transition hover:border-primary hover:text-primary"
             >
-              <Pencil className="h-4 w-4" /> Edit
+              <Pencil className="h-4 w-4" />
             </button>
             <button
               type="button"
@@ -167,9 +169,11 @@ function ClientDetailsContent() {
                 setDeleteError(null);
                 setDeleteOpen(true);
               }}
-              className="flex h-9 items-center gap-2 rounded-lg border border-red-200 bg-white px-3 text-sm font-semibold text-red-600 transition hover:bg-red-50"
+              aria-label="Delete client"
+              title="Delete client"
+              className="flex h-9 w-9 items-center justify-center rounded-lg border border-red-200 bg-white text-red-600 transition hover:bg-red-50"
             >
-              <Trash2 className="h-4 w-4" /> Delete
+              <Trash2 className="h-4 w-4" />
             </button>
           </div>
         </div>

@@ -1,13 +1,12 @@
 "use client";
 
 // 
-import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ChevronUp, Eye, FileText, FolderOpen, ListFilter, Plus, Search, Trash2, Upload, Users, X } from "lucide-react";
+import { Check, EllipsisVertical, FileText, FolderOpen, ListFilter, Plus, Search, Trash2, Upload, Users, X } from "lucide-react";
 import { RequireOnboardingStep } from "@/components/auth/RequireOnboardingStep";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useFetch } from "@/hooks/useFetch";
 import { apiClient } from "@/lib/api/client";
 import { MyClientsTab } from "@/features/clients/components/MyClientsTab";
@@ -82,6 +81,10 @@ function OpenProjectsContent({ onMetaChange }: OpenProjectsContentProps) {
   const [draftTierFilter, setDraftTierFilter] = useState<"All" | "Practical" | "Premium">("All");
   const [filterOpen, setFilterOpen] = useState(false);
   const filterRef = useRef<HTMLDivElement>(null);
+  const [projectActionsOpen, setProjectActionsOpen] = useState(false);
+  const [projectSelectMode, setProjectSelectMode] = useState(false);
+  const [selectedProjectIds, setSelectedProjectIds] = useState<Set<string>>(new Set());
+  const [batchDeleteOpen, setBatchDeleteOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<OpenProjectRow | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
@@ -130,6 +133,22 @@ function OpenProjectsContent({ onMetaChange }: OpenProjectsContentProps) {
     router.push(row.status === "Draft" ? `/quotations/new?resumeQuoteId=${row.quote_id}` : row.saved_project_id ? `/projects/${row.saved_project_id}` : `/quotations/${row.quote_id}`);
   };
   const createNew = useCallback(() => router.push("/quotations/new"), [router]);
+  const selectedProjects = useMemo(() => filteredRows.filter((project) => selectedProjectIds.has(project.id)), [filteredRows, selectedProjectIds]);
+  const selectedProjectCount = selectedProjects.length;
+
+  const toggleProjectSelection = (projectId: string) => {
+    setSelectedProjectIds((current) => {
+      const next = new Set(current);
+      if (next.has(projectId)) next.delete(projectId);
+      else next.add(projectId);
+      return next;
+    });
+  };
+
+  const stopProjectSelection = () => {
+    setProjectSelectMode(false);
+    setSelectedProjectIds(new Set());
+  };
 
   const deleteProject = useCallback(async () => {
     if (!deleteTarget || isDeleting) return;
@@ -148,6 +167,29 @@ function OpenProjectsContent({ onMetaChange }: OpenProjectsContentProps) {
       setIsDeleting(false);
     }
   }, [deleteTarget, isDeleting, refetch]);
+
+  const deleteSelectedProjects = useCallback(async () => {
+    if (selectedProjects.length === 0 || isDeleting) return;
+    setIsDeleting(true);
+    setDeleteError(null);
+    try {
+      await Promise.all(
+        selectedProjects.map((project) =>
+          apiClient<void>(`/api/quotations/${project.quote_id}`, {
+            method: "DELETE",
+            credentials: "include",
+          })
+        )
+      );
+      setBatchDeleteOpen(false);
+      stopProjectSelection();
+      refetch();
+    } catch (error) {
+      setDeleteError(error instanceof Error ? error.message : "Could not delete selected projects.");
+    } finally {
+      setIsDeleting(false);
+    }
+  }, [isDeleting, refetch, selectedProjects]);
 
   useEffect(() => {
     onMetaChange({ filteredCount: filteredRows.length, totalCount: rows.length, onCreateNew: createNew });
@@ -304,6 +346,58 @@ function OpenProjectsContent({ onMetaChange }: OpenProjectsContentProps) {
               </div>
             )}
           </div>
+          {projectSelectMode ? (
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-semibold text-gray-500">{selectedProjectCount} selected</span>
+              <button
+                type="button"
+                onClick={() => setBatchDeleteOpen(true)}
+                disabled={selectedProjectCount === 0}
+                aria-label="Delete selected projects"
+                title="Delete selected projects"
+                className="flex h-10 w-10 items-center justify-center rounded-lg border border-red-200 bg-white text-red-600 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <Trash2 className="h-4 w-4" />
+              </button>
+              <button
+                type="button"
+                onClick={stopProjectSelection}
+                aria-label="Cancel project selection"
+                title="Cancel project selection"
+                className="flex h-10 w-10 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-500 transition hover:bg-gray-50"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+          ) : (
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setProjectActionsOpen((open) => !open)}
+                aria-label="Project actions"
+                title="Project actions"
+                aria-expanded={projectActionsOpen}
+                aria-haspopup="menu"
+                className="flex h-10 w-10 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-600 transition hover:border-primary hover:text-primary"
+              >
+                <EllipsisVertical className="h-5 w-5" />
+              </button>
+              {projectActionsOpen && (
+                <div className="absolute right-0 top-full z-20 mt-2 w-36 overflow-hidden rounded-xl border border-gray-200 bg-white py-1 shadow-lg">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setProjectActionsOpen(false);
+                      setProjectSelectMode(true);
+                    }}
+                    className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm font-medium text-gray-700 transition hover:bg-gray-50"
+                  >
+                    <Check className="h-4 w-4" /> Select
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
 
@@ -341,27 +435,58 @@ function OpenProjectsContent({ onMetaChange }: OpenProjectsContentProps) {
       ) : (
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
           {filteredRows.map((project) => {
-            const href = project.status === "Draft" ? `/quotations/new?resumeQuoteId=${project.quote_id}` : project.saved_project_id ? `/projects/${project.saved_project_id}` : `/quotations/${project.quote_id}`;
             const tier = project.accepted_tier;
             const isPremiumFinal = project.status === "Final" && tier === "Premium";
             const isPracticalFinal = project.status === "Final" && tier === "Practical";
             const hasTierColor = isPremiumFinal || isPracticalFinal;
+            const selected = selectedProjectIds.has(project.id);
             return (
               <article
                 key={project.id}
                 role="link"
                 tabIndex={0}
-                onClick={() => openRow(project)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter" || event.key === " ") openRow(project);
+                onClick={() => {
+                  if (projectSelectMode) {
+                    toggleProjectSelection(project.id);
+                    return;
+                  }
+                  openRow(project);
                 }}
-                className={`group cursor-pointer overflow-hidden rounded-2xl bg-white shadow-md transition-all ${hasTierColor ? "" : "border border-gray-100 hover:border-gray-200"}`}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") {
+                    if (projectSelectMode) {
+                      event.preventDefault();
+                      toggleProjectSelection(project.id);
+                      return;
+                    }
+                    openRow(project);
+                  }
+                }}
+                className={`group cursor-pointer overflow-hidden rounded-2xl bg-white shadow-md transition-all ${
+                  selected ? "ring-2 ring-primary/30" : ""
+                } ${hasTierColor ? "" : "border border-gray-100 hover:border-gray-200"}`}
               >
                 <div className={`flex items-start justify-between gap-4 p-5 ${isPremiumFinal ? "project-tier-gradient bg-linear-to-r from-[#0000CD] via-[#4169E1] to-[#0000CD]" : isPracticalFinal ? "project-tier-gradient bg-linear-to-r from-primary via-orange-400 to-primary" : "bg-white"}`}>
                   <div className="min-w-0">
-                    <h2 className={`truncate text-base font-semibold transition-colors ${hasTierColor ? "text-white" : "text-gray-900 group-hover:text-primary"}`}>
-                      {project.project_name}
-                    </h2>
+                    <div className="flex min-w-0 items-center gap-2">
+                      <span
+                        className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-md border ${
+                          !projectSelectMode
+                            ? "invisible border-transparent text-transparent"
+                            : selected
+                              ? "border-white bg-white text-primary"
+                              : hasTierColor
+                                ? "border-white/50 bg-white/10 text-transparent"
+                                : "border-gray-300 bg-white text-transparent"
+                        }`}
+                        aria-hidden="true"
+                      >
+                        <Check className="h-3.5 w-3.5" />
+                      </span>
+                      <h2 className={`truncate text-base font-semibold transition-colors ${hasTierColor ? "text-white" : "text-gray-900 group-hover:text-primary"}`}>
+                        {project.project_name}
+                      </h2>
+                    </div>
                     <div className="mt-3 flex items-center gap-2.5">
                       <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-xs font-semibold ${hasTierColor ? "bg-white/20 text-white" : "bg-orange-50 text-primary"}`}>
                         {clientInitials(project.client_name)}
@@ -397,30 +522,7 @@ function OpenProjectsContent({ onMetaChange }: OpenProjectsContentProps) {
                   </div>
                 </div>
 
-                <div className="mx-5 mb-5 mt-4 flex items-center justify-end gap-2">
-                  <Link
-                    href={href}
-                    onClick={(event) => event.stopPropagation()}
-                    title="View"
-                    aria-label={`View ${project.project_name}`}
-                    className="flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-500 transition hover:border-primary hover:text-primary"
-                  >
-                    <Eye className="h-3.5 w-3.5" />
-                  </Link>
-                  <button
-                    type="button"
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      setDeleteError(null);
-                      setDeleteTarget(project);
-                    }}
-                    title="Delete"
-                    aria-label={`Delete ${project.project_name}`}
-                    className="flex h-8 w-8 items-center justify-center rounded-lg border border-red-200 bg-white text-red-500 transition hover:bg-red-50 hover:text-red-700"
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </button>
-                </div>
+                <div className="mx-5 mb-5 mt-4 h-8" aria-hidden="true" />
               </article>
             );
           })}
@@ -455,13 +557,44 @@ function OpenProjectsContent({ onMetaChange }: OpenProjectsContentProps) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      <Dialog open={batchDeleteOpen} onOpenChange={(open) => !open && !isDeleting && setBatchDeleteOpen(false)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete selected projects?</DialogTitle>
+            <DialogDescription>
+              Delete {selectedProjectCount} selected project{selectedProjectCount === 1 ? "" : "s"} and their quotation data? This cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          {deleteError && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{deleteError}</p>}
+          <DialogFooter>
+            <button
+              type="button"
+              disabled={isDeleting}
+              onClick={() => setBatchDeleteOpen(false)}
+              className="rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-semibold text-gray-700 transition hover:bg-gray-50 disabled:opacity-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              disabled={isDeleting || selectedProjectCount === 0}
+              onClick={deleteSelectedProjects}
+              className="rounded-lg bg-red-600 px-4 py-2 text-sm font-bold text-white transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {isDeleting ? "Deleting..." : `Delete ${selectedProjectCount}`}
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
 
 // 
 function OpenProjectsTabs() {
-  const [activeTab, setActiveTab] = useState("projects");
+  const searchParams = useSearchParams();
+  const requestedTab = searchParams.get("tab") === "clients" ? "clients" : "projects";
+  const [activeTab, setActiveTab] = useState(requestedTab);
   const [projectsMeta, setProjectsMeta] = useState<{
     filteredCount: number;
     totalCount: number;
@@ -469,8 +602,17 @@ function OpenProjectsTabs() {
   } | null>(null);
   const [clientCount, setClientCount] = useState(0);
   const [showClientImport, setShowClientImport] = useState(false);
+  const [clientActionsOpen, setClientActionsOpen] = useState(false);
   const [clientImportFiles, setClientImportFiles] = useState<File[]>([]);
   const [clientImportKey, setClientImportKey] = useState(0);
+
+  const toggleClientImport = () => {
+    if (!showClientImport) {
+      setClientImportFiles([]);
+      setClientImportKey((key) => key + 1);
+    }
+    setShowClientImport((visible) => !visible);
+  };
 
   return (
     <Tabs value={activeTab} onValueChange={setActiveTab} className="flex flex-col gap-5">
@@ -510,21 +652,33 @@ function OpenProjectsTabs() {
             <Plus className="h-4 w-4" /> Create New
           </button>
           {activeTab === "clients" && (
-            <button
-              type="button"
-              onClick={() => {
-                if (!showClientImport) {
-                  setClientImportFiles([]);
-                  setClientImportKey((key) => key + 1);
-                }
-                setShowClientImport((visible) => !visible);
-              }}
-              aria-expanded={showClientImport}
-              className="flex h-10 items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm font-semibold text-gray-600 shadow-sm transition hover:border-primary hover:text-primary"
-            >
-              <Upload className="h-4 w-4" /> Import Clients
-              {showClientImport && <ChevronUp className="h-4 w-4" />}
-            </button>
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setClientActionsOpen((open) => !open)}
+                aria-label="Client actions"
+                title="Client actions"
+                aria-expanded={clientActionsOpen}
+                aria-haspopup="menu"
+                className="flex h-10 w-10 items-center justify-center rounded-xl border border-gray-200 bg-white text-gray-600 shadow-sm transition hover:border-primary hover:text-primary"
+              >
+                <EllipsisVertical className="h-5 w-5" />
+              </button>
+              {clientActionsOpen && (
+                <div className="absolute right-0 top-full z-20 mt-2 w-44 overflow-hidden rounded-xl border border-gray-200 bg-white py-1 shadow-lg">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setClientActionsOpen(false);
+                      toggleClientImport();
+                    }}
+                    className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm font-medium text-gray-700 transition hover:bg-gray-50"
+                  >
+                    <Upload className="h-4 w-4" /> Import Clients
+                  </button>
+                </div>
+              )}
+            </div>
           )}
         </div>
       </div>

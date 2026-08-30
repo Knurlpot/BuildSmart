@@ -8,6 +8,7 @@ import {
   Ban,
   CheckCircle2,
   ClipboardList,
+  EllipsisVertical,
   Eye,
   Package,
   Pencil,
@@ -16,6 +17,7 @@ import {
   Search,
   Truck,
   Users,
+  X,
   type LucideIcon,
 } from "lucide-react";
 import { QueryState } from "@/components/feedback/QueryState";
@@ -138,6 +140,9 @@ export function ManageExistingRulesTab({ onViewRule }: ManageExistingRulesTabPro
   const [disabledIds, setDisabledIds] = useState<Set<string>>(new Set());
   const [warningFor, setWarningFor] = useState<ExistingRuleSummary | null>(null);
   const [activeRuleId, setActiveRuleId] = useState<string | null>(null);
+  const [actionsOpen, setActionsOpen] = useState(false);
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedRuleIds, setSelectedRuleIds] = useState<Set<string>>(new Set());
   const urlType = searchParams.get("type");
   const ruleFilter: RuleFilter = isRuleFilter(urlType) ? urlType : "all";
   const [search, setSearch] = useState("");
@@ -213,6 +218,36 @@ export function ManageExistingRulesTab({ onViewRule }: ManageExistingRulesTabPro
         .includes(query);
     });
   }, [displayRules, ruleFilter, search]);
+  const selectedRules = useMemo(
+    () => filteredRules.filter((rule) => selectedRuleIds.has(rule.rule_id) && rule.status !== "Disabled"),
+    [filteredRules, selectedRuleIds]
+  );
+  const selectedRuleCount = selectedRules.length;
+
+  const toggleRuleSelection = useCallback((ruleId: string) => {
+    setSelectedRuleIds((current) => {
+      const next = new Set(current);
+      if (next.has(ruleId)) next.delete(ruleId);
+      else next.add(ruleId);
+      return next;
+    });
+  }, []);
+
+  const toggleAllVisibleRules = useCallback((visibleIds: string[]) => {
+    setSelectedRuleIds((current) => {
+      const selectableIds = visibleIds.filter((id) => filteredRules.some((rule) => rule.rule_id === id && rule.status !== "Disabled"));
+      const allSelected = selectableIds.length > 0 && selectableIds.every((id) => current.has(id));
+      const next = new Set(current);
+      if (allSelected) selectableIds.forEach((id) => next.delete(id));
+      else selectableIds.forEach((id) => next.add(id));
+      return next;
+    });
+  }, [filteredRules]);
+
+  const stopSelecting = useCallback(() => {
+    setSelectMode(false);
+    setSelectedRuleIds(new Set());
+  }, []);
 
   const handleDisable = useCallback(async (rule: ExistingRuleSummary) => {
     setActiveRuleId(rule.rule_id);
@@ -245,6 +280,13 @@ export function ManageExistingRulesTab({ onViewRule }: ManageExistingRulesTabPro
       setActiveRuleId(null);
     }
   }, [checkUsage, disable, materialRuleIdsByGroup, refetchMaterialRules]);
+
+  const handleBatchDisable = useCallback(async () => {
+    for (const rule of selectedRules) {
+      await handleDisable(rule);
+    }
+    stopSelecting();
+  }, [handleDisable, selectedRules, stopSelecting]);
 
   const columns = useMemo<ColumnDef<ExistingRuleSummary>[]>(
     () => [
@@ -280,7 +322,6 @@ export function ManageExistingRulesTab({ onViewRule }: ManageExistingRulesTabPro
         enableGlobalFilter: false,
         cell: ({ row }) => {
           const rule = row.original;
-          const busy = activeRuleId === rule.rule_id && (isCheckingUsage || isDisabling);
           if (rule.status === "Disabled") return null;
           return (
             <div className="flex items-center justify-end gap-1.5">
@@ -310,27 +351,12 @@ export function ManageExistingRulesTab({ onViewRule }: ManageExistingRulesTabPro
                 <Pencil className="h-3.5 w-3.5" />
               </button>
               </ActionTooltip>
-              <ActionTooltip label="Disable">
-                <button
-                  type="button"
-                  disabled={busy}
-                  aria-label={`Disable ${rule.label}`}
-                  onClick={(e) => {
-                    // Don't also trigger the row's own "open in owning tab" click.
-                    e.stopPropagation();
-                    handleDisable(rule);
-                  }}
-                  className="flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-500 transition hover:border-red-300 hover:text-red-600 disabled:opacity-50"
-                >
-                  <Ban className="h-3.5 w-3.5" />
-                </button>
-              </ActionTooltip>
             </div>
           );
         },
       },
     ],
-    [activeRuleId, handleDisable, isCheckingUsage, isDisabling, onViewRule, selectRuleFilter]
+    [onViewRule, selectRuleFilter]
   );
 
   return (
@@ -396,6 +422,58 @@ export function ManageExistingRulesTab({ onViewRule }: ManageExistingRulesTabPro
                 {RULE_KIND_LABEL[kind]}
               </button>
             ))}
+            {selectMode ? (
+              <div className="flex items-center gap-2 border-l border-gray-200 pl-2">
+                <span className="text-xs font-semibold text-gray-500">{selectedRuleCount} selected</span>
+                <button
+                  type="button"
+                  onClick={handleBatchDisable}
+                  disabled={selectedRuleCount === 0 || isCheckingUsage || isDisabling || activeRuleId !== null}
+                  aria-label="Disable selected rules"
+                  title="Disable selected rules"
+                  className="flex h-8 w-8 items-center justify-center rounded-lg border border-red-200 bg-white text-red-600 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <Ban className="h-3.5 w-3.5" />
+                </button>
+                <button
+                  type="button"
+                  onClick={stopSelecting}
+                  aria-label="Cancel rule selection"
+                  title="Cancel rule selection"
+                  className="flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-500 transition hover:bg-gray-50"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            ) : (
+              <div className="relative border-l border-gray-200 pl-2">
+                <button
+                  type="button"
+                  onClick={() => setActionsOpen((open) => !open)}
+                  aria-label="Rule actions"
+                  title="Rule actions"
+                  aria-expanded={actionsOpen}
+                  aria-haspopup="menu"
+                  className="flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-500 transition hover:border-primary/40 hover:text-primary"
+                >
+                  <EllipsisVertical className="h-4 w-4" />
+                </button>
+                {actionsOpen && (
+                  <div className="absolute right-0 top-full z-20 mt-2 w-36 overflow-hidden rounded-xl border border-gray-200 bg-white py-1 shadow-lg">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setActionsOpen(false);
+                        setSelectMode(true);
+                      }}
+                      className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm font-medium text-gray-700 transition hover:bg-gray-50"
+                    >
+                      <CheckCircle2 className="h-4 w-4" /> Select
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
         <QueryState
@@ -416,7 +494,22 @@ export function ManageExistingRulesTab({ onViewRule }: ManageExistingRulesTabPro
           }
           minHeight={220}
         >
-          <DataTable columns={columns} data={filteredRules} enablePagination pageSize={50} />
+          <DataTable
+            columns={columns}
+            data={filteredRules}
+            enablePagination
+            pageSize={50}
+            selectable={
+              selectMode
+                ? {
+                    getRowId: (rule) => rule.rule_id,
+                    selectedIds: selectedRuleIds,
+                    onToggle: toggleRuleSelection,
+                    onToggleAll: toggleAllVisibleRules,
+                  }
+                : undefined
+            }
+          />
         </QueryState>
       </div>
 
