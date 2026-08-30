@@ -756,7 +756,19 @@ export function PriceTrendsPanel({ compact = false }: PriceTrendsPanelProps) {
           minHeight={120}
         >
           <div className="overflow-x-auto rounded-2xl border border-gray-100 bg-white shadow-sm">
-            <table className="min-w-[1280px] w-full text-left text-sm">
+            <table className="w-full min-w-[1280px] table-fixed text-left text-sm">
+              <colgroup>
+                <col className="w-[26%]" />
+                <col className="w-[5%]" />
+                <col className="w-[9%]" />
+                <col className="w-[7%]" />
+                <col className="w-[8%]" />
+                <col className="w-[9%]" />
+                <col className="w-[8%]" />
+                <col className="w-[6%]" />
+                <col className="w-[8%]" />
+                <col className="w-[14%]" />
+              </colgroup>
               <thead className="border-b border-gray-100 bg-gray-50 text-xs uppercase tracking-wider text-gray-400">
                 <tr>
                   <th className="px-4 py-3">Material Item</th>
