@@ -174,7 +174,6 @@ export function SupplierRulesForm({ focusRuleId, onFocusHandled }: SupplierRules
     .map((r) => (overrides[r.rule_id] ? { ...r, ...overrides[r.rule_id] } : r))
     .sort((a, b) => a.supplier_name.localeCompare(b.supplier_name) || a.rule_type.localeCompare(b.rule_type));
   const [statusFilter, setStatusFilter] = useState<"active" | "disabled">("active");
-  const visibleRules = allRules.filter((rule) => rule.is_active === (statusFilter === "active"));
 
   const [selectedId, setSelectedId] = useState<string | null>(focusRuleId ?? null);
   const [mode, setMode] = useState<"idle" | "add" | "edit">("idle");
@@ -319,6 +318,8 @@ export function SupplierRulesForm({ focusRuleId, onFocusHandled }: SupplierRules
   };
 
   const selected = allRules.find((r) => r.rule_id === selectedId) ?? null;
+  const effectiveStatusFilter = selected?.is_active === false ? "disabled" : statusFilter;
+  const visibleRules = allRules.filter((rule) => rule.is_active === (effectiveStatusFilter === "active"));
 
   const header = (
     <div>
@@ -373,7 +374,7 @@ export function SupplierRulesForm({ focusRuleId, onFocusHandled }: SupplierRules
                   setSelectedId(null);
                 }}
                 className={`min-h-9 rounded-lg border px-3 py-2 text-center text-xs font-semibold capitalize transition ${
-                  statusFilter === filter
+                  effectiveStatusFilter === filter
                     ? "border-primary bg-orange-50 text-primary"
                     : "border-gray-200 bg-white text-gray-500 hover:border-gray-300"
                 }`}

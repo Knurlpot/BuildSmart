@@ -79,7 +79,7 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
 
   // Seeded from the prop at construction, not synced via effect: a jump always remounts
   // this component fresh through CompanyRulesShell.
-  const [selectedId, setSelectedId] = useState<string | null>(focusRuleId ?? null);
+  const [selectedId, setSelectedId] = useState<string | null>(focusRuleId?.includes("::") ? null : focusRuleId ?? null);
   const [mode, setMode] = useState<"idle" | "details" | "browse" | "configure" | "edit-group">("idle");
   const [search, setSearch] = useState("");
   const [supplierFilter, setSupplierFilter] = useState<string>(DPWH_SUPPLIER_VALUE);
@@ -89,7 +89,7 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
   const [treatmentTier, setTreatmentTier] = useState<MaterialTreatmentTier>("Practical");
   const [warrantyYears, setWarrantyYears] = useState<number | "">("");
   const [lifespanYears, setLifespanYears] = useState<number | "">("");
-  const [selectedGroup, setSelectedGroup] = useState<string | null>(null);
+  const [selectedGroup, setSelectedGroup] = useState<string | null>(focusRuleId?.includes("::") ? focusRuleId : null);
   const [touched, setTouched] = useState(false);
   const [savedMessage, setSavedMessage] = useState(false);
   const [isDisablingGroup, setIsDisablingGroup] = useState(false);
@@ -329,7 +329,11 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
     if (treatmentSort !== 0) return treatmentSort;
     return (aRules[0]?.treatment_tier ?? "Practical").localeCompare(bRules[0]?.treatment_tier ?? "Practical");
   });
-  const [statusFilter, setStatusFilter] = useState<"active" | "disabled">("active");
+  const focusedGroupName = focusRuleId?.includes("::") ? focusRuleId : null;
+  const focusedGroupRules = focusedGroupName ? groupedRules.find(([group]) => group === focusedGroupName)?.[1] : null;
+  const [statusFilter, setStatusFilter] = useState<"active" | "disabled">(
+    focusedGroupRules?.some((rule) => rule.is_active) === false ? "disabled" : "active"
+  );
   const [tierFilter, setTierFilter] = useState<MaterialTreatmentTier | null>(null);
   const visibleGroupedRules = groupedRules.filter(([, groupRules]) =>
     groupRules.some((rule) => rule.is_active) === (statusFilter === "active") &&
@@ -338,8 +342,10 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
   const selectedGroupName =
     mode === "details" || mode === "browse" || mode === "configure"
       ? null
-      : selectedGroup ?? (selected ? `${selected.treatment_type?.trim() || "No treatment type"}::${selected.treatment_tier ?? "Practical"}` : null) ?? visibleGroupedRules[0]?.[0] ?? null;
+      : selectedGroup ?? focusedGroupName ?? (selected ? `${selected.treatment_type?.trim() || "No treatment type"}::${selected.treatment_tier ?? "Practical"}` : null) ?? visibleGroupedRules[0]?.[0] ?? null;
   const selectedGroupRules = groupedRules.find(([group]) => group === selectedGroupName)?.[1] ?? [];
+  const effectiveStatusFilter =
+    selectedGroupRules.length > 0 && selectedGroupRules.some((rule) => rule.is_active) === false ? "disabled" : statusFilter;
   const treatmentNameForGroup = (groupRules: MaterialRuleEntry[]) => groupRules[0]?.treatment_type?.trim() || "No treatment type";
   const groupWarrantyLabel = (groupRules: MaterialRuleEntry[]) => {
     const years = Math.max(0, ...groupRules.map((rule) => rule.warranty_years ?? 0));
@@ -443,7 +449,7 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
                     setSelectedGroup(null);
                   }}
                   className={`min-h-9 rounded-lg border px-3 py-2 text-center text-xs font-semibold capitalize transition ${
-                    statusFilter === filter
+                    effectiveStatusFilter === filter
                       ? "border-primary bg-orange-50 text-primary"
                       : "border-gray-200 bg-white text-gray-500 hover:border-gray-300"
                   }`}

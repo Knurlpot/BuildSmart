@@ -52,7 +52,6 @@ export function UnitRulesForm({ focusRuleId, onFocusHandled }: UnitRulesFormProp
   const [statusFilter, setStatusFilter] = useState<"active" | "disabled">("active");
   const [isDisabling, setIsDisabling] = useState(false);
   const [disableError, setDisableError] = useState<Error | null>(null);
-  const visibleRules = allRules.filter((rule) => rule.is_active === (statusFilter === "active"));
 
   useEffect(() => {
     if (focusRuleId) onFocusHandled?.();
@@ -172,6 +171,8 @@ export function UnitRulesForm({ focusRuleId, onFocusHandled }: UnitRulesFormProp
   };
 
   const selected = allRules.find((r) => r.rule_id === selectedId) ?? null;
+  const effectiveStatusFilter = selected?.is_active === false ? "disabled" : statusFilter;
+  const visibleRules = allRules.filter((rule) => rule.is_active === (effectiveStatusFilter === "active"));
 
   return (
     <div className="flex flex-col gap-4">
@@ -208,7 +209,7 @@ export function UnitRulesForm({ focusRuleId, onFocusHandled }: UnitRulesFormProp
                   setSelectedId(null);
                 }}
                 className={`min-h-9 rounded-lg border px-3 py-2 text-center text-xs font-semibold capitalize transition ${
-                  statusFilter === filter
+                  effectiveStatusFilter === filter
                     ? "border-primary bg-orange-50 text-primary"
                     : "border-gray-200 bg-white text-gray-500 hover:border-gray-300"
                 }`}

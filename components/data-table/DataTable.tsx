@@ -11,7 +11,7 @@ import {
   getSortedRowModel,
   useReactTable,
 } from "@tanstack/react-table";
-import { ArrowUpDown, ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 
 
 interface SelectableConfig<TData> {
@@ -61,6 +61,7 @@ export function DataTable<TData>({
           type="checkbox"
           checked={allSelected}
           onChange={() => selectable!.onToggleAll(pageIds)}
+          onClick={(event) => event.stopPropagation()}
           aria-label="Select all rows on this page"
           className="h-3.5 w-3.5 rounded border-gray-300 accent-primary"
         />
@@ -73,6 +74,7 @@ export function DataTable<TData>({
           type="checkbox"
           checked={selectable!.selectedIds.has(id)}
           onChange={() => selectable!.onToggle(id)}
+          onClick={(event) => event.stopPropagation()}
           aria-label="Select row"
           className="h-3.5 w-3.5 rounded border-gray-300 accent-primary"
         />
@@ -107,17 +109,17 @@ export function DataTable<TData>({
             <tr key={headerGroup.id} className="border-b border-gray-100 bg-gray-50/60">
               {headerGroup.headers.map((header) => {
                 const sortable = header.column.getCanSort();
-                const alignRight = header.column.id === "actions";
+                const meta = header.column.columnDef.meta as { className?: string } | undefined;
+                const alignRight = header.column.id === "actions" || meta?.className?.includes("text-right");
                 return (
                   <th
                     key={header.id}
                     onClick={sortable ? header.column.getToggleSortingHandler() : undefined}
-                    className={`${headCellCls} ${alignRight ? "text-right" : ""} ${sortable ? "cursor-pointer select-none" : ""}`}
+                    className={`${headCellCls} ${alignRight ? "text-right" : ""} ${meta?.className ?? ""} ${sortable ? "cursor-pointer select-none" : ""}`}
                   >
                     {header.isPlaceholder ? null : (
-                      <span className={`${alignRight ? "flex justify-end" : "inline-flex"} items-center gap-1`}>
+                      <span className={`${alignRight ? "flex w-full justify-end" : "inline-flex"} items-center gap-1`}>
                         {flexRender(header.column.columnDef.header, header.getContext())}
-                        {sortable && <ArrowUpDown className="h-3 w-3 text-gray-300" />}
                       </span>
                     )}
                   </th>
@@ -138,7 +140,7 @@ export function DataTable<TData>({
               }`}
             >
               {row.getVisibleCells().map((cell) => (
-                <td key={cell.id} className={bodyCellCls}>
+                <td key={cell.id} className={`${bodyCellCls} ${(cell.column.columnDef.meta as { className?: string } | undefined)?.className ?? ""}`}>
                   {flexRender(cell.column.columnDef.cell, cell.getContext())}
                 </td>
               ))}

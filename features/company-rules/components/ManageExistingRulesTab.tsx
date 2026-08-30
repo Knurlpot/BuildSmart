@@ -9,7 +9,7 @@ import {
   CheckCircle2,
   ClipboardList,
   EllipsisVertical,
-  Eye,
+  ListFilter,
   Package,
   Pencil,
   Percent,
@@ -25,6 +25,8 @@ import { DataTable } from "@/components/data-table/DataTable";
 import { apiClient } from "@/lib/api/client";
 import { useExistingRules, useMaterialRules } from "@/lib/dev/provisional/useCompanyRulesProvisional";
 import { RULE_KIND_LABEL, RULE_KINDS, type ExistingRuleSummary, type RuleKind } from "@/lib/dev/provisional/companyRulesTypes";
+
+type RuleWithTier = ExistingRuleSummary & { tier?: "Practical" | "Premium" };
 
 function StatusBadge({ status }: { status: ExistingRuleSummary["status"] }) {
   return (
@@ -64,6 +66,25 @@ function RuleTypeBadge({ kind, onClick }: { kind: RuleKind; onClick?: () => void
       <Icon className="h-3.5 w-3.5" />
       {RULE_KIND_LABEL[kind]}
     </button>
+  );
+}
+
+function tierBadgeClass(tier: RuleWithTier["tier"]) {
+  return tier === "Premium"
+    ? "bg-blue-50 text-blue-700"
+    : "bg-orange-50 text-primary";
+}
+
+function RuleLabel({ rule }: { rule: RuleWithTier }) {
+  return (
+    <div className="flex min-w-0 items-center gap-2">
+      <span className="truncate font-medium text-gray-800">{rule.label}</span>
+      {rule.tier && (
+        <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold ${tierBadgeClass(rule.tier)}`}>
+          {rule.tier}
+        </span>
+      )}
+    </div>
   );
 }
 
@@ -116,7 +137,9 @@ interface ManageExistingRulesTabProps {
 }
 
 type RuleFilter = "all" | RuleKind;
+type StatusFilter = "all" | ExistingRuleSummary["status"];
 const RULE_FILTER_KINDS = RULE_KINDS.filter((kind) => kind !== "scope-template");
+const STATUS_FILTERS: StatusFilter[] = ["all", "Active", "Disabled"];
 
 function isRuleFilter(value: string | null): value is RuleKind {
   return value !== null && RULE_FILTER_KINDS.some((kind) => kind === value);
@@ -141,10 +164,14 @@ export function ManageExistingRulesTab({ onViewRule }: ManageExistingRulesTabPro
   const [warningFor, setWarningFor] = useState<ExistingRuleSummary | null>(null);
   const [activeRuleId, setActiveRuleId] = useState<string | null>(null);
   const [actionsOpen, setActionsOpen] = useState(false);
+  const [filterOpen, setFilterOpen] = useState(false);
   const [selectMode, setSelectMode] = useState(false);
   const [selectedRuleIds, setSelectedRuleIds] = useState<Set<string>>(new Set());
   const urlType = searchParams.get("type");
   const ruleFilter: RuleFilter = isRuleFilter(urlType) ? urlType : "all";
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+  const [draftRuleFilter, setDraftRuleFilter] = useState<RuleFilter>(ruleFilter);
+  const [draftStatusFilter, setDraftStatusFilter] = useState<StatusFilter>(statusFilter);
   const [search, setSearch] = useState("");
 
   const selectRuleFilter = useCallback((filter: RuleFilter) => {
@@ -155,30 +182,52 @@ export function ManageExistingRulesTab({ onViewRule }: ManageExistingRulesTabPro
     router.push(query ? `${pathname}?${query}` : pathname, { scroll: false });
   }, [pathname, router, searchParams]);
 
-  const materialRuleGroups = useMemo<ExistingRuleSummary[]>(() => {
+  const openFilterMenu = () => {
+    setDraftRuleFilter(ruleFilter);
+    setDraftStatusFilter(statusFilter);
+    setFilterOpen(true);
+  };
+
+  const applyFilters = () => {
+    selectRuleFilter(draftRuleFilter);
+    setStatusFilter(draftStatusFilter);
+    setFilterOpen(false);
+  };
+
+  const clearFilters = () => {
+    setDraftRuleFilter("all");
+    setDraftStatusFilter("all");
+    selectRuleFilter("all");
+    setStatusFilter("all");
+    setFilterOpen(false);
+  };
+
+  const materialRuleGroups = useMemo<RuleWithTier[]>(() => {
     const grouped = materialRules.reduce((groups, rule) => {
       const treatment = rule.treatment_type?.trim() || "No treatment type";
-      groups.set(treatment, [...(groups.get(treatment) ?? []), rule]);
+      const tier = rule.treatment_tier ?? "Practical";
+      const key = `${treatment}::${tier}`;
+      groups.set(key, [...(groups.get(key) ?? []), rule]);
       return groups;
     }, new Map<string, typeof materialRules>());
 
-    return Array.from(grouped, ([treatmentType, materials]) => {
+    return Array.from(grouped, ([groupKey, materials]) => {
+      const [treatmentType, rawTier] = groupKey.split("::");
+      const tier = rawTier === "Premium" ? "Premium" : "Practical";
       const itemNames = materials.map((rule) => rule.preferred_item_name).sort((a, b) => a.localeCompare(b));
-      const tierCounts = ["Practical", "Premium"]
-        .map((tier) => `${tier}: ${materials.filter((rule) => (rule.treatment_tier ?? "Practical") === tier).length}`)
-        .join(" · ");
       const latestEffective = materials
         .map((rule) => rule.effective_date)
         .sort()
         .at(-1) ?? "";
 
       return {
-        rule_id: treatmentType,
+        rule_id: groupKey,
         rule_kind: "material-rule" as const,
         label: treatmentType,
-        detail: `${materials.length} material${materials.length === 1 ? "" : "s"} · ${tierCounts} · ${itemNames.join(", ")}`,
+        detail: `${materials.length} material${materials.length === 1 ? "" : "s"} · ${itemNames.join(", ")}`,
         status: materials.some((rule) => rule.is_active) ? "Active" as const : "Disabled" as const,
         effective_date: latestEffective,
+        tier,
       };
     }).sort((a, b) => a.label.localeCompare(b.label));
   }, [materialRules]);
@@ -186,12 +235,13 @@ export function ManageExistingRulesTab({ onViewRule }: ManageExistingRulesTabPro
     const grouped = new Map<string, string[]>();
     for (const rule of materialRules) {
       const treatment = rule.treatment_type?.trim() || "No treatment type";
-      grouped.set(treatment, [...(grouped.get(treatment) ?? []), rule.rule_id]);
+      const key = `${treatment}::${rule.treatment_tier ?? "Practical"}`;
+      grouped.set(key, [...(grouped.get(key) ?? []), rule.rule_id]);
     }
     return grouped;
   }, [materialRules]);
 
-  const displayRules = useMemo(
+  const displayRules = useMemo<RuleWithTier[]>(
     () => [
       ...materialRuleGroups,
       ...rules
@@ -204,20 +254,12 @@ export function ManageExistingRulesTab({ onViewRule }: ManageExistingRulesTabPro
     const query = search.trim().toLowerCase();
     return displayRules.filter((rule) => {
       const matchesKind = ruleFilter === "all" || rule.rule_kind === ruleFilter;
-      if (!matchesKind) return false;
+      const matchesStatus = statusFilter === "all" || rule.status === statusFilter;
+      if (!matchesKind || !matchesStatus) return false;
       if (!query) return true;
-      return [
-        RULE_KIND_LABEL[rule.rule_kind],
-        rule.label,
-        rule.detail,
-        rule.effective_date,
-        rule.status,
-      ]
-        .join(" ")
-        .toLowerCase()
-        .includes(query);
+      return rule.label.toLowerCase().includes(query);
     });
-  }, [displayRules, ruleFilter, search]);
+  }, [displayRules, ruleFilter, search, statusFilter]);
   const selectedRules = useMemo(
     () => filteredRules.filter((rule) => selectedRuleIds.has(rule.rule_id) && rule.status !== "Disabled"),
     [filteredRules, selectedRuleIds]
@@ -249,7 +291,7 @@ export function ManageExistingRulesTab({ onViewRule }: ManageExistingRulesTabPro
     setSelectedRuleIds(new Set());
   }, []);
 
-  const handleDisable = useCallback(async (rule: ExistingRuleSummary) => {
+  const handleDisable = useCallback(async (rule: RuleWithTier) => {
     setActiveRuleId(rule.rule_id);
     setWarningFor(null);
     try {
@@ -288,7 +330,7 @@ export function ManageExistingRulesTab({ onViewRule }: ManageExistingRulesTabPro
     stopSelecting();
   }, [handleDisable, selectedRules, stopSelecting]);
 
-  const columns = useMemo<ColumnDef<ExistingRuleSummary>[]>(
+  const columns = useMemo<ColumnDef<RuleWithTier>[]>(
     () => [
       {
         accessorKey: "rule_kind",
@@ -298,46 +340,44 @@ export function ManageExistingRulesTab({ onViewRule }: ManageExistingRulesTabPro
           <RuleTypeBadge kind={row.original.rule_kind} onClick={() => selectRuleFilter(row.original.rule_kind)} />
         ),
       },
-      { accessorKey: "label", header: "Rule" },
+      {
+        accessorKey: "label",
+        header: "Rule",
+        cell: ({ row }) => <RuleLabel rule={row.original} />,
+      },
       {
         accessorKey: "detail",
         header: "Detail",
         enableGlobalFilter: false,
         cell: ({ row }) => <RuleDetail rule={row.original} />,
       },
-      { accessorKey: "effective_date", header: "Effective", enableGlobalFilter: false },
+      {
+        accessorKey: "effective_date",
+        header: "Effective",
+        enableGlobalFilter: false,
+        meta: { className: "w-28" },
+      },
       {
         accessorKey: "status",
         header: "Status",
         enableGlobalFilter: false,
-        cell: ({ row }) => <StatusBadge status={row.original.status} />,
+        meta: { className: "w-24 text-right" },
+        cell: ({ row }) => (
+          <span className="flex justify-end">
+            <StatusBadge status={row.original.status} />
+          </span>
+        ),
       },
       {
         id: "actions",
-        header: () => (
-          <span className="flex justify-end">
-            <span className="w-[6.75rem] text-center">Action</span>
-          </span>
-        ),
+        header: "",
         enableGlobalFilter: false,
+        meta: { className: "w-16 text-right" },
         cell: ({ row }) => {
           const rule = row.original;
           if (rule.status === "Disabled") return null;
           return (
             <div className="flex items-center justify-end gap-1.5">
-              <ActionTooltip label="View">
-              <button
-                type="button"
-                aria-label={`View ${rule.label}`}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onViewRule(rule);
-                }}
-                className="flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-500 transition hover:border-primary/40 hover:text-primary"
-              >
-                <Eye className="h-3.5 w-3.5" />
-              </button>
-              </ActionTooltip>
               <ActionTooltip label="Edit">
               <button
                 type="button"
@@ -392,36 +432,96 @@ export function ManageExistingRulesTab({ onViewRule }: ManageExistingRulesTabPro
               type="search"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search by rule name, type, detail, status, or date..."
+              placeholder="Search by rule name..."
               className="w-full rounded-full border border-gray-200 bg-white py-1.5 pl-9 pr-3 text-xs font-medium text-gray-700 outline-none transition placeholder:text-gray-400 focus:border-primary focus:ring-2 focus:ring-primary/15"
             />
           </div>
           <div className="flex min-w-0 flex-wrap items-center gap-2 xl:justify-end">
-            <button
-              type="button"
-              onClick={() => selectRuleFilter("all")}
-              className={`w-fit whitespace-nowrap rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
-                ruleFilter === "all"
-                  ? "border-primary bg-primary text-primary-foreground"
-                  : "border-gray-200 bg-white text-gray-500 hover:border-primary/40 hover:text-primary"
-              }`}
-            >
-              All
-            </button>
-            {RULE_FILTER_KINDS.map((kind) => (
+            <div className="relative">
               <button
-                key={kind}
                 type="button"
-                onClick={() => selectRuleFilter(kind)}
-                className={`w-fit whitespace-nowrap rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
-                  ruleFilter === kind
-                    ? "border-primary bg-primary text-primary-foreground"
-                    : "border-gray-200 bg-white text-gray-500 hover:border-primary/40 hover:text-primary"
+                onClick={() => {
+                  if (filterOpen) {
+                    setFilterOpen(false);
+                    return;
+                  }
+                  openFilterMenu();
+                }}
+                aria-label="Rule filters"
+                title="Rule filters"
+                aria-expanded={filterOpen}
+                aria-haspopup="menu"
+                className={`relative flex h-8 w-8 items-center justify-center rounded-lg border text-xs font-bold transition ${
+                  ruleFilter !== "all" || statusFilter !== "all"
+                    ? "border-primary bg-orange-50 text-primary"
+                    : "border-gray-200 bg-white text-gray-600 hover:border-primary/40 hover:text-primary"
                 }`}
               >
-                {RULE_KIND_LABEL[kind]}
+                <ListFilter className="h-3.5 w-3.5" />
+                {(ruleFilter !== "all" || statusFilter !== "all") && (
+                  <span className="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full bg-primary" />
+                )}
               </button>
-            ))}
+              {filterOpen && (
+                <div className="absolute right-0 top-full z-20 mt-2 w-56 overflow-hidden rounded-xl border border-gray-200 bg-white py-2 shadow-lg">
+                  <div className="px-2">
+                    <p className="px-2 pb-1 text-[10px] font-bold uppercase tracking-wider text-gray-400">Rule Type</p>
+                    <button
+                      type="button"
+                      onClick={() => setDraftRuleFilter("all")}
+                      className={`flex w-full rounded-lg px-2 py-1.5 text-left text-sm font-medium transition hover:bg-gray-50 ${
+                        draftRuleFilter === "all" ? "text-primary" : "text-gray-700"
+                      }`}
+                    >
+                      All
+                    </button>
+                    {RULE_FILTER_KINDS.map((kind) => (
+                      <button
+                        key={kind}
+                        type="button"
+                        onClick={() => setDraftRuleFilter(kind)}
+                        className={`flex w-full rounded-lg px-2 py-1.5 text-left text-sm font-medium transition hover:bg-gray-50 ${
+                          draftRuleFilter === kind ? "text-primary" : "text-gray-700"
+                        }`}
+                      >
+                        {RULE_KIND_LABEL[kind]}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="mt-2 border-t border-gray-100 px-2 pt-2">
+                    <p className="px-2 pb-1 text-[10px] font-bold uppercase tracking-wider text-gray-400">Status</p>
+                    {STATUS_FILTERS.map((status) => (
+                      <button
+                        key={status}
+                        type="button"
+                        onClick={() => setDraftStatusFilter(status)}
+                        className={`flex w-full rounded-lg px-2 py-1.5 text-left text-sm font-medium transition hover:bg-gray-50 ${
+                          draftStatusFilter === status ? "text-primary" : "text-gray-700"
+                        }`}
+                      >
+                        {status === "all" ? "All" : status}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="mt-2 flex items-center justify-end gap-2 border-t border-gray-100 px-2 pt-2">
+                    <button
+                      type="button"
+                      onClick={clearFilters}
+                      className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-600 transition hover:bg-gray-50"
+                    >
+                      Clear
+                    </button>
+                    <button
+                      type="button"
+                      onClick={applyFilters}
+                      className="rounded-lg bg-primary px-3 py-1.5 text-xs font-bold text-primary-foreground transition hover:bg-(--primary-hover)"
+                    >
+                      Apply
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
             {selectMode ? (
               <div className="flex items-center gap-2 border-l border-gray-200 pl-2">
                 <span className="text-xs font-semibold text-gray-500">{selectedRuleCount} selected</span>
@@ -484,13 +584,21 @@ export function ManageExistingRulesTab({ onViewRule }: ManageExistingRulesTabPro
             refetch();
             refetchMaterialRules();
           }}
-          emptyTitle={search.trim() ? "No matching rules" : ruleFilter === "all" ? "No rules configured" : `No ${RULE_KIND_LABEL[ruleFilter]} rules`}
+          emptyTitle={
+            search.trim()
+              ? "No matching rules"
+              : ruleFilter !== "all"
+                ? `No ${RULE_KIND_LABEL[ruleFilter]} rules`
+                : statusFilter !== "all"
+                  ? `No ${statusFilter.toLowerCase()} rules`
+                  : "No rules configured"
+          }
           emptyHint={
             search.trim()
               ? "Try a different search or clear the filter."
-              : ruleFilter === "all"
-                ? "Configured rules across all categories will appear here once saved."
-                : "Choose another rule type or add a new rule."
+              : ruleFilter !== "all" || statusFilter !== "all"
+                ? "Choose another filter or add a new rule."
+                : "Configured rules across all categories will appear here once saved."
           }
           minHeight={220}
         >
@@ -509,6 +617,7 @@ export function ManageExistingRulesTab({ onViewRule }: ManageExistingRulesTabPro
                   }
                 : undefined
             }
+            onRowClick={selectMode ? (rule) => toggleRuleSelection(rule.rule_id) : onViewRule}
           />
         </QueryState>
       </div>

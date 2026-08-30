@@ -53,7 +53,6 @@ export function LaborRulesForm({ focusRuleId, onFocusHandled }: LaborRulesFormPr
     )
   ).sort();
   const [statusFilter, setStatusFilter] = useState<"active" | "disabled">("active");
-  const visibleRules = allRules.filter((rule) => rule.is_active === (statusFilter === "active"));
 
   // Seeded from the prop at construction, not synced via effect: a jump always remounts
   // this component fresh through CompanyRulesShell.
@@ -202,6 +201,8 @@ export function LaborRulesForm({ focusRuleId, onFocusHandled }: LaborRulesFormPr
   };
 
   const selected = allRules.find((r) => r.rule_id === selectedId) ?? null;
+  const effectiveStatusFilter = selected?.is_active === false ? "disabled" : statusFilter;
+  const visibleRules = allRules.filter((rule) => rule.is_active === (effectiveStatusFilter === "active"));
 
   const rushPreview =
     rate !== "" && rushMultiplier !== ""
@@ -245,7 +246,7 @@ export function LaborRulesForm({ focusRuleId, onFocusHandled }: LaborRulesFormPr
                   setSelectedId(null);
                 }}
                 className={`min-h-9 rounded-lg border px-3 py-2 text-center text-xs font-semibold capitalize transition ${
-                  statusFilter === filter
+                  effectiveStatusFilter === filter
                     ? "border-primary bg-orange-50 text-primary"
                     : "border-gray-200 bg-white text-gray-500 hover:border-gray-300"
                 }`}
