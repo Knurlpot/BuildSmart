@@ -9,7 +9,7 @@
 import { stagingId } from './quotationGenerationTypes';
 import type { DraftSegment } from '@/features/quotation-generation/lib/draftSegment';
 import { isSegmentIncluded } from '@/features/quotation-generation/lib/draftSegment';
-import type { LaborRule, LaborRuleScope, MaterialRuleEntry, UnitRule } from './companyRulesTypes';
+import type { LaborRule, LaborRuleScope, MaterialRuleEntry, SupplierRuleEntry, UnitRule } from './companyRulesTypes';
 import type {
   ItemCategory,
   PricelistBasis,
@@ -232,6 +232,46 @@ function pricingReferenceFor(basis: PricelistBasis): ProvisionalPricingReference
     : { price_source: 'Internal', region: null, brand: null, quarter: null, year: null, recorded_at: '2026-06-01T09:00:00.000Z', confidence: null };
 }
 
+function supplierRuleDiscountedPrice(unitPrice: number, rule: SupplierRuleEntry): number {
+  if (rule.discount_percentage_rate !== null) {
+    return round2(unitPrice * (1 - rule.discount_percentage_rate / 100));
+  }
+  if (rule.fixed_discount_amount !== null) {
+    return round2(Math.max(0, unitPrice - rule.fixed_discount_amount));
+  }
+  return unitPrice;
+}
+
+function bestSupplierRuleFor(supplierId: number | null, supplierRules: SupplierRuleEntry[]): SupplierRuleEntry | null {
+  if (supplierId === null) return null;
+  const activeRules = supplierRules
+    .filter((rule) => rule.is_active && rule.supplier_id === supplierId)
+    .sort((a, b) => {
+      if (a.rule_type === 'Preferred Supplier' && b.rule_type !== 'Preferred Supplier') return -1;
+      if (a.rule_type !== 'Preferred Supplier' && b.rule_type === 'Preferred Supplier') return 1;
+      return b.effective_date.localeCompare(a.effective_date);
+    });
+  return activeRules.find((rule) => rule.rule_type !== 'Minimum Order') ?? activeRules[0] ?? null;
+}
+
+function applySupplierRulesToOptions(
+  options: ProvisionalSupplierOption[],
+  supplierRules: SupplierRuleEntry[]
+): ProvisionalSupplierOption[] {
+  return options
+    .map((option) => {
+      const rule = bestSupplierRuleFor(option.supplier_id, supplierRules);
+      if (!rule || option.source_type === 'DPWH') return option;
+      return { ...option, unit_price: supplierRuleDiscountedPrice(option.unit_price, rule) };
+    })
+    .sort((a, b) => {
+      const aPreferred = bestSupplierRuleFor(a.supplier_id, supplierRules)?.rule_type === 'Preferred Supplier';
+      const bPreferred = bestSupplierRuleFor(b.supplier_id, supplierRules)?.rule_type === 'Preferred Supplier';
+      if (aPreferred !== bPreferred) return aPreferred ? -1 : 1;
+      return a.unit_price - b.unit_price;
+    });
+}
+
 function supplierOptionsFor(def: ItemFixtureDef, tier: ProvisionalTier, basis: PricelistBasis): ProvisionalSupplierOption[] {
   const normalizedTier = normalizeTier(tier);
   const factor = TIER_PRICING_FIXTURE[normalizedTier].price_factor;
@@ -333,7 +373,8 @@ function buildCompanyRuleLine(
   unitRule: UnitRule | null,
   basis: PricelistBasis,
   uploadedPrices: SavedPriceRecord[] = [],
-  dpwhPrices: DpwhCatalogRow[] = []
+  dpwhPrices: DpwhCatalogRow[] = [],
+  supplierRules: SupplierRuleEntry[] = []
 ): ProvisionalItemLine {
   const coverage = unitRule?.conversion_factor ?? 1;
   const wastage = unitRule?.wastage_allowance_percentage ?? 0;
@@ -348,7 +389,7 @@ function buildCompanyRuleLine(
   const selectedDpwhPrice = matchingDpwhPrices[0] ?? null;
   const selectedPrice = basis === 'DPWH' ? selectedDpwhPrice : selectedUploadedPrice;
   const uploadedOptions: ProvisionalSupplierOption[] = matchingUploadedPrices.map((price) => ({
-    supplier_id: price.historicalrec_id,
+    supplier_id: price.supplier_id ?? price.historicalrec_id,
     supplier_name: price.supplier_name ?? 'Uploaded pricelist',
     brand: price.brand ?? null,
     location: price.supplier_location ?? price.region ?? null,
@@ -365,7 +406,9 @@ function buildCompanyRuleLine(
     quantity_available: null,
     source_type: 'DPWH',
   }));
-  const unitPrice = selectedPrice?.price ?? null;
+  const supplierOptions = basis === 'DPWH' ? dpwhOptions : applySupplierRulesToOptions(uploadedOptions, supplierRules);
+  const selectedSupplierId = supplierOptions[0]?.supplier_id ?? null;
+  const unitPrice = supplierOptions[0]?.unit_price ?? selectedPrice?.price ?? null;
 
   return {
     line_id: stagingId('item'),
@@ -386,8 +429,8 @@ function buildCompanyRuleLine(
     source_type: basis,
     is_overridden: false,
     pricing_reference: pricingReferenceFor(basis),
-    supplier_options: basis === 'DPWH' ? dpwhOptions : uploadedOptions,
-    selected_supplier_id: selectedPrice?.historicalrec_id ?? null,
+    supplier_options: supplierOptions,
+    selected_supplier_id: selectedSupplierId,
   };
 }
 
@@ -491,7 +534,8 @@ export function deriveCompanyRuleItemLines(
   items: Items[],
   basis: PricelistBasis,
   uploadedPrices: SavedPriceRecord[] = [],
-  dpwhPrices: DpwhCatalogRow[] = []
+  dpwhPrices: DpwhCatalogRow[] = [],
+  supplierRules: SupplierRuleEntry[] = []
 ): ProvisionalItemLine[] | null {
   const activeRules = materialRules.filter((rule) => rule.is_active && rule.treatment_type?.trim());
   const hasActiveLaborRules = laborRules.some((rule) => rule.is_active);
@@ -522,7 +566,7 @@ export function deriveCompanyRuleItemLines(
 
     matchedAnyTreatment = true;
     for (const rule of rulesForTreatment) {
-      lines.push(buildCompanyRuleLine(seg, rule, itemByCode.get(String(rule.preferred_item_code)), matchingUnitRule(rule, unitRules), basis, uploadedPrices, dpwhPrices));
+      lines.push(buildCompanyRuleLine(seg, rule, itemByCode.get(String(rule.preferred_item_code)), matchingUnitRule(rule, unitRules), basis, uploadedPrices, dpwhPrices, supplierRules));
     }
     const laborLine = buildLaborRuleLine(seg, laborRules, basis);
     if (laborLine) lines.push(laborLine);

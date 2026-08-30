@@ -16,7 +16,7 @@ import { computeTierResult, deriveCompanyRuleItemLines, deriveMockItemLines, fmt
 import { saveFinalizedQuotation } from "@/lib/dev/provisional/savedProjectsStore";
 import { PROVISIONAL_TIERS, type PricelistBasis, type ProvisionalItemLine, type ProvisionalQuotationTierResult, type ProvisionalTier } from "@/lib/dev/provisional/quotationBreakdownTypes";
 import { apiClient } from "@/lib/api/client";
-import { useLaborRules, useMaterialRules, usePricingStrategies, useUnitRules } from "@/lib/dev/provisional/useCompanyRulesProvisional";
+import { useLaborRules, useMaterialRules, usePricingStrategies, useSupplierRules, useUnitRules } from "@/lib/dev/provisional/useCompanyRulesProvisional";
 import { useItemsCatalog } from "@/hooks/useItemsCatalog";
 import { usePricelistCatalog } from "@/hooks/usePricelistCatalog";
 import { usePricelistPublishedSource } from "@/hooks/usePricelistPublishedSource";
@@ -95,13 +95,14 @@ function deriveTierItemsFromRules(
   basis: PricelistBasis,
   materialRules: ReturnType<typeof useMaterialRules>["rules"],
   laborRules: ReturnType<typeof useLaborRules>["rules"],
+  supplierRules: ReturnType<typeof useSupplierRules>["rules"],
   unitRules: ReturnType<typeof useUnitRules>["rules"],
   items: ReturnType<typeof useItemsCatalog>["items"],
   uploadedPrices: ReturnType<typeof usePricelistCatalog>["records"] = [],
   dpwhPrices: ReturnType<typeof usePricelistPublishedSource>["dpwhCatalog"]["records"] = [],
   tiers: ProvisionalTier[]
 ): Partial<Record<ProvisionalTier, ProvisionalItemLine[]>> {
-  const companyRuleItems = buildTierItems(tiers, (tier) => deriveCompanyRuleItemLines(segments, tier, materialRules, laborRules, unitRules, items, basis, uploadedPrices, dpwhPrices) ?? []);
+  const companyRuleItems = buildTierItems(tiers, (tier) => deriveCompanyRuleItemLines(segments, tier, materialRules, laborRules, unitRules, items, basis, uploadedPrices, dpwhPrices, supplierRules) ?? []);
   if (Object.values(companyRuleItems).some((lines) => (lines?.length ?? 0) > 0)) {
     return companyRuleItems;
   }
@@ -271,6 +272,7 @@ export function QuotationResultsStep({
   const { strategies: pricingStrategies } = usePricingStrategies();
   const { rules: materialRules } = useMaterialRules();
   const { rules: laborRules } = useLaborRules();
+  const { rules: supplierRules } = useSupplierRules();
   const { rules: unitRules } = useUnitRules();
   const { items } = useItemsCatalog();
   const { records: uploadedPrices, load: loadUploadedPrices } = usePricelistCatalog();
@@ -301,8 +303,8 @@ export function QuotationResultsStep({
   }, [loadDpwhPrices, loadUploadedPrices]);
 
   const autoTierItems = useMemo(
-    () => deriveTierItemsFromRules(segments, pricelistBasis, materialRules, laborRules, unitRules, items, uploadedPrices, dpwhPrices, activeTiers),
-    [activeTiers, items, laborRules, materialRules, pricelistBasis, segments, unitRules, uploadedPrices, dpwhPrices]
+    () => deriveTierItemsFromRules(segments, pricelistBasis, materialRules, laborRules, supplierRules, unitRules, items, uploadedPrices, dpwhPrices, activeTiers),
+    [activeTiers, items, laborRules, materialRules, pricelistBasis, segments, supplierRules, unitRules, uploadedPrices, dpwhPrices]
   );
   const effectiveTierItems = hasManualLineEdits ? tierItems : autoTierItems;
 
@@ -320,13 +322,13 @@ export function QuotationResultsStep({
   const handleBasisChange = (basis: PricelistBasis) => {
     setPricelistBasis(basis);
     setHasManualLineEdits(true);
-    setTierItems(deriveTierItemsFromRules(segments, basis, materialRules, laborRules, unitRules, items, uploadedPrices, dpwhPrices, activeTiers));
+    setTierItems(deriveTierItemsFromRules(segments, basis, materialRules, laborRules, supplierRules, unitRules, items, uploadedPrices, dpwhPrices, activeTiers));
   };
 
   const handleApplyQuotationRules = () => {
     setHasManualLineEdits(true);
     handleBasisChange(prioritySource);
-    const next = deriveTierItemsFromRules(segments, prioritySource, materialRules, laborRules, unitRules, items, uploadedPrices, dpwhPrices, activeTiers);
+    const next = deriveTierItemsFromRules(segments, prioritySource, materialRules, laborRules, supplierRules, unitRules, items, uploadedPrices, dpwhPrices, activeTiers);
     setTierItems(
       buildTierItems(activeTiers, (tier) => applyQuotationRuleToLines(next[tier] ?? [], prioritySource, fallbackRule))
     );
