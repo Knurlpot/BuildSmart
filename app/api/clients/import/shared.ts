@@ -10,7 +10,6 @@ export type ClientImportField =
   | "contact_number"
   | "client_address"
   | "client_type"
-  | "default_downpayment_percentage"
   | "notes";
 
 export const REQUIRED_CLIENT_IMPORT_FIELDS: ClientImportField[] = [
@@ -34,7 +33,6 @@ export type ExtractedClientRow = {
   contact_number: string | null;
   client_address: string | null;
   client_type: ClientType | null;
-  default_downpayment_percentage: number | null;
   notes: string | null;
   needs_mapping: boolean;
 };
@@ -67,7 +65,6 @@ export function detectClientField(header: string): ClientImportField | null {
     contact_number: ["contactnumber", "contactno", "phone", "phonenumber", "mobile", "mobilenumber", "telephone"],
     client_address: ["clientaddress", "address", "location", "projectaddress", "billingaddress"],
     client_type: ["clienttype", "type"],
-    default_downpayment_percentage: ["defaultdownpaymentpercentage", "downpayment", "downpaymentonfile"],
     notes: ["notes", "remarks", "comment", "comments"],
   };
   return (Object.entries(matches) as [ClientImportField, string[]][])

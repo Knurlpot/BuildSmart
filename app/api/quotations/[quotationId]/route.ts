@@ -43,7 +43,7 @@ export async function GET(request: NextRequest, { params }: Params) {
   const client = quotation.client_id
     ? await pool.query(
         `SELECT client_id, company_id, client_name, contact_person, contact_email, contact_number,
-                client_address, client_type, default_downpayment_percentage::float AS default_downpayment_percentage,
+                client_address, client_type,
                 notes, status, created_at::text AS created_at
          FROM client
          WHERE client_id = $1 AND company_id = $2

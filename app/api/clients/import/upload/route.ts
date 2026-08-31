@@ -17,7 +17,6 @@ const FIELD_LABELS: Record<ClientImportField, string> = {
   contact_number: "Contact Number",
   client_address: "Client Address",
   client_type: "Client Type",
-  default_downpayment_percentage: "Downpayment",
   notes: "Notes",
 };
 
@@ -26,12 +25,6 @@ function valueFor(mapped: Map<ClientImportField, number>, row: string[], field: 
   if (index === undefined) return null;
   const value = row[index]?.trim();
   return value ? value : null;
-}
-
-function downpaymentValue(value: string | null) {
-  if (!value) return null;
-  const numeric = Number(value.replace(/[^\d.]/g, ""));
-  return Number.isFinite(numeric) ? numeric : null;
 }
 
 export async function POST(request: NextRequest) {
@@ -89,7 +82,6 @@ export async function POST(request: NextRequest) {
         contact_number: valueFor(mapped, row, "contact_number"),
         client_address: valueFor(mapped, row, "client_address"),
         client_type: validClientType(valueFor(mapped, row, "client_type")) ?? "Returning",
-        default_downpayment_percentage: downpaymentValue(valueFor(mapped, row, "default_downpayment_percentage")),
         notes: valueFor(mapped, row, "notes"),
         needs_mapping: !clientName.trim(),
       });

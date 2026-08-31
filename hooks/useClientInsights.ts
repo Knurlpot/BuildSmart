@@ -2,8 +2,7 @@
 //
 // The `client` table (types/entities/client.ts) and `quotation.client_id` FK are now real,
 // so a client's real history CAN be computed: how many quotations they have, the most
-// recent one, and their on-file downpayment preference. That's exactly what this hook
-// returns — nothing more.
+// recent one. That's exactly what this hook returns — nothing more.
 //
 // Still NOT real, still NOT returned here: a "usual tier" (no per-quote tier/strategy_type
 // is stored against quotation in the consolidated schema), "preferred materials" (nothing
@@ -24,7 +23,6 @@ export interface ClientInsights {
   clientType: ClientType;
   projectCount: number;
   mostRecentProject: { project_name: string; created_at: string } | null;
-  downpaymentOnFile: number | null;
 }
 
 export interface UseClientInsightsResult {

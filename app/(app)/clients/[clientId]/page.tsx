@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { ArrowLeft, Building2, CalendarDays, FileText, Mail, MapPin, Pencil, Phone, Trash2, UserRound, WalletCards } from "lucide-react";
+import { ArrowLeft, Building2, CalendarDays, FileText, Mail, MapPin, Pencil, Phone, Trash2, UserRound, X } from "lucide-react";
 import { useParams, useRouter } from "next/navigation";
 import { RequireOnboardingStep } from "@/components/auth/RequireOnboardingStep";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -50,6 +50,37 @@ function DetailItem({ icon: Icon, label, value }: { icon: typeof UserRound; labe
   );
 }
 
+function EditableDetailItem({
+  icon: Icon,
+  label,
+  value,
+  onChange,
+  type = "text",
+}: {
+  icon: typeof UserRound;
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  type?: "text" | "email";
+}) {
+  return (
+    <label className="flex min-h-24 items-start gap-3 rounded-xl bg-gray-50 p-4">
+      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-orange-50 text-primary">
+        <Icon className="h-4 w-4" />
+      </div>
+      <div className="min-w-0 flex-1">
+        <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">{label}</span>
+        <input
+          type={type}
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-800 outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+        />
+      </div>
+    </label>
+  );
+}
+
 function ClientDetailsContent() {
   const router = useRouter();
   const params = useParams<{ clientId: string }>();
@@ -75,6 +106,12 @@ function ClientDetailsContent() {
       client_type: value.client_type,
       notes: value.notes ?? "",
     });
+  };
+
+  const cancelEdit = () => {
+    if (isSaving) return;
+    setEditError(null);
+    setEditForm(null);
   };
 
   const saveEdit = async () => {
@@ -142,12 +179,33 @@ function ClientDetailsContent() {
         <div className="flex flex-wrap items-start justify-between gap-4 border-b border-gray-100 pb-5">
           <div className="flex items-center gap-4">
             <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-orange-50 text-base font-semibold text-primary">
-              {initials(client.client_name)}
+              {initials(editForm?.client_name || client.client_name)}
             </div>
-            <div>
+            <div className="min-w-0">
               <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">Client Details</p>
-              <h1 className="text-xl font-semibold text-gray-900">{client.client_name}</h1>
-              <p className="mt-1 text-sm text-gray-500">{client.client_type} client</p>
+              {editForm ? (
+                <div className="mt-1 grid gap-2 sm:grid-cols-[minmax(0,18rem)_9rem]">
+                  <input
+                    value={editForm.client_name}
+                    onChange={(event) => setEditForm({ ...editForm, client_name: event.target.value })}
+                    aria-label="Client name"
+                    className="min-w-0 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-base font-semibold text-gray-900 outline-none focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/20"
+                  />
+                  <select
+                    value={editForm.client_type}
+                    onChange={(event) => setEditForm({ ...editForm, client_type: event.target.value as Client["client_type"] })}
+                    aria-label="Client type"
+                    className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700 outline-none focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/20"
+                  >
+                    {CLIENT_TYPES.map((type) => <option key={type}>{type}</option>)}
+                  </select>
+                </div>
+              ) : (
+                <>
+                  <h1 className="text-xl font-semibold text-gray-900">{client.client_name}</h1>
+                  <p className="mt-1 text-sm text-gray-500">{client.client_type} client</p>
+                </>
+              )}
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -159,7 +217,8 @@ function ClientDetailsContent() {
               onClick={() => openEdit(client)}
               aria-label="Edit client"
               title="Edit client"
-              className="flex h-9 w-9 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-600 transition hover:border-primary hover:text-primary"
+              disabled={editForm !== null}
+              className="flex h-9 w-9 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-600 transition hover:border-primary hover:text-primary disabled:cursor-not-allowed disabled:opacity-50"
             >
               <Pencil className="h-4 w-4" />
             </button>
@@ -178,21 +237,29 @@ function ClientDetailsContent() {
           </div>
         </div>
 
+        {editError && <p className="mt-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{editError}</p>}
+
         <div className="mt-5 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
-          <DetailItem icon={UserRound} label="Contact Person" value={client.contact_person || "Not on file"} />
-          <DetailItem icon={Mail} label="Email" value={client.contact_email || "Not on file"} />
-          <DetailItem icon={Phone} label="Contact Number" value={client.contact_number || "Not on file"} />
-          <DetailItem icon={MapPin} label="Address" value={client.client_address || "Not on file"} />
+          {editForm ? (
+            <>
+              <EditableDetailItem icon={UserRound} label="Contact Person" value={editForm.contact_person} onChange={(value) => setEditForm({ ...editForm, contact_person: value })} />
+              <EditableDetailItem icon={Mail} label="Email" type="email" value={editForm.contact_email} onChange={(value) => setEditForm({ ...editForm, contact_email: value })} />
+              <EditableDetailItem icon={Phone} label="Contact Number" value={editForm.contact_number} onChange={(value) => setEditForm({ ...editForm, contact_number: value })} />
+              <EditableDetailItem icon={MapPin} label="Address" value={editForm.client_address} onChange={(value) => setEditForm({ ...editForm, client_address: value })} />
+            </>
+          ) : (
+            <>
+              <DetailItem icon={UserRound} label="Contact Person" value={client.contact_person || "Not on file"} />
+              <DetailItem icon={Mail} label="Email" value={client.contact_email || "Not on file"} />
+              <DetailItem icon={Phone} label="Contact Number" value={client.contact_number || "Not on file"} />
+              <DetailItem icon={MapPin} label="Address" value={client.client_address || "Not on file"} />
+            </>
+          )}
         </div>
 
-        <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
+        <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-3">
           <DetailItem icon={Building2} label="Client Type" value={client.client_type} />
           <DetailItem icon={CalendarDays} label="Client Since" value={formatDate(client.created_at)} />
-          <DetailItem
-            icon={WalletCards}
-            label="Default Downpayment"
-            value={client.default_downpayment_percentage == null ? "Not on file" : `${client.default_downpayment_percentage}%`}
-          />
           <DetailItem
             icon={FileText}
             label="Quotation Count"
@@ -202,8 +269,40 @@ function ClientDetailsContent() {
 
         <div className="mt-5 rounded-xl border border-gray-100 bg-gray-50 p-4">
           <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">Notes</p>
-          <p className="mt-2 whitespace-pre-wrap text-sm text-gray-700">{client.notes || "No notes on file."}</p>
+          {editForm ? (
+            <textarea
+              value={editForm.notes}
+              onChange={(event) => setEditForm({ ...editForm, notes: event.target.value })}
+              aria-label="Notes"
+              rows={4}
+              className="mt-2 w-full resize-none rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+            />
+          ) : (
+            <p className="mt-2 whitespace-pre-wrap text-sm text-gray-700">{client.notes || "No notes on file."}</p>
+          )}
         </div>
+
+        {editForm && (
+          <div className="mt-5 flex flex-col-reverse gap-2 border-t border-gray-100 pt-5 sm:flex-row sm:justify-end">
+            <button
+              type="button"
+              disabled={isSaving}
+              onClick={cancelEdit}
+              className="inline-flex items-center justify-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+            >
+              <X className="h-4 w-4" />
+              Cancel
+            </button>
+            <button
+              type="button"
+              disabled={isSaving}
+              onClick={saveEdit}
+              className="inline-flex items-center justify-center rounded-lg bg-primary px-4 py-2 text-sm font-bold text-white hover:bg-(--primary-hover) disabled:opacity-50"
+            >
+              {isSaving ? "Saving..." : "Save Changes"}
+            </button>
+          </div>
+        )}
 
         {insights?.mostRecentProject && (
           <div className="mt-5 rounded-xl border border-gray-100 p-4">
@@ -213,35 +312,6 @@ function ClientDetailsContent() {
           </div>
         )}
       </section>
-
-      <Dialog open={editForm !== null} onOpenChange={(open) => !open && !isSaving && setEditForm(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Edit Client</DialogTitle>
-            <DialogDescription>Update the client information on file.</DialogDescription>
-          </DialogHeader>
-          {editForm && (
-            <div className="grid gap-3">
-              <input value={editForm.client_name} onChange={(event) => setEditForm({ ...editForm, client_name: event.target.value })} placeholder="Client name" className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm outline-none focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/20" />
-              <input value={editForm.contact_person} onChange={(event) => setEditForm({ ...editForm, contact_person: event.target.value })} placeholder="Contact person" className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm outline-none focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/20" />
-              <div className="grid gap-3 sm:grid-cols-2">
-                <input value={editForm.contact_email} onChange={(event) => setEditForm({ ...editForm, contact_email: event.target.value })} placeholder="Email" className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm outline-none focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/20" />
-                <input value={editForm.contact_number} onChange={(event) => setEditForm({ ...editForm, contact_number: event.target.value })} placeholder="Contact number" className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm outline-none focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/20" />
-              </div>
-              <input value={editForm.client_address} onChange={(event) => setEditForm({ ...editForm, client_address: event.target.value })} placeholder="Address" className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm outline-none focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/20" />
-              <select value={editForm.client_type} onChange={(event) => setEditForm({ ...editForm, client_type: event.target.value as Client["client_type"] })} className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm outline-none focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/20">
-                {CLIENT_TYPES.map((type) => <option key={type}>{type}</option>)}
-              </select>
-              <textarea value={editForm.notes} onChange={(event) => setEditForm({ ...editForm, notes: event.target.value })} placeholder="Notes" rows={3} className="resize-none rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm outline-none focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/20" />
-            </div>
-          )}
-          {editError && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{editError}</p>}
-          <DialogFooter>
-            <button type="button" disabled={isSaving} onClick={() => setEditForm(null)} className="rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-50">Cancel</button>
-            <button type="button" disabled={isSaving} onClick={saveEdit} className="rounded-lg bg-primary px-4 py-2 text-sm font-bold text-white hover:bg-(--primary-hover) disabled:opacity-50">{isSaving ? "Saving..." : "Save Changes"}</button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
 
       <Dialog open={deleteOpen} onOpenChange={(open) => !isDeleting && setDeleteOpen(open)}>
         <DialogContent>

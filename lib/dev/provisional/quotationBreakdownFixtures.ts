@@ -3,7 +3,7 @@
 //
 // deriveMockItemLines below is the "structurally real, values mock" contract in code: the
 // FORMULA (area x coverage x wastage = qty; qty x unit price = total; + labor/equipment/
-// contingency/OCM/profit; VAT and downpayment as separate bottom lines) is exactly what a
+// contingency/OCM/profit; VAT as a separate bottom line) is exactly what a
 // real derivation would do. Only the RATES/suppliers/pricing-reference dates are fixtures —
 // none of it claims to come from a real pricelist/supplier/rule lookup.
 import { stagingId } from './quotationGenerationTypes';
@@ -179,7 +179,6 @@ const TREATMENT_ITEM_FIXTURES: Record<string, ItemFixtureDef[]> = {
 // PH standard VAT rate — -> company_rule.vat_percentage (addendum #4, default 12.00). Used
 // here only as a plausible fixture default, not a configured value read from a real row.
 export const VAT_RATE_PERCENTAGE = 12;
-const DEFAULT_DOWNPAYMENT_PERCENTAGE = 30;
 const DEFAULT_RUSH_MULTIPLIER_PERCENTAGE = 25;
 const DEFAULT_GENERAL_LABOR_RATE = 750;
 
@@ -699,8 +698,8 @@ export function recomputeItemLine(
   return next;
 }
 
-/** Aggregates a set of (possibly overridden) item lines into a full tier result. VAT and
- * downpayment are separate bottom lines, never folded into any single item. Lines still
+/** Aggregates a set of (possibly overridden) item lines into a full tier result. VAT is a
+ * separate bottom line, never folded into any single item. Lines still
  * missing a rate (total_cost null) are excluded from the taxable base until resolved in
  * Minor Revision — an unresolved missing-rule line contributes nothing rather than a
  * fabricated placeholder amount. */
@@ -709,7 +708,6 @@ export function computeTierResult(
   items: ProvisionalItemLine[],
   options?: {
     vatInclusive?: boolean;
-    downpaymentPercentage?: number;
     segments?: DraftSegment[];
     materialRules?: MaterialRuleEntry[];
     laborRules?: LaborRule[];
@@ -718,7 +716,6 @@ export function computeTierResult(
   const normalizedTier = normalizeTier(tier);
   const pricingFixture = TIER_PRICING_FIXTURE[normalizedTier];
   const vatInclusive = options?.vatInclusive ?? true;
-  const downpaymentPercentage = options?.downpaymentPercentage ?? DEFAULT_DOWNPAYMENT_PERCENTAGE;
 
   const materialsSubtotal = round2(items.filter((l) => l.category === 'Material').reduce((sum, l) => sum + (l.total_cost ?? 0), 0));
   const rushJobCost = deriveRushJobCost(items, options?.segments ?? [], options?.laborRules);
@@ -731,7 +728,6 @@ export function computeTierResult(
 
   const vatAmount = vatInclusive ? round2(subtotalBeforeVat * (VAT_RATE_PERCENTAGE / 100)) : 0;
   const grandTotal = round2(subtotalBeforeVat + vatAmount);
-  const downpaymentAmount = round2(grandTotal * (downpaymentPercentage / 100));
   const includedSegments = (options?.segments ?? []).filter(isSegmentIncluded);
   const segmentTreatments = new Set(
     includedSegments
@@ -774,8 +770,6 @@ export function computeTierResult(
     subtotal_before_vat: subtotalBeforeVat,
     vat: { rate_percentage: VAT_RATE_PERCENTAGE, taxable_base: subtotalBeforeVat, amount: vatAmount },
     vat_inclusive: vatInclusive,
-    downpayment_percentage: downpaymentPercentage,
-    downpayment_amount: downpaymentAmount,
     grand_total: grandTotal,
     timeline_label: workDays !== null && durationDays !== null ? formatTimelineWeekRange(workDays, durationDays) : pricingFixture.timeline_label,
     warranty_label: warrantyYears > 0 ? `${warrantyYears}-year warranty` : pricingFixture.warranty_label,

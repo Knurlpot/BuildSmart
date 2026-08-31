@@ -39,7 +39,6 @@ export async function GET(request: NextRequest, { params }: Params) {
   const result = await pool.query(
     `SELECT client_id, company_id, client_name, contact_person, contact_email,
             contact_number, client_address, client_type,
-            default_downpayment_percentage::float AS default_downpayment_percentage,
             notes, status, created_at::text AS created_at
      FROM client
      WHERE client_id = $1 AND company_id = $2
@@ -76,7 +75,6 @@ export async function PATCH(request: NextRequest, { params }: Params) {
      WHERE client_id = $8 AND company_id = $9
      RETURNING client_id, company_id, client_name, contact_person, contact_email,
                contact_number, client_address, client_type,
-               default_downpayment_percentage::float AS default_downpayment_percentage,
                notes, status, created_at::text AS created_at`,
     [
       clientName,

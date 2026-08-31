@@ -46,8 +46,6 @@ def init_db() -> None:
                         client_address VARCHAR(255),
                         client_type VARCHAR(20) NOT NULL DEFAULT 'New'
                             CHECK (client_type IN ('New', 'Returning')),
-                        default_downpayment_percentage DECIMAL(5,2)
-                            CHECK (default_downpayment_percentage BETWEEN 0 AND 100),
                         notes TEXT,
                         status VARCHAR(20) NOT NULL DEFAULT 'Active'
                             CHECK (status IN ('Active', 'Inactive')),

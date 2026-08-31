@@ -78,17 +78,12 @@ class Client(Base):
     contact_number: Mapped[str | None] = mapped_column(String(20))
     client_address: Mapped[str | None] = mapped_column(String(255))
     client_type: Mapped[str] = mapped_column(String(20), server_default="New")
-    default_downpayment_percentage: Mapped[float | None] = mapped_column(Numeric(5, 2))
     notes: Mapped[str | None] = mapped_column(Text)
     status: Mapped[str] = mapped_column(String(20), server_default="Active")
     created_at: Mapped[datetime] = mapped_column(TIMESTAMP, server_default=func.now())
 
     __table_args__ = (
         CheckConstraint("client_type IN ('New', 'Returning')", name="client_client_type_check"),
-        CheckConstraint(
-            "default_downpayment_percentage BETWEEN 0 AND 100",
-            name="client_default_downpayment_percentage_check",
-        ),
         CheckConstraint("status IN ('Active', 'Inactive')", name="client_status_check"),
     )
 

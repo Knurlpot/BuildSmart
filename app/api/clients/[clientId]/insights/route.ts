@@ -26,9 +26,8 @@ export async function GET(request: NextRequest, { params }: Params) {
 
   const clientResult = await pool.query<{
     client_type: "New" | "Returning";
-    default_downpayment_percentage: number | null;
   }>(
-    `SELECT client_type, default_downpayment_percentage::float AS default_downpayment_percentage
+    `SELECT client_type
      FROM client
      WHERE client_id = $1 AND company_id = $2`,
     [id, auth.companyId]
@@ -70,6 +69,5 @@ export async function GET(request: NextRequest, { params }: Params) {
       summary?.project_name && summary.created_at
         ? { project_name: summary.project_name, created_at: summary.created_at }
         : null,
-    downpaymentOnFile: client.default_downpayment_percentage,
   });
 }

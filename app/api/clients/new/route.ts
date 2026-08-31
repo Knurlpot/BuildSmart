@@ -9,7 +9,6 @@ type NewClientPayload = {
   contact_number?: string | null;
   client_address?: string | null;
   client_type?: "New" | "Returning";
-  default_downpayment_percentage?: number | null;
   notes?: string | null;
 };
 
@@ -39,12 +38,11 @@ export async function POST(request: NextRequest) {
   const result = await pool.query(
     `INSERT INTO client (
        company_id, client_name, contact_person, contact_email, contact_number,
-       client_address, client_type, default_downpayment_percentage, notes
+       client_address, client_type, notes
      )
-     VALUES ($1, $2, $3, $4, $5, $6, 'New', $7, $8)
+     VALUES ($1, $2, $3, $4, $5, $6, 'New', $7)
      RETURNING client_id, company_id, client_name, contact_person, contact_email,
                contact_number, client_address, client_type,
-               default_downpayment_percentage::float AS default_downpayment_percentage,
                notes, status, created_at::text AS created_at`,
     [
       companyId,
@@ -53,7 +51,6 @@ export async function POST(request: NextRequest) {
       cleanText(body?.contact_email),
       cleanText(body?.contact_number),
       cleanText(body?.client_address),
-      body?.default_downpayment_percentage ?? null,
       cleanText(body?.notes),
     ]
   );

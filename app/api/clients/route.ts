@@ -11,7 +11,6 @@ type ClientRow = {
   contact_number: string | null;
   client_address: string | null;
   client_type: "New" | "Returning";
-  default_downpayment_percentage: number | null;
   notes: string | null;
   status: "Active" | "Inactive";
   created_at: string;
@@ -35,7 +34,6 @@ export async function GET(request: NextRequest) {
   const result = await pool.query<ClientRow>(
     `SELECT client_id, company_id, client_name, contact_person, contact_email,
             contact_number, client_address, client_type,
-            default_downpayment_percentage::float AS default_downpayment_percentage,
             notes, status, created_at::text AS created_at
      FROM client
      WHERE company_id = $1 AND status = 'Active'

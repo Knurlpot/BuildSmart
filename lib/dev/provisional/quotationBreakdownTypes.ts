@@ -14,7 +14,7 @@
 //   treatment_type is "THE linchpin" (its own words) since it selects both labor rate and
 //   material list. draftSegment.ts already tracks is_rush/treatment_type client-side as
 //   staging fields; this file is what actually CONSUMES them for pricing.
-// - quotation.vat_inclusive, vat_amount, downpayment_percentage, quote_group_id, tier,
+// - quotation.vat_inclusive, vat_amount, quote_group_id, tier,
 //   is_selected — addendum #2. VAT is a per-quotation DECISION (some clients decline it);
 //   the RATE default is company_rule.vat_percentage (addendum #4).
 // - quotation_items.segment_id, derived_area_sqm, derived_coverage_per_sqm,
@@ -148,8 +148,6 @@ export interface ProvisionalQuotationTierResult {
   subtotal_before_vat: number;
   vat: ProvisionalVat;
   vat_inclusive: boolean; // -> quotation.vat_inclusive (addendum #2) — per-quote decision
-  downpayment_percentage: number; // -> quotation.downpayment_percentage (addendum #2)
-  downpayment_amount: number;
   grand_total: number; // conceptually -> quotation.grand_total (REAL column); never written
   // back anywhere for real — Part 2 doesn't persist real derivations
   timeline_label: string; // decorative flavor text, not a stored/computed value

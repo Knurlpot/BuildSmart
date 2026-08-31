@@ -28,7 +28,6 @@ export type ClientImportField =
   | 'contact_number'
   | 'client_address'
   | 'client_type'
-  | 'default_downpayment_percentage'
   | 'notes';
 
 export const CLIENT_IMPORT_REQUIRED_FIELDS: ClientImportField[] = ['client_name', 'contact_person', 'contact_number', 'client_address'];
@@ -52,7 +51,6 @@ export interface ExtractedClientRow {
   contact_number: string | null;
   client_address: string | null;
   client_type: ClientType | null; // null = left blank in the sheet; NOT defaulted client-side
-  default_downpayment_percentage: number | null;
   notes: string | null;
   needs_mapping: boolean; // client_name column wasn't mapped/detected
 }

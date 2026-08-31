@@ -13,7 +13,6 @@ export interface Client {
   // server. Manually chosen by whoever creates the client record, never a computed/inferred
   // insight (that would be exactly the kind of fabrication the honesty constraint rules out).
   client_type: ClientType;
-  default_downpayment_percentage?: number | null;
   notes?: string | null;
   status: ClientStatus;
   created_at: string;

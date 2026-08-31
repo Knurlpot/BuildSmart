@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, type CSSProperties, type ComponentType } from "react";
-import { Briefcase, Calendar, Hash, History, Mail, MapPin, Percent, Phone, UserCircle2 } from "lucide-react";
+import { Briefcase, Calendar, Hash, History, Mail, MapPin, Phone, UserCircle2 } from "lucide-react";
 import { useClientInsights } from "@/hooks/useClientInsights";
 import { NEUTRAL_HUE, regionToHue } from "@/lib/regionColor";
 import type { Client } from "@/types/entities";
@@ -76,8 +76,7 @@ function HistoryTile({
 // ‼️ HONESTY LINE — read before adding a block to this card.
 // REAL (shown): client_name/contact_person/contact_email/contact_number/client_address/
 // client_type (real `client` columns), and the "Client History" panel's project count,
-// most recent project, and downpayment-on-file — all derived from real quotation history
-// via useClientInsights (COUNT/MAX over quotation rows, client.default_downpayment_percentage).
+// most recent project — all derived from real quotation history via useClientInsights.
 // NOT REAL (never shown): a "usual tier" (no per-quote tier is stored anywhere), "preferred
 // materials" (nothing links a client to materials), or any behavioral/personality note —
 // there is no column anywhere that could back these. Do not add them here no matter how
@@ -261,9 +260,6 @@ export function ClientInsightCard({ client, quote }: ClientInsightCardProps) {
                           label="Most Recent"
                           value={formatDate(insights.mostRecentProject.created_at)}
                         />
-                      )}
-                      {insights.downpaymentOnFile !== null && (
-                        <HistoryTile icon={Percent} label="Downpayment on File" value={`${insights.downpaymentOnFile}%`} />
                       )}
                     </div>
                   ) : (
