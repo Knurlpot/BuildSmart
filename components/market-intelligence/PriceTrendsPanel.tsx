@@ -561,6 +561,7 @@ export function PriceTrendsPanel({ compact = false }: PriceTrendsPanelProps) {
             ))}
           </select>
         </div>
+        
         <div className="ml-auto flex items-center gap-2 rounded-lg bg-blue-50 px-3 py-1.5">
           <Info className="h-3.5 w-3.5 text-blue-500" />
           <span className="text-xs text-blue-600">Data sourced from DPWH, PSA, and uploaded pricelists</span>
@@ -571,14 +572,15 @@ export function PriceTrendsPanel({ compact = false }: PriceTrendsPanelProps) {
         <div className="mb-5">
           <p className="text-xs font-bold uppercase tracking-wider text-gray-400">Price Trends</p>
           <p className="mt-1 text-sm leading-relaxed text-gray-600">
-            Compares uploaded Supplier rates against DPWH CMPD baseline rates adjusted
+            Supplier rates against DPWH CMPD baseline rates adjusted
             by the latest PSA CMRPI commodity movement.
           </p>
         </div>
+      
         <div className="mb-6 rounded-2xl border border-orange-100 bg-orange-50/60 p-4">
           <div className="mb-2 flex items-center gap-2">
             <Bot className="h-4 w-4 text-primary" />
-            <p className="text-sm font-bold text-gray-900">AI Summary</p>
+            <p className="text-sm font-bold text-gray-900">Summary</p>
             {displayedAiSummary?.source === "gemini" && <span className="rounded-full bg-white px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-primary">Gemini</span>}
           </div>
           <QueryState
@@ -595,6 +597,7 @@ export function PriceTrendsPanel({ compact = false }: PriceTrendsPanelProps) {
             <p className="whitespace-pre-line text-sm leading-relaxed text-gray-700">{displayedAiSummary?.summary}</p>
           </QueryState>
         </div>
+
         <div className="mb-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
           <div className="rounded-xl border border-gray-100 bg-gray-50 p-4">
             <p className="text-xs font-semibold text-gray-400">Average Variance</p>
