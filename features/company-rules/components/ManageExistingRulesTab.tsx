@@ -5,10 +5,8 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import type { ColumnDef } from "@tanstack/react-table";
 import {
   AlertTriangle,
-  Ban,
   CheckCircle2,
   ClipboardList,
-  EllipsisVertical,
   ListFilter,
   Package,
   Pencil,
@@ -16,8 +14,8 @@ import {
   Ruler,
   Search,
   Truck,
+  Trash2,
   Users,
-  X,
   type LucideIcon,
 } from "lucide-react";
 import { QueryState } from "@/components/feedback/QueryState";
@@ -163,9 +161,7 @@ export function ManageExistingRulesTab({ onViewRule }: ManageExistingRulesTabPro
   const [disabledIds, setDisabledIds] = useState<Set<string>>(new Set());
   const [warningFor, setWarningFor] = useState<ExistingRuleSummary | null>(null);
   const [activeRuleId, setActiveRuleId] = useState<string | null>(null);
-  const [actionsOpen, setActionsOpen] = useState(false);
   const [filterOpen, setFilterOpen] = useState(false);
-  const [selectMode, setSelectMode] = useState(false);
   const [selectedRuleIds, setSelectedRuleIds] = useState<Set<string>>(new Set());
   const urlType = searchParams.get("type");
   const ruleFilter: RuleFilter = isRuleFilter(urlType) ? urlType : "all";
@@ -265,6 +261,11 @@ export function ManageExistingRulesTab({ onViewRule }: ManageExistingRulesTabPro
     [filteredRules, selectedRuleIds]
   );
   const selectedRuleCount = selectedRules.length;
+  const selectableRuleIds = useMemo(
+    () => filteredRules.filter((rule) => rule.status !== "Disabled").map((rule) => rule.rule_id),
+    [filteredRules]
+  );
+  const allVisibleSelected = selectableRuleIds.length > 0 && selectableRuleIds.every((id) => selectedRuleIds.has(id));
 
   const toggleRuleSelection = useCallback((ruleId: string) => {
     setSelectedRuleIds((current) => {
@@ -285,11 +286,6 @@ export function ManageExistingRulesTab({ onViewRule }: ManageExistingRulesTabPro
       return next;
     });
   }, [filteredRules]);
-
-  const stopSelecting = useCallback(() => {
-    setSelectMode(false);
-    setSelectedRuleIds(new Set());
-  }, []);
 
   const handleDisable = useCallback(async (rule: RuleWithTier) => {
     setActiveRuleId(rule.rule_id);
@@ -327,8 +323,8 @@ export function ManageExistingRulesTab({ onViewRule }: ManageExistingRulesTabPro
     for (const rule of selectedRules) {
       await handleDisable(rule);
     }
-    stopSelecting();
-  }, [handleDisable, selectedRules, stopSelecting]);
+    setSelectedRuleIds(new Set());
+  }, [handleDisable, selectedRules]);
 
   const columns = useMemo<ColumnDef<RuleWithTier>[]>(
     () => [
@@ -522,58 +518,25 @@ export function ManageExistingRulesTab({ onViewRule }: ManageExistingRulesTabPro
                 </div>
               )}
             </div>
-            {selectMode ? (
-              <div className="flex items-center gap-2 border-l border-gray-200 pl-2">
-                <span className="text-xs font-semibold text-gray-500">{selectedRuleCount} selected</span>
-                <button
-                  type="button"
-                  onClick={handleBatchDisable}
-                  disabled={selectedRuleCount === 0 || isCheckingUsage || isDisabling || activeRuleId !== null}
-                  aria-label="Disable selected rules"
-                  title="Disable selected rules"
-                  className="flex h-8 w-8 items-center justify-center rounded-lg border border-red-200 bg-white text-red-600 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  <Ban className="h-3.5 w-3.5" />
-                </button>
-                <button
-                  type="button"
-                  onClick={stopSelecting}
-                  aria-label="Cancel rule selection"
-                  title="Cancel rule selection"
-                  className="flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-500 transition hover:bg-gray-50"
-                >
-                  <X className="h-3.5 w-3.5" />
-                </button>
-              </div>
-            ) : (
-              <div className="relative border-l border-gray-200 pl-2">
-                <button
-                  type="button"
-                  onClick={() => setActionsOpen((open) => !open)}
-                  aria-label="Rule actions"
-                  title="Rule actions"
-                  aria-expanded={actionsOpen}
-                  aria-haspopup="menu"
-                  className="flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-500 transition hover:border-primary/40 hover:text-primary"
-                >
-                  <EllipsisVertical className="h-4 w-4" />
-                </button>
-                {actionsOpen && (
-                  <div className="absolute right-0 top-full z-20 mt-2 w-36 overflow-hidden rounded-xl border border-gray-200 bg-white py-1 shadow-lg">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setActionsOpen(false);
-                        setSelectMode(true);
-                      }}
-                      className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm font-medium text-gray-700 transition hover:bg-gray-50"
-                    >
-                      <CheckCircle2 className="h-4 w-4" /> Select
-                    </button>
-                  </div>
-                )}
-              </div>
-            )}
+            <span className="text-xs font-semibold text-gray-500">{selectedRuleCount} selected</span>
+            <button
+              type="button"
+              onClick={() => toggleAllVisibleRules(selectableRuleIds)}
+              disabled={selectableRuleIds.length === 0 || isCheckingUsage || isDisabling || activeRuleId !== null}
+              className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-600 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {allVisibleSelected ? "Deselect All" : "Select All"}
+            </button>
+            <button
+              type="button"
+              onClick={() => handleBatchDisable().catch(() => {})}
+              disabled={selectedRuleCount === 0 || isCheckingUsage || isDisabling || activeRuleId !== null}
+              aria-label={selectedRuleCount > 0 ? `Delete selected (${selectedRuleCount})` : "Select rules to delete"}
+              title={selectedRuleCount > 0 ? `Delete selected (${selectedRuleCount})` : "Select rules to delete"}
+              className="flex h-8 items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-2.5 text-xs font-semibold text-gray-600 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </button>
           </div>
         </div>
         <QueryState
@@ -607,17 +570,13 @@ export function ManageExistingRulesTab({ onViewRule }: ManageExistingRulesTabPro
             data={filteredRules}
             enablePagination
             pageSize={50}
-            selectable={
-              selectMode
-                ? {
-                    getRowId: (rule) => rule.rule_id,
-                    selectedIds: selectedRuleIds,
-                    onToggle: toggleRuleSelection,
-                    onToggleAll: toggleAllVisibleRules,
-                  }
-                : undefined
-            }
-            onRowClick={selectMode ? (rule) => toggleRuleSelection(rule.rule_id) : onViewRule}
+            selectable={{
+              getRowId: (rule) => rule.rule_id,
+              selectedIds: selectedRuleIds,
+              onToggle: toggleRuleSelection,
+              onToggleAll: toggleAllVisibleRules,
+            }}
+            onRowClick={onViewRule}
           />
         </QueryState>
       </div>
@@ -628,6 +587,7 @@ export function ManageExistingRulesTab({ onViewRule }: ManageExistingRulesTabPro
           {disabledIds.size} rule{disabledIds.size !== 1 ? "s" : ""} disabled this session.
         </div>
       )}
+
     </div>
   );
 }

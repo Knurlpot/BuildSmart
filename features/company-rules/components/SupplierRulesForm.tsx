@@ -445,23 +445,19 @@ export function SupplierRulesForm({ focusRuleId, onFocusHandled }: SupplierRules
                 <div
                   className={`grid grid-cols-1 items-center gap-3 ${
                     usesMinimumOrder(ruleType) && usesDiscountFields(ruleType)
-                      ? "xl:grid-cols-12"
-                      : "xl:grid-cols-2"
+                      ? "xl:grid-cols-2"
+                      : ""
                   }`}
                 >
                   {ruleType !== "" && usesMinimumOrder(ruleType) && (
-                    <div className={`${usesDiscountFields(ruleType) ? "xl:contents" : "xl:col-span-2"} flex flex-col gap-2`}>
-                      <div
-                        className={`grid grid-cols-1 items-center gap-3 sm:grid-cols-[auto_minmax(240px,1fr)] ${
-                          usesDiscountFields(ruleType) ? "xl:contents" : ""
-                        }`}
-                      >
-                        <div className="xl:col-span-2">
+                    <div className="flex min-w-0 flex-col gap-2">
+                      <div className="grid grid-cols-1 gap-1.5">
+                        <div>
                           <label className="whitespace-nowrap text-xs font-semibold text-gray-600">
                             {ruleType === "Minimum Order" ? "Minimum Order Amount" : "Order Threshold"} (₱) <span className="text-red-500">*</span>
                           </label>
                         </div>
-                        <div className="relative xl:col-span-3">
+                        <div className="relative min-w-0">
                           <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-gray-500">₱</span>
                           <input
                             type="text"
@@ -475,27 +471,21 @@ export function SupplierRulesForm({ focusRuleId, onFocusHandled }: SupplierRules
                           />
                         </div>
                       </div>
-                      {touched && !minimumOrderValid && <p className="text-xs text-red-500 xl:col-start-2">Enter a positive amount.</p>}
+                      {touched && !minimumOrderValid && <p className="text-xs text-red-500">Enter a positive amount.</p>}
                     </div>
                   )}
 
                   {ruleType !== "" && usesDiscountFields(ruleType) && (
-                    <div className={`${usesMinimumOrder(ruleType) ? "xl:contents" : "xl:col-span-2"} flex flex-col gap-2`}>
-                      <div
-                        className={`grid grid-cols-1 gap-3 ${
-                          usesMinimumOrder(ruleType)
-                            ? "items-center sm:grid-cols-[auto_minmax(240px,260px)_minmax(220px,1fr)] xl:contents"
-                            : "items-center sm:grid-cols-[auto_minmax(260px,1fr)_minmax(220px,1fr)]"
-                        }`}
-                      >
-                        <label className={`whitespace-nowrap text-xs font-semibold text-gray-600 ${usesMinimumOrder(ruleType) ? "xl:col-span-1" : ""}`}>Discount</label>
-                        <div className={`grid grid-cols-2 gap-1 rounded-lg border border-gray-200 bg-white p-1 ${usesMinimumOrder(ruleType) ? "xl:col-span-3" : ""}`}>
+                    <div className="flex min-w-0 flex-col gap-2">
+                      <div className="grid grid-cols-1 gap-2">
+                        <label className="text-xs font-semibold text-gray-600">Discount</label>
+                        <div className="grid min-w-0 grid-cols-2 gap-1 rounded-lg border border-gray-200 bg-white p-1">
                           {(["percentage", "fixed"] as DiscountKind[]).map((k) => (
                             <button
                               key={k}
                               type="button"
                               onClick={() => setDiscountKind(k)}
-                              className={`min-h-8 rounded-md px-3 py-1 text-center text-xs font-semibold transition ${
+                              className={`min-h-8 min-w-0 whitespace-nowrap rounded-md px-2 py-1 text-center text-xs font-semibold transition ${
                                 discountKind === k ? "bg-primary text-primary-foreground" : "text-gray-500 hover:bg-gray-50"
                               }`}
                             >
@@ -504,7 +494,7 @@ export function SupplierRulesForm({ focusRuleId, onFocusHandled }: SupplierRules
                           ))}
                         </div>
                         {discountKind === "percentage" ? (
-                          <div className={`relative ${usesMinimumOrder(ruleType) ? "xl:col-span-3" : ""}`}>
+                          <div className="relative min-w-0">
                             <input
                               type="text"
                               inputMode="decimal"
@@ -516,7 +506,7 @@ export function SupplierRulesForm({ focusRuleId, onFocusHandled }: SupplierRules
                             <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-sm text-gray-500">%</span>
                           </div>
                         ) : (
-                          <div className={`relative ${usesMinimumOrder(ruleType) ? "xl:col-span-3" : ""}`}>
+                          <div className="relative min-w-0">
                             <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-gray-500">₱</span>
                             <input
                               type="text"
@@ -532,7 +522,7 @@ export function SupplierRulesForm({ focusRuleId, onFocusHandled }: SupplierRules
                         )}
                       </div>
                       {touched && !discountValid && (
-                        <p className="text-xs text-red-500 xl:col-start-5">{discountKind === "percentage" ? "Enter a percentage between 0 and 100." : "Enter a positive amount."}</p>
+                        <p className="text-xs text-red-500">{discountKind === "percentage" ? "Enter a percentage between 0 and 100." : "Enter a positive amount."}</p>
                       )}
                     </div>
                   )}
