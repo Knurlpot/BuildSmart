@@ -758,59 +758,59 @@ export function PriceTrendsPanel({ compact = false }: PriceTrendsPanelProps) {
           emptyTitle="No actual-vs-DPWH variance data"
           minHeight={120}
         >
-          <div className="overflow-x-auto rounded-2xl border border-gray-100 bg-white shadow-sm">
-            <table className="w-full min-w-[1280px] table-fixed text-left text-sm">
+          <div className="overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm">
+            <table className="w-full table-fixed text-left text-[11px] leading-tight">
               <colgroup>
-                <col className="w-[26%]" />
+                <col className="w-[17%]" />
                 <col className="w-[5%]" />
                 <col className="w-[9%]" />
+                <col className="w-[8%]" />
+                <col className="w-[10%]" />
+                <col className="w-[10%]" />
+                <col className="w-[10%]" />
                 <col className="w-[7%]" />
                 <col className="w-[8%]" />
-                <col className="w-[9%]" />
-                <col className="w-[8%]" />
-                <col className="w-[6%]" />
-                <col className="w-[8%]" />
-                <col className="w-[14%]" />
+                <col className="w-[16%]" />
               </colgroup>
-              <thead className="border-b border-gray-100 bg-gray-50 text-xs uppercase tracking-wider text-gray-400">
+              <thead className="border-b border-gray-100 bg-gray-50 text-[9px] uppercase tracking-normal text-gray-400 xl:text-[10px] xl:tracking-wide">
                 <tr>
-                  <th className="px-4 py-3">Material Item</th>
-                  <th className="px-4 py-3">Unit</th>
-                  <th className="px-4 py-3">PSA CMRPI Group</th>
-                  <th className="px-4 py-3 text-right">Actual Price</th>
-                  <th className="px-4 py-3 text-right">DPWH CMPD Rate</th>
-                  <th className="px-4 py-3 text-right">PSA Adjusted Rate</th>
-                  <th className="px-4 py-3 text-right">Unit Difference</th>
-                  <th className="px-4 py-3 text-right">Variance %</th>
-                  <th className="px-4 py-3">Status</th>
-                  <th className="px-4 py-3">Primary Driver</th>
+                  <th className="px-3 py-2">Material Item</th>
+                  <th className="px-3 py-2">Unit</th>
+                  <th className="px-3 py-2">PSA CMRPI Group</th>
+                  <th className="whitespace-nowrap px-3 py-2 text-right">Actual Price</th>
+                  <th className="whitespace-nowrap px-3 py-2 text-right">DPWH CMPD Rate</th>
+                  <th className="whitespace-nowrap px-3 py-2 text-right">PSA Adjusted Rate</th>
+                  <th className="whitespace-nowrap px-3 py-2 text-right">Unit Difference</th>
+                  <th className="whitespace-nowrap px-3 py-2 text-right">Variance %</th>
+                  <th className="px-3 py-2">Status</th>
+                  <th className="px-3 py-2">Primary Driver</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {analysisRows.map((row) => (
                   <tr key={row.itemCode} className="text-gray-600">
-                    <td className="px-4 py-3">
+                    <td className="break-words px-3 py-2">
                       <p className="font-semibold text-gray-900">{row.itemName}</p>
-                      <p className="text-xs text-gray-400">{row.category}</p>
+                      <p className="mt-0.5 text-[10px] text-gray-400">{row.category}</p>
                     </td>
-                    <td className="px-4 py-3">{row.unit}</td>
-                    <td className="px-4 py-3">
+                    <td className="break-words px-3 py-2">{row.unit}</td>
+                    <td className="break-words px-3 py-2">
                       <p className="font-semibold text-gray-700" title={row.psaMappingReason}>
                         {row.psaCommodityGroup}
                       </p>
                     </td>
-                    <td className="px-4 py-3 text-right">{fmt(row.actualPrice)}</td>
-                    <td className="px-4 py-3 text-right">{fmtMaybe(row.dpwhRate)}</td>
-                    <td className="px-4 py-3 text-right">{fmtMaybe(row.psaAdjustedRate)}</td>
-                    <td className={`px-4 py-3 text-right font-semibold ${(row.unitVariance ?? 0) > 0 ? "text-red-500" : "text-green-600"}`}>
+                    <td className="whitespace-nowrap px-3 py-2 text-right">{fmt(row.actualPrice)}</td>
+                    <td className="whitespace-nowrap px-3 py-2 text-right">{fmtMaybe(row.dpwhRate)}</td>
+                    <td className="whitespace-nowrap px-3 py-2 text-right">{fmtMaybe(row.psaAdjustedRate)}</td>
+                    <td className={`whitespace-nowrap px-3 py-2 text-right font-semibold ${(row.unitVariance ?? 0) > 0 ? "text-red-500" : "text-green-600"}`}>
                       {fmtMaybe(row.unitVariance)}
                     </td>
-                    <td className={`px-4 py-3 text-right font-semibold ${(row.deviationPct ?? 0) > 0 ? "text-red-500" : "text-green-600"}`}>
+                    <td className={`whitespace-nowrap px-3 py-2 text-right font-semibold ${(row.deviationPct ?? 0) > 0 ? "text-red-500" : "text-green-600"}`}>
                       {row.deviationPct === null ? "N/A" : pct(row.deviationPct)}
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="px-3 py-2">
                       <span
-                        className={`rounded-full px-2 py-1 text-xs font-bold ${
+                        className={`inline-block rounded-full px-1.5 py-0.5 text-[10px] font-bold ${
                           row.status === "Unfavorable"
                             ? "bg-red-50 text-red-600"
                             : row.status === "Favorable"
@@ -821,7 +821,7 @@ export function PriceTrendsPanel({ compact = false }: PriceTrendsPanelProps) {
                         {row.status}
                       </span>
                     </td>
-                    <td className="px-4 py-3">{row.primaryDriver}</td>
+                    <td className="break-words px-3 py-2">{row.primaryDriver}</td>
                   </tr>
                 ))}
               </tbody>

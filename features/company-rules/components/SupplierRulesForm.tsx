@@ -443,7 +443,7 @@ export function SupplierRulesForm({ focusRuleId, onFocusHandled }: SupplierRules
 
               {(ruleType !== "" && usesMinimumOrder(ruleType)) || (ruleType !== "" && usesDiscountFields(ruleType)) ? (
                 <div
-                  className={`grid grid-cols-1 items-center gap-3 ${
+                  className={`grid grid-cols-1 items-end gap-3 ${
                     usesMinimumOrder(ruleType) && usesDiscountFields(ruleType)
                       ? "xl:grid-cols-2"
                       : ""
