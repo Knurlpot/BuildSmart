@@ -442,14 +442,62 @@ export function SupplierRulesForm({ focusRuleId, onFocusHandled }: SupplierRules
               </div>
 
               {(ruleType !== "" && usesMinimumOrder(ruleType)) || (ruleType !== "" && usesDiscountFields(ruleType)) ? (
-                <div
-                  className={`grid grid-cols-1 items-end gap-3 ${
-                    usesMinimumOrder(ruleType) && usesDiscountFields(ruleType)
-                      ? "xl:grid-cols-2"
-                      : ""
-                  }`}
-                >
-                  {ruleType !== "" && usesMinimumOrder(ruleType) && (
+                <div className="flex flex-col gap-3">
+                  {usesDiscountFields(ruleType) && (
+                    <div className="flex min-w-0 flex-col gap-2">
+                      <div className="grid grid-cols-1 gap-2">
+                        <label className="text-xs font-semibold text-gray-600">Discount</label>
+                        <div className="grid min-w-0 grid-cols-1 gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+                          <div className="grid min-w-0 grid-cols-2 gap-1 rounded-lg border border-gray-200 bg-white p-1">
+                            {(["percentage", "fixed"] as DiscountKind[]).map((k) => (
+                              <button
+                                key={k}
+                                type="button"
+                                onClick={() => setDiscountKind(k)}
+                                className={`min-h-8 min-w-0 whitespace-nowrap rounded-md px-2 py-1 text-center text-xs font-semibold transition ${
+                                  discountKind === k ? "bg-primary text-primary-foreground" : "text-gray-500 hover:bg-gray-50"
+                                }`}
+                              >
+                                {k === "percentage" ? "Percentage" : "Fixed Amount"}
+                              </button>
+                            ))}
+                          </div>
+                          {discountKind === "percentage" ? (
+                            <div className="relative min-w-0">
+                              <input
+                                type="text"
+                                inputMode="decimal"
+                                value={percentageRate}
+                                onChange={(e) => setPercentageRate(e.target.value.replace(/[^\d.]/g, ""))}
+                                placeholder="5"
+                                className={`${inputCls} pr-8 tabular-nums`}
+                              />
+                              <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-sm text-gray-500">%</span>
+                            </div>
+                          ) : (
+                            <div className="relative min-w-0">
+                              <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-gray-500">₱</span>
+                              <input
+                                type="text"
+                                inputMode="numeric"
+                                value={fixedAmount}
+                                onFocus={(e) => moveCaretBeforeDecimals(e.currentTarget)}
+                                onKeyDown={(e) => handlePesoKeyDown(e, fixedAmount, setFixedAmount)}
+                                onChange={(e) => setFixedAmount(formatPesoInputFromDigits(e.target.value))}
+                                placeholder="15,000.00"
+                                className={`${inputCls} pl-7 tabular-nums`}
+                              />
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                      {touched && !discountValid && (
+                        <p className="text-xs text-red-500">{discountKind === "percentage" ? "Enter a percentage between 0 and 100." : "Enter a positive amount."}</p>
+                      )}
+                    </div>
+                  )}
+
+                  {usesMinimumOrder(ruleType) && (
                     <div className="flex min-w-0 flex-col gap-2">
                       <div className="grid grid-cols-1 gap-1.5">
                         <div>
@@ -472,58 +520,6 @@ export function SupplierRulesForm({ focusRuleId, onFocusHandled }: SupplierRules
                         </div>
                       </div>
                       {touched && !minimumOrderValid && <p className="text-xs text-red-500">Enter a positive amount.</p>}
-                    </div>
-                  )}
-
-                  {ruleType !== "" && usesDiscountFields(ruleType) && (
-                    <div className="flex min-w-0 flex-col gap-2">
-                      <div className="grid grid-cols-1 gap-2">
-                        <label className="text-xs font-semibold text-gray-600">Discount</label>
-                        <div className="grid min-w-0 grid-cols-2 gap-1 rounded-lg border border-gray-200 bg-white p-1">
-                          {(["percentage", "fixed"] as DiscountKind[]).map((k) => (
-                            <button
-                              key={k}
-                              type="button"
-                              onClick={() => setDiscountKind(k)}
-                              className={`min-h-8 min-w-0 whitespace-nowrap rounded-md px-2 py-1 text-center text-xs font-semibold transition ${
-                                discountKind === k ? "bg-primary text-primary-foreground" : "text-gray-500 hover:bg-gray-50"
-                              }`}
-                            >
-                              {k === "percentage" ? "Percentage" : "Fixed Amount"}
-                            </button>
-                          ))}
-                        </div>
-                        {discountKind === "percentage" ? (
-                          <div className="relative min-w-0">
-                            <input
-                              type="text"
-                              inputMode="decimal"
-                              value={percentageRate}
-                              onChange={(e) => setPercentageRate(e.target.value.replace(/[^\d.]/g, ""))}
-                              placeholder="5"
-                              className={`${inputCls} pr-8 tabular-nums`}
-                            />
-                            <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-sm text-gray-500">%</span>
-                          </div>
-                        ) : (
-                          <div className="relative min-w-0">
-                            <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-gray-500">₱</span>
-                            <input
-                              type="text"
-                              inputMode="numeric"
-                              value={fixedAmount}
-                              onFocus={(e) => moveCaretBeforeDecimals(e.currentTarget)}
-                              onKeyDown={(e) => handlePesoKeyDown(e, fixedAmount, setFixedAmount)}
-                              onChange={(e) => setFixedAmount(formatPesoInputFromDigits(e.target.value))}
-                              placeholder="15,000.00"
-                              className={`${inputCls} pl-7 tabular-nums`}
-                            />
-                          </div>
-                        )}
-                      </div>
-                      {touched && !discountValid && (
-                        <p className="text-xs text-red-500">{discountKind === "percentage" ? "Enter a percentage between 0 and 100." : "Enter a positive amount."}</p>
-                      )}
                     </div>
                   )}
                 </div>

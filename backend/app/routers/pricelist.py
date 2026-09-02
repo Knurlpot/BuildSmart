@@ -16,7 +16,6 @@ from app.database import get_db
 from app.ingest.models import MaterialPriceVariance
 from app.models import Category, HistoricalPriceRecord, Items, PriceListReviewItem, PriceListUpload, SourcePriority
 from app.schemas.pricelist import NormalizedPriceRecord, SourceAgency
-from app.services.dpwh_published import fetch_dpwh_cmpd_release, save_dpwh_cmpd_publish_records
 from app.services.match_cache import invalidate_cached_match, upsert_cached_match
 from app.services.file_hash import calculate_file_hash, calculate_file_size
 from app.services.philippine_regions import infer_region_from_location
@@ -901,20 +900,8 @@ def update_review_item(
 @router.post("/fetch-published", response_model=FetchPublishedResponse)
 def fetch_published(
     payload: FetchPublishedRequest = Body(...),
-    db: Session = Depends(get_db),
 ):
-    if payload.source != "DPWH":
-        raise HTTPException(status_code=400, detail="Only DPWH published source is supported for this endpoint")
-    if not payload.region:
-        raise HTTPException(status_code=400, detail="region is required for DPWH published fetch")
-
-    try:
-        release_payload = fetch_dpwh_cmpd_release(payload.region)
-    except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"DPWH fetch failed: {exc}") from exc
-
-    saved_count = save_dpwh_cmpd_publish_records(db, release_payload)
-    return FetchPublishedResponse(auto_saved_count=saved_count, flagged=[])
+    raise HTTPException(status_code=410, detail="DPWH CMPD scraping has been removed. Upload DPWH releases manually instead.")
 
 
 @router.post("/check-version", response_model=VersionCheckResponse)

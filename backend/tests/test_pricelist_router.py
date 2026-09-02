@@ -913,104 +913,31 @@ def test_rejecting_review_item_invalidates_matching_cache_entry(db_session):
     assert cached_after is None
 
 
-def test_check_version_returns_new_available():
+def test_check_version_reports_dpwh_scraping_removed():
     response = client.post(
         "/pricelist/check-version",
         json={"source": "DPWH", "region": "NCR"},
     )
 
     assert response.status_code == 200
-    assert response.json()["status"] == "new_available"
-    assert "DPWH CMPD" in response.json()["release_label"]
+    assert response.json() == {"status": "up_to_date", "release_label": "DPWH CMPD scraping removed"}
 
 
-def test_fetch_published_saves_dpwh_records(db_session):
-    sample_payload = {
-        "rows": [
-            {
-                "item_name": "Portland Cement Type 1",
-                "unit": "bag",
-                "price": 260.0,
-                "region": "NCR",
-                "quarter": "Q1",
-                "year": 2026,
-            }
-        ]
-    }
-
+def test_fetch_published_dpwh_scraping_removed(db_session):
     def override_get_db():
         yield db_session
 
     app.dependency_overrides[get_db] = override_get_db
     try:
-        with patch.object(pricelist_router, "fetch_dpwh_cmpd_release", return_value=sample_payload):
-            response = client.post(
-                "/pricelist/fetch-published",
-                json={"source": "DPWH", "region": "NCR"},
-            )
+        response = client.post(
+            "/pricelist/fetch-published",
+            json={"source": "DPWH", "region": "NCR"},
+        )
     finally:
         del app.dependency_overrides[get_db]
 
-    assert response.status_code == 200
-    assert response.json() == {"auto_saved_count": 1, "flagged": []}
-
-    saved_row = db_session.execute(
-        select(HistoricalPriceRecord).where(HistoricalPriceRecord.price_source == "DPWH")
-    ).scalar_one()
-    assert saved_row.region == "NCR"
-    assert saved_row.quarter == "Q1"
-    assert saved_row.year == 2026
-    assert float(saved_row.price) == 260.0
-
-
-def test_fetch_published_saves_dpwh_location_specific_prices(db_session):
-    sample_payload = {
-        "rows": [
-            {
-                "item_name": "Portland Cement Type 1",
-                "unit": "bag",
-                "price": 260.0,
-                "region": "NIR",
-                "location": "Bacolod City",
-                "quarter": "Q1",
-                "year": 2026,
-            },
-            {
-                "item_name": "Portland Cement Type 1",
-                "unit": "bag",
-                "price": 275.0,
-                "region": "NIR",
-                "location": "Dumaguete City",
-                "quarter": "Q1",
-                "year": 2026,
-            },
-        ]
-    }
-
-    def override_get_db():
-        yield db_session
-
-    app.dependency_overrides[get_db] = override_get_db
-    try:
-        with patch.object(pricelist_router, "fetch_dpwh_cmpd_release", return_value=sample_payload):
-            response = client.post(
-                "/pricelist/fetch-published",
-                json={"source": "DPWH", "region": "NIR"},
-            )
-    finally:
-        del app.dependency_overrides[get_db]
-
-    assert response.status_code == 200
-    assert response.json()["auto_saved_count"] == 2
-
-    saved_rows = db_session.execute(
-        select(HistoricalPriceRecord)
-        .where(HistoricalPriceRecord.price_source == "DPWH")
-        .where(HistoricalPriceRecord.region == "NIR")
-        .order_by(HistoricalPriceRecord.location)
-    ).scalars().all()
-    assert [row.location for row in saved_rows] == ["Bacolod City", "Dumaguete City"]
-    assert [float(row.price) for row in saved_rows] == [260.0, 275.0]
+    assert response.status_code == 410
+    assert response.json()["detail"] == "DPWH CMPD scraping has been removed. Upload DPWH releases manually instead."
 
 
 def test_fetch_published_index_returns_psa_variance_rows(db_session):

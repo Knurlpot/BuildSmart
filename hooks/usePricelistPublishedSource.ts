@@ -1,8 +1,7 @@
 // Assumed endpoints — UNVERIFIED, confirm with the backend team:
-//   POST /api/pricelist/fetch-published (body: { source: 'DPWH', region })
-//        -> { auto_saved_count: number, flagged: FlaggedPriceDeviation[] }
-//        DPWH-CMPD ONLY — DPWH publishes real peso prices per material, so a peso
-//        deviation/approve flow is meaningful. Never call this for PSA (see below).
+//   POST /api/pricelist/fetch-published
+//        Removed. DPWH CMPD web scraping is intentionally disabled; use the
+//        upload/matching flow for DPWH release files instead.
 //   POST /api/pricelist/deviations/resolve
 //        (body: { item_code, quarter, year, action: 'approve'|'reject' }) -> { resolved: boolean }
 //   POST /api/pricelist/deviations/resolve-bulk
@@ -247,10 +246,10 @@ export function usePricelistPublishedSource() {
   const dpwhCatalog = useBackendFetch<DpwhCatalogRow[]>(catalogEnabled ? '/pricelist/catalog/dpwh' : null);
   const loadDpwhCatalog = useCallback(() => setCatalogEnabled(true), []);
   const deleteDpwhRecord = useBackendMutation<{ deleted: boolean }>();
-  const fetchPublishedMutate = fetchPublished.mutate;
   const resolveDeviationMutate = resolveDeviation.mutate;
   const resolveBulkMutate = resolveBulk.mutate;
   const deleteDpwhRecordMutate = deleteDpwhRecord.mutate;
+  const fetchPublishedReset = fetchPublished.reset;
   const dpwhCatalogRefetch = dpwhCatalog.refetch;
   // Deletes just this one price record (see the endpoint's own scoping to
   // price_source == "DPWH") — the underlying item and its other price
@@ -266,12 +265,13 @@ export function usePricelistPublishedSource() {
   const checkDpwhVersionMutate = checkDpwhVersion.mutate;
   const checkPsaVersionMutate = checkPsaVersion.mutate;
 
-  const trigger = useCallback(async (region: string) => {
+  const trigger = useCallback(async (region?: string) => {
+    void region;
     setResolutions(new Map());
-    const res = await fetchPublishedMutate('/pricelist/fetch-published', { source: 'DPWH', region }, 'POST');
-    setFlagged(res.flagged ?? []);
-    return res;
-  }, [fetchPublishedMutate]);
+    setFlagged([]);
+    fetchPublishedReset();
+    throw new Error('DPWH CMPD scraping has been removed. Upload DPWH releases manually instead.');
+  }, [fetchPublishedReset]);
 
   const resolve = useCallback(async (item: FlaggedPriceDeviation, action: 'approve' | 'reject') => {
     await resolveDeviationMutate(
