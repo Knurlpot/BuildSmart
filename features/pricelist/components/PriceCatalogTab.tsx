@@ -19,6 +19,14 @@ function formatDate(iso: string) {
   return d.toLocaleDateString("en-PH", { month: "short", day: "numeric", year: "numeric" });
 }
 
+function sortCategoryOptions(options: string[]) {
+  return [...options].sort((a, b) => {
+    if (a === "Others") return 1;
+    if (b === "Others") return -1;
+    return a.localeCompare(b);
+  });
+}
+
 function SelectCell({
   id,
   isSelected,
@@ -163,7 +171,7 @@ export function PriceCatalogTab() {
   );
   const categoryOptions = useMemo(() => {
     const rows = subTab === "dpwh" ? dpwhCatalog.records : supplierCatalog.records;
-    return Array.from(new Set(rows.map((r) => r.category_type ?? "Uncategorized"))).sort();
+    return sortCategoryOptions(Array.from(new Set(rows.map((r) => r.category_type ?? "Uncategorized"))));
   }, [subTab, dpwhCatalog.records, supplierCatalog.records]);
 
   // Rows in the currently active sub-tab's (region/region-filtered) view that
@@ -564,8 +572,9 @@ export function PriceCatalogTab() {
                   onChange={(e) => setRegion(e.target.value)}
                   className="min-w-36 rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-primary focus:outline-none"
                 >
+                  <option>All</option>
                   {REGIONS.map((r) => (
-                    <option key={r}>{r}</option>
+                    r !== "All" && <option key={r}>{r}</option>
                   ))}
                 </select>
               </div>

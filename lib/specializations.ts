@@ -51,5 +51,5 @@ export function columnsToSpecializations(c: {
 }
 
 export function formatSpecializations(selected: string[]): string {
-  return selected.length ? `[${selected.join(', ')}]` : '—';
+  return selected.length ? selected.join(', ') : '—';
 }

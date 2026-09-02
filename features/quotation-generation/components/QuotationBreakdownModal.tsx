@@ -40,6 +40,11 @@ function SourceBadge({ source }: { source: string }) {
   return <span className={`shrink-0 rounded px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide ${SOURCE_BADGE[source] ?? "bg-gray-100 text-gray-600"}`}>{source}</span>;
 }
 
+function sourceDisplayForLine(line: ProvisionalItemLine) {
+  const selectedSupplier = line.supplier_options.find((supplier) => supplier.supplier_id === line.selected_supplier_id);
+  return selectedSupplier?.supplier_name ?? line.pricing_reference.price_source;
+}
+
 function pricelistBasisLabel(basis: PricelistBasis) {
   return basis === "Uploaded" ? "Supplier" : "DPWH CMPD";
 }
@@ -58,7 +63,7 @@ function PricingReferenceBox({ line }: { line: ProvisionalItemLine }) {
     <div className="flex flex-col gap-1 rounded-lg border border-gray-100 bg-gray-50/60 px-3 py-2 text-[11px]">
       <div className="flex items-center justify-between">
         <span className="font-semibold uppercase tracking-wide text-gray-400">Pricing Reference</span>
-        <SourceBadge source={ref.price_source} />
+        <SourceBadge source={sourceDisplayForLine(line)} />
       </div>
       <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-gray-500">
         <span>Recorded: {dateLabel}</span>

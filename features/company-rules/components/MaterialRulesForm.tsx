@@ -85,6 +85,7 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
   const [supplierFilter, setSupplierFilter] = useState<string>(DPWH_SUPPLIER_VALUE);
   const [categoryFilter, setCategoryFilter] = useState<CategoryType | "">("");
   const [checkedCatalogKeys, setCheckedCatalogKeys] = useState<Set<string>>(new Set());
+  const [checkedCatalogItems, setCheckedCatalogItems] = useState<Record<string, CatalogItem>>({});
   const [treatmentType, setTreatmentType] = useState("");
   const [treatmentTier, setTreatmentTier] = useState<MaterialTreatmentTier>("Practical");
   const [warrantyYears, setWarrantyYears] = useState<number | "">("");
@@ -161,14 +162,22 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
       item.unit,
     ].filter(Boolean).join(" · ");
 
-  const checkedItems = catalogItems.filter((i) => checkedCatalogKeys.has(i.catalogKey));
+  const checkedItems = Object.values(checkedCatalogItems);
 
-  const toggleChecked = (catalogKey: string) => {
+  const toggleChecked = (item: CatalogItem) => {
     setCheckedCatalogKeys((prev) => {
       const next = new Set(prev);
-      if (next.has(catalogKey)) next.delete(catalogKey);
-      else next.add(catalogKey);
+      if (next.has(item.catalogKey)) next.delete(item.catalogKey);
+      else next.add(item.catalogKey);
       return next;
+    });
+    setCheckedCatalogItems((prev) => {
+      if (prev[item.catalogKey]) {
+        const next = { ...prev };
+        delete next[item.catalogKey];
+        return next;
+      }
+      return { ...prev, [item.catalogKey]: item };
     });
   };
 
@@ -181,6 +190,7 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
     setSupplierFilter(DPWH_SUPPLIER_VALUE);
     setCategoryFilter("");
     setCheckedCatalogKeys(new Set());
+    setCheckedCatalogItems({});
     setTreatmentType("");
     setTreatmentTier("Practical");
     setWarrantyYears("");
@@ -666,10 +676,7 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
                 </div>
                 <select
                   value={supplierFilter}
-                  onChange={(e) => {
-                    setSupplierFilter(e.target.value);
-                    setCheckedCatalogKeys(new Set());
-                  }}
+                  onChange={(e) => setSupplierFilter(e.target.value)}
                   className={`${inputCls} min-w-0`}
                   disabled={suppliersLoading}
                   aria-label="Supplier source"
@@ -714,7 +721,7 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
                         <input
                           type="checkbox"
                           checked={checkedCatalogKeys.has(item.catalogKey)}
-                          onChange={() => toggleChecked(item.catalogKey)}
+                          onChange={() => toggleChecked(item)}
                           className="h-4 w-4 shrink-0 rounded border-gray-300 text-primary focus:ring-2 focus:ring-primary/30"
                         />
                         <div className="min-w-0 flex-1">
@@ -757,9 +764,9 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
 
               <div className="rounded-xl border border-gray-100 bg-gray-50/60 p-3">
                 <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Selected Materials</p>
-                <div className="mt-2 divide-y divide-gray-100 overflow-hidden rounded-lg border border-gray-100 bg-white">
+                <div className={`mt-2 divide-y divide-gray-100 rounded-lg border border-gray-100 bg-white ${checkedItems.length > 5 ? "max-h-60 overflow-y-auto" : "overflow-hidden"}`}>
                   {checkedItems.map((item) => (
-                    <div key={item.item_code} className="flex items-center justify-between gap-3 px-3 py-2">
+                    <div key={item.catalogKey} className="flex items-center justify-between gap-3 px-3 py-2">
                       <div className="min-w-0">
                         <p className="truncate text-sm font-semibold text-gray-800">{item.item_name}</p>
                         <p className="truncate text-[11px] text-gray-400">{itemMeta(item)}</p>

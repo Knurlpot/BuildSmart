@@ -37,11 +37,18 @@ export async function GET(request: NextRequest, { params }: Params) {
   if (!Number.isInteger(id)) return NextResponse.json({ error: "Invalid client id." }, { status: 400 });
 
   const result = await pool.query(
-    `SELECT client_id, company_id, client_name, contact_person, contact_email,
-            contact_number, client_address, client_type,
-            notes, status, created_at::text AS created_at
-     FROM client
-     WHERE client_id = $1 AND company_id = $2
+    `SELECT c.client_id, c.company_id, c.client_name, c.contact_person, c.contact_email,
+            c.contact_number, c.client_address,
+            CASE WHEN quote_counts.project_count > 0 THEN 'Returning' ELSE 'New' END AS client_type,
+            c.notes, c.status, c.created_at::text AS created_at,
+            quote_counts.project_count AS quotation_project_count
+     FROM client c
+     LEFT JOIN LATERAL (
+       SELECT COUNT(*)::int AS project_count
+       FROM quotation q
+       WHERE q.client_id = c.client_id AND q.company_id = c.company_id
+     ) quote_counts ON TRUE
+     WHERE c.client_id = $1 AND c.company_id = $2
      LIMIT 1`,
     [id, companyId]
   );

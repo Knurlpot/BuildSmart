@@ -34,7 +34,7 @@ export default function DashboardPage() {
     isLoading: isActivityLoading,
     error: activityError,
   } = useFetch<DashboardActivity[]>("/api/dashboard/activity");
-  const firstName = currentUser?.first_name?.trim() || "there";
+  const firstName = currentUser?.email?.split("@")[0] || "there";
   const now = new Date();
   const quotationsThisMonth = (quotations ?? []).filter((quotation) => {
     const created = new Date(quotation.created_at);

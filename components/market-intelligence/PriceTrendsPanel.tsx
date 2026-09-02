@@ -142,6 +142,42 @@ function TrendIcon({ direction }: { direction: MaterialPriceVariance["trend_dire
   return <Minus className="h-4 w-4 text-gray-400" />;
 }
 
+function buildActionableRecommendations({
+  unfavorableCount,
+  markupDrivenCount,
+  marketDrivenCount,
+  topItem,
+  topSupplier,
+}: {
+  unfavorableCount: number;
+  markupDrivenCount: number;
+  marketDrivenCount: number;
+  topItem?: VarianceAnalysisRow;
+  topSupplier?: SupplierComparisonRow;
+}) {
+  const recommendations: string[] = [];
+
+  if (topItem && topItem.deviationPct !== null && topItem.deviationPct > 0) {
+    recommendations.push(`Review ${topItem.itemName} first because it is ${topItem.deviationPct.toFixed(1)}% above the adjusted DPWH benchmark.`);
+  }
+  if (markupDrivenCount > marketDrivenCount) {
+    recommendations.push("Negotiate with suppliers or request alternate quotations for markup-driven items before approving the estimate.");
+  }
+  if (marketDrivenCount > markupDrivenCount) {
+    recommendations.push("Update contingency and escalation assumptions for market-driven increases before final pricing review.");
+  }
+  if (topSupplier) {
+    recommendations.push(`Use ${topSupplier.supplierName} as the first comparison point for procurement because it has the strongest current supplier benchmark.`);
+  }
+  if (unfavorableCount > 0) {
+    recommendations.push("Flag unfavorable materials in the BOQ so the estimator can confirm whether to substitute, negotiate, or keep the specified material.");
+  }
+
+  return recommendations.length > 0
+    ? recommendations.slice(0, 4)
+    : ["Upload supplier pricelists and DPWH benchmark data to generate contractor actions."];
+}
+
 interface PriceTrendsPanelProps {
   /** Hide sections that only make sense in the full Market Intelligence context. */
   compact?: boolean;
@@ -500,6 +536,13 @@ export function PriceTrendsPanel({ compact = false }: PriceTrendsPanelProps) {
   const displayedAiSummary = canGenerateAiSummary && aiSummaryResolved.key === aiSummaryRequestKey ? aiSummaryResolved.data : null;
   const displayedAiSummaryError = canGenerateAiSummary && aiSummaryResolved.key === aiSummaryRequestKey ? aiSummaryResolved.error : null;
   const displayedAiSummaryLoading = canGenerateAiSummary && aiSummaryResolved.key !== aiSummaryRequestKey;
+  const actionableRecommendations = useMemo(() => buildActionableRecommendations({
+    unfavorableCount: varianceSummary.unfavorable,
+    markupDrivenCount: varianceSummary.markupDriven,
+    marketDrivenCount: varianceSummary.marketDriven,
+    topItem: analysisRows.find((row) => row.status === "Unfavorable"),
+    topSupplier: supplierComparisons[0],
+  }), [analysisRows, supplierComparisons, varianceSummary.marketDriven, varianceSummary.markupDriven, varianceSummary.unfavorable]);
 
   useEffect(() => {
     if (historical.isLoading || variances.isLoading) return;
@@ -918,11 +961,11 @@ export function PriceTrendsPanel({ compact = false }: PriceTrendsPanelProps) {
             <Truck className="h-4 w-4 text-gray-400" />
             <p className="font-bold text-gray-900">Actionable Recommendations</p>
           </div>
-          <div className="space-y-3 text-sm leading-relaxed text-gray-600">
-            <p>Prioritize negotiation on items tagged supplier/procurement markup, especially high-value unfavorable rows.</p>
-            <p>For PSA market-driven increases, update POW/DUPA contingencies and escalation assumptions before final ABC review.</p>
-            <p>For missing DPWH benchmarks, fetch the correct regional CMPD release or request district DEO/eFOI support before approval.</p>
-          </div>
+          <ul className="list-disc space-y-3 pl-5 text-sm leading-relaxed text-gray-600">
+            {actionableRecommendations.map((recommendation) => (
+              <li key={recommendation}>{recommendation}</li>
+            ))}
+          </ul>
         </div>
       </div>
 

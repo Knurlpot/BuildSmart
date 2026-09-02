@@ -29,6 +29,14 @@ function materialKey(row: SavedPriceRecord) {
   return [row.item_name.trim().toLowerCase(), row.unit.trim().toLowerCase(), row.category_type ?? ""].join("|");
 }
 
+function sortCategoryOptions(options: string[]) {
+  return [...options].sort((a, b) => {
+    if (a === "Others") return 1;
+    if (b === "Others") return -1;
+    return a.localeCompare(b);
+  });
+}
+
 export function SupplierBenchmarkContent() {
   const [region, setRegion] = useState("All");
   const [category, setCategory] = useState("All");
@@ -39,7 +47,7 @@ export function SupplierBenchmarkContent() {
   const rows = useMemo(() => data ?? [], [data]);
 
   const categoryOptions = useMemo(
-    () => Array.from(new Set(rows.map((row) => row.category_type ?? "Uncategorized"))).sort(),
+    () => sortCategoryOptions(Array.from(new Set(rows.map((row) => row.category_type ?? "Uncategorized")))),
     [rows]
   );
 
@@ -209,8 +217,9 @@ export function SupplierBenchmarkContent() {
                   <thead>
                     <tr className="border-b border-gray-100 text-xs uppercase tracking-wide text-gray-400">
                       <th className="px-5 py-3">Rank</th>
-                      <th className="px-5 py-3">Supplier</th>
-                      <th className="px-5 py-3">Brand</th>
+                      <th className="w-[28%] px-5 py-3">Supplier</th>
+                      <th className="w-[18%] px-5 py-3">Brand</th>
+                      <th className="w-[18%] px-5 py-3">Location</th>
                       <th className="px-5 py-3">Price</th>
                       <th className="px-5 py-3">Gap</th>
                       <th className="px-5 py-3">Effective</th>
@@ -223,11 +232,12 @@ export function SupplierBenchmarkContent() {
                       return (
                         <tr key={offer.historicalrec_id}>
                           <td className="px-5 py-3 text-gray-500">#{index + 1}</td>
-                          <td className="px-5 py-3">
+                          <td className="w-[28%] px-5 py-3 align-top">
                             <p className="font-semibold text-gray-900">{offer.supplier_name ?? "Unassigned"}</p>
                             <p className="text-xs text-gray-400">{offer.region}</p>
                           </td>
-                          <td className="px-5 py-3 text-gray-600">{offer.brand || "-"}</td>
+                          <td className="w-[18%] px-5 py-3 align-top text-gray-600">{offer.brand || "-"}</td>
+                          <td className="w-[18%] px-5 py-3 align-top text-gray-600">{offer.supplier_location || "-"}</td>
                           <td className="px-5 py-3 font-bold text-gray-900">{fmt(offer.price)}</td>
                           <td className="px-5 py-3">
                             {index === 0 ? (

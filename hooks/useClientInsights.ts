@@ -22,7 +22,8 @@ export interface ClientInsights {
   hasHistory: boolean;
   clientType: ClientType;
   projectCount: number;
-  mostRecentProject: { project_name: string; created_at: string } | null;
+  projects: { quote_id: number; project_name: string; status: string; accepted_tier: "Practical" | "Premium" | null; created_at: string }[];
+  mostRecentProject: { quote_id: number; project_name: string; status: string; accepted_tier: "Practical" | "Premium" | null; created_at: string } | null;
 }
 
 export interface UseClientInsightsResult {
