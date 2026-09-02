@@ -2,7 +2,7 @@
 
 // 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Check, EllipsisVertical, FileText, FolderOpen, ListFilter, Plus, Search, Trash2, Upload, Users, X } from "lucide-react";
+import { Check, ChevronUp, EllipsisVertical, FileText, FolderOpen, ListFilter, Plus, Search, Trash2, Upload, Users, X } from "lucide-react";
 import { RequireOnboardingStep } from "@/components/auth/RequireOnboardingStep";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -602,7 +602,6 @@ function OpenProjectsTabs() {
   } | null>(null);
   const [clientCount, setClientCount] = useState(0);
   const [showClientImport, setShowClientImport] = useState(false);
-  const [clientActionsOpen, setClientActionsOpen] = useState(false);
   const [clientImportFiles, setClientImportFiles] = useState<File[]>([]);
   const [clientImportKey, setClientImportKey] = useState(0);
 
@@ -652,33 +651,20 @@ function OpenProjectsTabs() {
             <Plus className="h-4 w-4" /> Create New
           </button>
           {activeTab === "clients" && (
-            <div className="relative">
-              <button
-                type="button"
-                onClick={() => setClientActionsOpen((open) => !open)}
-                aria-label="Client actions"
-                title="Client actions"
-                aria-expanded={clientActionsOpen}
-                aria-haspopup="menu"
-                className="flex h-10 w-10 items-center justify-center rounded-xl border border-gray-200 bg-white text-gray-600 shadow-sm transition hover:border-primary hover:text-primary"
-              >
-                <EllipsisVertical className="h-5 w-5" />
-              </button>
-              {clientActionsOpen && (
-                <div className="absolute right-0 top-full z-20 mt-2 w-44 overflow-hidden rounded-xl border border-gray-200 bg-white py-1 shadow-lg">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setClientActionsOpen(false);
-                      toggleClientImport();
-                    }}
-                    className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm font-medium text-gray-700 transition hover:bg-gray-50"
-                  >
-                    <Upload className="h-4 w-4" /> Import Clients
-                  </button>
-                </div>
-              )}
-            </div>
+            <button
+              type="button"
+              onClick={toggleClientImport}
+              aria-expanded={showClientImport}
+              className={`flex items-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-semibold shadow-sm transition ${
+                showClientImport
+                  ? "border-primary bg-orange-50 text-primary"
+                  : "border-gray-200 bg-white text-gray-700 hover:border-primary hover:text-primary"
+              }`}
+            >
+              <Upload className="h-4 w-4" />
+              Import Clients
+              {showClientImport && <ChevronUp className="h-4 w-4" />}
+            </button>
           )}
         </div>
       </div>

@@ -9,7 +9,6 @@ type UpdateClientPayload = {
   contact_email?: string | null;
   contact_number?: string | null;
   client_address?: string | null;
-  client_type?: "New" | "Returning";
   notes?: string | null;
 };
 
@@ -68,28 +67,36 @@ export async function PATCH(request: NextRequest, { params }: Params) {
   const body = (await request.json().catch(() => null)) as UpdateClientPayload | null;
   const clientName = cleanText(body?.client_name);
   if (!clientName) return NextResponse.json({ error: "Client name is required." }, { status: 400 });
-  const clientType = body?.client_type === "Returning" ? "Returning" : "New";
-
   const result = await pool.query(
-    `UPDATE client
+    `WITH updated AS (
+       UPDATE client
      SET client_name = $1,
          contact_person = $2,
          contact_email = $3,
          contact_number = $4,
          client_address = $5,
-         client_type = $6,
-         notes = $7
-     WHERE client_id = $8 AND company_id = $9
+         notes = $6
+     WHERE client_id = $7 AND company_id = $8
      RETURNING client_id, company_id, client_name, contact_person, contact_email,
-               contact_number, client_address, client_type,
-               notes, status, created_at::text AS created_at`,
+               contact_number, client_address, notes, status, created_at
+     )
+     SELECT updated.client_id, updated.company_id, updated.client_name, updated.contact_person,
+            updated.contact_email, updated.contact_number, updated.client_address,
+            CASE WHEN quote_counts.project_count > 0 THEN 'Returning' ELSE 'New' END AS client_type,
+            updated.notes, updated.status, updated.created_at::text AS created_at,
+            quote_counts.project_count AS quotation_project_count
+     FROM updated
+     LEFT JOIN LATERAL (
+       SELECT COUNT(*)::int AS project_count
+       FROM quotation q
+       WHERE q.client_id = updated.client_id AND q.company_id = updated.company_id
+     ) quote_counts ON TRUE`,
     [
       clientName,
       cleanText(body?.contact_person),
       cleanText(body?.contact_email),
       cleanText(body?.contact_number),
       cleanText(body?.client_address),
-      clientType,
       cleanText(body?.notes),
       id,
       companyId,

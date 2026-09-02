@@ -819,12 +819,12 @@ export function PriceTrendsPanel({ compact = false }: PriceTrendsPanelProps) {
                 <tr>
                   <th className="px-3 py-2">Material Item</th>
                   <th className="px-3 py-2">Unit</th>
-                  <th className="px-3 py-2">PSA CMRPI Group</th>
+                  <th className="px-3 py-2">PSA Group</th>
                   <th className="whitespace-nowrap px-3 py-2 text-right">Actual Price</th>
-                  <th className="whitespace-nowrap px-3 py-2 text-right">DPWH CMPD Rate</th>
-                  <th className="whitespace-nowrap px-3 py-2 text-right">PSA Adjusted Rate</th>
+                  <th className="whitespace-nowrap px-3 py-2 text-right">DPWH Rate</th>
+                  <th className="whitespace-nowrap px-3 py-2 text-right">PSA Rate</th>
                   <th className="whitespace-nowrap px-3 py-2 text-right">Unit Difference</th>
-                  <th className="whitespace-nowrap px-3 py-2 text-right">Variance %</th>
+                  <th className="whitespace-nowrap px-3 py-2 text-right">Variance</th>
                   <th className="px-3 py-2">Status</th>
                   <th className="px-3 py-2">Primary Driver</th>
                 </tr>

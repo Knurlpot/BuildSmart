@@ -9,7 +9,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { useFetch } from "@/hooks/useFetch";
 import { useClientInsights } from "@/hooks/useClientInsights";
 import { apiClient } from "@/lib/api/client";
-import { CLIENT_TYPES, type Client } from "@/types/entities";
+import type { Client } from "@/types/entities";
 
 type ClientForm = {
   client_name: string;
@@ -17,7 +17,6 @@ type ClientForm = {
   contact_email: string;
   contact_number: string;
   client_address: string;
-  client_type: Client["client_type"];
   notes: string;
 };
 
@@ -116,7 +115,6 @@ function ClientDetailsContent() {
       contact_email: value.contact_email ?? "",
       contact_number: value.contact_number ?? "",
       client_address: value.client_address ?? "",
-      client_type: value.client_type,
       notes: value.notes ?? "",
     });
   };
@@ -197,21 +195,13 @@ function ClientDetailsContent() {
             <div className="min-w-0">
               <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">Client Details</p>
               {editForm ? (
-                <div className="mt-1 grid gap-2 sm:grid-cols-[minmax(0,18rem)_9rem]">
+                <div className="mt-1 w-full max-w-72">
                   <input
                     value={editForm.client_name}
                     onChange={(event) => setEditForm({ ...editForm, client_name: event.target.value })}
                     aria-label="Client name"
                     className="min-w-0 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-base font-semibold text-gray-900 outline-none focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/20"
                   />
-                  <select
-                    value={editForm.client_type}
-                    onChange={(event) => setEditForm({ ...editForm, client_type: event.target.value as Client["client_type"] })}
-                    aria-label="Client type"
-                    className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700 outline-none focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/20"
-                  >
-                    {CLIENT_TYPES.map((type) => <option key={type}>{type}</option>)}
-                  </select>
                 </div>
               ) : (
                 <>

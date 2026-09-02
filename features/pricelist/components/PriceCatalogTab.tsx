@@ -171,7 +171,9 @@ export function PriceCatalogTab() {
   );
   const categoryOptions = useMemo(() => {
     const rows = subTab === "dpwh" ? dpwhCatalog.records : supplierCatalog.records;
-    return sortCategoryOptions(Array.from(new Set(rows.map((r) => r.category_type ?? "Uncategorized"))));
+    const options = new Set(rows.map((r) => r.category_type ?? "Uncategorized"));
+    options.add("Others");
+    return sortCategoryOptions(Array.from(options));
   }, [subTab, dpwhCatalog.records, supplierCatalog.records]);
 
   // Rows in the currently active sub-tab's (region/region-filtered) view that

@@ -40,9 +40,21 @@ function SourceBadge({ source }: { source: string }) {
   return <span className={`shrink-0 rounded px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide ${SOURCE_BADGE[source] ?? "bg-gray-100 text-gray-600"}`}>{source}</span>;
 }
 
+function selectedSupplierForLine(line: ProvisionalItemLine) {
+  const selectedId = line.selected_supplier_id;
+  const selectedById = selectedId === null
+    ? undefined
+    : line.supplier_options.find((supplier) => String(supplier.supplier_id) === String(selectedId));
+  if (selectedById) return selectedById;
+
+  const selectedByPrice = line.unit_price === null
+    ? undefined
+    : line.supplier_options.find((supplier) => Math.abs(supplier.unit_price - line.unit_price!) < 0.005);
+  return selectedByPrice ?? (line.supplier_options.length === 1 ? line.supplier_options[0] : undefined);
+}
+
 function sourceDisplayForLine(line: ProvisionalItemLine) {
-  const selectedSupplier = line.supplier_options.find((supplier) => supplier.supplier_id === line.selected_supplier_id);
-  return selectedSupplier?.supplier_name ?? line.pricing_reference.price_source;
+  return selectedSupplierForLine(line)?.supplier_name ?? line.pricing_reference.price_source;
 }
 
 function pricelistBasisLabel(basis: PricelistBasis) {
@@ -50,8 +62,7 @@ function pricelistBasisLabel(basis: PricelistBasis) {
 }
 
 function sourceLabelForLine(line: ProvisionalItemLine) {
-  const selectedSupplier = line.supplier_options.find((supplier) => supplier.supplier_id === line.selected_supplier_id);
-  return selectedSupplier?.supplier_name ?? line.pricing_reference.price_source;
+  return selectedSupplierForLine(line)?.supplier_name ?? line.pricing_reference.price_source;
 }
 
 // Part B — one small box per item line: real provenance fields (price_source/region/

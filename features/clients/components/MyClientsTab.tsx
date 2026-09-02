@@ -17,6 +17,16 @@ function StatusBadge({ status }: { status: Client["status"] }) {
   );
 }
 
+function ClientTypeBadge({ client }: { client: Client }) {
+  const quotationCount = client.quotation_project_count ?? (client.client_type === "Returning" ? 1 : 0);
+  const isReturning = quotationCount > 0;
+  return (
+    <span className={`rounded-full px-2.5 py-0.5 text-[11px] font-bold ${isReturning ? "bg-blue-50 text-blue-700" : "bg-orange-50 text-primary"}`}>
+      {isReturning ? "RETURNING" : "NEW"}
+    </span>
+  );
+}
+
 function clientInitials(name: string): string {
   const initials = name.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part.charAt(0).toUpperCase()).join("");
   return initials || "CL";
@@ -229,10 +239,14 @@ export function MyClientsTab({ onClientCountChange, showImport = false, importFi
                   <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-orange-50 text-sm font-semibold text-primary">{clientInitials(client.client_name)}</div>
                   <div className="min-w-0">
                     <h2 className="truncate text-base font-semibold text-gray-900">{client.client_name}</h2>
-                    <p className="mt-1 flex items-center gap-1.5 text-xs text-gray-400"><Building2 className="h-3.5 w-3.5 shrink-0" /><span className="truncate">{client.client_type}</span></p>
+                    <p className="mt-1 flex items-center gap-1.5 text-xs text-gray-400">
+                      <Building2 className="h-3.5 w-3.5 shrink-0" />
+                      <span className="truncate">{client.quotation_project_count ?? 0} quotation project{(client.quotation_project_count ?? 0) === 1 ? "" : "s"}</span>
+                    </p>
                   </div>
                 </div>
                 <div className="flex shrink-0 items-center gap-2">
+                  <ClientTypeBadge client={client} />
                   <StatusBadge status={client.status} />
                 </div>
               </div>
