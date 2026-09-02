@@ -804,8 +804,8 @@ export function PriceTrendsPanel({ compact = false }: PriceTrendsPanelProps) {
           <div className="overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm">
             <table className="w-full table-fixed text-left text-[11px] leading-tight">
               <colgroup>
-                <col className="w-[17%]" />
-                <col className="w-[5%]" />
+                <col className="w-[16%]" />
+                <col className="w-[7%]" />
                 <col className="w-[9%]" />
                 <col className="w-[8%]" />
                 <col className="w-[10%]" />
@@ -813,12 +813,12 @@ export function PriceTrendsPanel({ compact = false }: PriceTrendsPanelProps) {
                 <col className="w-[10%]" />
                 <col className="w-[7%]" />
                 <col className="w-[8%]" />
-                <col className="w-[16%]" />
+                <col className="w-[15%]" />
               </colgroup>
               <thead className="border-b border-gray-100 bg-gray-50 text-[9px] uppercase tracking-normal text-gray-400 xl:text-[10px] xl:tracking-wide">
                 <tr>
                   <th className="px-3 py-2">Material Item</th>
-                  <th className="px-3 py-2">Unit</th>
+                  <th className="whitespace-nowrap px-3 py-2">Unit</th>
                   <th className="px-3 py-2">PSA Group</th>
                   <th className="whitespace-nowrap px-3 py-2 text-right">Actual Price</th>
                   <th className="whitespace-nowrap px-3 py-2 text-right">DPWH Rate</th>
@@ -836,7 +836,7 @@ export function PriceTrendsPanel({ compact = false }: PriceTrendsPanelProps) {
                       <p className="font-semibold text-gray-900">{row.itemName}</p>
                       <p className="mt-0.5 text-[10px] text-gray-400">{row.category}</p>
                     </td>
-                    <td className="break-words px-3 py-2">{row.unit}</td>
+                    <td className="whitespace-nowrap px-3 py-2">{row.unit}</td>
                     <td className="break-words px-3 py-2">
                       <p className="font-semibold text-gray-700" title={row.psaMappingReason}>
                         {row.psaCommodityGroup}
