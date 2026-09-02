@@ -332,14 +332,7 @@ export function LaborRulesForm({ focusRuleId, onFocusHandled }: LaborRulesFormPr
                     General
                   </button>
                 </div>
-                <p className="text-[11px] text-gray-400">
-                  {scope === "Treatment" &&
-                    "Set rates by treatment system."}
-                  {scope === "Trade" &&
-                    "Set rates by trade and optional region."}
-                  {scope === "General" &&
-                    "Fallback rate when no treatment or trade rule matches."}
-                </p>
+
               </div>
 
               {scope === "Treatment" && (
@@ -418,7 +411,7 @@ export function LaborRulesForm({ focusRuleId, onFocusHandled }: LaborRulesFormPr
                       htmlFor="labor-rate"
                       className="pointer-events-none absolute left-3 top-1.5 text-[10px] font-semibold text-gray-500 transition-all peer-placeholder-shown:top-1/2 peer-placeholder-shown:-translate-y-1/2 peer-placeholder-shown:text-sm peer-placeholder-shown:font-medium peer-focus:top-1.5 peer-focus:translate-y-0 peer-focus:text-[10px] peer-focus:font-semibold peer-focus:text-primary"
                     >
-                      Labor Rate (₱{rateUnit(scope) || ", unit depends on how you bill"}) <span className="text-red-500">*</span>
+                      Labor Rate (₱{rateUnit(scope)}) <span className="text-red-500">*</span>
                     </label>
                   </div>
                   {touched && !rateValid && <p className="text-xs text-red-500">Must be greater than 0.</p>}
@@ -490,7 +483,7 @@ export function LaborRulesForm({ focusRuleId, onFocusHandled }: LaborRulesFormPr
                       htmlFor="labor-min-duration-days"
                       className="pointer-events-none absolute left-3 top-1.5 text-[10px] font-semibold text-gray-500 transition-all peer-placeholder-shown:top-1/2 peer-placeholder-shown:-translate-y-1/2 peer-placeholder-shown:text-sm peer-placeholder-shown:font-medium peer-focus:top-1.5 peer-focus:translate-y-0 peer-focus:text-[10px] peer-focus:font-semibold peer-focus:text-primary"
                     >
-                      Minimum Duration Days
+                      Min. Duration Days
                     </label>
                   </div>
                   {touched && !minDurationValid && <p className="text-xs text-red-500">Must be greater than 0.</p>}
