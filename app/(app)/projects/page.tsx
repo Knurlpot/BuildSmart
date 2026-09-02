@@ -662,7 +662,6 @@ function OpenProjectsTabs() {
               }`}
             >
               <Upload className="h-4 w-4" />
-              Import Clients
               {showClientImport && <ChevronUp className="h-4 w-4" />}
             </button>
           )}

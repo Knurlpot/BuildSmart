@@ -337,9 +337,11 @@ export function PublishedSourceTab({
 
       <>
           {checkDpwhVersionError && (
-            <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-              Couldn&apos;t check the DPWH release: {checkDpwhVersionError.message}
-            </div>
+            <div
+              aria-label="DPWH CMPD placeholder"
+              className="min-h-[160px] rounded-2xl border border-gray-200 bg-white"
+            /> 
+
           )}
 
           {dpwhVersionResult?.status === "up_to_date" && (
@@ -501,16 +503,7 @@ export function PublishedSourceTab({
             </div>
           )}
 
-          {checkPsaVersionError && (
-            <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-              Couldn&apos;t check the PSA release: {checkPsaVersionError.message}
-            </div>
-          )}
-          {fetchPsaIndexError && (
-            <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-              Couldn&apos;t load the PSA index: {fetchPsaIndexError.message}
-            </div>
-          )}
+
 
           {region === "NCR" && (psaIndexResult || isFetchingPsaIndex || fetchPsaIndexError) && (
             <div className="flex flex-col gap-3 rounded-2xl border border-indigo-100 bg-indigo-50/30 p-4">
