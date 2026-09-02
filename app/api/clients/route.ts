@@ -14,6 +14,7 @@ type ClientRow = {
   notes: string | null;
   status: "Active" | "Inactive";
   created_at: string;
+  quotation_project_count: number;
 };
 
 async function companyIdFor(request: NextRequest) {
@@ -32,12 +33,19 @@ export async function GET(request: NextRequest) {
   if (!companyId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const result = await pool.query<ClientRow>(
-    `SELECT client_id, company_id, client_name, contact_person, contact_email,
-            contact_number, client_address, client_type,
-            notes, status, created_at::text AS created_at
-     FROM client
-     WHERE company_id = $1 AND status = 'Active'
-     ORDER BY client_name ASC, client_id ASC`,
+    `SELECT c.client_id, c.company_id, c.client_name, c.contact_person, c.contact_email,
+            c.contact_number, c.client_address,
+            CASE WHEN quote_counts.project_count > 0 THEN 'Returning' ELSE 'New' END AS client_type,
+            c.notes, c.status, c.created_at::text AS created_at,
+            quote_counts.project_count AS quotation_project_count
+     FROM client c
+     LEFT JOIN LATERAL (
+       SELECT COUNT(*)::int AS project_count
+       FROM quotation q
+       WHERE q.client_id = c.client_id AND q.company_id = c.company_id
+     ) quote_counts ON TRUE
+     WHERE c.company_id = $1 AND c.status = 'Active'
+     ORDER BY c.client_name ASC, c.client_id ASC`,
     [companyId]
   );
 

@@ -3,15 +3,14 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db_session
 from app.ingest.models import ProcessedFileLog
-from app.ingest.tasks import ingest_dpwh_cmpd, ingest_psa_dataset, normalize_ingested_file
+from app.ingest.tasks import ingest_psa_dataset, normalize_ingested_file
 
 router = APIRouter(prefix="/ingest", tags=["ingest"])
 
 
 @router.post("/dpwh")
 def trigger_dpwh_ingest(release_id: str | None = None) -> dict[str, str | int]:
-    task = ingest_dpwh_cmpd.delay(release_id)
-    return {"task_id": task.id, "source": "DPWH"}
+    raise HTTPException(status_code=410, detail="DPWH scraping has been removed. Use uploaded DPWH releases instead.")
 
 
 @router.post("/psa")

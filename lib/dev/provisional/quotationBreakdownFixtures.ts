@@ -597,11 +597,34 @@ export function retargetItemLinesBasis(
  * contingency_cost/other_cost are NOT itemized per segment — see quotationBreakdownTypes.ts
  * ProvisionalServiceCost). labor_cost always equals the sum of this tier's Labor-category
  * item lines, so the summary and the BOQ never disagree. */
-function deriveMockServiceCost(items: ProvisionalItemLine[], materialsSubtotal: number, tier: ProvisionalTier, rushJobCost = 0): ProvisionalServiceCost {
+const SITE_CONDITION_CONTINGENCY_POINTS: Record<string, number> = {
+  'Heavy-Rain Exposure': 1.5,
+  'High Foot Traffic': 1,
+  'Crack-prone Surface': 2,
+  'Moisture Prone Area': 1.5,
+};
+
+function deriveSiteConditionContingencyPct(segments: DraftSegment[]): number {
+  const included = segments.filter(isSegmentIncluded);
+  if (included.length === 0) return 0;
+  const totalArea = included.reduce((sum, segment) => sum + segment.area_sqm, 0);
+  if (totalArea <= 0) return 0;
+
+  const weightedPoints = included.reduce((sum, segment) => {
+    const tagPoints = segment.condition_tags.reduce((tagSum, tag) => tagSum + (SITE_CONDITION_CONTINGENCY_POINTS[tag] ?? 0), 0);
+    const notePoint = segment.site_notes.trim().length > 0 ? 0.5 : 0;
+    return sum + (tagPoints + notePoint) * segment.area_sqm;
+  }, 0);
+
+  return Math.min(4, weightedPoints / totalArea);
+}
+
+function deriveMockServiceCost(items: ProvisionalItemLine[], materialsSubtotal: number, tier: ProvisionalTier, rushJobCost = 0, segments: DraftSegment[] = []): ProvisionalServiceCost {
   const normalizedTier = normalizeTier(tier);
   const laborCost = round2(items.filter((l) => l.category === 'Labor').reduce((sum, l) => sum + (l.total_cost ?? 0), 0));
   const equipmentPct = normalizedTier === 'Practical' ? 0.06 : 0.08;
-  const contingencyPct = normalizedTier === 'Practical' ? 0.04 : 0.05;
+  const baseContingencyPct = normalizedTier === 'Practical' ? 0.04 : 0.05;
+  const contingencyPct = baseContingencyPct + deriveSiteConditionContingencyPct(segments) / 100;
   const otherPct = normalizedTier === 'Practical' ? 0.03 : 0.035; // PPE, mobilization
   const equipmentCost = round2(materialsSubtotal * equipmentPct);
   const contingencyCost = round2(materialsSubtotal * contingencyPct);
@@ -719,7 +742,7 @@ export function computeTierResult(
 
   const materialsSubtotal = round2(items.filter((l) => l.category === 'Material').reduce((sum, l) => sum + (l.total_cost ?? 0), 0));
   const rushJobCost = deriveRushJobCost(items, options?.segments ?? [], options?.laborRules);
-  const serviceCost = deriveMockServiceCost(items, materialsSubtotal, tier, rushJobCost);
+  const serviceCost = deriveMockServiceCost(items, materialsSubtotal, tier, rushJobCost, options?.segments ?? []);
 
   const baseForMarkup = materialsSubtotal + serviceCost.subtotal;
   const ocmAmount = round2(baseForMarkup * (pricingFixture.ocm_percentage / 100));

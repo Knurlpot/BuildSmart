@@ -17,7 +17,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { SpecializationSelect } from "@/components/forms/SpecializationSelect";
-import { columnsToSpecializations, formatSpecializations, specializationsToColumns } from "@/lib/specializations";
+import { columnsToSpecializations, specializationsToColumns } from "@/lib/specializations";
 
 const EMPTY_COMPANY: Company = {
   company_id: 0,
@@ -95,10 +95,6 @@ function LogoImage({
   const candidates = getLogoCandidates(value);
   const [index, setIndex] = useState(0);
 
-  useEffect(() => {
-    setIndex(0);
-  }, [value]);
-
   const src = candidates[index] ?? "";
   if (!src) return null;
 
@@ -128,6 +124,25 @@ function ReadOnlyRow({ label, value }: { label: string; value?: string | null })
     <div className="flex flex-col gap-2">
       <dt className="text-[11px] font-semibold uppercase tracking-widest text-gray-400">{label}</dt>
       <dd className="text-sm font-medium text-gray-800">{value && value.trim() ? value : "—"}</dd>
+    </div>
+  );
+}
+
+function ReadOnlyListRow({ label, values }: { label: string; values: string[] }) {
+  return (
+    <div className="flex flex-col gap-2">
+      <dt className="text-[11px] font-semibold uppercase tracking-widest text-gray-400">{label}</dt>
+      <dd>
+        {values.length > 0 ? (
+          <ul className="list-disc space-y-1 pl-4 text-sm font-medium text-gray-800">
+            {values.map((value) => (
+              <li key={value}>{value}</li>
+            ))}
+          </ul>
+        ) : (
+          <span className="text-sm font-medium text-gray-800">—</span>
+        )}
+      </dd>
     </div>
   );
 }
@@ -297,7 +312,7 @@ function UserProfileSection() {
   };
 
   const initials = (companyForm.company_name || "?").slice(0, 2).toUpperCase();
-  const specializations = formatSpecializations(columnsToSpecializations(companyForm));
+  const specializationList = columnsToSpecializations(companyForm);
 
   if (!editing) {
     return (
@@ -309,6 +324,7 @@ function UserProfileSection() {
           <div className="flex items-center gap-5">
             {getLogoCandidates(companyForm.company_logo).length > 0 ? (
               <LogoImage
+                key={companyForm.company_logo}
                 value={companyForm.company_logo}
                 alt="Company logo"
                 className="h-20 w-20 shrink-0 rounded-2xl object-cover shadow-md ring-4 ring-white"
@@ -335,7 +351,7 @@ function UserProfileSection() {
           <ReadOnlyRow label="Company Address" value={companyForm.company_address} />
           <ReadOnlyRow label="Company Contact Email" value={companyForm.contact_email} />
           <ReadOnlyRow label="Company Contact Number" value={companyForm.contact_number} />
-          <ReadOnlyRow label="Specializations" value={specializations} />
+          <ReadOnlyListRow label="Specializations" values={specializationList} />
         </dl>
       </section>
     );
@@ -451,6 +467,7 @@ function UserProfileSection() {
                 {getLogoCandidates(companyForm.company_logo).length > 0 ? (
                   <div className="flex items-center gap-3 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5">
                     <LogoImage
+                      key={companyForm.company_logo}
                       value={companyForm.company_logo}
                       alt="Company logo preview"
                       className="h-10 w-10 shrink-0 rounded-lg border border-gray-200 object-cover"

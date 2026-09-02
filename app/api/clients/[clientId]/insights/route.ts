@@ -36,38 +36,32 @@ export async function GET(request: NextRequest, { params }: Params) {
   if (!client) return NextResponse.json({ error: "Client not found." }, { status: 404 });
 
   const quoteResult = await pool.query<{
-    project_count: number;
-    project_name: string | null;
-    created_at: string | null;
+    quote_id: number;
+    project_name: string;
+    status: string;
+    accepted_tier: "Practical" | "Premium" | null;
+    created_at: string;
   }>(
-    `SELECT COUNT(*)::int AS project_count,
-            (
-              SELECT q2.project_name
-              FROM quotation q2
-              WHERE q2.client_id = $1 AND q2.company_id = $2 AND q2.user_id = $3
-              ORDER BY q2.created_at DESC, q2.quote_id DESC
-              LIMIT 1
-            ) AS project_name,
-            (
-              SELECT q2.created_at::text
-              FROM quotation q2
-              WHERE q2.client_id = $1 AND q2.company_id = $2 AND q2.user_id = $3
-              ORDER BY q2.created_at DESC, q2.quote_id DESC
-              LIMIT 1
-            ) AS created_at
+    `SELECT q.quote_id,
+            q.project_name,
+            q.status::text AS status,
+            q.accepted_tier,
+            q.created_at::text AS created_at
      FROM quotation q
-     WHERE q.client_id = $1 AND q.company_id = $2 AND q.user_id = $3`,
-    [id, auth.companyId, auth.userId]
+     WHERE q.client_id = $1 AND q.company_id = $2`,
+    [id, auth.companyId]
   );
-  const summary = quoteResult.rows[0];
+  const projects = quoteResult.rows.sort((a, b) => {
+    const dateSort = new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+    return dateSort !== 0 ? dateSort : b.quote_id - a.quote_id;
+  });
+  const projectCount = projects.length;
 
   return NextResponse.json({
-    hasHistory: (summary?.project_count ?? 0) > 0,
-    clientType: (summary?.project_count ?? 0) > 0 ? "Returning" : client.client_type,
-    projectCount: summary?.project_count ?? 0,
-    mostRecentProject:
-      summary?.project_name && summary.created_at
-        ? { project_name: summary.project_name, created_at: summary.created_at }
-        : null,
+    hasHistory: projectCount > 0,
+    clientType: projectCount > 0 ? "Returning" : "New",
+    projectCount,
+    projects,
+    mostRecentProject: projects[0] ?? null,
   });
 }

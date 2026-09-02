@@ -50,6 +50,19 @@ function DetailItem({ icon: Icon, label, value }: { icon: typeof UserRound; labe
   );
 }
 
+function projectRowClass(status: string, acceptedTier: "Practical" | "Premium" | null) {
+  if (status !== "Final") return "hover:bg-gray-50 hover:text-primary";
+  if (acceptedTier === "Premium") return "project-tier-gradient bg-linear-to-r from-[#0000CD] via-[#4169E1] to-[#0000CD] text-white";
+  if (acceptedTier === "Practical") return "project-tier-gradient bg-linear-to-r from-primary via-orange-400 to-primary text-white";
+  return "bg-green-50 text-green-800";
+}
+
+function projectStatusClass(status: string, acceptedTier: "Practical" | "Premium" | null) {
+  if (status === "Final" && acceptedTier) return "bg-white/20 text-white";
+  if (status === "Final") return "bg-green-100 text-green-700";
+  return "bg-gray-100 text-gray-500";
+}
+
 function EditableDetailItem({
   icon: Icon,
   label,
@@ -304,13 +317,39 @@ function ClientDetailsContent() {
           </div>
         )}
 
-        {insights?.mostRecentProject && (
-          <div className="mt-5 rounded-xl border border-gray-100 p-4">
-            <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">Most Recent Project</p>
-            <p className="mt-1 text-sm font-semibold text-gray-900">{insights.mostRecentProject.project_name}</p>
-            <p className="mt-1 text-xs text-gray-500">Created {formatDate(insights.mostRecentProject.created_at)}</p>
+        <div className="mt-5 rounded-xl border border-gray-100 p-4">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">Quotation Projects</p>
+            <span className={`rounded-full px-2.5 py-0.5 text-[10px] font-bold ${client.client_type === "Returning" ? "bg-blue-50 text-blue-700" : "bg-orange-50 text-primary"}`}>
+              {client.client_type.toUpperCase()}
+            </span>
           </div>
-        )}
+          {insightsLoading ? (
+            <p className="mt-3 text-sm text-gray-400">Loading projects...</p>
+          ) : (insights?.projects ?? []).length === 0 ? (
+            <p className="mt-3 text-sm text-gray-500">No quotation projects yet.</p>
+          ) : (
+            <div className="mt-3 divide-y divide-gray-100">
+              {(insights?.projects ?? []).map((project) => (
+                <Link
+                  key={project.quote_id}
+                  href={`/quotations/${project.quote_id}`}
+                  className={`flex items-center justify-between gap-3 rounded-lg px-3 py-3 transition ${projectRowClass(project.status, project.accepted_tier)}`}
+                >
+                  <div className="min-w-0">
+                    <p className={`truncate text-sm font-semibold ${project.status === "Final" && project.accepted_tier ? "text-white" : "text-gray-900"}`}>{project.project_name}</p>
+                    <p className={project.status === "Final" && project.accepted_tier ? "text-xs text-white/80" : "text-xs text-gray-500"}>
+                      Created {formatDate(project.created_at)}
+                    </p>
+                  </div>
+                  <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${projectStatusClass(project.status, project.accepted_tier)}`}>
+                    {project.status === "Final" && project.accepted_tier ? project.accepted_tier : project.status}
+                  </span>
+                </Link>
+              ))}
+            </div>
+          )}
+        </div>
       </section>
 
       <Dialog open={deleteOpen} onOpenChange={(open) => !isDeleting && setDeleteOpen(open)}>
