@@ -9,7 +9,7 @@
 import { stagingId } from './quotationGenerationTypes';
 import type { DraftSegment } from '@/features/quotation-generation/lib/draftSegment';
 import { isSegmentIncluded } from '@/features/quotation-generation/lib/draftSegment';
-import type { LaborRule, LaborRuleScope, MaterialRuleEntry, SupplierRuleEntry, UnitRule } from './companyRulesTypes';
+import type { LaborRule, LaborRuleScope, MaterialRuleEntry, PricingStrategyRule, SupplierRuleEntry, UnitRule } from './companyRulesTypes';
 import type {
   ItemCategory,
   PricelistBasis,
@@ -216,6 +216,20 @@ const TIER_PRICING_FIXTURE: Record<ProvisionalTier, TierPricingFixture> = {
 function normalizeTier(tier: string): ProvisionalTier {
   if (tier === 'Premium' || tier === 'Best') return 'Premium';
   return 'Practical';
+}
+
+function pricingForTier(tier: ProvisionalTier, strategies?: PricingStrategyRule[]): TierPricingFixture {
+  const configured = strategies
+    ?.filter((strategy) => strategy.is_active && normalizeTier(strategy.quotation_tier) === tier)
+    .sort((a, b) => b.effective_date.localeCompare(a.effective_date))[0];
+
+  if (!configured) return TIER_PRICING_FIXTURE[tier];
+
+  return {
+    ...TIER_PRICING_FIXTURE[tier],
+    ocm_percentage: configured.overhead_percentage,
+    profit_margin_percentage: configured.profit_margin_percentage,
+  };
 }
 
 function round2(n: number): number {
@@ -734,10 +748,11 @@ export function computeTierResult(
     segments?: DraftSegment[];
     materialRules?: MaterialRuleEntry[];
     laborRules?: LaborRule[];
+    pricingStrategies?: PricingStrategyRule[];
   }
 ): ProvisionalQuotationTierResult {
   const normalizedTier = normalizeTier(tier);
-  const pricingFixture = TIER_PRICING_FIXTURE[normalizedTier];
+  const pricingFixture = pricingForTier(normalizedTier, options?.pricingStrategies);
   const vatInclusive = options?.vatInclusive ?? true;
 
   const materialsSubtotal = round2(items.filter((l) => l.category === 'Material').reduce((sum, l) => sum + (l.total_cost ?? 0), 0));

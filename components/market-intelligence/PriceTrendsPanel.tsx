@@ -189,6 +189,8 @@ export function PriceTrendsPanel({ compact = false }: PriceTrendsPanelProps) {
   const [selectedVariance, setSelectedVariance] = useState<DrilldownSelection | null>(null);
   const [aiSummaryReloadToken, setAiSummaryReloadToken] = useState(0);
   const [aiSummaryResolved, setAiSummaryResolved] = useState<ResolvedSummary>({ key: "", data: null, error: null });
+  const [comparisonReloadToken, setComparisonReloadToken] = useState(0);
+  const [comparisonResolved, setComparisonResolved] = useState<ResolvedSummary>({ key: "", data: null, error: null });
 
   const { historical, variances } = useMarketIntelligence({
     region,
@@ -497,6 +499,7 @@ export function PriceTrendsPanel({ compact = false }: PriceTrendsPanelProps) {
   }, [filteredRows]);
 
   const aiSummaryPayload = useMemo(() => ({
+    summary_kind: "summary" as const,
     region,
     category_filter: categoryFilter,
     average_variance_pct: varianceSummary.averagePct,
@@ -536,6 +539,11 @@ export function PriceTrendsPanel({ compact = false }: PriceTrendsPanelProps) {
   const displayedAiSummary = canGenerateAiSummary && aiSummaryResolved.key === aiSummaryRequestKey ? aiSummaryResolved.data : null;
   const displayedAiSummaryError = canGenerateAiSummary && aiSummaryResolved.key === aiSummaryRequestKey ? aiSummaryResolved.error : null;
   const displayedAiSummaryLoading = canGenerateAiSummary && aiSummaryResolved.key !== aiSummaryRequestKey;
+  const comparisonPayload = useMemo(() => ({ ...aiSummaryPayload, summary_kind: "comparison" as const }), [aiSummaryPayload]);
+  const comparisonRequestKey = canGenerateAiSummary ? `${JSON.stringify(comparisonPayload)}::${comparisonReloadToken}` : "";
+  const displayedComparison = canGenerateAiSummary && comparisonResolved.key === comparisonRequestKey ? comparisonResolved.data : null;
+  const displayedComparisonError = canGenerateAiSummary && comparisonResolved.key === comparisonRequestKey ? comparisonResolved.error : null;
+  const displayedComparisonLoading = canGenerateAiSummary && comparisonResolved.key !== comparisonRequestKey;
   const actionableRecommendations = useMemo(() => buildActionableRecommendations({
     unfavorableCount: varianceSummary.unfavorable,
     markupDrivenCount: varianceSummary.markupDriven,
@@ -568,6 +576,31 @@ export function PriceTrendsPanel({ compact = false }: PriceTrendsPanelProps) {
 
     return () => controller.abort();
   }, [aiSummaryPayload, aiSummaryReloadToken, canGenerateAiSummary, historical.isLoading, variances.isLoading]);
+
+  useEffect(() => {
+    if (historical.isLoading || variances.isLoading) return;
+    if (!canGenerateAiSummary) return;
+
+    const controller = new AbortController();
+    const key = `${JSON.stringify(comparisonPayload)}::${comparisonReloadToken}`;
+
+    apiClient<MarketSummaryResponse>("/api/market-insights/summary", {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(comparisonPayload),
+      signal: controller.signal,
+    })
+      .then((data) => {
+        if (!controller.signal.aborted) setComparisonResolved({ key, data, error: null });
+      })
+      .catch((error) => {
+        if (controller.signal.aborted) return;
+        setComparisonResolved({ key, data: null, error: error instanceof Error ? error : new Error("Could not load market trend comparison.") });
+      });
+
+    return () => controller.abort();
+  }, [canGenerateAiSummary, comparisonPayload, comparisonReloadToken, historical.isLoading, variances.isLoading]);
 
   return (
     <div className="flex flex-col gap-5">
@@ -932,12 +965,19 @@ export function PriceTrendsPanel({ compact = false }: PriceTrendsPanelProps) {
           <div className="mb-2 flex items-center gap-2">
             <Globe2 className="h-4 w-4 text-gray-400" />
             <p className="font-bold text-gray-900">Market Trend Comparison</p>
+            {displayedComparison?.source === "gemini" && <span className="rounded-full bg-orange-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-primary">Gemini</span>}
           </div>
-          <p className="text-sm leading-relaxed text-gray-600">
-            PSA movement explains items where actual pricing is above DPWH but still within the PSA-adjusted proxy rate.
-            Items above both DPWH and the PSA-adjusted benchmark are treated as supplier markup, inefficient procurement,
-            logistics premium, or a local availability issue requiring commercial review.
-          </p>
+          <QueryState
+            isLoading={displayedComparisonLoading}
+            error={displayedComparisonError}
+            isEmpty={!displayedComparison?.summary}
+            onRetry={() => setComparisonReloadToken((token) => token + 1)}
+            emptyTitle="No market comparison yet"
+            emptyHint="Load supplier and benchmark data to generate a comparison."
+            minHeight={88}
+          >
+            <p className="text-sm leading-relaxed text-gray-600">{displayedComparison?.summary}</p>
+          </QueryState>
           <div className="mt-4 grid grid-cols-3 gap-3 text-center">
             <div className="rounded-xl bg-indigo-50 p-3">
               <p className="text-lg font-extrabold text-indigo-600">{varianceSummary.marketDriven}</p>

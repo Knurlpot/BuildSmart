@@ -33,8 +33,10 @@
 // `FlaggedPriceDeviation` is a FRONTEND STAGING shape describing an old-vs-new comparison
 // for the review UI, not a historical_price_record mirror. DPWH-only now — PSA never had
 // real peso deviations, that was fabricated mock data and has been removed.
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
 import type { HistoricalPriceRecord, MaterialPriceVariance } from '@/types/entities';
+import { useFetch } from './useFetch';
+import { useMutation } from './useMutation';
 
 const BACKEND_API_BASE = process.env.NEXT_PUBLIC_NORMALIZATION_API_BASE_URL?.replace(/\/$/, '') || '';
 
@@ -106,44 +108,6 @@ function useBackendMutation<T = unknown>() {
   const reset = useCallback(() => setState({ data: null, error: null, isLoading: false }), []);
 
   return { ...state, mutate, reset };
-}
-
-function useBackendFetch<T>(endpoint: string | null) {
-  const [resolved, setResolved] = useState<{ key: string; data: T | null; error: Error | null }>({
-    key: '',
-    data: null,
-    error: null,
-  });
-  const [reloadToken, setReloadToken] = useState(0);
-  const requestKey = endpoint ? `${endpoint}::${reloadToken}` : '';
-
-  useEffect(() => {
-    if (!endpoint) return;
-    const key = `${endpoint}::${reloadToken}`;
-    const controller = new AbortController();
-
-    backendApiClient<T>(endpoint, {
-      signal: controller.signal,
-    })
-      .then((result) => setResolved({ key, data: result, error: null }))
-      .catch((err) => {
-        if (controller.signal.aborted) return;
-        setResolved({ key, data: null, error: err instanceof Error ? err : new Error(String(err)) });
-      });
-
-    return () => controller.abort();
-  }, [endpoint, reloadToken]);
-
-  const refetch = useCallback(() => setReloadToken((t) => t + 1), []);
-  if (!endpoint) return { data: null, isLoading: false, error: null, refetch };
-
-  const isLoading = resolved.key !== requestKey;
-  return {
-    data: isLoading ? null : resolved.data,
-    isLoading,
-    error: isLoading ? null : resolved.error,
-    refetch,
-  };
 }
 
 export interface FlaggedPriceDeviation {
@@ -243,9 +207,9 @@ export function usePricelistPublishedSource() {
     isLoading: false,
   });
   const [catalogEnabled, setCatalogEnabled] = useState(false);
-  const dpwhCatalog = useBackendFetch<DpwhCatalogRow[]>(catalogEnabled ? '/pricelist/catalog/dpwh' : null);
+  const dpwhCatalog = useFetch<DpwhCatalogRow[]>(catalogEnabled ? '/api/pricelist/catalog/dpwh' : null);
   const loadDpwhCatalog = useCallback(() => setCatalogEnabled(true), []);
-  const deleteDpwhRecord = useBackendMutation<{ deleted: boolean }>();
+  const deleteDpwhRecord = useMutation<{ deleted: boolean }>();
   const resolveDeviationMutate = resolveDeviation.mutate;
   const resolveBulkMutate = resolveBulk.mutate;
   const deleteDpwhRecordMutate = deleteDpwhRecord.mutate;
@@ -255,15 +219,13 @@ export function usePricelistPublishedSource() {
   // price_source == "DPWH") — the underlying item and its other price
   // history are untouched.
   const removeDpwhCatalogRecord = useCallback(async (historicalrecId: number) => {
-    await deleteDpwhRecordMutate(`/pricelist/catalog/dpwh/${historicalrecId}`, undefined, 'DELETE');
+    await deleteDpwhRecordMutate(`/api/pricelist/catalog/dpwh/${historicalrecId}`, undefined, 'DELETE');
     dpwhCatalogRefetch();
   }, [deleteDpwhRecordMutate, dpwhCatalogRefetch]);
   // Separate instances (not one shared mutation) so DPWH's and PSA's loading/error/result
   // state never bleed into each other when the user switches source.
   const checkDpwhVersion = useBackendMutation<VersionCheckResponse>();
-  const checkPsaVersion = useBackendMutation<VersionCheckResponse>();
   const checkDpwhVersionMutate = checkDpwhVersion.mutate;
-  const checkPsaVersionMutate = checkPsaVersion.mutate;
 
   const trigger = useCallback(async (region?: string) => {
     void region;
@@ -323,11 +285,6 @@ export function usePricelistPublishedSource() {
     [checkDpwhVersionMutate]
   );
 
-  const checkPsaPublishedVersion = useCallback(
-    () => checkPsaVersionMutate('/pricelist/check-version', { source: 'PSA', region: 'NCR' }, 'POST'),
-    [checkPsaVersionMutate]
-  );
-
   return {
     trigger,
     isFetching: fetchPublished.isLoading,
@@ -350,10 +307,6 @@ export function usePricelistPublishedSource() {
     isCheckingDpwhVersion: checkDpwhVersion.isLoading,
     checkDpwhVersionError: checkDpwhVersion.error,
     dpwhVersionResult: checkDpwhVersion.data,
-    checkPsaVersion: checkPsaPublishedVersion,
-    isCheckingPsaVersion: checkPsaVersion.isLoading,
-    checkPsaVersionError: checkPsaVersion.error,
-    psaVersionResult: checkPsaVersion.data,
     dpwhCatalog: {
       records: dpwhCatalog.data ?? [],
       isLoading: dpwhCatalog.isLoading,

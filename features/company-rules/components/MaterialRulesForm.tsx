@@ -28,13 +28,15 @@ const tierBadgeClass = (tier: MaterialTreatmentTier) =>
   tier === "Premium" ? "bg-[#0000CD]/5 text-[#0000CD]" : "bg-orange-50 text-primary";
 const activeTierFilterClass = (tier: MaterialTreatmentTier) =>
   tier === "Premium" ? "border-[#0000CD]/40 bg-[#0000CD]/5 text-[#0000CD]" : "border-primary bg-orange-50 text-primary";
+const materialGroupKey = (treatment: string, tier: MaterialTreatmentTier, active: boolean) =>
+  `${treatment}::${tier}::${active ? "active" : "disabled"}`;
 
 interface MaterialRulesFormProps {
   focusRuleId?: string | null;
   onFocusHandled?: () => void;
 }
 
-type CatalogItem = Items & { catalogKey: string };
+type CatalogItem = Omit<Items, "item_code"> & { catalogKey: string; item_code: string | number | null };
 
 // v6 Correction 3 — REBUILT as a catalog picker. A category contains many materials used
 // TOGETHER (a waterproofing system needs primer AND membrane AND topcoat), not
@@ -74,7 +76,7 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
 
   const allRules = editable.applyOverrides([...editable.localExtra, ...rules]);
 
-  const categoryTypeOf = (item: Items): CategoryType | undefined =>
+  const categoryTypeOf = (item: Pick<Items, "category_id">): CategoryType | undefined =>
     categories.find((c) => c.category_id === item.category_id)?.category_type;
 
   // Seeded from the prop at construction, not synced via effect: a jump always remounts
@@ -84,7 +86,6 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
   const [search, setSearch] = useState("");
   const [supplierFilter, setSupplierFilter] = useState<string>(DPWH_SUPPLIER_VALUE);
   const [categoryFilter, setCategoryFilter] = useState<CategoryType | "">("");
-  const [checkedCatalogKeys, setCheckedCatalogKeys] = useState<Set<string>>(new Set());
   const [checkedCatalogItems, setCheckedCatalogItems] = useState<Record<string, CatalogItem>>({});
   const [treatmentType, setTreatmentType] = useState("");
   const [treatmentTier, setTreatmentTier] = useState<MaterialTreatmentTier>("Practical");
@@ -140,7 +141,7 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
   }, [categoryIdByType, dpwhCatalogRecords, supplierCatalogRecords, supplierFilter]);
 
   useEffect(() => {
-    if (mode !== "browse") return;
+    if (mode !== "browse" && mode !== "edit-group") return;
     if (supplierFilter === DPWH_SUPPLIER_VALUE) {
       dpwhCatalogLoad();
     } else {
@@ -154,7 +155,7 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
     return matchesSearch && matchesCategory;
   });
 
-  const itemMeta = (item: Items) =>
+  const itemMeta = (item: Pick<Items, "category_id" | "description" | "brand" | "unit">) =>
     [
       item.description?.trim(),
       categoryTypeOf(item) ?? "Uncategorized",
@@ -163,18 +164,28 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
     ].filter(Boolean).join(" · ");
 
   const checkedItems = Object.values(checkedCatalogItems);
+  const selectedItemCodes = new Set(checkedItems.map((item) => String(item.item_code)));
+
+  const materialRuleToCatalogItem = (rule: MaterialRuleEntry): CatalogItem => ({
+    catalogKey: `rule-${rule.rule_id}`,
+    item_code: rule.preferred_item_code,
+    category_id: categoryIdByType.get(rule.category) ?? 0,
+    company_id: null,
+    item_name: rule.preferred_item_name,
+    brand: "",
+    unit: "",
+    item_source: rule.priority_source,
+    source_location: null,
+    description: rule.category,
+  });
 
   const toggleChecked = (item: CatalogItem) => {
-    setCheckedCatalogKeys((prev) => {
-      const next = new Set(prev);
-      if (next.has(item.catalogKey)) next.delete(item.catalogKey);
-      else next.add(item.catalogKey);
-      return next;
-    });
+    const code = String(item.item_code);
     setCheckedCatalogItems((prev) => {
-      if (prev[item.catalogKey]) {
+      const existingEntry = Object.entries(prev).find(([, checked]) => String(checked.item_code) === code);
+      if (existingEntry) {
         const next = { ...prev };
-        delete next[item.catalogKey];
+        delete next[existingEntry[0]];
         return next;
       }
       return { ...prev, [item.catalogKey]: item };
@@ -189,7 +200,6 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
     setSearch("");
     setSupplierFilter(DPWH_SUPPLIER_VALUE);
     setCategoryFilter("");
-    setCheckedCatalogKeys(new Set());
     setCheckedCatalogItems({});
     setTreatmentType("");
     setTreatmentTier("Practical");
@@ -241,6 +251,16 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
     setTreatmentTier(groupRules[0]?.treatment_tier ?? "Practical");
     setWarrantyYears(firstWithWarranty?.warranty_years ?? "");
     setLifespanYears(firstWithLifespan?.lifespan_years ?? "");
+    const existingItems = Object.fromEntries(
+      groupRules.map((rule) => {
+        const item = materialRuleToCatalogItem(rule);
+        return [item.catalogKey, item];
+      })
+    );
+    setCheckedCatalogItems(existingItems);
+    setSearch("");
+    setSupplierFilter(DPWH_SUPPLIER_VALUE);
+    setCategoryFilter("");
     setTouched(false);
     setSavedMessage(false);
   };
@@ -285,7 +305,7 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
         });
       }
       setMode("idle");
-      setSelectedGroup(`${treatmentType.trim() || "No treatment type"}::${treatmentTier}`);
+      setSelectedGroup(materialGroupKey(treatmentType.trim() || "No treatment type", treatmentTier, true));
       setSavedMessage(true);
     } catch {
       // surfaced via editable.saveError below — no fabricated success
@@ -297,28 +317,62 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
     if (!groupEditValid) return;
     const nextGroup = treatmentType.trim();
     let savedAny = false;
+    const selectedByCode = new Map(checkedItems.map((item) => [String(item.item_code), item]));
+    const existingByCode = new Map(selectedGroupRules.map((rule) => [String(rule.preferred_item_code), rule]));
+
     for (const rule of selectedGroupRules) {
+      const selectedItem = selectedByCode.get(String(rule.preferred_item_code));
+      if (!selectedItem) {
+        await apiClient(`/api/company-rules/material-rules/${rule.rule_id}`, {
+          method: "DELETE",
+          credentials: "include",
+        });
+        savedAny = true;
+        continue;
+      }
       const payload = {
-          treatment_type: nextGroup,
-          treatment_tier: treatmentTier,
-          material_rule_name: null,
-          warranty_years: Number(warrantyYears),
+        treatment_type: nextGroup,
+        treatment_tier: treatmentTier,
+        material_rule_name: null,
+        warranty_years: Number(warrantyYears),
         lifespan_years: Number(lifespanYears),
-        category: rule.category,
-        preferred_item_code: rule.preferred_item_code,
-        preferred_item_name: rule.preferred_item_name,
+        category: categoryTypeOf(selectedItem) ?? rule.category,
+        preferred_item_code: String(selectedItem.item_code),
+        preferred_item_name: selectedItem.item_name,
         material_priority: rule.material_priority || DEFAULT_MATERIAL_PRIORITY,
-        priority_source: rule.priority_source || DEFAULT_PRIORITY_SOURCE,
+        priority_source: selectedItem.item_source === "DPWH" ? "DPWH" as const : rule.priority_source || DEFAULT_PRIORITY_SOURCE,
         fallback_rule: rule.fallback_rule || DEFAULT_FALLBACK_RULE,
       };
       const resultId = await editable.saveEdit(rule.rule_id, payload);
       if (resultId) savedAny = true;
     }
+
+    for (const item of checkedItems) {
+      if (existingByCode.has(String(item.item_code))) continue;
+      const category = categoryTypeOf(item);
+      if (!category) throw new Error(`Could not resolve the category for ${item.item_name}.`);
+      await save({
+        treatment_type: nextGroup || null,
+        treatment_tier: treatmentTier,
+        material_rule_name: null,
+        warranty_years: Number(warrantyYears),
+        lifespan_years: Number(lifespanYears),
+        category,
+        preferred_item_code: String(item.item_code),
+        preferred_item_name: item.item_name,
+        material_priority: DEFAULT_MATERIAL_PRIORITY,
+        priority_source: item.item_source === "DPWH" ? "DPWH" as const : DEFAULT_PRIORITY_SOURCE,
+        fallback_rule: DEFAULT_FALLBACK_RULE,
+      });
+      savedAny = true;
+    }
+
     if (savedAny) {
       setMode("idle");
       setSelectedId(null);
-      setSelectedGroup(`${nextGroup || "No treatment type"}::${treatmentTier}`);
+      setSelectedGroup(materialGroupKey(nextGroup || "No treatment type", treatmentTier, true));
       setSavedMessage(true);
+      await refetch();
     }
   };
 
@@ -326,7 +380,7 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
   const groupedRules = Array.from(
     allRules.reduce((groups, rule) => {
       const treatment = rule.treatment_type?.trim() || "No treatment type";
-      const key = `${treatment}::${rule.treatment_tier ?? "Practical"}`;
+      const key = materialGroupKey(treatment, rule.treatment_tier ?? "Practical", rule.is_active);
       const list = groups.get(key) ?? [];
       list.push(rule);
       groups.set(key, list);
@@ -352,7 +406,11 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
   const selectedGroupName =
     mode === "details" || mode === "browse" || mode === "configure"
       ? null
-      : selectedGroup ?? focusedGroupName ?? (selected ? `${selected.treatment_type?.trim() || "No treatment type"}::${selected.treatment_tier ?? "Practical"}` : null) ?? visibleGroupedRules[0]?.[0] ?? null;
+      : selectedGroup ??
+        focusedGroupName ??
+        (selected ? materialGroupKey(selected.treatment_type?.trim() || "No treatment type", selected.treatment_tier ?? "Practical", selected.is_active) : null) ??
+        visibleGroupedRules[0]?.[0] ??
+        null;
   const selectedGroupRules = groupedRules.find(([group]) => group === selectedGroupName)?.[1] ?? [];
   const effectiveStatusFilter =
     selectedGroupRules.length > 0 && selectedGroupRules.some((rule) => rule.is_active) === false ? "disabled" : statusFilter;
@@ -388,6 +446,8 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
     selectedGroupRules.length > 0 &&
     TREATMENT_OPTIONS.includes(treatmentType as (typeof TREATMENT_OPTIONS)[number]) &&
     !groupEditDuplicateExists &&
+    checkedItems.length > 0 &&
+    checkedItems.every((i) => categoryTypeOf(i) !== undefined) &&
     warrantyYears !== "" &&
     Number(warrantyYears) > 0 &&
     lifespanYears !== "" &&
@@ -720,7 +780,7 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
                       >
                         <input
                           type="checkbox"
-                          checked={checkedCatalogKeys.has(item.catalogKey)}
+                          checked={selectedItemCodes.has(String(item.item_code))}
                           onChange={() => toggleChecked(item)}
                           className="h-4 w-4 shrink-0 rounded border-gray-300 text-primary focus:ring-2 focus:ring-primary/30"
                         />
@@ -916,6 +976,106 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
                   </div>
                   {touched && (lifespanYears === "" || Number(lifespanYears) <= 0) && <p className="text-xs text-red-500">Expected lifespan years is required.</p>}
                 </div>
+              </div>
+
+              <div className="flex flex-col gap-3 rounded-xl border border-gray-100 bg-gray-50/60 p-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-bold text-gray-900">Materials in Treatment</p>
+                    <p className="text-xs text-gray-400">{checkedItems.length} selected</p>
+                  </div>
+                </div>
+
+                <div className={`divide-y divide-gray-100 overflow-hidden rounded-lg border border-gray-100 bg-white ${checkedItems.length > 4 ? "max-h-44 overflow-y-auto" : ""}`}>
+                  {checkedItems.length === 0 ? (
+                    <p className="px-3 py-3 text-xs text-red-500">Select at least one material for this treatment.</p>
+                  ) : (
+                    checkedItems
+                      .slice()
+                      .sort((a, b) => a.item_name.localeCompare(b.item_name))
+                      .map((item) => (
+                        <div key={item.catalogKey} className="flex items-center justify-between gap-3 px-3 py-2">
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-semibold text-gray-800">{item.item_name}</p>
+                            <p className="truncate text-[11px] text-gray-400">{itemMeta(item)}</p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => toggleChecked(item)}
+                            className="shrink-0 rounded-lg border border-gray-200 bg-white px-2 py-1 text-[11px] font-bold text-gray-500 transition hover:border-red-200 hover:text-red-600"
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      ))
+                  )}
+                </div>
+
+                <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_minmax(0,10rem)_minmax(0,10rem)]">
+                  <div className="relative min-w-0">
+                    <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+                    <input
+                      value={search}
+                      onChange={(e) => setSearch(e.target.value)}
+                      placeholder="Search and add materials..."
+                      className={`${inputCls} pl-9`}
+                    />
+                  </div>
+                  <select
+                    value={supplierFilter}
+                    onChange={(e) => setSupplierFilter(e.target.value)}
+                    className={`${inputCls} min-w-0`}
+                    disabled={suppliersLoading}
+                    aria-label="Supplier source"
+                  >
+                    <option value={DPWH_SUPPLIER_VALUE}>DPWH</option>
+                    {suppliers
+                      .filter((s) => s.status === "Active")
+                      .map((supplier) => (
+                        <option key={supplier.supplier_id} value={String(supplier.supplier_id)}>
+                          {supplier.supplier_name}
+                        </option>
+                      ))}
+                  </select>
+                  <select
+                    value={categoryFilter}
+                    onChange={(e) => setCategoryFilter(e.target.value as CategoryType | "")}
+                    className={`${inputCls} min-w-0`}
+                  >
+                    <option value="">All categories</option>
+                    {CATEGORY_TYPES.map((c) => (
+                      <option key={c}>{c}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {(supplierFilter === DPWH_SUPPLIER_VALUE ? dpwhCatalogLoading : supplierCatalogLoading) || itemsLoading ? (
+                  <p className="text-xs text-gray-400">Loading catalog…</p>
+                ) : itemsError || dpwhCatalogError || supplierCatalogError ? (
+                  <p className="text-xs text-red-500">Couldn&apos;t load your catalog: {(itemsError ?? dpwhCatalogError ?? supplierCatalogError)?.message}</p>
+                ) : filteredItems.length === 0 ? (
+                  <p className="text-xs text-gray-400">No catalog items match that search.</p>
+                ) : (
+                  <div className="max-h-52 overflow-y-auto rounded-lg border border-gray-200 bg-white">
+                    {filteredItems.map((item) => (
+                      <label
+                        key={item.catalogKey}
+                        className="flex cursor-pointer items-center gap-3 border-b border-gray-50 px-3 py-2 last:border-b-0 hover:bg-gray-50"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={selectedItemCodes.has(String(item.item_code))}
+                          onChange={() => toggleChecked(item)}
+                          className="h-4 w-4 shrink-0 rounded border-gray-300 text-primary focus:ring-2 focus:ring-primary/30"
+                        />
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm font-medium text-gray-800">{item.item_name}</p>
+                          <p className="truncate text-[11px] text-gray-400">{itemMeta(item)}</p>
+                        </div>
+                      </label>
+                    ))}
+                  </div>
+                )}
               </div>
 
               {editable.saveError && (

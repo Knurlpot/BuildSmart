@@ -21,6 +21,7 @@ type SummaryItem = {
 };
 
 type SummaryPayload = {
+  summary_kind?: "summary" | "comparison";
   region: string;
   category_filter: string;
   average_variance_pct: number | null;
@@ -35,8 +36,12 @@ type SummaryPayload = {
   top_items: SummaryItem[];
 };
 
+function scopeLabel(payload: SummaryPayload) {
+  return payload.category_filter === "All" ? payload.region : `${payload.category_filter} in ${payload.region}`;
+}
+
 function fallbackSummary(payload: SummaryPayload) {
-  const scope = payload.category_filter === "All" ? payload.region : `${payload.category_filter} in ${payload.region}`;
+  const scope = scopeLabel(payload);
   const tone =
     payload.average_variance_pct === null
       ? `There is not enough comparable data yet to explain pricing trends for ${scope}.`
@@ -60,7 +65,23 @@ function fallbackSummary(payload: SummaryPayload) {
   return [tone, driver, category, supplier].join(" ");
 }
 
-function buildPrompt(payload: SummaryPayload) {
+function fallbackComparison(payload: SummaryPayload) {
+  const scope = scopeLabel(payload);
+  const favorable = payload.favorable_count;
+  const total = payload.comparable_count;
+  const marketDriven = payload.market_driven_count;
+  const markupDriven = payload.markup_driven_count;
+  const leadingDriver =
+    marketDriven > markupDriven
+      ? "PSA market movement is explaining more of the current spread than supplier markup."
+      : markupDriven > marketDriven
+        ? "Supplier markup, procurement terms, or local availability are explaining more of the current spread than PSA movement."
+        : "PSA market movement and supplier-side effects are currently balanced.";
+
+  return `${leadingDriver} For ${scope}, ${favorable} of ${total} comparable item(s) are favorable against the PSA-adjusted DPWH baseline. Use the detailed variance rows to review the highest-impact materials before final pricing.`;
+}
+
+function buildSummaryPrompt(payload: SummaryPayload) {
   return [
     "You are helping a construction estimator explain a price-trends dashboard.",
     "Use only the provided numbers. Do not invent figures.",
@@ -69,6 +90,19 @@ function buildPrompt(payload: SummaryPayload) {
     "Paragraph 2: likely driver mix and category hotspots.",
     "Paragraph 3: practical supplier/procurement action.",
     "Mention percentages only when present in the payload.",
+    "Do not use markdown, bullet points, or headings.",
+    "",
+    JSON.stringify(payload, null, 2),
+  ].join("\n");
+}
+
+function buildComparisonPrompt(payload: SummaryPayload) {
+  return [
+    "You are helping a construction estimator interpret a Market Trend Comparison card.",
+    "Use only the provided numbers. Do not invent figures.",
+    "Write one concise paragraph in plain business English.",
+    "Explain how PSA CMRPI movement, DPWH baseline rates, supplier markup, and favorable items compare.",
+    "Mention counts and percentages only when present in the payload.",
     "Do not use markdown, bullet points, or headings.",
     "",
     JSON.stringify(payload, null, 2),
@@ -119,10 +153,11 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Invalid summary payload." }, { status: 400 });
   }
 
-  const fallback = fallbackSummary(payload);
+  const isComparison = payload.summary_kind === "comparison";
+  const fallback = isComparison ? fallbackComparison(payload) : fallbackSummary(payload);
 
   try {
-    const prompt = buildPrompt(payload);
+    const prompt = isComparison ? buildComparisonPrompt(payload) : buildSummaryPrompt(payload);
     const summary = await callGemini(prompt);
     return NextResponse.json({
       summary: summary ?? fallback,

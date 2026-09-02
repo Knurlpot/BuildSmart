@@ -73,6 +73,10 @@ function tierBadgeClass(tier: RuleWithTier["tier"]) {
     : "bg-orange-50 text-primary";
 }
 
+function materialGroupKey(treatment: string, tier: RuleWithTier["tier"], status: ExistingRuleSummary["status"]) {
+  return `${treatment}::${tier ?? "Practical"}::${status.toLowerCase()}`;
+}
+
 function RuleLabel({ rule }: { rule: RuleWithTier }) {
   return (
     <div className="flex min-w-0 items-center gap-2">
@@ -202,14 +206,15 @@ export function ManageExistingRulesTab({ onViewRule }: ManageExistingRulesTabPro
     const grouped = materialRules.reduce((groups, rule) => {
       const treatment = rule.treatment_type?.trim() || "No treatment type";
       const tier = rule.treatment_tier ?? "Practical";
-      const key = `${treatment}::${tier}`;
+      const status = rule.is_active ? "Active" as const : "Disabled" as const;
+      const key = materialGroupKey(treatment, tier, status);
       groups.set(key, [...(groups.get(key) ?? []), rule]);
       return groups;
     }, new Map<string, typeof materialRules>());
 
     return Array.from(grouped, ([groupKey, materials]) => {
       const [treatmentType, rawTier] = groupKey.split("::");
-      const tier = rawTier === "Premium" ? "Premium" : "Practical";
+      const tier: RuleWithTier["tier"] = rawTier === "Premium" ? "Premium" : "Practical";
       const itemNames = materials.map((rule) => rule.preferred_item_name).sort((a, b) => a.localeCompare(b));
       const latestEffective = materials
         .map((rule) => rule.effective_date)
@@ -231,7 +236,7 @@ export function ManageExistingRulesTab({ onViewRule }: ManageExistingRulesTabPro
     const grouped = new Map<string, string[]>();
     for (const rule of materialRules) {
       const treatment = rule.treatment_type?.trim() || "No treatment type";
-      const key = `${treatment}::${rule.treatment_tier ?? "Practical"}`;
+      const key = materialGroupKey(treatment, rule.treatment_tier ?? "Practical", rule.is_active ? "Active" : "Disabled");
       grouped.set(key, [...(grouped.get(key) ?? []), rule.rule_id]);
     }
     return grouped;

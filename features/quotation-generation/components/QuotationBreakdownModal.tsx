@@ -65,6 +65,10 @@ function sourceLabelForLine(line: ProvisionalItemLine) {
   return selectedSupplierForLine(line)?.supplier_name ?? line.pricing_reference.price_source;
 }
 
+function fmtPercentRaw(value: number): string {
+  return `${value}%`;
+}
+
 // Part B — one small box per item line: real provenance fields (price_source/region/
 // quarter+year or recorded_at).
 function PricingReferenceBox({ line }: { line: ProvisionalItemLine }) {
@@ -297,17 +301,17 @@ function BoqTab({ items }: { items: ProvisionalItemLine[] }) {
 function CostSummaryTab({ result }: { result: ProvisionalQuotationTierResult }) {
   const unresolvedCount = result.items.filter((l) => l.unit_price === null).length;
   const rushJobCost = result.service_cost.rush_job_cost ?? 0;
-  const rushPercentage = result.service_cost.labor_cost > 0 ? Math.round((rushJobCost / result.service_cost.labor_cost) * 100) : 0;
+  const rushPercentage = result.service_cost.labor_cost > 0 ? (rushJobCost / result.service_cost.labor_cost) * 100 : 0;
   const rows: { label: string; value: number; bold?: boolean }[] = [
     { label: "Materials Subtotal", value: result.materials_subtotal },
     {
-      label: rushJobCost > 0 ? `Labor (${rushPercentage}% Rush Job)` : "Labor",
+      label: rushJobCost > 0 ? `Labor (${fmtPercentRaw(rushPercentage)} Rush Job)` : "Labor",
       value: result.service_cost.labor_cost + rushJobCost,
     },
     { label: "Equipment", value: result.service_cost.equipment_cost },
     { label: "Contingency / Other (PPE, mobilization)", value: result.service_cost.contingency_cost + result.service_cost.other_cost },
-    { label: `Overhead (OCM, ${result.ocm_percentage}%)`, value: result.ocm_amount },
-    { label: `Profit / Markup (${result.profit_margin_percentage}%)`, value: result.profit_amount },
+    { label: `Overhead (OCM, ${fmtPercentRaw(result.ocm_percentage)})`, value: result.ocm_amount },
+    { label: `Profit / Markup (${fmtPercentRaw(result.profit_margin_percentage)})`, value: result.profit_amount },
   ];
 
   return (
@@ -331,7 +335,7 @@ function CostSummaryTab({ result }: { result: ProvisionalQuotationTierResult }) 
         </div>
         <div className="flex items-center justify-between border-b border-gray-100 py-2.5">
           <span className="text-sm text-gray-500">
-            VAT ({result.vat.rate_percentage}%): {result.vat_inclusive ? "applied" : "waived for this client"}
+            VAT ({fmtPercentRaw(result.vat.rate_percentage)}): {result.vat_inclusive ? "applied" : "waived for this client"}
           </span>
           <span className="text-sm font-semibold text-gray-800">{fmtPeso(result.vat.amount)}</span>
         </div>

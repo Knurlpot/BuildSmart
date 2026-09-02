@@ -396,6 +396,7 @@ export function AiNormalizationPanel({ companyId, defaultSupplierMode = "existin
   const createSupplier = useMutation<SupplierRecord>();
 
   const mappingItem = queue.find((item) => item.status === "needs_mapping");
+  const reviewPanelError = queue.length === 0 && reviewItems.length === 0 ? null : reviewError;
 
   // Draft mapping for whichever file is currently stuck in 'needs_mapping' —
   // pre-filled from what the backend's tiers 1-3 DID resolve, so the user
@@ -1198,7 +1199,7 @@ export function AiNormalizationPanel({ companyId, defaultSupplierMode = "existin
 
         <QueryState
           isLoading={isLoadingReview}
-          error={reviewError}
+          error={reviewPanelError}
           isEmpty={reviewItems.length === 0}
           onRetry={refetchReview}
           emptyTitle="No items awaiting review"

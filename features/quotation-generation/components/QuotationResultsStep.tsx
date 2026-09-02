@@ -343,7 +343,7 @@ export function QuotationResultsStep({
   };
 
   const tierResults = Object.fromEntries(
-    activeTiers.map((tier) => [tier, computeTierResult(tier, effectiveTierItems[tier] ?? [], { segments, materialRules, laborRules })])
+    activeTiers.map((tier) => [tier, computeTierResult(tier, effectiveTierItems[tier] ?? [], { segments, materialRules, laborRules, pricingStrategies })])
   ) as Partial<Record<ProvisionalTier, ProvisionalQuotationTierResult>>;
 
   const handleAcceptQuotation = async (tier: ProvisionalTier) => {

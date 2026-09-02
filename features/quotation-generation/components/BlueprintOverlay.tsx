@@ -63,27 +63,6 @@ const segmentPolygons = (segment: DraftSegment): SegmentPolygon[] => {
   return segment.polygon_coords ? [segment.polygon_coords] : [];
 };
 
-const convexHull = (points: SegmentPolygon): SegmentPolygon => {
-  const unique = [...new Map(points.map((point) => [`${point[0]}:${point[1]}`, point])).values()].sort(
-    (left, right) => left[0] - right[0] || left[1] - right[1],
-  );
-  if (unique.length <= 3) return unique;
-  const cross = (origin: [number, number], a: [number, number], b: [number, number]) =>
-    (a[0] - origin[0]) * (b[1] - origin[1]) - (a[1] - origin[1]) * (b[0] - origin[0]);
-  const lower: SegmentPolygon = [];
-  for (const point of unique) {
-    while (lower.length >= 2 && cross(lower[lower.length - 2], lower[lower.length - 1], point) <= 0) lower.pop();
-    lower.push(point);
-  }
-  const upper: SegmentPolygon = [];
-  for (let index = unique.length - 1; index >= 0; index -= 1) {
-    const point = unique[index];
-    while (upper.length >= 2 && cross(upper[upper.length - 2], upper[upper.length - 1], point) <= 0) upper.pop();
-    upper.push(point);
-  }
-  return [...lower.slice(0, -1), ...upper.slice(0, -1)];
-};
-
 interface BlueprintOverlayProps {
   imageUrl: string;
   imageWidth: number;
@@ -301,11 +280,9 @@ export function BlueprintOverlay({
   const tooltipTop = cursor && cursor.y + TOOLTIP_HEIGHT + 20 > cursor.containerHeight ? cursor.y - TOOLTIP_HEIGHT - 14 : (cursor?.y ?? 0) + 14;
 
   const scanLineY = (scanProgress / 100) * imageHeight;
-  const groupingSelectionHull = convexHull(
-    segments
-      .filter((segment) => groupingSelectedIds?.has(segment.draft_id))
-      .flatMap((segment) => segmentPolygons(segment).flat()),
-  );
+  const groupingSelectionPolygons = segments
+    .filter((segment) => groupingSelectedIds?.has(segment.draft_id))
+    .flatMap(segmentPolygons);
   const segmentPoints = segments.flatMap((seg) => segmentPolygons(seg)).flat();
   const segmentCropBounds =
     segmentPoints.length > 0
@@ -548,17 +525,21 @@ export function BlueprintOverlay({
               });
             })}
           </g>
-          {groupingSelectionHull.length >= 3 && (
-            <polygon
-              points={pointsToSvg(groupingSelectionHull)}
-              fill="#16a34a"
-              fillOpacity={0.24}
-              stroke="#16a34a"
-              strokeWidth={8}
-              strokeLinejoin="round"
-              pointerEvents="none"
-            />
-          )}
+          <g pointerEvents="none">
+            {groupingSelectionPolygons.map((points, index) =>
+              points.length >= 3 ? (
+                <polygon
+                  key={`grouping-selection-${index}`}
+                  points={pointsToSvg(points)}
+                  fill="#16a34a"
+                  fillOpacity={0.24}
+                  stroke="#16a34a"
+                  strokeWidth={8}
+                  strokeLinejoin="round"
+                />
+              ) : null,
+            )}
+          </g>
           {highlightEditingActive && editableSegment && editablePolygon && (
             <g>
               {editablePolygon.map(([x, y], index) => (

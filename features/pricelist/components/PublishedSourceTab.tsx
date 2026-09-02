@@ -76,9 +76,6 @@ export function PublishedSourceTab({
     isCheckingDpwhVersion,
     checkDpwhVersionError,
     dpwhVersionResult,
-    checkPsaVersion,
-    isCheckingPsaVersion,
-    checkPsaVersionError,
     dpwhCatalog,
   } = usePricelistPublishedSource();
   const [region, setRegion] = useState("NCR");
@@ -161,16 +158,8 @@ export function PublishedSourceTab({
 
   useEffect(() => {
     if (region !== "NCR") return;
-    const loadPsa = async () => {
-      try {
-        await checkPsaVersion();
-      } catch {
-        // surfaced via checkPsaVersionError below
-      }
-      triggerPsaIndex().catch(() => {});
-    };
-    void loadPsa();
-  }, [region, checkPsaVersion, triggerPsaIndex]);
+    triggerPsaIndex().catch(() => {});
+  }, [region, triggerPsaIndex]);
 
   const dpwhCatalogRows = useMemo(
     () => dpwhCatalog.records.filter((item) => region === "All" || item.region === region),
@@ -327,7 +316,7 @@ export function PublishedSourceTab({
               PSA CMRPI Rates · NCR only
             </div>
           </div>
-          {(isCheckingDpwhVersion || isFetching || isCheckingPsaVersion || isFetchingPsaIndex) && (
+          {(isCheckingDpwhVersion || isFetching || isFetchingPsaIndex) && (
             <div className="flex items-center gap-2 text-xs font-semibold text-gray-400 sm:col-span-3">
               <Loader2 className="h-3.5 w-3.5 animate-spin" /> Updating published data…
             </div>

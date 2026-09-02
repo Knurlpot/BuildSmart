@@ -176,6 +176,14 @@ function edgeKey(a: [number, number], b: [number, number]): string {
   return [pointKey(a), pointKey(b)].sort().join("|");
 }
 
+function polygonEdgeKeys(polygon: SegmentPolygon): Set<string> {
+  const keys = new Set<string>();
+  for (let index = 0; index < polygon.length; index += 1) {
+    keys.add(edgeKey(polygon[index], polygon[(index + 1) % polygon.length]));
+  }
+  return keys;
+}
+
 function traceBoundaryLoops(edges: Array<[[number, number], [number, number]]>): SegmentPolygon[] {
   const adjacency = new Map<string, Array<{ point: [number, number]; edge: string }>>();
   const pointByKey = new Map<string, [number, number]>();
@@ -224,19 +232,53 @@ function traceBoundaryLoops(edges: Array<[[number, number], [number, number]]>):
 }
 
 function combinedHighlightPolygons(polygons: SegmentPolygon[]): SegmentPolygon[] {
-  const edgeCounts = new Map<string, { count: number; edge: [[number, number], [number, number]] }>();
-  for (const polygon of polygons) {
-    for (let index = 0; index < polygon.length; index += 1) {
-      const a = polygon[index];
-      const b = polygon[(index + 1) % polygon.length];
-      const key = edgeKey(a, b);
-      const current = edgeCounts.get(key);
-      edgeCounts.set(key, { count: (current?.count ?? 0) + 1, edge: current?.edge ?? [a, b] });
+  const edgesByPolygon = polygons.map(polygonEdgeKeys);
+  const visited = new Set<number>();
+  const combined: SegmentPolygon[] = [];
+
+  for (let startIndex = 0; startIndex < polygons.length; startIndex += 1) {
+    if (visited.has(startIndex)) continue;
+    const componentIndexes: number[] = [];
+    const queue = [startIndex];
+    visited.add(startIndex);
+
+    while (queue.length > 0) {
+      const currentIndex = queue.shift()!;
+      componentIndexes.push(currentIndex);
+      const currentEdges = edgesByPolygon[currentIndex];
+
+      for (let candidateIndex = 0; candidateIndex < polygons.length; candidateIndex += 1) {
+        if (visited.has(candidateIndex)) continue;
+        const sharesSide = [...edgesByPolygon[candidateIndex]].some((key) => currentEdges.has(key));
+        if (!sharesSide) continue;
+        visited.add(candidateIndex);
+        queue.push(candidateIndex);
+      }
     }
+
+    if (componentIndexes.length === 1) {
+      combined.push(polygons[startIndex]);
+      continue;
+    }
+
+    const edgeCounts = new Map<string, { count: number; edge: [[number, number], [number, number]] }>();
+    for (const polygonIndex of componentIndexes) {
+      const polygon = polygons[polygonIndex];
+      for (let index = 0; index < polygon.length; index += 1) {
+        const a = polygon[index];
+        const b = polygon[(index + 1) % polygon.length];
+        const key = edgeKey(a, b);
+        const current = edgeCounts.get(key);
+        edgeCounts.set(key, { count: (current?.count ?? 0) + 1, edge: current?.edge ?? [a, b] });
+      }
+    }
+
+    const boundaryEdges = [...edgeCounts.values()].filter((entry) => entry.count === 1).map((entry) => entry.edge);
+    const loops = traceBoundaryLoops(boundaryEdges);
+    combined.push(...(loops.length > 0 ? loops : componentIndexes.map((index) => polygons[index])));
   }
-  const boundaryEdges = [...edgeCounts.values()].filter((entry) => entry.count === 1).map((entry) => entry.edge);
-  const loops = traceBoundaryLoops(boundaryEdges);
-  return loops.length > 0 ? loops : polygons;
+
+  return combined;
 }
 
 /** "Group multiple into one" — sums area, keeps the lowest confidence of the group (the
