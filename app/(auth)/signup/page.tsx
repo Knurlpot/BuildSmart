@@ -3,7 +3,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Check, ChevronRight, Eye, EyeOff, Upload, X } from "lucide-react";
+import { Check, ChevronDown, ChevronRight, Eye, EyeOff, Upload, X } from "lucide-react";
 import { AuthBrandPanel } from "@/components/auth/AuthBrandPanel";
 import { TermsModal } from "@/components/auth/TermsModal";
 import { SpecializationSelect } from "@/components/forms/SpecializationSelect";
@@ -35,7 +35,7 @@ interface FormData {
   firstName: string;
   lastName: string;
   middleName: string;
-  userRole: Users["user_role"];
+  userRole: Users["user_role"] | "";
   email: string;
   password: string;
   confirmPassword: string;
@@ -53,7 +53,7 @@ const INIT: FormData = {
   firstName: "",
   lastName: "",
   middleName: "",
-  userRole: "Owner",
+  userRole: "",
   email: "",
   password: "",
   confirmPassword: "",
@@ -301,6 +301,7 @@ export default function SignUpPage() {
     const e: Record<string, string> = {};
     if (!form.firstName.trim()) e.firstName = "First name is required";
     if (!form.lastName.trim()) e.lastName = "Last name is required";
+    if (!form.userRole) e.userRole = "Role is required";
     if (!isValidEmail(form.email)) e.email = "Enter a valid email address";
     if (form.password.length < PASSWORD_MIN_LENGTH)
       e.password = `Password must be at least ${PASSWORD_MIN_LENGTH} characters`;
@@ -395,7 +396,7 @@ export default function SignUpPage() {
         middle_name: form.middleName || undefined,
         email: form.email,
         password: form.password,
-        user_role: companyMode === "join" ? form.userRole : "Owner",
+        user_role: companyMode === "join" ? form.userRole || "Owner" : "Owner",
         ...companyPayload,
       });
       router.push(resolveOnboardingRoute(user.onboardingStep));
@@ -412,16 +413,20 @@ export default function SignUpPage() {
     }
   };
 
-  const inputCls = (field: string) =>
-    `w-full rounded-xl border ${
-      errors[field] ? "border-red-400 bg-red-50" : "border-gray-200 bg-gray-50"
-    } px-4 py-2.5 text-sm outline-none transition focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/20`;
   const floatingInputCls = (field: string, extra = "") =>
     `peer w-full rounded-xl border ${
       errors[field] ? "border-red-400 bg-red-50" : "border-gray-200 bg-gray-50"
     } px-4 pb-2.5 pt-5 text-sm outline-none transition focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/20 ${extra}`;
+  const floatingSelectCls = (field: string, active: boolean) =>
+    `peer block w-full box-border appearance-none rounded-xl border ${
+      errors[field] ? "border-red-400 bg-red-50" : "border-gray-200 bg-gray-50"
+    } px-4 pb-2.5 pt-5 pr-12 text-sm outline-none transition focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/20 ${
+      active ? "text-gray-900" : "text-transparent"
+    }`;
   const floatingLabelCls =
     "pointer-events-none absolute left-4 top-2 text-[10px] font-semibold text-gray-500 transition-all peer-placeholder-shown:top-1/2 peer-placeholder-shown:-translate-y-1/2 peer-placeholder-shown:text-sm peer-placeholder-shown:font-medium peer-focus:top-2 peer-focus:translate-y-0 peer-focus:text-[10px] peer-focus:font-semibold peer-focus:text-primary";
+  const floatingSelectLabelCls =
+    "pointer-events-none absolute left-4 top-2 text-[10px] font-semibold text-gray-500 transition-all";
   const phoneActive = phoneFocused || form.companyContactNumber.length > 0;
 
   return (
@@ -527,20 +532,35 @@ export default function SignUpPage() {
                 </div>
 
                 <div className="flex flex-col gap-1.5">
-                  <label className="text-xs font-semibold uppercase tracking-wide text-gray-600">
-                    Your Role *
-                  </label>
-                  <select
-                    value={form.userRole}
-                    onChange={(e) => set("userRole", e.target.value as Users["user_role"])}
-                    className={inputCls("userRole")}
-                  >
-                    {USER_ROLES.map((r) => (
-                      <option key={r} value={r}>
-                        {r}
+                  <div className="relative">
+                    <select
+                      id="signup-user-role"
+                      value={form.userRole}
+                      onChange={(e) => set("userRole", e.target.value as Users["user_role"] | "")}
+                      className={floatingSelectCls("userRole", Boolean(form.userRole))}
+                    >
+                      <option value="" disabled>
+                        Role *
                       </option>
-                    ))}
-                  </select>
+                      {USER_ROLES.map((r) => (
+                        <option key={r} value={r} className="text-gray-900">
+                          {r}
+                        </option>
+                      ))}
+                    </select>
+                    {!form.userRole && (
+                      <div className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-sm font-medium text-gray-500">
+                        Role <span className="text-red-500">*</span>
+                      </div>
+                    )}
+                    {form.userRole && (
+                      <label htmlFor="signup-user-role" className={floatingSelectLabelCls}>
+                        Role <span className="text-red-500">*</span>
+                      </label>
+                    )}
+                    <ChevronDown className="pointer-events-none absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+                  </div>
+                  {errors.userRole && <p className="text-xs text-red-500">{errors.userRole}</p>}
                 </div>
 
                 <div className="mt-2">
@@ -623,17 +643,18 @@ export default function SignUpPage() {
                 </div>
 
                 <div className="flex flex-col gap-1.5">
-                  <label className="text-xs font-semibold uppercase tracking-wide text-gray-600">
-                    Re-type Password *
-                  </label>
                   <div className="relative">
                     <input
+                      id="signup-confirm-password"
                       type={showCPw ? "text" : "password"}
                       value={form.confirmPassword}
                       onChange={(e) => set("confirmPassword", e.target.value)}
-                      placeholder="Confirm password"
-                      className={`${inputCls("confirmPassword")} pr-11`}
+                      placeholder=" "
+                      className={floatingInputCls("confirmPassword", "pr-11")}
                     />
+                    <label htmlFor="signup-confirm-password" className={floatingLabelCls}>
+                      Confirm Password <span className="text-red-500">*</span>
+                    </label>
                     <button
                       type="button"
                       onClick={() => setShowCPw((v) => !v)}
