@@ -3,6 +3,8 @@ import uuid
 from datetime import date, datetime
 from pathlib import Path
 from typing import Literal
+import re
+from difflib import SequenceMatcher
 
 from celery.result import AsyncResult
 from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, UploadFile
@@ -304,6 +306,125 @@ def _find_existing_item_for_price_update(
     return db.execute(statement.order_by(Items.company_id.desc().nulls_last(), Items.item_code.desc())).scalars().first()
 
 
+def _catalog_match_key(value: str | None) -> str:
+    return re.sub(r"[^a-z0-9]+", "", (value or "").lower())
+
+
+def _catalog_numeric_tokens(value: str | None) -> set[str]:
+    return set(re.findall(r"\d+(?:/\d+)?(?:\.\d+)?", (value or "").lower()))
+
+
+def _find_canonical_catalog_item(db: Session, *, item_name: str, unit: str, company_id: int | None) -> Items | None:
+    """Prefer a shared DPWH/catalog item so uploaded supplier prices become comparable."""
+    target_name = _catalog_match_key(item_name)
+    target_unit = _catalog_match_key(unit)
+    if not target_name:
+        return None
+
+    candidates = db.execute(
+        select(Items)
+        .where((Items.company_id.is_(None)) | (Items.company_id == company_id))
+        .where(
+            select(HistoricalPriceRecord.historicalrec_id)
+            .where(HistoricalPriceRecord.item_code == Items.item_code)
+            .where(HistoricalPriceRecord.price_source == "DPWH")
+            .exists()
+        )
+        .order_by(Items.item_source.asc(), Items.item_code.asc())
+    ).scalars().all()
+
+    exact_unit_matches = [
+        item for item in candidates
+        if _catalog_match_key(item.item_name) == target_name and _catalog_match_key(item.unit) == target_unit
+    ]
+    if exact_unit_matches:
+        return exact_unit_matches[0]
+
+    name_matches = [item for item in candidates if _catalog_match_key(item.item_name) == target_name]
+    if name_matches:
+        return name_matches[0]
+
+    scored: list[tuple[float, Items]] = []
+    for item in candidates:
+        candidate_name = _catalog_match_key(item.item_name)
+        if not candidate_name:
+            continue
+        target_numbers = _catalog_numeric_tokens(item_name)
+        candidate_numbers = _catalog_numeric_tokens(item.item_name)
+        if target_numbers and candidate_numbers and target_numbers != candidate_numbers:
+            continue
+        name_score = SequenceMatcher(None, target_name, candidate_name).ratio()
+        unit_score = 1.0 if target_unit and _catalog_match_key(item.unit) == target_unit else 0.0
+        score = (name_score * 0.9) + (unit_score * 0.1)
+        if score >= 0.82:
+            scored.append((score, item))
+
+    if not scored:
+        return None
+
+    scored.sort(key=lambda match: (match[0], -match[1].item_code), reverse=True)
+    return scored[0][1]
+
+
+def _trend_direction(percent_change: float) -> str:
+    if percent_change > 1:
+        return "Up"
+    if percent_change < -1:
+        return "Down"
+    return "Stable"
+
+
+def _upsert_internal_variance(db: Session, *, item_code: int, effective_date: date, quarter: str | None, year: int | None) -> None:
+    supplier_price = db.execute(
+        select(func.avg(HistoricalPriceRecord.price))
+        .where(HistoricalPriceRecord.item_code == item_code)
+        .where(HistoricalPriceRecord.price_source == "Supplier")
+        .where(HistoricalPriceRecord.effective_date == effective_date)
+    ).scalar_one_or_none()
+    dpwh_price = db.execute(
+        select(func.avg(HistoricalPriceRecord.price))
+        .where(HistoricalPriceRecord.item_code == item_code)
+        .where(HistoricalPriceRecord.price_source == "DPWH")
+        .where(HistoricalPriceRecord.effective_date == effective_date)
+    ).scalar_one_or_none()
+
+    if supplier_price is None or dpwh_price is None or float(dpwh_price) <= 0:
+        return
+
+    percent_change = round(((float(supplier_price) - float(dpwh_price)) / float(dpwh_price)) * 100, 2)
+    db.execute(
+        text(
+            """
+            INSERT INTO material_price_variance (
+              item_code, variance_source, commodity_group, effective_date, quarter, year,
+              percent_change, trend_direction, is_significant_spike
+            )
+            VALUES (
+              :item_code, 'Internal', NULL, :effective_date, :quarter, :year,
+              :percent_change, :trend_direction, :is_significant_spike
+            )
+            ON CONFLICT (item_code, effective_date)
+            DO UPDATE SET
+              variance_source = EXCLUDED.variance_source,
+              quarter = EXCLUDED.quarter,
+              year = EXCLUDED.year,
+              percent_change = EXCLUDED.percent_change,
+              trend_direction = EXCLUDED.trend_direction,
+              is_significant_spike = EXCLUDED.is_significant_spike
+            """
+        ),
+        {
+            "item_code": item_code,
+            "effective_date": effective_date,
+            "quarter": quarter,
+            "year": year,
+            "percent_change": percent_change,
+            "trend_direction": _trend_direction(percent_change),
+            "is_significant_spike": abs(percent_change) >= 10,
+        },
+    )
+
+
 def _save_review_item_to_catalog(row: PriceListReviewItem, db: Session) -> None:
     item_name = row.raw_name.strip()
     unit = row.raw_unit.strip()
@@ -340,7 +461,8 @@ def _save_review_item_to_catalog(row: PriceListReviewItem, db: Session) -> None:
         if supplier_exists is None:
             supplier_id = None
 
-    existing = _find_existing_item_for_price_update(
+    existing = _find_canonical_catalog_item(db, item_name=item_name, unit=unit, company_id=company_id) if source == "Supplier" else None
+    existing = existing or _find_existing_item_for_price_update(
         db,
         item_name=item_name,
         description=description,
@@ -411,6 +533,15 @@ def _save_review_item_to_catalog(row: PriceListReviewItem, db: Session) -> None:
         existing_price.quarter = upload.quarter if upload is not None else None
         existing_price.year = upload.year if upload is not None else None
         existing_price.recorded_at = datetime.now()
+
+    if source == "Supplier":
+        _upsert_internal_variance(
+            db,
+            item_code=item.item_code,
+            effective_date=effective_date,
+            quarter=upload.quarter if upload is not None else None,
+            year=upload.year if upload is not None else None,
+        )
 
     # Remember this human-confirmed mapping so future uploads of the same raw
     # text skip re-scoring entirely (see app.services.match_cache). Keyed on
