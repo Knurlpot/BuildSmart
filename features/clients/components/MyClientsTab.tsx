@@ -195,7 +195,7 @@ export function MyClientsTab({ onClientCountChange, showImport = false, importFi
           <p className="mt-1 text-sm text-gray-500">Try a different name, contact person, or email.</p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+        <div className="flex flex-wrap justify-start gap-4">
           {filtered.map((client) => {
             const selected = selectedClientIds.has(client.client_id);
             return (
@@ -220,13 +220,13 @@ export function MyClientsTab({ onClientCountChange, showImport = false, importFi
                   router.push(`/clients/${client.client_id}`);
                 }
               }}
-              className={`group relative cursor-pointer rounded-2xl border bg-white p-5 shadow-sm transition-all hover:border-gray-200 hover:shadow-md ${
+              className={`group relative flex min-h-80 w-full max-w-[22rem] basis-full cursor-pointer flex-col items-center overflow-hidden rounded-2xl border bg-white text-center shadow-sm transition-all hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-md sm:basis-[22rem] ${
                 selected ? "border-primary ring-2 ring-primary/15" : "border-gray-100"
               }`}
             >
               {selectMode && (
                 <span
-                  className={`absolute left-2 top-2 flex h-5 w-5 items-center justify-center rounded-md border ${
+                  className={`absolute left-3 top-3 z-10 flex h-5 w-5 items-center justify-center rounded-md border ${
                     selected ? "border-primary bg-primary text-primary-foreground" : "border-gray-300 bg-white text-transparent"
                   }`}
                   aria-hidden="true"
@@ -234,24 +234,36 @@ export function MyClientsTab({ onClientCountChange, showImport = false, importFi
                   <Check className="h-3.5 w-3.5" />
                 </span>
               )}
-              <div className="flex items-start justify-between gap-4">
-                <div className="flex min-w-0 items-center gap-3">
-                  <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-orange-50 text-sm font-semibold text-primary">{clientInitials(client.client_name)}</div>
-                  <div className="min-w-0">
-                    <h2 className="truncate text-base font-semibold text-gray-900">{client.client_name}</h2>
-                    <p className="mt-1 flex items-center gap-1.5 text-xs text-gray-400">
-                      <Building2 className="h-3.5 w-3.5 shrink-0" />
-                      <span className="truncate">{client.quotation_project_count ?? 0} quotation project{(client.quotation_project_count ?? 0) === 1 ? "" : "s"}</span>
-                    </p>
-                  </div>
-                </div>
-                <div className="flex shrink-0 items-center gap-2">
-                  <ClientTypeBadge client={client} />
-                  <StatusBadge status={client.status} />
-                </div>
+              <div className={`relative h-28 w-full overflow-hidden ${client.profile_picture ? "bg-gray-200" : "client-card-gradient bg-linear-to-r from-orange-600 via-orange-400 to-amber-300"}`} aria-hidden="true">
+                {client.profile_picture && (
+                  // eslint-disable-next-line @next/next/no-img-element -- client-provided local or external image
+                  <img src={client.profile_picture} alt="" className="absolute inset-0 h-full w-full scale-125 object-cover blur-xl saturate-150" />
+                )}
+                <div className="absolute inset-0 bg-black/15" />
+                <div className="absolute -left-8 -top-12 h-32 w-32 rounded-full bg-white/20 blur-xl" />
+                <div className="absolute -bottom-14 right-2 h-32 w-32 rounded-full bg-white/25 blur-2xl" />
               </div>
+              <div className="relative -mt-10 flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-full bg-white text-xl font-bold text-gray-700 ring-4 ring-white shadow-md">
+                {client.profile_picture ? (
+                  // eslint-disable-next-line @next/next/no-img-element -- client-provided local or external image
+                  <img src={client.profile_picture} alt={`${client.client_name} profile`} className="h-full w-full object-cover" />
+                ) : (
+                  clientInitials(client.client_name)
+                )}
+              </div>
+              <h2 className="mt-4 max-w-full truncate text-lg font-semibold text-gray-900 transition-colors group-hover:text-primary">
+                {client.client_name}
+              </h2>
+              <div className="mt-2 flex flex-wrap items-center justify-center gap-2">
+                <ClientTypeBadge client={client} />
+                <StatusBadge status={client.status} />
+              </div>
+              <p className="mt-3 flex items-center justify-center gap-1.5 text-xs text-gray-500">
+                <Building2 className="h-3.5 w-3.5 shrink-0" />
+                {client.quotation_project_count ?? 0} quotation{(client.quotation_project_count ?? 0) === 1 ? "" : "s"}
+              </p>
 
-              <div className="mt-5 space-y-2.5">
+              <div className="mt-5 w-full space-y-2 border-t border-gray-100 px-6 pb-6 pt-4 text-left">
                 <div className="flex items-center gap-2.5 text-sm text-gray-600"><UserRound className="h-4 w-4 shrink-0 text-primary" /><span className="truncate">{client.contact_person || "No contact person"}</span></div>
                 <div className="flex items-center gap-2.5 text-sm text-gray-600"><Mail className="h-4 w-4 shrink-0 text-primary" /><span className="truncate">{client.contact_email || "No email on file"}</span></div>
                 <div className="flex items-center gap-2.5 text-sm text-gray-600"><Phone className="h-4 w-4 shrink-0 text-primary" /><span className="truncate">{client.contact_number || "No phone on file"}</span></div>

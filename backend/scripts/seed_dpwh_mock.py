@@ -15,7 +15,7 @@ import sys
 from datetime import date
 from pathlib import Path
 
-from sqlalchemy import func, select, text
+from sqlalchemy import func, select
 
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
 if str(BACKEND_ROOT) not in sys.path:
@@ -33,23 +33,21 @@ PLACEHOLDER_DESCRIPTION = "Development placeholder for DPWH CMPD"
 ACTUAL_PRICE_FACTORS = (1.08, 1.12, 0.96, 1.05, 1.16, 0.93, 1.10)
 
 MOCK_PRICES = [
-    # The current development database still uses its original two-category
-    # constraint. Keep the mock compatible until that migration is deployed.
-    ("Structural", "Portland Cement Type I, 40 kg", "bag", "NCR", "Placeholder - NCR First DEO", 287.50),
-    ("Structural", "Portland Cement Type I, 40 kg", "bag", "Region III", "Placeholder - Pampanga First DEO", 279.00),
-    ("Structural", "Concrete Hollow Block 100 mm", "piece", "NCR", "Placeholder - NCR First DEO", 19.75),
-    ("Structural", "Washed Sand", "cu.m", "Region IV-A", "Placeholder - Cavite First DEO", 1_420.00),
-    ("Structural", "Deformed Steel Bar 10 mm", "piece", "NCR", "Placeholder - NCR First DEO", 191.25),
-    ("Structural", "Deformed Steel Bar 12 mm", "piece", "Region III", "Placeholder - Bulacan First DEO", 278.40),
+    ("Concrete & Masonry", "Portland Cement Type I, 40 kg", "bag", "NCR", "Placeholder - NCR First DEO", 287.50),
+    ("Concrete & Masonry", "Portland Cement Type I, 40 kg", "bag", "Region III", "Placeholder - Pampanga First DEO", 279.00),
+    ("Masonry Units & Blocks", "Concrete Hollow Block 100 mm", "piece", "NCR", "Placeholder - NCR First DEO", 19.75),
+    ("Concrete & Masonry", "Washed Sand", "cu.m", "Region IV-A", "Placeholder - Cavite First DEO", 1_420.00),
+    ("Reinforcement & Steel", "Deformed Steel Bar 10 mm", "piece", "NCR", "Placeholder - NCR First DEO", 191.25),
+    ("Reinforcement & Steel", "Deformed Steel Bar 12 mm", "piece", "Region III", "Placeholder - Bulacan First DEO", 278.40),
     ("Structural", "Angle Bar 1x1x1/8", "piece", "Region IV-A", "Placeholder - Laguna First DEO", 214.60),
-    ("Structural", "Marine Plywood 12 mm", "sheet", "NCR", "Placeholder - NCR Second DEO", 1_178.00),
-    ("Structural", "Pre-painted Long Span Roofing 0.4 mm", "sq.m", "Region III", "Placeholder - Tarlac First DEO", 612.50),
-    ("Finishing", "Ceramic Floor Tile 300x300", "piece", "Region IV-A", "Placeholder - Rizal First DEO", 68.25),
-    ("Finishing", "Latex Paint, White, 16 L", "pail", "NCR", "Placeholder - NCR Second DEO", 2_145.00),
-    ("Structural", "PVC Pipe 100 mm, Series 1000", "length", "Region IV-A", "Placeholder - Batangas First DEO", 1_036.00),
-    ("Structural", "THHN Copper Wire 3.5 sq.mm", "meter", "NCR", "Placeholder - NCR First DEO", 42.80),
-    ("Structural", "Common Wire Nail 4 inch", "kg", "Region III", "Placeholder - Nueva Ecija First DEO", 96.40),
-    ("Structural", "Safety Helmet", "piece", "NCR", "Placeholder - NCR First DEO", 228.00),
+    ("Timber & Lumber", "Marine Plywood 12 mm", "sheet", "NCR", "Placeholder - NCR Second DEO", 1_178.00),
+    ("Roofing", "Pre-painted Long Span Roofing 0.4 mm", "sq.m", "Region III", "Placeholder - Tarlac First DEO", 612.50),
+    ("Flooring & Tiles", "Ceramic Floor Tile 300x300", "piece", "Region IV-A", "Placeholder - Rizal First DEO", 68.25),
+    ("Paints, Coatings & Sealants", "Latex Paint, White, 16 L", "pail", "NCR", "Placeholder - NCR Second DEO", 2_145.00),
+    ("Plumbing & Pipework", "PVC Pipe 100 mm, Series 1000", "length", "Region IV-A", "Placeholder - Batangas First DEO", 1_036.00),
+    ("Electrical & Lighting", "THHN Copper Wire 3.5 sq.mm", "meter", "NCR", "Placeholder - NCR First DEO", 42.80),
+    ("Hardware & Fasteners", "Common Wire Nail 4 inch", "kg", "Region III", "Placeholder - Nueva Ecija First DEO", 96.40),
+    ("Safety & PPE", "Safety Helmet", "piece", "NCR", "Placeholder - NCR First DEO", 228.00),
 ]
 
 
@@ -70,34 +68,18 @@ def get_or_create_item(session, category: Category, item_name: str, unit: str) -
         .limit(1)
     )
     if item is None:
-        # The deployed development database still has a required legacy
-        # `material` column that is not present in the current ORM model.
-        # Supplying it explicitly keeps this seed compatible with both schemas.
-        item_code = session.execute(
-            text(
-                """
-                INSERT INTO items (
-                    category_id, company_id, item_name, material, brand, unit,
-                    item_source, source_location, description
-                ) VALUES (
-                    :category_id, NULL, :item_name, :material, :brand, :unit,
-                    'DPWH', NULL, :description
-                )
-                RETURNING item_code
-                """
-            ),
-            {
-                "category_id": category.category_id,
-                "item_name": item_name,
-                "material": item_name,
-                "brand": PLACEHOLDER_BRAND,
-                "unit": unit,
-                "description": PLACEHOLDER_DESCRIPTION,
-            },
-        ).scalar_one()
-        item = session.get(Items, item_code)
-        if item is None:
-            raise RuntimeError(f"Could not load seeded item {item_code}")
+        item = Items(
+            category_id=category.category_id,
+            company_id=None,
+            item_name=item_name,
+            brand=PLACEHOLDER_BRAND,
+            unit=unit,
+            item_source="DPWH",
+            source_location=None,
+            description=PLACEHOLDER_DESCRIPTION,
+        )
+        session.add(item)
+        session.flush()
     return item
 
 

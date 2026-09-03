@@ -1,6 +1,8 @@
 "use client";
 
-import { AlertTriangle, Mail, MapPin, Phone, User, UserPlus } from "lucide-react";
+import { useRef, useState } from "react";
+import { AlertTriangle, Mail, MapPin, Phone, Upload, User, UserPlus, X } from "lucide-react";
+import { useMutation } from "@/hooks/useMutation";
 import { formatPhMobileNationalNumber, normalizePhMobileDigits } from "@/lib/ph-phone";
 import { NEUTRAL_HUE, regionToHue } from "@/lib/regionColor";
 
@@ -10,6 +12,7 @@ export interface NewClientDraft {
   contact_email: string;
   contact_number: string;
   client_address: string;
+  profile_picture: string;
 }
 
 // Part B — a brand-new client is always created as 'New'; "Returning" is a system-derived
@@ -18,7 +21,7 @@ export interface NewClientDraft {
 // client_type field on this draft at all: the caller supplies the literal 'New' when it
 // actually creates the row (see ClientAndProjectStep.tsx's handleCreateSubmit).
 export function emptyNewClientDraft(name: string): NewClientDraft {
-  return { client_name: name, contact_person: "", contact_email: "", contact_number: "", client_address: "" };
+  return { client_name: name, contact_person: "", contact_email: "", contact_number: "", client_address: "", profile_picture: "" };
 }
 
 interface NewClientFormProps {
@@ -47,6 +50,9 @@ function initials(name: string): string {
 // ClientAndProjectStep.tsx); the left column stays project-fields-only.
 export function NewClientForm({ draft, onChange, onCreate, onCancel, isCreating, createError, region = "" }: NewClientFormProps) {
   const set = (patch: Partial<NewClientDraft>) => onChange({ ...draft, ...patch });
+  const pictureUpload = useMutation<{ url: string }>();
+  const pictureInputRef = useRef<HTMLInputElement>(null);
+  const [pictureFileName, setPictureFileName] = useState("");
   const contactDigits = normalizePhMobileDigits(draft.contact_number);
   const hue = region.trim() ? regionToHue(region) : NEUTRAL_HUE;
   const accent = `hsl(${hue} 72% 58%)`;
@@ -61,6 +67,28 @@ export function NewClientForm({ draft, onChange, onCreate, onCancel, isCreating,
     "peer w-full rounded-lg border pb-2 pt-5 text-sm text-white placeholder:text-transparent outline-none transition focus:ring-2";
   const floatingLabelCls =
     "pointer-events-none absolute top-1.5 text-[10px] font-semibold text-white/50 transition-all peer-placeholder-shown:top-1/2 peer-placeholder-shown:-translate-y-1/2 peer-placeholder-shown:text-sm peer-placeholder-shown:font-medium peer-focus:top-1.5 peer-focus:translate-y-0 peer-focus:text-[10px] peer-focus:font-semibold";
+
+  const handlePictureChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    setPictureFileName(file.name);
+    pictureUpload.reset();
+    const body = new FormData();
+    body.append("file", file);
+    try {
+      const { url } = await pictureUpload.mutate("/api/uploads/client-profile-picture", body, "POST");
+      set({ profile_picture: url });
+    } catch {
+      // Upload errors are displayed below the control.
+    }
+  };
+
+  const removePicture = () => {
+    set({ profile_picture: "" });
+    setPictureFileName("");
+    pictureUpload.reset();
+    if (pictureInputRef.current) pictureInputRef.current.value = "";
+  };
 
   return (
     <div
@@ -79,10 +107,15 @@ export function NewClientForm({ draft, onChange, onCreate, onCancel, isCreating,
         style={{ background: accentBg, border: `1px solid ${accentBorder}` }}
       >
         <div
-          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-sm font-extrabold"
+          className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full text-sm font-extrabold"
           style={{ background: `hsl(${hue} 55% 50% / 0.18)`, color: accentText, border: `1.5px solid ${accentBorder}` }}
         >
-          {initials(draft.client_name)}
+          {draft.profile_picture ? (
+            // eslint-disable-next-line @next/next/no-img-element -- newly uploaded local client image
+            <img src={draft.profile_picture} alt="Client profile preview" className="h-full w-full object-cover" />
+          ) : (
+            initials(draft.client_name)
+          )}
         </div>
         <div className="relative min-w-0 flex-1">
           <input
@@ -99,6 +132,37 @@ export function NewClientForm({ draft, onChange, onCreate, onCancel, isCreating,
           <p className="mt-0.5 text-[10px] text-white/50">First-time client. No history on file yet.</p>
         </div>
       </div>
+
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={() => pictureInputRef.current?.click()}
+          disabled={pictureUpload.isLoading}
+          className="flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-semibold text-white/80 transition hover:bg-white/10 disabled:opacity-50"
+          style={{ borderColor: fieldBorder, background: fieldBg }}
+        >
+          <Upload className="h-3.5 w-3.5" />
+          {pictureUpload.isLoading ? "Uploading…" : draft.profile_picture ? "Change Profile Picture" : "Add Profile Picture"}
+        </button>
+        {draft.profile_picture && (
+          <button
+            type="button"
+            onClick={removePicture}
+            aria-label="Remove profile picture"
+            title="Remove profile picture"
+            className="flex h-8 w-8 items-center justify-center rounded-lg text-white/50 transition hover:bg-white/10 hover:text-white"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        )}
+        <input ref={pictureInputRef} type="file" accept="image/*" onChange={handlePictureChange} className="hidden" />
+        {pictureFileName && <span className="min-w-0 truncate text-[10px] text-white/45">{pictureFileName}</span>}
+      </div>
+      {pictureUpload.error && (
+        <p className="flex items-center gap-1.5 text-xs text-red-400">
+          <AlertTriangle className="h-3.5 w-3.5 shrink-0" /> Couldn&apos;t upload profile picture: {pictureUpload.error.message}
+        </p>
+      )}
 
       <div className="flex flex-col gap-3">
         <div className="relative">
@@ -175,7 +239,7 @@ export function NewClientForm({ draft, onChange, onCreate, onCancel, isCreating,
       <div className="mt-auto flex items-center gap-2 border-t pt-4" style={{ borderColor: fieldBorder }}>
         <button
           type="button"
-          disabled={!draft.client_name.trim() || isCreating}
+          disabled={!draft.client_name.trim() || isCreating || pictureUpload.isLoading}
           onClick={onCreate}
           className="rounded-lg px-4 py-2 text-xs font-bold text-white transition disabled:opacity-50"
           style={{ background: `hsl(${hue} 74% 52%)` }}

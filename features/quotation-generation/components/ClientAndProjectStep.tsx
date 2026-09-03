@@ -245,6 +245,7 @@ export function ClientAndProjectStep({ onContinue, onExit }: ClientAndProjectSte
         // input has no digits and is saved as blank.
         contact_number: contactNumber,
         client_address: draft.client_address.trim() || null,
+        profile_picture: draft.profile_picture.trim() || null,
         // Part B — never a user choice at creation: every client this form creates starts
         // 'New'. "Returning" is a system-derived state set once a later quotation actually
         // references this client, not something picked here.
@@ -267,6 +268,7 @@ export function ClientAndProjectStep({ onContinue, onExit }: ClientAndProjectSte
         contact_email: draft.contact_email.trim() || null,
         contact_number: contactNumber,
         client_address: draft.client_address.trim() || null,
+        profile_picture: draft.profile_picture.trim() || null,
         client_type: "New",
       });
       setDraft(null);

@@ -399,7 +399,7 @@ export function SupplierRulesForm({ focusRuleId, onFocusHandled }: SupplierRules
         onAdd={startAdd}
         countLabel={`${allRules.length} configured`}
         listHeader={
-          <div className="flex flex-col gap-2">
+          <div className="relative flex flex-col gap-2">
             <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] gap-2">
               {(["active", "disabled"] as const).map((filter) => (
                 <button
@@ -424,6 +424,7 @@ export function SupplierRulesForm({ focusRuleId, onFocusHandled }: SupplierRules
                 onClick={openFilters}
                 title="Filter supplier rules"
                 aria-label="Filter supplier rules"
+                aria-expanded={filtersOpen}
                 className={`relative flex h-9 w-9 items-center justify-center rounded-lg border transition ${
                   activeFilterCount > 0
                     ? "border-primary bg-orange-50 text-primary"
@@ -439,7 +440,7 @@ export function SupplierRulesForm({ focusRuleId, onFocusHandled }: SupplierRules
               </button>
             </div>
             {filtersOpen && (
-              <div className="rounded-xl border border-gray-200 bg-white p-3 shadow-sm">
+              <div className="absolute right-0 top-11 z-30 w-full rounded-xl border border-gray-200 bg-white p-3 shadow-lg">
                 <div className="grid grid-cols-1 gap-3">
                   <div className="flex flex-col gap-1.5">
                     <label className="text-xs font-semibold text-gray-600">Supplier</label>

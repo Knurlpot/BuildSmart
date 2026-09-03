@@ -440,6 +440,7 @@ export function AiNormalizationPanel({ companyId, defaultSupplierMode = "existin
   const [selectedSupplierId, setSelectedSupplierId] = useState<number | null>(null);
   const [supplierForm, setSupplierForm] = useState<SupplierForm>(() => emptySupplierForm());
   const [supplierFormErrors, setSupplierFormErrors] = useState<Partial<Record<keyof SupplierForm, string>>>({});
+  const [supplierSelectionError, setSupplierSelectionError] = useState<string | null>(null);
   const [supplierRegionFocused, setSupplierRegionFocused] = useState(false);
   const [supplierTypeFocused, setSupplierTypeFocused] = useState(false);
   const [quarter, setQuarter] = useState<(typeof QUARTERS)[number]>(
@@ -470,6 +471,7 @@ export function AiNormalizationPanel({ companyId, defaultSupplierMode = "existin
   const chooseSupplierMode = (mode: SupplierMode) => {
     supplierModeChosenRef.current = true;
     setSupplierMode(mode);
+    setSupplierSelectionError(null);
   };
 
   const acceptFiles = (candidates: FileList | File[]) => {
@@ -502,22 +504,9 @@ export function AiNormalizationPanel({ companyId, defaultSupplierMode = "existin
     setPendingFiles((prev) => prev.filter((entry) => entry.id !== id));
   };
 
-  const supplierFormComplete =
-    supplierForm.supplier_name.trim() &&
-    supplierForm.supplier_address.trim() &&
-    supplierForm.city.trim() &&
-    supplierForm.contact_email.trim() &&
-    supplierForm.contact_number.trim() &&
-    supplierForm.warehouse_loc.trim();
-  const supplierRegionFloated = supplierRegionFocused || supplierForm.region !== "";
-  const supplierTypeFloated = supplierTypeFocused || supplierForm.supplier_type !== "";
-  const supplierReady =
-    source !== "Supplier"
-      ? true
-      : supplierMode === "existing"
-        ? selectedSupplierId != null
-        : Boolean(supplierFormComplete);
-  const uploadDisabled = pendingFiles.length === 0 || !supplierReady || createSupplier.isLoading;
+  const supplierRegionFloated = supplierRegionFocused || Boolean(supplierForm.region);
+  const supplierTypeFloated = supplierTypeFocused || Boolean(supplierForm.supplier_type);
+  const uploadDisabled = pendingFiles.length === 0 || createSupplier.isLoading;
 
   const updateSupplierForm = (patch: Partial<SupplierForm>) => {
     setSupplierForm((prev) => ({ ...prev, ...patch }));
@@ -544,6 +533,7 @@ export function AiNormalizationPanel({ companyId, defaultSupplierMode = "existin
 
   const handleUpload = async () => {
     if (pendingFiles.length === 0) return;
+    setSupplierSelectionError(null);
     let supplierId = source === "Supplier" ? selectedSupplierId : null;
     if (source === "Supplier" && supplierMode === "new") {
       if (!validateSupplierForm()) return;
@@ -557,7 +547,10 @@ export function AiNormalizationPanel({ companyId, defaultSupplierMode = "existin
       setSupplierMode("existing");
       suppliers.refetch();
     }
-    if (source === "Supplier" && supplierId == null) return;
+    if (source === "Supplier" && supplierId == null) {
+      setSupplierSelectionError("Select an existing supplier before uploading.");
+      return;
+    }
     enqueueFiles(pendingFiles.map((entry) => entry.file), source, { quarter, year, supplierId });
     setPendingFiles([]);
   };
@@ -811,7 +804,10 @@ export function AiNormalizationPanel({ companyId, defaultSupplierMode = "existin
                 <label className="text-xs font-semibold uppercase tracking-wide text-gray-600">Source</label>
                 <select
                   value={source}
-                  onChange={(e) => setSource(e.target.value as (typeof SOURCES)[number])}
+                  onChange={(e) => {
+                    setSource(e.target.value as (typeof SOURCES)[number]);
+                    setSupplierSelectionError(null);
+                  }}
                   className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm outline-none focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/20"
                 >
                   {SOURCES.map((s) => (
@@ -874,7 +870,10 @@ export function AiNormalizationPanel({ companyId, defaultSupplierMode = "existin
                       <SupplierSearchInput
                         suppliers={suppliers.data ?? []}
                         selectedSupplierId={selectedSupplierId}
-                        onSelectSupplier={setSelectedSupplierId}
+                        onSelectSupplier={(supplierId) => {
+                          setSelectedSupplierId(supplierId);
+                          setSupplierSelectionError(null);
+                        }}
                         isLoading={suppliers.isLoading}
                         className="max-w-none"
                       />
@@ -885,6 +884,7 @@ export function AiNormalizationPanel({ companyId, defaultSupplierMode = "existin
                 {supplierMode === "existing" ? (
                   <div>
                     {suppliers.error && <p className="text-xs text-red-500">Couldn&apos;t load suppliers: {suppliers.error.message}</p>}
+                    {supplierSelectionError && <p className="text-xs text-red-500">{supplierSelectionError}</p>}
                   </div>
                 ) : (
                   <div className="grid gap-3 sm:grid-cols-2">

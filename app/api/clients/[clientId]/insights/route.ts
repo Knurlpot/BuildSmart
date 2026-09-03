@@ -38,14 +38,18 @@ export async function GET(request: NextRequest, { params }: Params) {
   const quoteResult = await pool.query<{
     quote_id: number;
     project_name: string;
+    project_region: string;
     status: string;
     accepted_tier: "Practical" | "Premium" | null;
+    grand_total: number;
     created_at: string;
   }>(
     `SELECT q.quote_id,
             q.project_name,
+            q.project_region,
             q.status::text AS status,
             q.accepted_tier,
+            q.grand_total::float8 AS grand_total,
             q.created_at::text AS created_at
      FROM quotation q
      WHERE q.client_id = $1 AND q.company_id = $2`,

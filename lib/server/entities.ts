@@ -20,6 +20,7 @@ export type UserRow = {
   middle_name: string | null;
   email: string;
   password: string;
+  profile_picture: string | null;
   user_role: "Owner" | "Admin" | "Estimator" | "Viewer";
   status: "Active" | "Inactive";
   created_at: string;
@@ -47,8 +48,11 @@ export function toAuthUser(row: UserRow, onboardingStep = 0): AuthUser {
     first_name: row.first_name,
     middle_name: row.middle_name,
     email: row.email,
+    profile_picture: row.profile_picture,
     user_role: row.user_role,
     status: row.status,
     created_at: row.created_at,
+    failed_login_attempts: row.failed_login_attempts,
+    locked_until: row.locked_until,
   };
 }

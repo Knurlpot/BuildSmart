@@ -6,6 +6,7 @@ export interface AuthUser {
   email: string | null;
   companyId: unknown;
   onboardingStep: number;
+  profile_picture?: string | null;
 }
 
 export interface RegisterPayload {

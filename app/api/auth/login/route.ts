@@ -23,7 +23,7 @@ export async function POST(request: NextRequest) {
   }
 
   const result = await pool.query<UserRow>(
-    `SELECT user_id, company_id, last_name, first_name, middle_name, email, password, user_role, status, created_at, failed_login_attempts, locked_until
+    `SELECT user_id, company_id, last_name, first_name, middle_name, email, password, profile_picture, user_role, status, created_at, failed_login_attempts, locked_until
      FROM users
      WHERE email = $1
      LIMIT 1`,

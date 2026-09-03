@@ -40,6 +40,7 @@ const EMPTY_USER: Users = {
   first_name: "",
   middle_name: "",
   email: "",
+  profile_picture: "",
   user_role: "Estimator",
   status: "Active",
   created_at: "",
@@ -99,6 +100,7 @@ function LogoImage({
   if (!src) return null;
 
   return (
+    // eslint-disable-next-line @next/next/no-img-element -- supports user-provided local and external image URLs
     <img
       src={src}
       alt={alt}
@@ -214,6 +216,7 @@ function UserProfileSection() {
 
   const updateUser = useMutation<Users>();
   const updateCompany = useMutation<Company>();
+  const profilePictureUpload = useMutation<{ url: string }>();
   const logoUpload = useMutation<{ url: string }>();
 
   const [userForm, setUserForm] = useState<Users>(EMPTY_USER);
@@ -232,8 +235,33 @@ function UserProfileSection() {
 
   const [editing, setEditing] = useState(false);
   const [specializationError, setSpecializationError] = useState("");
+  const [profilePictureFileName, setProfilePictureFileName] = useState("");
   const [logoFileName, setLogoFileName] = useState("");
+  const profilePictureInputRef = useRef<HTMLInputElement>(null);
   const logoInputRef = useRef<HTMLInputElement>(null);
+
+  const uploadProfilePicture = async (file: File) => {
+    setProfilePictureFileName(file.name);
+    const body = new FormData();
+    body.append("file", file);
+    try {
+      const { url } = await profilePictureUpload.mutate("/api/uploads/profile-picture", body, "POST");
+      setUserForm((current) => ({ ...current, profile_picture: url }));
+    } catch {
+      // surfaced via profilePictureUpload.error below
+    }
+  };
+
+  const handleProfilePictureFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) uploadProfilePicture(file);
+  };
+
+  const removeProfilePicture = () => {
+    setUserForm((current) => ({ ...current, profile_picture: "" }));
+    setProfilePictureFileName("");
+    profilePictureUpload.reset();
+  };
 
   const uploadLogoFile = async (file: File) => {
     setLogoFileName(file.name);
@@ -263,7 +291,9 @@ function UserProfileSection() {
     if (companyData) setCompanyForm(companyData);
     updateUser.reset();
     updateCompany.reset();
+    profilePictureUpload.reset();
     logoUpload.reset();
+    setProfilePictureFileName("");
     setLogoFileName("");
     setSpecializationError("");
     setEditing(false);
@@ -282,6 +312,7 @@ function UserProfileSection() {
     try {
       // Update user profile
       const userBody: Partial<Users> = { ...userForm };
+      userBody.profile_picture = normalizeLogoUrl(userBody.profile_picture);
       delete userBody.user_id;
       const savedUser = await updateUser.mutate(userEndpoint, userBody, "PATCH");
       setUserForm(savedUser);
@@ -292,6 +323,7 @@ function UserProfileSection() {
       delete companyBody.company_id;
       const savedCompany = await updateCompany.mutate(companyEndpoint, companyBody, "PATCH");
       setCompanyForm(savedCompany);
+      window.dispatchEvent(new Event("user-profile-updated"));
       window.dispatchEvent(new Event("company-profile-updated"));
 
       setEditing(false);
@@ -311,7 +343,13 @@ function UserProfileSection() {
     refetchCompany();
   };
 
-  const initials = (companyForm.company_name || "?").slice(0, 2).toUpperCase();
+  const initials = [userForm.first_name, userForm.last_name]
+    .filter(Boolean)
+    .map((name) => name?.trim().charAt(0))
+    .join("")
+    .slice(0, 2)
+    .toUpperCase() || "?";
+  const companyInitials = companyForm.company_name.trim().slice(0, 2).toUpperCase() || "?";
   const specializationList = columnsToSpecializations(companyForm);
 
   if (!editing) {
@@ -320,14 +358,15 @@ function UserProfileSection() {
         <LoadErrorBanner isLoading={isLoading} error={error} onRetry={refetch} />
 
         {/* Header panel */}
-        <div className="flex flex-col gap-6 rounded-3xl bg-gradient-to-br from-primary/5 via-white to-gray-50 p-8 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex items-center gap-5">
-            {getLogoCandidates(companyForm.company_logo).length > 0 ? (
+        <div className="rounded-3xl bg-gradient-to-br from-primary/5 via-white to-gray-50 p-6">
+          <div className="flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-center gap-5">
+            {userForm.profile_picture ? (
               <LogoImage
-                key={companyForm.company_logo}
-                value={companyForm.company_logo}
-                alt="Company logo"
-                className="h-20 w-20 shrink-0 rounded-2xl object-cover shadow-md ring-4 ring-white"
+                key={userForm.profile_picture}
+                value={userForm.profile_picture}
+                alt="Profile picture"
+                className="h-20 w-20 shrink-0 rounded-full object-cover shadow-md ring-4 ring-white"
               />
             ) : (
               <div className="flex h-20 w-20 shrink-0 items-center justify-center rounded-2xl bg-white text-xl font-bold text-gray-400 shadow-md ring-4 ring-white">
@@ -338,36 +377,116 @@ function UserProfileSection() {
               <p className="text-xl font-bold text-gray-900">{fullName || "—"}</p>
               <p className="mt-0.5 text-sm text-gray-500">{userForm.email || "—"}</p>
             </div>
+            </div>
+            <EditButton onClick={() => setEditing(true)} />
           </div>
-          <EditButton onClick={() => setEditing(true)} />
+
+          {/* User details */}
+          <dl className="mt-6 grid grid-cols-1 gap-x-8 gap-y-8 sm:grid-cols-3">
+            <ReadOnlyRow label="User Name" value={fullName || undefined} />
+            <ReadOnlyRow label="User Email" value={userForm.email} />
+            <ReadOnlyRow label="User Role" value={userForm.user_role} />
+          </dl>
         </div>
 
-        {/* Details grid */}
-        <dl className="grid grid-cols-1 gap-x-8 gap-y-8 px-2 sm:grid-cols-3">
-          <ReadOnlyRow label="User Name" value={fullName || undefined} />
-          <ReadOnlyRow label="User Email" value={userForm.email} />
-          <ReadOnlyRow label="User Role" value={userForm.user_role} />
-          <ReadOnlyRow label="Company Name" value={companyForm.company_name} />
-          <ReadOnlyRow label="Company Address" value={companyForm.company_address} />
-          <ReadOnlyRow label="Company Contact Email" value={companyForm.contact_email} />
-          <ReadOnlyRow label="Company Contact Number" value={companyForm.contact_number} />
-          <ReadOnlyListRow label="Specializations" values={specializationList} />
-        </dl>
+        {/* Company details */}
+        <section className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
+          <div className="mb-6 flex items-center gap-4">
+            {getLogoCandidates(companyForm.company_logo).length > 0 ? (
+              <LogoImage
+                key={companyForm.company_logo}
+                value={companyForm.company_logo}
+                alt="Company logo"
+                className="h-16 w-16 shrink-0 rounded-2xl border border-gray-200 bg-white object-contain p-1.5 shadow-sm"
+              />
+            ) : (
+              <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-primary/10 text-lg font-bold text-primary">
+                {companyInitials}
+              </div>
+            )}
+            <div className="min-w-0">
+              <h2 className="truncate text-lg font-bold text-gray-900">
+                {companyForm.company_name || "Company Details"}
+              </h2>
+              <p className="truncate text-sm text-gray-500">{companyForm.contact_email || "—"}</p>
+            </div>
+          </div>
+          <dl className="grid grid-cols-1 gap-x-8 gap-y-8 sm:grid-cols-3">
+            <ReadOnlyRow label="Company Address" value={companyForm.company_address} />
+            <ReadOnlyRow label="Company Contact Email" value={companyForm.contact_email} />
+            <ReadOnlyRow label="Company Contact Number" value={companyForm.contact_number} />
+            <ReadOnlyListRow label="Specializations" values={specializationList} />
+          </dl>
+        </section>
       </section>
     );
   }
 
   return (
-    <section className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
-      <div className="mb-4 flex items-center justify-between">
-        <p className="font-bold text-gray-900">Profile</p>
-      </div>
+    <section className="flex flex-col gap-6">
       <LoadErrorBanner isLoading={isLoading} error={error} onRetry={refetch} />
 
-      <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+      <form onSubmit={handleSubmit} className="flex flex-col gap-6">
+        <section className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
+          <div className="mb-4 flex items-center justify-between">
+            <p className="font-bold text-gray-900">Profile</p>
+          </div>
+
           {/* User Fields */}
-          <div className="mb-4 border-b border-gray-200 pb-4">
+          <div>
             <p className="mb-3 text-sm font-semibold text-gray-700">User Information</p>
+            <div className="mb-4 flex flex-col gap-1.5">
+              <span className={labelCls}>Profile Picture</span>
+              {userForm.profile_picture ? (
+                <div className="flex items-center gap-3 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5">
+                  <LogoImage
+                    key={userForm.profile_picture}
+                    value={userForm.profile_picture}
+                    alt="Profile picture preview"
+                    className="h-10 w-10 shrink-0 rounded-full border border-gray-200 object-cover"
+                  />
+                  <span className="flex-1 truncate text-sm text-gray-700">
+                    {profilePictureFileName ? `Selected: ${profilePictureFileName}` : "Profile picture"}
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => profilePictureInputRef.current?.click()}
+                      className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm font-semibold text-gray-700 transition hover:bg-gray-100"
+                    >
+                      {profilePictureUpload.isLoading ? "Uploading..." : "Change Image"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={removeProfilePicture}
+                      title="Remove profile picture"
+                      className="shrink-0 text-gray-400 transition hover:text-red-500"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => profilePictureInputRef.current?.click()}
+                  className="flex w-full items-center justify-center gap-2 rounded-xl border border-gray-200 bg-gray-50 px-4 py-2.5 text-sm font-semibold text-gray-700 transition hover:bg-gray-100"
+                >
+                  <Upload className="h-4 w-4" />
+                  {profilePictureUpload.isLoading ? "Uploading..." : "Upload Profile Picture"}
+                </button>
+              )}
+              <input
+                ref={profilePictureInputRef}
+                type="file"
+                accept="image/*"
+                onChange={handleProfilePictureFileChange}
+                className="hidden"
+              />
+              {profilePictureUpload.error && (
+                <p className="text-xs text-red-500">Couldn&apos;t upload profile picture: {profilePictureUpload.error.message}</p>
+              )}
+            </div>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <Field label="First Name">
                 <input
@@ -414,10 +533,30 @@ function UserProfileSection() {
               </Field>
             </div>
           </div>
+        </section>
 
           {/* Company Fields */}
-          <div className="mb-4 border-b border-gray-200 pb-4">
-            <p className="mb-3 text-sm font-semibold text-gray-700">Company Information</p>
+          <section className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
+            <div className="mb-5 flex items-center gap-4">
+              {getLogoCandidates(companyForm.company_logo).length > 0 ? (
+                <LogoImage
+                  key={companyForm.company_logo}
+                  value={companyForm.company_logo}
+                  alt="Company logo"
+                  className="h-14 w-14 shrink-0 rounded-2xl border border-gray-200 bg-white object-contain p-1.5 shadow-sm"
+                />
+              ) : (
+                <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-primary/10 font-bold text-primary">
+                  {companyInitials}
+                </div>
+              )}
+              <div className="min-w-0">
+                <p className="truncate font-bold text-gray-900">
+                  {companyForm.company_name || "Company Details"}
+                </p>
+                <p className="text-xs text-gray-500">Company Information</p>
+              </div>
+            </div>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <Field label="Company Name">
                 <input
@@ -515,7 +654,7 @@ function UserProfileSection() {
                 )}
               </div>
             </div>
-          </div>
+          </section>
 
           <div className="flex items-center gap-3">
             <button

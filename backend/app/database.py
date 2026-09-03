@@ -31,6 +31,7 @@ def init_db() -> None:
     try:
         with engine.begin() as connection:
             connection.execute(text("SET LOCAL lock_timeout = '1000ms'"))
+            connection.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS profile_picture VARCHAR(255)"))
             connection.execute(text("ALTER TABLE pricelist_review_item ADD COLUMN IF NOT EXISTS color VARCHAR(50)"))
             connection.execute(
                 text(
@@ -43,6 +44,7 @@ def init_db() -> None:
                         contact_email VARCHAR(100),
                         contact_number VARCHAR(20),
                         client_address VARCHAR(255),
+                        profile_picture VARCHAR(255),
                         client_type VARCHAR(20) NOT NULL DEFAULT 'New'
                             CHECK (client_type IN ('New', 'Returning')),
                         notes TEXT,
@@ -55,6 +57,7 @@ def init_db() -> None:
                     """
                 )
             )
+            connection.execute(text("ALTER TABLE client ADD COLUMN IF NOT EXISTS profile_picture VARCHAR(255)"))
             connection.execute(text("CREATE INDEX IF NOT EXISTS ix_client_company_status_name ON client (company_id, status, client_name)"))
             connection.execute(text("ALTER TABLE quotation ADD COLUMN IF NOT EXISTS client_id INT"))
             connection.execute(

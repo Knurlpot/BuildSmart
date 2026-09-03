@@ -172,6 +172,21 @@ input[type="password"]::-ms-clear {
   animation: project-tier-scroll 8s linear infinite;
 }
 
+.client-card-gradient {
+  background-size: 300% 100%;
+  animation: client-card-gradient-shift 10s ease-in-out infinite;
+}
+
+@keyframes client-card-gradient-shift {
+  0%,
+  100% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+}
+
 @keyframes project-tier-scroll {
   from {
     background-position: 200% 50%;
@@ -182,7 +197,8 @@ input[type="password"]::-ms-clear {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .project-tier-gradient {
+  .project-tier-gradient,
+  .client-card-gradient {
     animation: none;
   }
 }

@@ -174,7 +174,7 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
     </div>
   );
   const materialFilterPanel = filtersOpen ? (
-    <div className="grid gap-2 rounded-xl border border-gray-200 bg-white p-3 shadow-sm md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto_auto]">
+    <div className="absolute right-0 top-12 z-30 grid w-full gap-2 rounded-xl border border-gray-200 bg-white p-3 shadow-lg md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto_auto]">
       <select
         value={pendingSupplierFilter}
         onChange={(e) => setPendingSupplierFilter(e.target.value)}
@@ -583,8 +583,9 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
         onAdd={startAdd}
         emptyHint="Add materials from your catalog and tag them with a treatment type."
         countLabel={`${allRules.length} configured`}
+        listHeaderClassName="min-w-0 flex-1"
         listHeader={
-          <div className="flex min-w-0 flex-nowrap items-center gap-1.5 overflow-hidden">
+          <div className="flex min-w-0 flex-wrap items-center gap-1.5">
             <div className="flex min-w-0 shrink-0 items-center gap-1.5">
               {(["active", "disabled"] as const).map((filter) => (
                 <button
@@ -635,7 +636,7 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
                 setSelectedId(null);
                 setSelectedGroup(null);
               }}
-              className={`${inputCls} min-h-9 w-36 min-w-0 shrink px-2 text-xs`}
+              className={`${inputCls} min-h-9 w-full min-w-40 px-2 text-xs sm:w-44`}
               aria-label="Filter material rules by treatment type"
             >
               <option value="">All treatment types</option>
@@ -820,7 +821,7 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
                 </button>
               </div>
 
-              <div className="flex flex-col gap-2">
+              <div className="relative flex flex-col gap-2">
                 <div className="flex items-start gap-2">
                   <div className="relative min-w-0 flex-1">
                   <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
@@ -836,6 +837,7 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
                     onClick={openFilters}
                     title="Filter materials"
                     aria-label="Filter materials"
+                    aria-expanded={filtersOpen}
                     className={`inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border text-sm font-semibold transition ${
                       activeFilterCount > 0
                         ? "border-primary bg-orange-50 text-primary"
@@ -1098,7 +1100,7 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
                   )}
                 </div>
 
-                <div className="flex flex-col gap-2">
+                <div className="relative flex flex-col gap-2">
                   <div className="flex items-start gap-2">
                     <div className="relative min-w-0 flex-1">
                     <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
@@ -1114,6 +1116,7 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
                       onClick={openFilters}
                       title="Filter materials"
                       aria-label="Filter materials"
+                      aria-expanded={filtersOpen}
                       className={`inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border text-sm font-semibold transition ${
                         activeFilterCount > 0
                           ? "border-primary bg-orange-50 text-primary"

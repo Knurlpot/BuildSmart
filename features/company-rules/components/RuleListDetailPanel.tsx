@@ -17,6 +17,7 @@ interface RuleListDetailPanelProps<T> {
   emptyHint?: string;
   countLabel?: string;
   listHeader?: ReactNode;
+  listHeaderClassName?: string;
   contentClassName?: string;
   renderListItem: (item: T) => ReactNode;
   detail: ReactNode;
@@ -35,6 +36,7 @@ export function RuleListDetailPanel<T>({
   emptyHint,
   countLabel,
   listHeader,
+  listHeaderClassName,
   contentClassName,
   renderListItem,
   detail,
@@ -45,7 +47,7 @@ export function RuleListDetailPanel<T>({
         className="flex min-h-10 items-center justify-between gap-4"
         aria-label={countLabel ?? `${items.length} configured`}
       >
-        <div className="w-full max-w-sm">
+        <div className={listHeaderClassName ?? "w-full max-w-sm"}>
           {listHeader ?? (
             <p className="text-xs font-semibold text-gray-500">{countLabel ?? `${items.length} configured`}</p>
           )}

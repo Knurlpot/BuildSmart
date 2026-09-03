@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect } from "react";
 import { usePathname } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
@@ -27,6 +28,7 @@ const STATIC_TITLES: Record<string, { title: string; subtitle?: string }> = {
 function resolveTitle(pathname: string) {
   if (STATIC_TITLES[pathname]) return STATIC_TITLES[pathname];
   if (pathname !== "/quotations/new" && /^\/quotations\/[^/]+$/.test(pathname)) return { title: "Open Projects" };
+  if (/^\/clients\/[^/]+$/.test(pathname)) return { title: "Open Projects" };
   const item = NAV_ITEMS.find((i) => pathname === i.href || pathname.startsWith(`${i.href}/`));
   if (item) return { title: item.label, subtitle: item.description };
   return { title: "BuildSmart" };
@@ -45,14 +47,27 @@ export default function Header({ workflow }: HeaderProps) {
 
   const companyId = currentUser?.companyId;
   const companyEndpoint = companyId !== undefined && companyId !== null ? `/api/company/${companyId}` : null;
-  const { data: company } = useFetch<Company>(companyEndpoint);
-  const { data: profile } = useFetch<Users>("/api/auth/me");
+  const { data: company, refetch: refetchCompany } = useFetch<Company>(companyEndpoint);
+  const { data: profile, refetch: refetchProfile } = useFetch<Users>("/api/auth/me");
 
   const companyName = company?.company_name || "BuildSmart";
-  const companyInitials = companyName.slice(0, 2).toUpperCase();
   const fullName = profile
     ? [profile.first_name, profile.middle_name, profile.last_name].filter(Boolean).join(" ")
     : (currentUser?.email?.split("@")[0] ?? "User");
+  const profileInitials = profile
+    ? [profile.first_name, profile.last_name].filter(Boolean).map((name) => name.charAt(0)).join("").slice(0, 2).toUpperCase()
+    : fullName.slice(0, 2).toUpperCase();
+
+  useEffect(() => {
+    const refreshUser = () => refetchProfile();
+    const refreshCompany = () => refetchCompany();
+    window.addEventListener("user-profile-updated", refreshUser);
+    window.addEventListener("company-profile-updated", refreshCompany);
+    return () => {
+      window.removeEventListener("user-profile-updated", refreshUser);
+      window.removeEventListener("company-profile-updated", refreshCompany);
+    };
+  }, [refetchCompany, refetchProfile]);
 
   return (
     <header
@@ -91,10 +106,20 @@ export default function Header({ workflow }: HeaderProps) {
           title="Profile"
           aria-label="Open profile"
         >
-          {company?.company_logo ? (
-            // eslint-disable-next-line @next/next/no-img-element -- arbitrary external URL, not a static asset
+          {company?.company_logo && (
+            // eslint-disable-next-line @next/next/no-img-element -- company logos may use uploaded or external URLs
             <img
               src={company.company_logo}
+              alt={`${companyName} logo`}
+              className={`h-9 w-9 shrink-0 rounded-lg bg-white object-contain p-0.5 ${
+                lightHeaderContent ? "border-2 border-white/40" : "border border-gray-100"
+              }`}
+            />
+          )}
+          {profile?.profile_picture ? (
+            // eslint-disable-next-line @next/next/no-img-element -- arbitrary external URL, not a static asset
+            <img
+              src={profile.profile_picture}
               alt=""
               className={`h-9 w-9 shrink-0 rounded-full object-cover ${lightHeaderContent ? "border-2 border-white/40" : "border border-gray-100"}`}
             />
@@ -104,7 +129,7 @@ export default function Header({ workflow }: HeaderProps) {
                 lightHeaderContent ? "bg-white text-primary" : "bg-primary text-primary-foreground"
               }`}
             >
-              {companyInitials}
+              {profileInitials}
             </div>
           )}
           <div className="text-left">

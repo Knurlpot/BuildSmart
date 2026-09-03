@@ -1,11 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
-import { ArrowLeft, Building2, CalendarDays, FileText, Mail, MapPin, Pencil, Phone, Trash2, UserRound, X } from "lucide-react";
+import { useRef, useState } from "react";
+import { ArrowLeft, Building2, CalendarDays, FileText, Mail, MapPin, Pencil, Phone, Trash2, Upload, UserRound, X } from "lucide-react";
 import { useParams, useRouter } from "next/navigation";
 import { RequireOnboardingStep } from "@/components/auth/RequireOnboardingStep";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { QuotationCard } from "@/features/projects/components/QuotationCard";
 import { useFetch } from "@/hooks/useFetch";
 import { useClientInsights } from "@/hooks/useClientInsights";
 import { apiClient } from "@/lib/api/client";
@@ -17,6 +18,7 @@ type ClientForm = {
   contact_email: string;
   contact_number: string;
   client_address: string;
+  profile_picture: string;
   notes: string;
 };
 
@@ -47,19 +49,6 @@ function DetailItem({ icon: Icon, label, value }: { icon: typeof UserRound; labe
       </div>
     </div>
   );
-}
-
-function projectRowClass(status: string, acceptedTier: "Practical" | "Premium" | null) {
-  if (status !== "Final") return "hover:bg-gray-50 hover:text-primary";
-  if (acceptedTier === "Premium") return "project-tier-gradient bg-linear-to-r from-[#0000CD] via-[#4169E1] to-[#0000CD] text-white";
-  if (acceptedTier === "Practical") return "project-tier-gradient bg-linear-to-r from-primary via-orange-400 to-primary text-white";
-  return "bg-green-50 text-green-800";
-}
-
-function projectStatusClass(status: string, acceptedTier: "Practical" | "Premium" | null) {
-  if (status === "Final" && acceptedTier) return "bg-white/20 text-white";
-  if (status === "Final") return "bg-green-100 text-green-700";
-  return "bg-gray-100 text-gray-500";
 }
 
 function EditableDetailItem({
@@ -103,6 +92,8 @@ function ClientDetailsContent() {
   const [editForm, setEditForm] = useState<ClientForm | null>(null);
   const [editError, setEditError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [isUploadingPicture, setIsUploadingPicture] = useState(false);
+  const profilePictureInputRef = useRef<HTMLInputElement>(null);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -115,8 +106,29 @@ function ClientDetailsContent() {
       contact_email: value.contact_email ?? "",
       contact_number: value.contact_number ?? "",
       client_address: value.client_address ?? "",
+      profile_picture: value.profile_picture ?? "",
       notes: value.notes ?? "",
     });
+  };
+
+  const uploadProfilePicture = async (file: File) => {
+    if (!editForm || isUploadingPicture) return;
+    setIsUploadingPicture(true);
+    setEditError(null);
+    const body = new FormData();
+    body.append("file", file);
+    try {
+      const { url } = await apiClient<{ url: string }>("/api/uploads/client-profile-picture", {
+        method: "POST",
+        credentials: "include",
+        body,
+      });
+      setEditForm((current) => current ? { ...current, profile_picture: url } : current);
+    } catch (uploadError) {
+      setEditError(uploadError instanceof Error ? uploadError.message : "Could not upload the client profile picture.");
+    } finally {
+      setIsUploadingPicture(false);
+    }
   };
 
   const cancelEdit = () => {
@@ -189,8 +201,13 @@ function ClientDetailsContent() {
       <section className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
         <div className="flex flex-wrap items-start justify-between gap-4 border-b border-gray-100 pb-5">
           <div className="flex items-center gap-4">
-            <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-orange-50 text-base font-semibold text-primary">
-              {initials(editForm?.client_name || client.client_name)}
+            <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-full bg-orange-50 text-base font-semibold text-primary">
+              {(editForm?.profile_picture ?? client.profile_picture) ? (
+                // eslint-disable-next-line @next/next/no-img-element -- client-provided local or external image
+                <img src={editForm?.profile_picture ?? client.profile_picture ?? ""} alt={`${client.client_name} profile`} className="h-full w-full object-cover" />
+              ) : (
+                initials(editForm?.client_name || client.client_name)
+              )}
             </div>
             <div className="min-w-0">
               <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">Client Details</p>
@@ -202,6 +219,33 @@ function ClientDetailsContent() {
                     aria-label="Client name"
                     className="min-w-0 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-base font-semibold text-gray-900 outline-none focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/20"
                   />
+                  <div className="mt-2 flex items-center gap-2">
+                    <button
+                      type="button"
+                      disabled={isUploadingPicture}
+                      onClick={() => profilePictureInputRef.current?.click()}
+                      className="inline-flex items-center gap-1.5 text-xs font-semibold text-primary disabled:opacity-50"
+                    >
+                      <Upload className="h-3.5 w-3.5" />
+                      {isUploadingPicture ? "Uploading..." : "Change picture"}
+                    </button>
+                    {editForm.profile_picture && (
+                      <button type="button" onClick={() => setEditForm({ ...editForm, profile_picture: "" })} className="text-xs font-semibold text-gray-400 hover:text-red-500">
+                        Remove
+                      </button>
+                    )}
+                    <input
+                      ref={profilePictureInputRef}
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={(event) => {
+                        const file = event.target.files?.[0];
+                        if (file) uploadProfilePicture(file);
+                        event.target.value = "";
+                      }}
+                    />
+                  </div>
                 </div>
               ) : (
                 <>
@@ -289,7 +333,7 @@ function ClientDetailsContent() {
           <div className="mt-5 flex flex-col-reverse gap-2 border-t border-gray-100 pt-5 sm:flex-row sm:justify-end">
             <button
               type="button"
-              disabled={isSaving}
+              disabled={isSaving || isUploadingPicture}
               onClick={cancelEdit}
               className="inline-flex items-center justify-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-50"
             >
@@ -298,7 +342,7 @@ function ClientDetailsContent() {
             </button>
             <button
               type="button"
-              disabled={isSaving}
+              disabled={isSaving || isUploadingPicture}
               onClick={saveEdit}
               className="inline-flex items-center justify-center rounded-lg bg-primary px-4 py-2 text-sm font-bold text-white hover:bg-(--primary-hover) disabled:opacity-50"
             >
@@ -307,9 +351,12 @@ function ClientDetailsContent() {
           </div>
         )}
 
-        <div className="mt-5 rounded-xl border border-gray-100 p-4">
+        <div className="mt-5 border-t border-gray-100 pt-5">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">Quotation Projects</p>
+            <div>
+              <h2 className="text-base font-bold text-gray-900">Quotation Projects</h2>
+              <p className="mt-0.5 text-xs text-gray-500">All quotations created for this client.</p>
+            </div>
             <span className={`rounded-full px-2.5 py-0.5 text-[10px] font-bold ${client.client_type === "Returning" ? "bg-blue-50 text-blue-700" : "bg-orange-50 text-primary"}`}>
               {client.client_type.toUpperCase()}
             </span>
@@ -319,23 +366,13 @@ function ClientDetailsContent() {
           ) : (insights?.projects ?? []).length === 0 ? (
             <p className="mt-3 text-sm text-gray-500">No quotation projects yet.</p>
           ) : (
-            <div className="mt-3 divide-y divide-gray-100">
+            <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2 xl:grid-cols-3">
               {(insights?.projects ?? []).map((project) => (
-                <Link
+                <QuotationCard
                   key={project.quote_id}
-                  href={`/quotations/${project.quote_id}`}
-                  className={`flex items-center justify-between gap-3 rounded-lg px-3 py-3 transition ${projectRowClass(project.status, project.accepted_tier)}`}
-                >
-                  <div className="min-w-0">
-                    <p className={`truncate text-sm font-semibold ${project.status === "Final" && project.accepted_tier ? "text-white" : "text-gray-900"}`}>{project.project_name}</p>
-                    <p className={project.status === "Final" && project.accepted_tier ? "text-xs text-white/80" : "text-xs text-gray-500"}>
-                      Created {formatDate(project.created_at)}
-                    </p>
-                  </div>
-                  <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${projectStatusClass(project.status, project.accepted_tier)}`}>
-                    {project.status === "Final" && project.accepted_tier ? project.accepted_tier : project.status}
-                  </span>
-                </Link>
+                  project={project}
+                  clientName={client.client_name}
+                />
               ))}
             </div>
           )}

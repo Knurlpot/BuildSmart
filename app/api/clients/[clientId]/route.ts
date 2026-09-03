@@ -9,6 +9,7 @@ type UpdateClientPayload = {
   contact_email?: string | null;
   contact_number?: string | null;
   client_address?: string | null;
+  profile_picture?: string | null;
   notes?: string | null;
 };
 
@@ -37,7 +38,7 @@ export async function GET(request: NextRequest, { params }: Params) {
 
   const result = await pool.query(
     `SELECT c.client_id, c.company_id, c.client_name, c.contact_person, c.contact_email,
-            c.contact_number, c.client_address,
+            c.contact_number, c.client_address, c.profile_picture,
             CASE WHEN quote_counts.project_count > 0 THEN 'Returning' ELSE 'New' END AS client_type,
             c.notes, c.status, c.created_at::text AS created_at,
             quote_counts.project_count AS quotation_project_count
@@ -75,13 +76,14 @@ export async function PATCH(request: NextRequest, { params }: Params) {
          contact_email = $3,
          contact_number = $4,
          client_address = $5,
-         notes = $6
-     WHERE client_id = $7 AND company_id = $8
+         profile_picture = $6,
+         notes = $7
+     WHERE client_id = $8 AND company_id = $9
      RETURNING client_id, company_id, client_name, contact_person, contact_email,
-               contact_number, client_address, notes, status, created_at
+               contact_number, client_address, profile_picture, notes, status, created_at
      )
      SELECT updated.client_id, updated.company_id, updated.client_name, updated.contact_person,
-            updated.contact_email, updated.contact_number, updated.client_address,
+            updated.contact_email, updated.contact_number, updated.client_address, updated.profile_picture,
             CASE WHEN quote_counts.project_count > 0 THEN 'Returning' ELSE 'New' END AS client_type,
             updated.notes, updated.status, updated.created_at::text AS created_at,
             quote_counts.project_count AS quotation_project_count
@@ -97,6 +99,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
       cleanText(body?.contact_email),
       cleanText(body?.contact_number),
       cleanText(body?.client_address),
+      cleanText(body?.profile_picture),
       cleanText(body?.notes),
       id,
       companyId,

@@ -10,6 +10,7 @@ type ClientRow = {
   contact_email: string | null;
   contact_number: string | null;
   client_address: string | null;
+  profile_picture: string | null;
   client_type: "New" | "Returning";
   notes: string | null;
   status: "Active" | "Inactive";
@@ -34,7 +35,7 @@ export async function GET(request: NextRequest) {
 
   const result = await pool.query<ClientRow>(
     `SELECT c.client_id, c.company_id, c.client_name, c.contact_person, c.contact_email,
-            c.contact_number, c.client_address,
+            c.contact_number, c.client_address, c.profile_picture,
             CASE WHEN quote_counts.project_count > 0 THEN 'Returning' ELSE 'New' END AS client_type,
             c.notes, c.status, c.created_at::text AS created_at,
             quote_counts.project_count AS quotation_project_count

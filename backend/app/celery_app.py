@@ -9,6 +9,9 @@ load_dotenv(Path(__file__).resolve().parents[2] / ".env")
 
 REDIS_URL = os.environ["REDIS_URL"]
 
-celery_app = Celery("buildsmart", broker=REDIS_URL, backend=REDIS_URL)
-# autodiscover_tasks imports task modules so @shared_task decorators register.
-celery_app.autodiscover_tasks(["app", "app.ingest", "app.tasks"])
+celery_app = Celery(
+    "buildsmart",
+    broker=REDIS_URL,
+    backend=REDIS_URL,
+    include=["app.tasks.normalize_price_list"],
+)

@@ -9,6 +9,7 @@ export interface Client {
   contact_email?: string | null;
   contact_number?: string | null;
   client_address?: string | null;
+  profile_picture?: string | null;
   // NOT NULL DEFAULT 'New' at the DB level. API reads normalize this from quotation history:
   // 0 quotation projects = New, 1+ quotation projects = Returning.
   client_type: ClientType;

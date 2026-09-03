@@ -7,6 +7,7 @@ export interface Users {
   first_name: string;
   middle_name?: string;
   email: string;
+  profile_picture?: string | null;
   // password intentionally omitted — never expose this on the frontend type
   user_role: 'Owner' | 'Admin' | 'Estimator' | 'Viewer';
   status: 'Active' | 'Inactive';

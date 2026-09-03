@@ -1,0 +1,2 @@
+ALTER TABLE client
+ADD COLUMN IF NOT EXISTS profile_picture VARCHAR(255);
