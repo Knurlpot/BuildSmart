@@ -255,31 +255,47 @@ function supplierRuleDiscountedPrice(unitPrice: number, rule: SupplierRuleEntry)
   return unitPrice;
 }
 
-function bestSupplierRuleFor(supplierId: number | null, supplierRules: SupplierRuleEntry[]): SupplierRuleEntry | null {
-  if (supplierId === null) return null;
-  const activeRules = supplierRules
+function activeSupplierRulesFor(supplierId: number | null, supplierRules: SupplierRuleEntry[]): SupplierRuleEntry[] {
+  if (supplierId === null) return [];
+  return supplierRules
     .filter((rule) => rule.is_active && rule.supplier_id === supplierId)
-    .sort((a, b) => {
-      if (a.rule_type === 'Preferred Supplier' && b.rule_type !== 'Preferred Supplier') return -1;
-      if (a.rule_type !== 'Preferred Supplier' && b.rule_type === 'Preferred Supplier') return 1;
-      return b.effective_date.localeCompare(a.effective_date);
-    });
-  return activeRules.find((rule) => rule.rule_type !== 'Minimum Order') ?? activeRules[0] ?? null;
+    .sort((a, b) => b.effective_date.localeCompare(a.effective_date));
+}
+
+function supplierHasPreferredRule(supplierId: number | null, supplierRules: SupplierRuleEntry[]): boolean {
+  return activeSupplierRulesFor(supplierId, supplierRules).some((rule) => rule.rule_type === 'Preferred Supplier');
+}
+
+function applySupplierPriceRules(unitPrice: number, quantity: number, supplierId: number | null, supplierRules: SupplierRuleEntry[]): number {
+  const activeRules = activeSupplierRulesFor(supplierId, supplierRules);
+  const negotiatedRule = activeRules.find((rule) => rule.rule_type === 'Negotiated Price');
+  const bulkRule = activeRules.find((rule) => rule.rule_type === 'Bulk Discount');
+  let discountedPrice = unitPrice;
+
+  if (negotiatedRule) {
+    discountedPrice = supplierRuleDiscountedPrice(discountedPrice, negotiatedRule);
+  }
+
+  if (bulkRule && quantity * discountedPrice >= (bulkRule.minimum_order_amount ?? 0)) {
+    discountedPrice = supplierRuleDiscountedPrice(discountedPrice, bulkRule);
+  }
+
+  return discountedPrice;
 }
 
 function applySupplierRulesToOptions(
   options: ProvisionalSupplierOption[],
+  quantity: number,
   supplierRules: SupplierRuleEntry[]
 ): ProvisionalSupplierOption[] {
   return options
     .map((option) => {
-      const rule = bestSupplierRuleFor(option.supplier_id, supplierRules);
-      if (!rule || option.source_type === 'DPWH') return option;
-      return { ...option, unit_price: supplierRuleDiscountedPrice(option.unit_price, rule) };
+      if (option.source_type === 'DPWH') return option;
+      return { ...option, unit_price: applySupplierPriceRules(option.unit_price, quantity, option.supplier_id, supplierRules) };
     })
     .sort((a, b) => {
-      const aPreferred = bestSupplierRuleFor(a.supplier_id, supplierRules)?.rule_type === 'Preferred Supplier';
-      const bPreferred = bestSupplierRuleFor(b.supplier_id, supplierRules)?.rule_type === 'Preferred Supplier';
+      const aPreferred = supplierHasPreferredRule(a.supplier_id, supplierRules);
+      const bPreferred = supplierHasPreferredRule(b.supplier_id, supplierRules);
       if (aPreferred !== bPreferred) return aPreferred ? -1 : 1;
       return a.unit_price - b.unit_price;
     });
@@ -419,7 +435,7 @@ function buildCompanyRuleLine(
     quantity_available: null,
     source_type: 'DPWH',
   }));
-  const supplierOptions = basis === 'DPWH' ? dpwhOptions : applySupplierRulesToOptions(uploadedOptions, supplierRules);
+  const supplierOptions = basis === 'DPWH' ? dpwhOptions : applySupplierRulesToOptions(uploadedOptions, qty, supplierRules);
   const selectedSupplierId = supplierOptions[0]?.supplier_id ?? null;
   const unitPrice = supplierOptions[0]?.unit_price ?? selectedPrice?.price ?? null;
 

@@ -7,7 +7,7 @@
 // Reuses RuleListDetailPanel (fully generic, no changes needed) for the shared
 // list+detail layout.
 import { type Dispatch, type KeyboardEvent, type SetStateAction, useEffect, useState } from "react";
-import { AlertTriangle, CheckCircle2, Pencil, X, XCircle } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Filter, Pencil, X, XCircle } from "lucide-react";
 import { RuleListDetailPanel } from "./RuleListDetailPanel";
 import { useSupplierRules } from "@/lib/dev/provisional/useCompanyRulesProvisional";
 import { useSuppliers } from "@/hooks/useSuppliers";
@@ -174,6 +174,11 @@ export function SupplierRulesForm({ focusRuleId, onFocusHandled }: SupplierRules
     .map((r) => (overrides[r.rule_id] ? { ...r, ...overrides[r.rule_id] } : r))
     .sort((a, b) => a.supplier_name.localeCompare(b.supplier_name) || a.rule_type.localeCompare(b.rule_type));
   const [statusFilter, setStatusFilter] = useState<"active" | "disabled">("active");
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [supplierFilter, setSupplierFilter] = useState<number | "">("");
+  const [pendingSupplierFilter, setPendingSupplierFilter] = useState<number | "">("");
+  const [ruleTypeFilter, setRuleTypeFilter] = useState<SupplierRuleType | "">("");
+  const [pendingRuleTypeFilter, setPendingRuleTypeFilter] = useState<SupplierRuleType | "">("");
 
   const [selectedId, setSelectedId] = useState<string | null>(focusRuleId ?? null);
   const [mode, setMode] = useState<"idle" | "add" | "edit">("idle");
@@ -319,7 +324,38 @@ export function SupplierRulesForm({ focusRuleId, onFocusHandled }: SupplierRules
 
   const selected = allRules.find((r) => r.rule_id === selectedId) ?? null;
   const effectiveStatusFilter = selected?.is_active === false ? "disabled" : statusFilter;
-  const visibleRules = allRules.filter((rule) => rule.is_active === (effectiveStatusFilter === "active"));
+  const visibleRules = allRules.filter((rule) => {
+    if (rule.is_active !== (effectiveStatusFilter === "active")) return false;
+    if (supplierFilter !== "" && rule.supplier_id !== supplierFilter) return false;
+    if (ruleTypeFilter !== "" && rule.rule_type !== ruleTypeFilter) return false;
+    return true;
+  });
+  const activeFilterCount = (supplierFilter !== "" ? 1 : 0) + (ruleTypeFilter !== "" ? 1 : 0);
+  const supplierFilterOptions = [...suppliers].sort((a, b) => a.supplier_name.localeCompare(b.supplier_name));
+
+  const openFilters = () => {
+    setPendingSupplierFilter(supplierFilter);
+    setPendingRuleTypeFilter(ruleTypeFilter);
+    setFiltersOpen((open) => !open);
+  };
+
+  const applyFilters = () => {
+    setSupplierFilter(pendingSupplierFilter);
+    setRuleTypeFilter(pendingRuleTypeFilter);
+    setSelectedId(null);
+    setMode("idle");
+    setFiltersOpen(false);
+  };
+
+  const resetFilters = () => {
+    setSupplierFilter("");
+    setPendingSupplierFilter("");
+    setRuleTypeFilter("");
+    setPendingRuleTypeFilter("");
+    setSelectedId(null);
+    setMode("idle");
+    setFiltersOpen(false);
+  };
 
   const header = (
     <div>
@@ -363,25 +399,81 @@ export function SupplierRulesForm({ focusRuleId, onFocusHandled }: SupplierRules
         onAdd={startAdd}
         countLabel={`${allRules.length} configured`}
         listHeader={
-          <div className="grid grid-cols-2 gap-2">
-            {(["active", "disabled"] as const).map((filter) => (
+          <div className="flex flex-col gap-2">
+            <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] gap-2">
+              {(["active", "disabled"] as const).map((filter) => (
+                <button
+                  key={filter}
+                  type="button"
+                  onClick={() => {
+                    setStatusFilter(filter);
+                    setMode("idle");
+                    setSelectedId(null);
+                  }}
+                  className={`min-h-9 rounded-lg border px-3 py-2 text-center text-xs font-semibold capitalize transition ${
+                    effectiveStatusFilter === filter
+                      ? "border-primary bg-orange-50 text-primary"
+                      : "border-gray-200 bg-white text-gray-500 hover:border-gray-300"
+                  }`}
+                >
+                  {filter}
+                </button>
+              ))}
               <button
-                key={filter}
                 type="button"
-                onClick={() => {
-                  setStatusFilter(filter);
-                  setMode("idle");
-                  setSelectedId(null);
-                }}
-                className={`min-h-9 rounded-lg border px-3 py-2 text-center text-xs font-semibold capitalize transition ${
-                  effectiveStatusFilter === filter
+                onClick={openFilters}
+                title="Filter supplier rules"
+                aria-label="Filter supplier rules"
+                className={`relative flex h-9 w-9 items-center justify-center rounded-lg border transition ${
+                  activeFilterCount > 0
                     ? "border-primary bg-orange-50 text-primary"
                     : "border-gray-200 bg-white text-gray-500 hover:border-gray-300"
                 }`}
               >
-                {filter}
+                <Filter className="h-4 w-4" />
+                {activeFilterCount > 0 && (
+                  <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-bold text-primary-foreground">
+                    {activeFilterCount}
+                  </span>
+                )}
               </button>
-            ))}
+            </div>
+            {filtersOpen && (
+              <div className="rounded-xl border border-gray-200 bg-white p-3 shadow-sm">
+                <div className="grid grid-cols-1 gap-3">
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-xs font-semibold text-gray-600">Supplier</label>
+                    <select value={pendingSupplierFilter} onChange={(e) => setPendingSupplierFilter(e.target.value ? Number(e.target.value) : "")} className={inputCls}>
+                      <option value="">All suppliers</option>
+                      {supplierFilterOptions.map((supplier) => (
+                        <option key={supplier.supplier_id} value={supplier.supplier_id}>
+                          {supplier.supplier_name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-xs font-semibold text-gray-600">Rule Type</label>
+                    <select value={pendingRuleTypeFilter} onChange={(e) => setPendingRuleTypeFilter(e.target.value as SupplierRuleType | "")} className={inputCls}>
+                      <option value="">All rule types</option>
+                      {SUPPLIER_RULE_TYPES.map((type) => (
+                        <option key={type} value={type}>
+                          {type}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+                <div className="mt-3 flex justify-end gap-2">
+                  <button type="button" onClick={resetFilters} className="rounded-lg border border-gray-200 px-3 py-2 text-xs font-semibold text-gray-500 transition hover:border-gray-300">
+                    Reset
+                  </button>
+                  <button type="button" onClick={applyFilters} className="rounded-lg bg-primary px-3 py-2 text-xs font-bold text-primary-foreground transition hover:bg-(--primary-hover)">
+                    Apply
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         }
         renderListItem={(r) => (

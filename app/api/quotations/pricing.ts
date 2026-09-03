@@ -135,25 +135,32 @@ async function applySupplierDiscount(
        AND (expiration_date IS NULL OR expiration_date > CURRENT_DATE)
        AND rule_type IN ('Bulk Discount', 'Negotiated Price')
      ORDER BY effective_date DESC, supplierdisc_id DESC
-     LIMIT 1`,
+     LIMIT 20`,
     [supplierId, companyId]
   );
 
-  const rule = result.rows[0];
-  if (!rule) return unitPrice;
+  let discountedPrice = unitPrice;
+  const negotiatedRule = result.rows.find((rule) => rule.rule_type === "Negotiated Price");
+  const bulkRule = result.rows.find((rule) => rule.rule_type === "Bulk Discount");
 
-  if (rule.rule_type === "Negotiated Price" && rule.fixed_discount_amount != null) {
-    return rule.fixed_discount_amount;
+  if (negotiatedRule?.discount_percentage_rate != null) {
+    discountedPrice = discountedPrice * (1 - negotiatedRule.discount_percentage_rate / 100);
+  } else if (negotiatedRule?.fixed_discount_amount != null) {
+    discountedPrice = Math.max(0, discountedPrice - negotiatedRule.fixed_discount_amount);
   }
 
-  if (rule.rule_type === "Bulk Discount") {
-    const minimum = rule.minimum_order_amount ?? 0;
-    if (quantity * unitPrice < minimum) return unitPrice;
-    if (rule.discount_percentage_rate != null) return unitPrice * (1 - rule.discount_percentage_rate / 100);
-    if (rule.fixed_discount_amount != null) return Math.max(0, unitPrice - rule.fixed_discount_amount);
+  if (bulkRule) {
+    const minimum = bulkRule.minimum_order_amount ?? 0;
+    if (quantity * discountedPrice >= minimum) {
+      if (bulkRule.discount_percentage_rate != null) {
+        discountedPrice = discountedPrice * (1 - bulkRule.discount_percentage_rate / 100);
+      } else if (bulkRule.fixed_discount_amount != null) {
+        discountedPrice = Math.max(0, discountedPrice - bulkRule.fixed_discount_amount);
+      }
+    }
   }
 
-  return unitPrice;
+  return discountedPrice;
 }
 
 export async function priceLine(

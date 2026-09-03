@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { AlertTriangle, CheckCircle2, Pencil, X, XCircle } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Filter, Pencil, X, XCircle } from "lucide-react";
 import { RuleListDetailPanel } from "./RuleListDetailPanel";
 import {
   useLaborRules,
@@ -53,6 +53,11 @@ export function LaborRulesForm({ focusRuleId, onFocusHandled }: LaborRulesFormPr
     )
   ).sort();
   const [statusFilter, setStatusFilter] = useState<"active" | "disabled">("active");
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [scopeFilter, setScopeFilter] = useState<LaborRuleScope | "">("");
+  const [pendingScopeFilter, setPendingScopeFilter] = useState<LaborRuleScope | "">("");
+  const [treatmentFilter, setTreatmentFilter] = useState("");
+  const [pendingTreatmentFilter, setPendingTreatmentFilter] = useState("");
 
   // Seeded from the prop at construction, not synced via effect: a jump always remounts
   // this component fresh through CompanyRulesShell.
@@ -207,7 +212,37 @@ export function LaborRulesForm({ focusRuleId, onFocusHandled }: LaborRulesFormPr
 
   const selected = allRules.find((r) => r.rule_id === selectedId) ?? null;
   const effectiveStatusFilter = selected?.is_active === false ? "disabled" : statusFilter;
-  const visibleRules = allRules.filter((rule) => rule.is_active === (effectiveStatusFilter === "active"));
+  const visibleRules = allRules.filter((rule) => {
+    if (rule.is_active !== (effectiveStatusFilter === "active")) return false;
+    if (scopeFilter !== "" && laborRuleScope(rule) !== scopeFilter) return false;
+    if (treatmentFilter !== "" && rule.treatment_type !== treatmentFilter) return false;
+    return true;
+  });
+  const activeFilterCount = Number(scopeFilter !== "") + Number(treatmentFilter !== "");
+
+  const openFilters = () => {
+    setPendingScopeFilter(scopeFilter);
+    setPendingTreatmentFilter(treatmentFilter);
+    setFiltersOpen((open) => !open);
+  };
+
+  const applyFilters = () => {
+    setScopeFilter(pendingScopeFilter);
+    setTreatmentFilter(pendingTreatmentFilter);
+    setSelectedId(null);
+    setMode("idle");
+    setFiltersOpen(false);
+  };
+
+  const resetFilters = () => {
+    setScopeFilter("");
+    setPendingScopeFilter("");
+    setTreatmentFilter("");
+    setPendingTreatmentFilter("");
+    setSelectedId(null);
+    setMode("idle");
+    setFiltersOpen(false);
+  };
 
   const rushPreview =
     rate !== "" && rushMultiplier !== ""
@@ -240,25 +275,81 @@ export function LaborRulesForm({ focusRuleId, onFocusHandled }: LaborRulesFormPr
         onAdd={startAdd}
         countLabel={`${allRules.length} configured`}
         listHeader={
-          <div className="grid grid-cols-2 gap-2">
-            {(["active", "disabled"] as const).map((filter) => (
+          <div className="flex flex-col gap-2">
+            <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] gap-2">
+              {(["active", "disabled"] as const).map((filter) => (
+                <button
+                  key={filter}
+                  type="button"
+                  onClick={() => {
+                    setStatusFilter(filter);
+                    setMode("idle");
+                    setSelectedId(null);
+                  }}
+                  className={`min-h-9 rounded-lg border px-3 py-2 text-center text-xs font-semibold capitalize transition ${
+                    effectiveStatusFilter === filter
+                      ? "border-primary bg-orange-50 text-primary"
+                      : "border-gray-200 bg-white text-gray-500 hover:border-gray-300"
+                  }`}
+                >
+                  {filter}
+                </button>
+              ))}
               <button
-                key={filter}
                 type="button"
-                onClick={() => {
-                  setStatusFilter(filter);
-                  setMode("idle");
-                  setSelectedId(null);
-                }}
-                className={`min-h-9 rounded-lg border px-3 py-2 text-center text-xs font-semibold capitalize transition ${
-                  effectiveStatusFilter === filter
+                onClick={openFilters}
+                title="Filter labor rules"
+                aria-label="Filter labor rules"
+                className={`relative flex h-9 w-9 items-center justify-center rounded-lg border transition ${
+                  activeFilterCount > 0
                     ? "border-primary bg-orange-50 text-primary"
                     : "border-gray-200 bg-white text-gray-500 hover:border-gray-300"
                 }`}
               >
-                {filter}
+                <Filter className="h-4 w-4" />
+                {activeFilterCount > 0 && (
+                  <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-bold text-primary-foreground">
+                    {activeFilterCount}
+                  </span>
+                )}
               </button>
-            ))}
+            </div>
+            {filtersOpen && (
+              <div className="rounded-xl border border-gray-200 bg-white p-3 shadow-sm">
+                <div className="grid grid-cols-1 gap-3">
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-xs font-semibold text-gray-600">Rule Scope</label>
+                    <select value={pendingScopeFilter} onChange={(e) => setPendingScopeFilter(e.target.value as LaborRuleScope | "")} className={inputCls}>
+                      <option value="">All scopes</option>
+                      {(["Treatment", "General", "Trade"] as LaborRuleScope[]).map((scope) => (
+                        <option key={scope} value={scope}>
+                          {scope}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-xs font-semibold text-gray-600">Treatment Type</label>
+                    <select value={pendingTreatmentFilter} onChange={(e) => setPendingTreatmentFilter(e.target.value)} className={inputCls}>
+                      <option value="">All treatment types</option>
+                      {treatmentOptions.map((treatment) => (
+                        <option key={treatment} value={treatment}>
+                          {treatment}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+                <div className="mt-3 flex justify-end gap-2">
+                  <button type="button" onClick={resetFilters} className="rounded-lg border border-gray-200 px-3 py-2 text-xs font-semibold text-gray-500 transition hover:border-gray-300">
+                    Reset
+                  </button>
+                  <button type="button" onClick={applyFilters} className="rounded-lg bg-primary px-3 py-2 text-xs font-bold text-primary-foreground transition hover:bg-(--primary-hover)">
+                    Apply
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         }
         renderListItem={(r) => {

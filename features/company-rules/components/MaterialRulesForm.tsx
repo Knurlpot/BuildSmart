@@ -472,9 +472,14 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
     focusedGroupRules?.some((rule) => rule.is_active) === false ? "disabled" : "active"
   );
   const [tierFilter, setTierFilter] = useState<MaterialTreatmentTier | null>(null);
+  const [listTreatmentFilter, setListTreatmentFilter] = useState("");
+  const materialTreatmentFilterOptions = Array.from(
+    new Set(allRules.map((rule) => rule.treatment_type?.trim()).filter((value): value is string => !!value))
+  ).sort();
   const visibleGroupedRules = groupedRules.filter(([, groupRules]) =>
     groupRules.some((rule) => rule.is_active) === (statusFilter === "active") &&
-    (tierFilter === null || groupRules.some((rule) => (rule.treatment_tier ?? "Practical") === tierFilter))
+    (tierFilter === null || groupRules.some((rule) => (rule.treatment_tier ?? "Practical") === tierFilter)) &&
+    (listTreatmentFilter === "" || groupRules.some((rule) => rule.treatment_type?.trim() === listTreatmentFilter))
   );
   const selectedGroupName =
     mode === "details" || mode === "browse" || mode === "configure"
@@ -579,8 +584,8 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
         emptyHint="Add materials from your catalog and tag them with a treatment type."
         countLabel={`${allRules.length} configured`}
         listHeader={
-          <div className="grid grid-cols-2 gap-2">
-            <div className="grid grid-cols-2 gap-2">
+          <div className="flex min-w-0 flex-nowrap items-center gap-1.5 overflow-hidden">
+            <div className="flex min-w-0 shrink-0 items-center gap-1.5">
               {(["active", "disabled"] as const).map((filter) => (
                 <button
                   key={filter}
@@ -591,7 +596,7 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
                     setSelectedId(null);
                     setSelectedGroup(null);
                   }}
-                  className={`min-h-9 rounded-lg border px-3 py-2 text-center text-xs font-semibold capitalize transition ${
+                  className={`min-h-9 shrink-0 rounded-lg border px-2.5 py-2 text-center text-xs font-semibold capitalize transition ${
                     effectiveStatusFilter === filter
                       ? "border-primary bg-orange-50 text-primary"
                       : "border-gray-200 bg-white text-gray-500 hover:border-gray-300"
@@ -601,7 +606,7 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
                 </button>
               ))}
             </div>
-            <div className="grid grid-cols-2 gap-2 border-l border-gray-200 pl-2">
+            <div className="flex min-w-0 shrink-0 items-center gap-1.5 border-l border-gray-200 pl-1.5">
               {MATERIAL_TREATMENT_TIERS.map((tier) => (
                 <button
                   key={tier}
@@ -612,7 +617,7 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
                     setSelectedId(null);
                     setSelectedGroup(null);
                   }}
-                  className={`min-h-9 rounded-lg border px-3 py-2 text-center text-xs font-semibold transition ${
+                  className={`min-h-9 shrink-0 rounded-lg border px-2.5 py-2 text-center text-xs font-semibold transition ${
                     tierFilter === tier
                       ? activeTierFilterClass(tier)
                       : "border-gray-200 bg-white text-gray-500 hover:border-gray-300"
@@ -622,6 +627,24 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
                 </button>
               ))}
             </div>
+            <select
+              value={listTreatmentFilter}
+              onChange={(e) => {
+                setListTreatmentFilter(e.target.value);
+                setMode("idle");
+                setSelectedId(null);
+                setSelectedGroup(null);
+              }}
+              className={`${inputCls} min-h-9 w-36 min-w-0 shrink px-2 text-xs`}
+              aria-label="Filter material rules by treatment type"
+            >
+              <option value="">All treatment types</option>
+              {materialTreatmentFilterOptions.map((treatment) => (
+                <option key={treatment} value={treatment}>
+                  {treatment}
+                </option>
+              ))}
+            </select>
           </div>
         }
         renderListItem={([, groupRules]) => (
