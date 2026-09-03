@@ -110,6 +110,7 @@ export interface LaborRule extends RuleEnvelope {
   labor_trade: string | null;
   region: PhRegion | null; // only meaningful alongside labor_trade
   labor_rate: number; // the BASE rate
+  worker_count: number; // standard crew size used when this rule prices quotation labor
   // v6 NEW: rushed jobs cost more (client: "extra on-call people", 20-30% more). % uplift
   // on labor_rate, applied only when a quotation is flagged rushed. Null = no rush uplift
   // defined for this rule. (Nothing yet records THAT a quotation is rushed — that's a

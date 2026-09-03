@@ -12,6 +12,7 @@ export interface NavItem {
   icon: LucideIcon;
   href: string;
   minStep: number;
+  description: string;
 }
 
 export const NAV_ITEMS: NavItem[] = [
@@ -20,29 +21,34 @@ export const NAV_ITEMS: NavItem[] = [
     icon: Tag,
     href: "/pricelist",
     minStep: 0,
+    description: "Upload and review company price data",
   },
   {
     label: "Preferences & Rules",
     icon: SlidersHorizontal,
     href: "/management",
     minStep: 1,
+    description: "Configure material, supplier, labor, pricing, and unit rules",
   },
   {
     label: "Quotation Generation",
     icon: FileSpreadsheet,
     href: "/quotations/new",
     minStep: 2,
+    description: "Generate project quotations from configured company data",
   },
   {
     label: "Open Projects",
     icon: FolderOpen,
     href: "/projects",
     minStep: 2,
+    description: "Review saved quotations and client projects",
   },
   {
     label: "Price Trends",
     icon: TrendingUp,
     href: "/market-intelligence",
     minStep: 2,
+    description: "Analyze price movement after setup is complete",
   },
 ];

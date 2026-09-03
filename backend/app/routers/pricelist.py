@@ -13,8 +13,7 @@ from sqlalchemy.orm import Session
 
 from app.celery_app import celery_app
 from app.database import get_db
-from app.ingest.models import MaterialPriceVariance
-from app.models import Category, HistoricalPriceRecord, Items, PriceListReviewItem, PriceListUpload, SourcePriority
+from app.models import Category, HistoricalPriceRecord, Items, MaterialPriceVariance, PriceListReviewItem, PriceListUpload, SourcePriority
 from app.schemas.pricelist import NormalizedPriceRecord, SourceAgency
 from app.services.match_cache import invalidate_cached_match, upsert_cached_match
 from app.services.file_hash import calculate_file_hash, calculate_file_size

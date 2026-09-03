@@ -40,22 +40,12 @@ import {
   type QueueItem,
 } from "@/hooks/usePricelistNormalization";
 import { PH_REGIONS, type PhRegion } from "@/types/entities/common";
+import { CATEGORY_TYPES } from "@/types/entities/category";
 
 const NORMALIZATION_FIELDS: NormalizationField[] = ["raw_name", "raw_unit", "raw_price"];
 
 const SOURCES = ["DPWH", "Supplier"] as const;
 const SUPPLIER_TYPES = ["Distributor", "Warehouse", "Retailer"] as const;
-const CATEGORIES = [
-  "Uncategorized",
-  "Concrete & Masonry",
-  "Steel & Metals",
-  "Plumbing",
-  "Finishes",
-  "Aggregates",
-  "Lumber & Carpentry",
-  "Electrical",
-  "Roofing & Waterproofing",
-] as const;
 // Backend support confirmed for all three: pricelist_parser.py handles
 // CSV/XLSX via pandas and PDF via pdfplumber (requires an actual ruled table
 // in the PDF, not OCR/scanned images).
@@ -197,7 +187,7 @@ function reviewItemToDraft(item: PricelistReviewItem): ReviewEditDraft {
     raw_unit: item.raw_unit,
     raw_price: item.raw_price == null ? "" : String(item.raw_price),
     confidence: String(Math.round(item.confidence * 100)),
-    suggested_category_type: item.suggested_category_type ?? "Uncategorized",
+    suggested_category_type: item.suggested_category_type ?? "",
     suggested_material: item.suggested_material ?? "",
     suggested_brand: item.suggested_brand ?? "Generic",
     description: item.description ?? "",
@@ -320,7 +310,8 @@ function ReviewItemRow({
           onChange={(e) => onDraftChange({ suggested_category_type: e.target.value })}
           className="h-8 min-w-[12rem] rounded-lg border border-gray-200 bg-white px-2 text-sm text-gray-700 outline-none focus:border-primary focus:ring-2 focus:ring-primary/15"
         >
-          {CATEGORIES.map((category) => (
+          <option value="">Uncategorized</option>
+          {CATEGORY_TYPES.map((category) => (
             <option key={category}>{category}</option>
           ))}
         </select>

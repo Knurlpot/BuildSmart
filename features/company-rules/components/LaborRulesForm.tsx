@@ -67,6 +67,7 @@ export function LaborRulesForm({ focusRuleId, onFocusHandled }: LaborRulesFormPr
   const [treatmentType, setTreatmentType] = useState("");
   const [region, setRegion] = useState<PhRegion | "">("");
   const [trade, setTrade] = useState("");
+  const [workerCount, setWorkerCount] = useState<number | "">(1);
   const [rate, setRate] = useState<number | "">("");
   const [rushMultiplier, setRushMultiplier] = useState<number | "">("");
   const [productivity, setProductivity] = useState<number | "">("");
@@ -85,13 +86,14 @@ export function LaborRulesForm({ focusRuleId, onFocusHandled }: LaborRulesFormPr
 
   const treatmentValid = scope !== "Treatment" || (isNonEmpty(treatmentType) && treatmentOptions.includes(treatmentType));
   const tradeValid = scope !== "Trade" || isNonEmpty(trade);
+  const workerCountValid = workerCount !== "" && Number.isInteger(Number(workerCount)) && Number(workerCount) > 0;
   const rateValid = rate !== "" && isPositiveNumber(Number(rate));
   const rushValid = rushMultiplier === "" || isPercent(Number(rushMultiplier));
   const productivityValid = productivity === "" || isPositiveNumber(Number(productivity));
   const productivitySqmValid = productivitySqmPerDay === "" || isPositiveNumber(Number(productivitySqmPerDay));
   const minDurationValid = minDurationDays === "" || isPositiveNumber(Number(minDurationDays));
   const safetyBufferValid = safetyBufferDays === "" || isPositiveNumber(Number(safetyBufferDays));
-  const formValid = treatmentValid && tradeValid && rateValid && rushValid && productivityValid && productivitySqmValid && minDurationValid && safetyBufferValid;
+  const formValid = treatmentValid && tradeValid && workerCountValid && rateValid && rushValid && productivityValid && productivitySqmValid && minDurationValid && safetyBufferValid;
 
   const resetForm = () => {
     setScope("Treatment");
@@ -99,6 +101,7 @@ export function LaborRulesForm({ focusRuleId, onFocusHandled }: LaborRulesFormPr
     setTreatmentType("");
     setRegion("");
     setTrade("");
+    setWorkerCount(1);
     setRate("");
     setRushMultiplier("");
     setProductivity("");
@@ -124,6 +127,7 @@ export function LaborRulesForm({ focusRuleId, onFocusHandled }: LaborRulesFormPr
     setTreatmentType(r.treatment_type ?? "");
     setRegion(r.region ?? "");
     setTrade(r.labor_trade ?? "");
+    setWorkerCount(r.worker_count ?? 1);
     setRate(r.labor_rate);
     setRushMultiplier(r.rush_multiplier_percentage ?? "");
     setProductivity(r.productivity_index ?? "");
@@ -138,6 +142,7 @@ export function LaborRulesForm({ focusRuleId, onFocusHandled }: LaborRulesFormPr
     treatment_type: scope === "Treatment" ? treatmentType : null,
     labor_trade: scope === "Trade" ? trade : null,
     region: scope === "Trade" ? (region === "" ? null : (region as PhRegion)) : null,
+    worker_count: Number(workerCount),
     labor_rate: Number(rate),
     rush_multiplier_percentage: rushMultiplier === "" ? null : Number(rushMultiplier),
     productivity_index: productivity === "" ? null : Number(productivity),
@@ -280,6 +285,7 @@ export function LaborRulesForm({ focusRuleId, onFocusHandled }: LaborRulesFormPr
               <span className="text-[10px] text-gray-400">
                 {fmt(r.labor_rate)}
                 {rateUnit(s)}
+                {` · ${r.worker_count ?? 1} worker${(r.worker_count ?? 1) === 1 ? "" : "s"}`}
                 {r.rush_multiplier_percentage !== null && ` (+${r.rush_multiplier_percentage}% rush)`}
               </span>
             </div>
@@ -396,6 +402,29 @@ export function LaborRulesForm({ focusRuleId, onFocusHandled }: LaborRulesFormPr
                 <div className="flex flex-col gap-1.5">
                   <div className="relative">
                     <input
+                      id="labor-worker-count"
+                      type="text"
+                      inputMode="numeric"
+                      value={workerCount}
+                      onChange={(e) => {
+                        const next = e.target.value.replace(/[^\d]/g, "");
+                        setWorkerCount(next === "" ? "" : Number(next));
+                      }}
+                      placeholder=" "
+                      className="peer w-full rounded-lg border border-gray-200 bg-gray-50 px-3 pb-2 pt-5 text-sm outline-none transition focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/20"
+                    />
+                    <label
+                      htmlFor="labor-worker-count"
+                      className="pointer-events-none absolute left-3 top-1.5 text-[10px] font-semibold text-gray-500 transition-all peer-placeholder-shown:top-1/2 peer-placeholder-shown:-translate-y-1/2 peer-placeholder-shown:text-sm peer-placeholder-shown:font-medium peer-focus:top-1.5 peer-focus:translate-y-0 peer-focus:text-[10px] peer-focus:font-semibold peer-focus:text-primary"
+                    >
+                      No. of Workers <span className="text-red-500">*</span>
+                    </label>
+                  </div>
+                  {touched && !workerCountValid && <p className="text-xs text-red-500">Enter at least 1 worker.</p>}
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <div className="relative">
+                    <input
                       id="labor-rate"
                       type="text"
                       inputMode="decimal"
@@ -416,6 +445,9 @@ export function LaborRulesForm({ focusRuleId, onFocusHandled }: LaborRulesFormPr
                   </div>
                   {touched && !rateValid && <p className="text-xs text-red-500">Must be greater than 0.</p>}
                 </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
                 <div className="flex flex-col gap-1.5">
                   <div className="relative">
                     <input
@@ -610,6 +642,10 @@ export function LaborRulesForm({ focusRuleId, onFocusHandled }: LaborRulesFormPr
                 </div>
               )}
               <dl className="grid grid-cols-2 gap-4 px-4 text-sm">
+                <div>
+                  <dt className="text-xs font-semibold uppercase tracking-wide text-gray-400">Workers</dt>
+                  <dd className="text-gray-700">{selected.worker_count ?? 1}</dd>
+                </div>
                 <div>
                   <dt className="text-xs font-semibold uppercase tracking-wide text-gray-400">Rate</dt>
                   <dd className="text-gray-700">

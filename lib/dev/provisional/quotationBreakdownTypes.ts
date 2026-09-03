@@ -108,6 +108,7 @@ export interface ProvisionalItemLine {
   pricing_reference: ProvisionalPricingReference;
   labor_rule_scope?: 'Treatment' | 'Trade' | 'General';
   labor_rule_label?: string;
+  worker_count?: number | null;
   rush_multiplier_percentage?: number | null;
   productivity_index?: number | null;
   supplier_options: ProvisionalSupplierOption[]; // Part B/D — benchmarking + Minor Revision's picker

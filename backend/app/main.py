@@ -6,7 +6,6 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.database import init_db
-from app.ingest.router import router as ingest_router
 from app.routers import pricelist
 from app.routers import blueprint
 from app.scheduler import setup_scheduler
@@ -27,5 +26,4 @@ app.add_middleware(
 )
 app.include_router(pricelist.router)
 app.include_router(blueprint.router)
-app.include_router(ingest_router)
 setup_scheduler()

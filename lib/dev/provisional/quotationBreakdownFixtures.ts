@@ -499,6 +499,7 @@ function buildLaborRuleLine(seg: DraftSegment, laborRules: LaborRule[], basis: P
   if (!resolved) return null;
 
   const { rule, scope } = resolved;
+  const workerCount = rule.worker_count && rule.worker_count > 0 ? rule.worker_count : 1;
   const productivity = rule.productivity_sqm_per_day && rule.productivity_sqm_per_day > 0 ? rule.productivity_sqm_per_day : null;
   const quantity = scope === 'Trade'
     ? Math.max(rule.min_duration_days ?? 1, productivity ? Math.ceil(seg.area_sqm / productivity) : 1)
@@ -525,12 +526,13 @@ function buildLaborRuleLine(seg: DraftSegment, laborRules: LaborRule[], basis: P
     derived_wastage_percentage: 0,
     quantity,
     unit_price: rule.labor_rate,
-    total_cost: round2(quantity * rule.labor_rate),
+    total_cost: round2(quantity * rule.labor_rate * workerCount),
     source_type: basis,
     is_overridden: false,
     pricing_reference: pricingReferenceFor(basis),
     labor_rule_scope: scope,
     labor_rule_label: laborRuleLabel(rule, scope),
+    worker_count: workerCount,
     rush_multiplier_percentage: rule.rush_multiplier_percentage,
     productivity_index: rule.productivity_index,
     supplier_options: [],

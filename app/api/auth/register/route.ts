@@ -3,6 +3,7 @@ import { pool } from "@/lib/server/db";
 import { hashPassword } from "@/lib/server/password";
 import { setSessionCookie } from "@/lib/server/session";
 import { toAuthUser, type CompanyRow, type UserRow } from "@/lib/server/entities";
+import { resolvePersistedOnboardingStep } from "@/lib/server/onboarding";
 
 type RegisterBody = {
   first_name?: string;
@@ -150,8 +151,9 @@ export async function POST(request: NextRequest) {
 
     await client.query("COMMIT");
 
-    const response = NextResponse.json({ user: toAuthUser(userResult.rows[0], 2) }, { status: 201 });
-    setSessionCookie(response, userResult.rows[0].user_id, 2);
+    const onboardingStep = await resolvePersistedOnboardingStep(companyId);
+    const response = NextResponse.json({ user: toAuthUser(userResult.rows[0], onboardingStep) }, { status: 201 });
+    setSessionCookie(response, userResult.rows[0].user_id, onboardingStep);
     return response;
   } catch (error) {
     await client.query("ROLLBACK");

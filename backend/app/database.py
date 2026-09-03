@@ -25,7 +25,6 @@ def init_db() -> None:
     # create_all runs. create_all only creates missing tables; it does not drop
     # or overwrite existing data.
     from app import models  # noqa: F401
-    from app.ingest import models as ingest_models  # noqa: F401
 
     Base.metadata.create_all(bind=engine)
 
@@ -196,7 +195,7 @@ def init_db() -> None:
                         file_name VARCHAR(255) NOT NULL,
                         file_hash VARCHAR(64) NOT NULL,
                         file_size BIGINT,
-                        source VARCHAR(20),
+                        source VARCHAR(20) CHECK (source IN ('DPWH', 'PSA', 'Supplier', 'Internal')),
                         supplier_id INT,
                         effective_date DATE NOT NULL DEFAULT CURRENT_DATE,
                         quarter VARCHAR(2) CHECK (quarter IN ('Q1', 'Q2', 'Q3', 'Q4')),

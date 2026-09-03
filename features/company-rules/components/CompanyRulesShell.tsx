@@ -69,6 +69,7 @@ export default function CompanyRulesShell() {
   // treatment-to-material mapping used by quotation and labor rules.
   const rulesConfigured = hasCompletedCompanyRulesStep({
     materialRuleCount: materialRules.length,
+    supplierRuleCount: supplierRules.length,
     laborRuleCount: laborRules.length,
     pricingStrategyCount: strategies.length,
     unitRuleCount: unitRules.length,

@@ -1,8 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { CalendarDays, CheckCircle2, ChevronRight, FileText, Zap } from "lucide-react";
-import { RequireOnboardingStep } from "@/components/auth/RequireOnboardingStep";
+import { CalendarDays, CheckCircle2, ChevronRight, FileText, Lock, Zap } from "lucide-react";
 import { NAV_ITEMS } from "@/components/layout/nav-items";
 import { useFetch } from "@/hooks/useFetch";
 import { useAuth } from "@/providers/AuthProvider";
@@ -28,38 +27,50 @@ function activityStatusLabel(value: string): string {
 
 export default function DashboardPage() {
   const { currentUser } = useAuth();
-  const { data: quotations, isLoading, error } = useFetch<Quotation[]>("/api/quotations");
+  const onboardingStep = currentUser?.onboardingStep ?? 0;
+  const setupComplete = onboardingStep >= 2;
+  const { data: quotations, isLoading, error } = useFetch<Quotation[]>(setupComplete ? "/api/quotations" : null);
   const {
     data: activities,
     isLoading: isActivityLoading,
     error: activityError,
-  } = useFetch<DashboardActivity[]>("/api/dashboard/activity");
+  } = useFetch<DashboardActivity[]>(setupComplete ? "/api/dashboard/activity" : null);
   const firstName = currentUser?.email?.split("@")[0] || "there";
   const now = new Date();
   const quotationsThisMonth = (quotations ?? []).filter((quotation) => {
     const created = new Date(quotation.created_at);
     return created.getFullYear() === now.getFullYear() && created.getMonth() === now.getMonth();
   }).length;
-  const setupProgress = Math.min(100, Math.round(((currentUser?.onboardingStep ?? 0) / 2) * 100));
+  const setupProgress = Math.min(100, Math.round((onboardingStep / 2) * 100));
+  const nextSetupHref = onboardingStep === 0 ? "/pricelist" : "/management";
+  const nextSetupLabel = onboardingStep === 0 ? "Set Up Pricelist" : "Set Up Rules";
 
   return (
-    <RequireOnboardingStep minStep={2}>
+    <>
       <div className="mb-6">
         <h1 className="text-2xl font-semibold text-gray-900">Hi, {firstName}!</h1>
-        <p className="mt-1 text-sm text-gray-500">Here is what is happening with your construction estimates.</p>
+        <p className="mt-1 text-sm text-gray-500">
+          {setupComplete ? "Here is what is happening with your construction estimates." : "Finish company setup to unlock quotation tools."}
+        </p>
       </div>
 
       <div className="flex items-center gap-4 rounded-2xl bg-linear-to-r from-primary to-(--primary-hover) p-6 text-white shadow-md">
-        <Zap className="h-10 w-10 shrink-0 opacity-90" />
+        {setupComplete ? <Zap className="h-10 w-10 shrink-0 opacity-90" /> : <Lock className="h-10 w-10 shrink-0 opacity-90" />}
         <div className="flex-1">
-          <p className="text-lg font-semibold">Setup complete. All features are now unlocked.</p>
-          <p className="text-sm opacity-80">Ready to generate your first quotation? Upload a blueprint or use quick measurement to get started.</p>
+          <p className="text-lg font-semibold">
+            {setupComplete ? "Setup complete. All features are now unlocked." : `Setup ${onboardingStep}/2 required before quotations.`}
+          </p>
+          <p className="text-sm opacity-80">
+            {setupComplete
+              ? "Ready to generate your first quotation? Upload a blueprint or use quick measurement to get started."
+              : "Complete your pricelist first, then configure Preferences & Rules for the company."}
+          </p>
         </div>
         <Link
-          href="/quotations"
+          href={setupComplete ? "/quotations" : nextSetupHref}
           className="flex items-center gap-2 rounded-xl bg-white px-5 py-2.5 text-sm font-semibold text-primary hover:bg-orange-50"
         >
-          Start Now <ChevronRight className="h-4 w-4" />
+          {setupComplete ? "Start Now" : nextSetupLabel} <ChevronRight className="h-4 w-4" />
         </Link>
       </div>
 
@@ -90,7 +101,7 @@ export default function DashboardPage() {
               <div className="mt-3 h-2 overflow-hidden rounded-full bg-gray-100">
                 <div className="h-full rounded-full bg-primary" style={{ width: `${setupProgress}%` }} />
               </div>
-              <p className="mt-3 text-sm text-gray-500">Company setup complete</p>
+              <p className="mt-3 text-sm text-gray-500">{setupComplete ? "Company setup complete" : "Company setup in progress"}</p>
             </div>
           </div>
         </section>
@@ -140,7 +151,22 @@ export default function DashboardPage() {
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         {NAV_ITEMS.map((item) => {
           const Icon = item.icon;
-          return (
+          const locked = onboardingStep < item.minStep;
+          return locked ? (
+            <div
+              key={item.href}
+              title={`Complete setup to unlock ${item.label}`}
+              className="flex cursor-not-allowed items-center gap-4 rounded-2xl border border-gray-100 bg-white p-5 opacity-55 shadow-sm"
+            >
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-gray-100 text-gray-400">
+                <Lock className="h-6 w-6" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="font-medium text-gray-700">{item.label}</p>
+                <p className="mt-1 text-xs text-gray-400">Complete setup to unlock</p>
+              </div>
+            </div>
+          ) : (
             <Link
               key={item.href}
               href={item.href}
@@ -159,6 +185,6 @@ export default function DashboardPage() {
           );
         })}
       </div>
-    </RequireOnboardingStep>
+    </>
   );
 }

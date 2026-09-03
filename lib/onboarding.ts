@@ -1,5 +1,6 @@
 export function resolveOnboardingRoute(step: number): string {
-  void step;
+  if (step <= 0) return "/pricelist";
+  if (step === 1) return "/management";
   return "/dashboard";
 }
 
@@ -25,6 +26,7 @@ export function hasCompletedPricelistStep(state: PricelistCompletionState): bool
 
 export interface CompanyRulesCompletionState {
   materialRuleCount: number;
+  supplierRuleCount: number;
   laborRuleCount: number;
   pricingStrategyCount: number;
   unitRuleCount: number;
@@ -33,6 +35,7 @@ export interface CompanyRulesCompletionState {
 export function hasCompletedCompanyRulesStep(state: CompanyRulesCompletionState): boolean {
   return (
     state.materialRuleCount > 0 &&
+    state.supplierRuleCount > 0 &&
     state.laborRuleCount > 0 &&
     state.pricingStrategyCount > 0 &&
     state.unitRuleCount > 0

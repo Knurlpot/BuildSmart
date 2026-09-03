@@ -7,9 +7,8 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select, text
 
 from app.database import get_db
-from app.ingest.models import MaterialPriceVariance
 from app.main import app
-from app.models import ApprovedMatchCache, HistoricalPriceRecord, Items, PriceListReviewItem, PriceListUpload
+from app.models import ApprovedMatchCache, HistoricalPriceRecord, Items, MaterialPriceVariance, PriceListReviewItem, PriceListUpload
 from app.routers import pricelist as pricelist_router
 from app.services.match_cache import normalize_match_key
 

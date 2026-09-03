@@ -215,6 +215,28 @@ class ApprovedMatchCache(Base):
     )
 
 
+class MaterialPriceVariance(Base):
+    __tablename__ = "material_price_variance"
+
+    mpv_id: Mapped[int] = mapped_column(primary_key=True)
+    item_code: Mapped[int | None] = mapped_column(ForeignKey("items.item_code"), nullable=True)
+    variance_source: Mapped[str] = mapped_column(String(20))
+    commodity_group: Mapped[str | None] = mapped_column(String(60))
+    effective_date: Mapped[date] = mapped_column(Date, default=date.today)
+    quarter: Mapped[str | None] = mapped_column(String(2))
+    year: Mapped[int | None] = mapped_column(SmallInteger)
+    percent_change: Mapped[float] = mapped_column(Numeric(5, 2))
+    trend_direction: Mapped[str] = mapped_column(String(10))
+    is_significant_spike: Mapped[bool] = mapped_column(Boolean, server_default="false")
+
+    __table_args__ = (
+        CheckConstraint("variance_source IN ('Internal', 'PSA')", name="material_price_variance_source_check"),
+        CheckConstraint("quarter IN ('Q1','Q2','Q3','Q4')", name="ck_mpv_quarter"),
+        CheckConstraint("trend_direction IN ('Up','Down','Stable')", name="ck_mpv_trend_direction"),
+        UniqueConstraint("item_code", "effective_date", name="uq_material_price_variance"),
+    )
+
+
 class SourcePriority(Base):
     __tablename__ = "source_priority"
 
