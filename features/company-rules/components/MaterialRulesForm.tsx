@@ -1,15 +1,14 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { AlertTriangle, CheckCircle2, Pencil, Search, X, XCircle } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Filter, Pencil, Search, X, XCircle } from "lucide-react";
 import { RuleListDetailPanel } from "./RuleListDetailPanel";
 import { useMaterialRules, useCheckRuleUsage, stagingId } from "@/lib/dev/provisional/useCompanyRulesProvisional";
 import { useEditableRuleList } from "@/lib/dev/provisional/useEditableRuleList";
 import { apiClient } from "@/lib/api/client";
 import { MATERIAL_TREATMENT_TIERS, type MaterialRuleEntry, type MaterialTreatmentTier } from "@/lib/dev/provisional/companyRulesTypes";
 import { useItemsCatalog } from "@/hooks/useItemsCatalog";
-import { usePricelistCatalog, type SavedPriceRecord } from "@/hooks/usePricelistCatalog";
-import { usePricelistPublishedSource, type DpwhCatalogRow } from "@/hooks/usePricelistPublishedSource";
+import { usePricelistCatalog } from "@/hooks/usePricelistCatalog";
 import { useCategories } from "@/hooks/useCategories";
 import { useSuppliers } from "@/hooks/useSuppliers";
 import { TREATMENT_TYPES } from "@/lib/dev/provisional/quotationGenerationTypes";
@@ -23,7 +22,6 @@ const DEFAULT_MATERIAL_PRIORITY = 1;
 const DEFAULT_PRIORITY_SOURCE = "Supplier" as const;
 const DEFAULT_FALLBACK_RULE = "Flag for manual review" as const;
 const TREATMENT_OPTIONS = [...TREATMENT_TYPES];
-const DPWH_SUPPLIER_VALUE = "DPWH";
 const tierBadgeClass = (tier: MaterialTreatmentTier) =>
   tier === "Premium" ? "bg-[#0000CD]/5 text-[#0000CD]" : "bg-orange-50 text-primary";
 const activeTierFilterClass = (tier: MaterialTreatmentTier) =>
@@ -36,7 +34,12 @@ interface MaterialRulesFormProps {
   onFocusHandled?: () => void;
 }
 
-type CatalogItem = Omit<Items, "item_code"> & { catalogKey: string; item_code: string | number | null };
+type CatalogItem = Omit<Items, "item_code"> & {
+  catalogKey: string;
+  item_code: string | number | null;
+  supplier_id: number | null;
+  supplier_name: string | null;
+};
 
 // v6 Correction 3 — REBUILT as a catalog picker. A category contains many materials used
 // TOGETHER (a waterproofing system needs primer AND membrane AND topcoat), not
@@ -64,15 +67,10 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
   const { categories, isLoading: categoriesLoading, error: categoriesError } = useCategories();
   const { suppliers, isLoading: suppliersLoading } = useSuppliers();
   const supplierCatalog = usePricelistCatalog();
-  const { dpwhCatalog } = usePricelistPublishedSource();
   const supplierCatalogRecords = supplierCatalog.records;
   const supplierCatalogLoad = supplierCatalog.load;
   const supplierCatalogLoading = supplierCatalog.isLoading;
   const supplierCatalogError = supplierCatalog.error;
-  const dpwhCatalogRecords = dpwhCatalog.records;
-  const dpwhCatalogLoad = dpwhCatalog.load;
-  const dpwhCatalogLoading = dpwhCatalog.isLoading;
-  const dpwhCatalogError = dpwhCatalog.error;
 
   const allRules = editable.applyOverrides([...editable.localExtra, ...rules]);
 
@@ -84,8 +82,11 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
   const [selectedId, setSelectedId] = useState<string | null>(focusRuleId?.includes("::") ? null : focusRuleId ?? null);
   const [mode, setMode] = useState<"idle" | "details" | "browse" | "configure" | "edit-group">("idle");
   const [search, setSearch] = useState("");
-  const [supplierFilter, setSupplierFilter] = useState<string>(DPWH_SUPPLIER_VALUE);
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [supplierFilter, setSupplierFilter] = useState<string>("");
+  const [pendingSupplierFilter, setPendingSupplierFilter] = useState<string>("");
   const [categoryFilter, setCategoryFilter] = useState<CategoryType | "">("");
+  const [pendingCategoryFilter, setPendingCategoryFilter] = useState<CategoryType | "">("");
   const [checkedCatalogItems, setCheckedCatalogItems] = useState<Record<string, CatalogItem>>({});
   const [treatmentType, setTreatmentType] = useState("");
   const [treatmentTier, setTreatmentTier] = useState<MaterialTreatmentTier>("Practical");
@@ -108,24 +109,7 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
   );
 
   const catalogItems = useMemo<CatalogItem[]>(() => {
-    if (supplierFilter === DPWH_SUPPLIER_VALUE) {
-      return dpwhCatalogRecords.map((record: DpwhCatalogRow) => ({
-        catalogKey: `dpwh-${record.historicalrec_id}`,
-        item_code: record.item_code,
-        category_id: record.category_type ? categoryIdByType.get(record.category_type as CategoryType) ?? 0 : 0,
-        company_id: null,
-        item_name: record.item_name ?? `Material ${record.item_code}`,
-        brand: "",
-        unit: "",
-        item_source: "DPWH",
-        source_location: record.location ?? record.region ?? null,
-        description: record.location ?? record.region ?? undefined,
-      }));
-    }
-
-    const supplierId = Number(supplierFilter);
     return supplierCatalogRecords
-      .filter((record: SavedPriceRecord) => record.supplier_id === supplierId)
       .map((record) => ({
         catalogKey: `supplier-${record.historicalrec_id}`,
         item_code: record.item_code,
@@ -137,28 +121,109 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
         item_source: "Supplier",
         source_location: record.supplier_location,
         description: record.description_material || record.supplier_location || undefined,
+        supplier_id: record.supplier_id,
+        supplier_name: record.supplier_name,
       }));
-  }, [categoryIdByType, dpwhCatalogRecords, supplierCatalogRecords, supplierFilter]);
+  }, [categoryIdByType, supplierCatalogRecords]);
 
   useEffect(() => {
     if (mode !== "browse" && mode !== "edit-group") return;
-    if (supplierFilter === DPWH_SUPPLIER_VALUE) {
-      dpwhCatalogLoad();
-    } else {
-      supplierCatalogLoad();
-    }
-  }, [mode, supplierFilter, dpwhCatalogLoad, supplierCatalogLoad]);
+    supplierCatalogLoad();
+  }, [mode, supplierCatalogLoad]);
 
   const filteredItems = catalogItems.filter((item) => {
     const matchesSearch = search.trim() === "" || item.item_name.toLowerCase().includes(search.trim().toLowerCase());
+    const matchesSupplier = supplierFilter === "" || String(item.supplier_id) === supplierFilter;
     const matchesCategory = categoryFilter === "" || categoryTypeOf(item) === categoryFilter;
-    return matchesSearch && matchesCategory;
+    return matchesSearch && matchesSupplier && matchesCategory;
   });
+  const activeFilterCount = Number(supplierFilter !== "") + Number(categoryFilter !== "");
+  const supplierNameById = useMemo(
+    () => new Map(suppliers.map((supplier) => [String(supplier.supplier_id), supplier.supplier_name])),
+    [suppliers]
+  );
+  const applyFilters = () => {
+    setSupplierFilter(pendingSupplierFilter);
+    setCategoryFilter(pendingCategoryFilter);
+    setFiltersOpen(false);
+  };
+  const resetFilters = () => {
+    setSupplierFilter("");
+    setPendingSupplierFilter("");
+    setCategoryFilter("");
+    setPendingCategoryFilter("");
+    setFiltersOpen(false);
+  };
+  const openFilters = () => {
+    setPendingSupplierFilter(supplierFilter);
+    setPendingCategoryFilter(categoryFilter);
+    setFiltersOpen((open) => !open);
+  };
+  const materialFilterButton = (
+    <div className="flex flex-wrap items-center gap-2">
+      {supplierFilter && (
+        <span className="rounded-full bg-gray-100 px-2.5 py-1 text-[11px] font-semibold text-gray-600">
+          Supplier: {supplierNameById.get(supplierFilter) ?? "Unknown"}
+        </span>
+      )}
+      {categoryFilter && (
+        <span className="rounded-full bg-gray-100 px-2.5 py-1 text-[11px] font-semibold text-gray-600">
+          Category: {categoryFilter}
+        </span>
+      )}
+    </div>
+  );
+  const materialFilterPanel = filtersOpen ? (
+    <div className="grid gap-2 rounded-xl border border-gray-200 bg-white p-3 shadow-sm md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto_auto]">
+      <select
+        value={pendingSupplierFilter}
+        onChange={(e) => setPendingSupplierFilter(e.target.value)}
+        className={`${inputCls} min-w-0`}
+        disabled={suppliersLoading}
+        aria-label="Filter by supplier"
+      >
+        <option value="">All suppliers</option>
+        {suppliers
+          .filter((s) => s.status === "Active")
+          .map((supplier) => (
+            <option key={supplier.supplier_id} value={String(supplier.supplier_id)}>
+              {supplier.supplier_name}
+            </option>
+          ))}
+      </select>
+      <select
+        value={pendingCategoryFilter}
+        onChange={(e) => setPendingCategoryFilter(e.target.value as CategoryType | "")}
+        className={`${inputCls} min-w-0`}
+        aria-label="Filter by category"
+      >
+        <option value="">All categories</option>
+        {CATEGORY_TYPES.map((c) => (
+          <option key={c}>{c}</option>
+        ))}
+      </select>
+      <button
+        type="button"
+        onClick={applyFilters}
+        className="rounded-lg bg-primary px-4 py-2 text-sm font-bold text-primary-foreground transition hover:bg-(--primary-hover)"
+      >
+        Apply
+      </button>
+      <button
+        type="button"
+        onClick={resetFilters}
+        className="rounded-lg border border-gray-200 px-4 py-2 text-sm font-bold text-gray-600 transition hover:bg-gray-50"
+      >
+        Reset
+      </button>
+    </div>
+  ) : null;
 
-  const itemMeta = (item: Pick<Items, "category_id" | "description" | "brand" | "unit">) =>
+  const itemMeta = (item: Pick<CatalogItem, "category_id" | "description" | "brand" | "unit" | "supplier_name">) =>
     [
       item.description?.trim(),
       categoryTypeOf(item) ?? "Uncategorized",
+      item.supplier_name,
       item.brand,
       item.unit,
     ].filter(Boolean).join(" · ");
@@ -176,6 +241,8 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
     unit: "",
     item_source: rule.priority_source,
     source_location: null,
+    supplier_id: null,
+    supplier_name: null,
     description: rule.category,
   });
 
@@ -198,8 +265,11 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
     setSelectedId(null);
     setSelectedGroup(null);
     setSearch("");
-    setSupplierFilter(DPWH_SUPPLIER_VALUE);
+    setFiltersOpen(false);
+    setSupplierFilter("");
+    setPendingSupplierFilter("");
     setCategoryFilter("");
+    setPendingCategoryFilter("");
     setCheckedCatalogItems({});
     setTreatmentType("");
     setTreatmentTier("Practical");
@@ -259,8 +329,11 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
     );
     setCheckedCatalogItems(existingItems);
     setSearch("");
-    setSupplierFilter(DPWH_SUPPLIER_VALUE);
+    setFiltersOpen(false);
+    setSupplierFilter("");
+    setPendingSupplierFilter("");
     setCategoryFilter("");
+    setPendingCategoryFilter("");
     setTouched(false);
     setSavedMessage(false);
   };
@@ -293,7 +366,7 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
           preferred_item_code: code,
           preferred_item_name: item.item_name,
           material_priority: DEFAULT_MATERIAL_PRIORITY,
-          priority_source: supplierFilter === DPWH_SUPPLIER_VALUE ? "DPWH" as const : DEFAULT_PRIORITY_SOURCE,
+          priority_source: item.item_source === "DPWH" ? "DPWH" as const : DEFAULT_PRIORITY_SOURCE,
           fallback_rule: DEFAULT_FALLBACK_RULE,
         };
         await save(payload);
@@ -724,8 +797,9 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
                 </button>
               </div>
 
-              <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_minmax(0,12rem)_minmax(0,12rem)]">
-                <div className="relative min-w-0">
+              <div className="flex flex-col gap-2">
+                <div className="flex items-start gap-2">
+                  <div className="relative min-w-0 flex-1">
                   <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
                   <input
                     value={search}
@@ -733,39 +807,29 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
                     placeholder="Search the catalog…"
                     className={`${inputCls} pl-9`}
                   />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={openFilters}
+                    title="Filter materials"
+                    aria-label="Filter materials"
+                    className={`inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border text-sm font-semibold transition ${
+                      activeFilterCount > 0
+                        ? "border-primary bg-orange-50 text-primary"
+                        : "border-gray-200 bg-white text-gray-600 hover:border-primary hover:text-primary"
+                    }`}
+                  >
+                    <Filter className="h-4 w-4" />
+                  </button>
                 </div>
-                <select
-                  value={supplierFilter}
-                  onChange={(e) => setSupplierFilter(e.target.value)}
-                  className={`${inputCls} min-w-0`}
-                  disabled={suppliersLoading}
-                  aria-label="Supplier source"
-                >
-                  <option value={DPWH_SUPPLIER_VALUE}>DPWH</option>
-                  {suppliers
-                    .filter((s) => s.status === "Active")
-                    .map((supplier) => (
-                      <option key={supplier.supplier_id} value={String(supplier.supplier_id)}>
-                        {supplier.supplier_name}
-                      </option>
-                    ))}
-                </select>
-                <select
-                  value={categoryFilter}
-                  onChange={(e) => setCategoryFilter(e.target.value as CategoryType | "")}
-                  className={`${inputCls} min-w-0`}
-                >
-                  <option value="">All categories</option>
-                  {CATEGORY_TYPES.map((c) => (
-                    <option key={c}>{c}</option>
-                  ))}
-                </select>
+                {materialFilterButton}
+                {materialFilterPanel}
               </div>
 
-              {(supplierFilter === DPWH_SUPPLIER_VALUE ? dpwhCatalogLoading : supplierCatalogLoading) || itemsLoading ? (
+              {supplierCatalogLoading || itemsLoading ? (
                 <p className="text-xs text-gray-400">Loading catalog…</p>
-              ) : itemsError || dpwhCatalogError || supplierCatalogError ? (
-                <p className="text-xs text-red-500">Couldn&apos;t load your catalog: {(itemsError ?? dpwhCatalogError ?? supplierCatalogError)?.message}</p>
+              ) : itemsError || supplierCatalogError ? (
+                <p className="text-xs text-red-500">Couldn&apos;t load your catalog: {(itemsError ?? supplierCatalogError)?.message}</p>
               ) : catalogItems.length === 0 ? (
                 <p className="text-xs text-amber-600">No items in your catalog. Upload a pricelist first.</p>
               ) : filteredItems.length === 0 ? (
@@ -1011,8 +1075,9 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
                   )}
                 </div>
 
-                <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_minmax(0,10rem)_minmax(0,10rem)]">
-                  <div className="relative min-w-0">
+                <div className="flex flex-col gap-2">
+                  <div className="flex items-start gap-2">
+                    <div className="relative min-w-0 flex-1">
                     <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
                     <input
                       value={search}
@@ -1020,39 +1085,29 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
                       placeholder="Search and add materials..."
                       className={`${inputCls} pl-9`}
                     />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={openFilters}
+                      title="Filter materials"
+                      aria-label="Filter materials"
+                      className={`inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border text-sm font-semibold transition ${
+                        activeFilterCount > 0
+                          ? "border-primary bg-orange-50 text-primary"
+                          : "border-gray-200 bg-white text-gray-600 hover:border-primary hover:text-primary"
+                      }`}
+                    >
+                      <Filter className="h-4 w-4" />
+                    </button>
                   </div>
-                  <select
-                    value={supplierFilter}
-                    onChange={(e) => setSupplierFilter(e.target.value)}
-                    className={`${inputCls} min-w-0`}
-                    disabled={suppliersLoading}
-                    aria-label="Supplier source"
-                  >
-                    <option value={DPWH_SUPPLIER_VALUE}>DPWH</option>
-                    {suppliers
-                      .filter((s) => s.status === "Active")
-                      .map((supplier) => (
-                        <option key={supplier.supplier_id} value={String(supplier.supplier_id)}>
-                          {supplier.supplier_name}
-                        </option>
-                      ))}
-                  </select>
-                  <select
-                    value={categoryFilter}
-                    onChange={(e) => setCategoryFilter(e.target.value as CategoryType | "")}
-                    className={`${inputCls} min-w-0`}
-                  >
-                    <option value="">All categories</option>
-                    {CATEGORY_TYPES.map((c) => (
-                      <option key={c}>{c}</option>
-                    ))}
-                  </select>
+                  {materialFilterButton}
+                  {materialFilterPanel}
                 </div>
 
-                {(supplierFilter === DPWH_SUPPLIER_VALUE ? dpwhCatalogLoading : supplierCatalogLoading) || itemsLoading ? (
+                {supplierCatalogLoading || itemsLoading ? (
                   <p className="text-xs text-gray-400">Loading catalog…</p>
-                ) : itemsError || dpwhCatalogError || supplierCatalogError ? (
-                  <p className="text-xs text-red-500">Couldn&apos;t load your catalog: {(itemsError ?? dpwhCatalogError ?? supplierCatalogError)?.message}</p>
+                ) : itemsError || supplierCatalogError ? (
+                  <p className="text-xs text-red-500">Couldn&apos;t load your catalog: {(itemsError ?? supplierCatalogError)?.message}</p>
                 ) : filteredItems.length === 0 ? (
                   <p className="text-xs text-gray-400">No catalog items match that search.</p>
                 ) : (
