@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { AlertTriangle, BarChart2, BookOpen, Check, ChevronDown, ChevronUp, Layers, Pencil, ShoppingBag, TrendingDown, X } from "lucide-react";
+import { AlertTriangle, BarChart2, BookOpen, Check, ChevronDown, ChevronUp, Eye, Layers, Pencil, ShoppingBag, TrendingDown, X } from "lucide-react";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { fmtPeso } from "@/lib/dev/provisional/quotationBreakdownFixtures";
 import type { ItemCategory, PricelistBasis, ProvisionalItemLine, ProvisionalQuotationTierResult, ProvisionalTier } from "@/lib/dev/provisional/quotationBreakdownTypes";
@@ -299,11 +299,30 @@ function BoqTab({ items }: { items: ProvisionalItemLine[] }) {
 }
 
 function CostSummaryTab({ result }: { result: ProvisionalQuotationTierResult }) {
+  const [discountDetailsOpen, setDiscountDetailsOpen] = useState(false);
   const unresolvedCount = result.items.filter((l) => l.unit_price === null).length;
   const rushJobCost = result.service_cost.rush_job_cost ?? 0;
   const rushPercentage = result.service_cost.labor_cost > 0 ? (rushJobCost / result.service_cost.labor_cost) * 100 : 0;
+  const supplierRuleDiscountDetails = result.items.flatMap((line) => {
+    if (line.category !== "Material") return [];
+    const supplier = selectedSupplierForLine(line);
+    if (!supplier?.original_unit_price || supplier.original_unit_price <= supplier.unit_price) return [];
+    const savings = (supplier.original_unit_price - supplier.unit_price) * line.quantity;
+    return [{
+      lineId: line.line_id,
+      itemName: line.item_name,
+      supplierName: supplier.supplier_name,
+      ruleLabels: supplier.applied_supplier_rules?.map((rule) => rule.label) ?? [],
+      quantity: line.quantity,
+      originalUnitPrice: supplier.original_unit_price,
+      discountedUnitPrice: supplier.unit_price,
+      savings,
+    }];
+  });
+  const supplierRuleDiscount = supplierRuleDiscountDetails.reduce((total, detail) => total + detail.savings, 0);
   const rows: { label: string; value: number; bold?: boolean }[] = [
     { label: "Materials Subtotal", value: result.materials_subtotal },
+    ...(supplierRuleDiscount > 0 ? [{ label: "Discounts", value: -supplierRuleDiscount }] : []),
     {
       label: rushJobCost > 0 ? `Labor (${fmtPercentRaw(rushPercentage)} Rush Job)` : "Labor",
       value: result.service_cost.labor_cost + rushJobCost,
@@ -325,8 +344,23 @@ function CostSummaryTab({ result }: { result: ProvisionalQuotationTierResult }) 
       <div className="rounded-xl border border-gray-100 bg-white p-5 shadow-sm">
         {rows.map((row) => (
           <div key={row.label} className="flex items-center justify-between border-b border-gray-100 py-2.5 last:border-0">
-            <span className="text-sm text-gray-500">{row.label}</span>
-            <span className="text-sm font-semibold text-gray-800">{fmtPeso(row.value)}</span>
+            <span className="flex items-center gap-2 text-sm text-gray-500">
+              {row.label}
+              {row.label === "Discounts" && (
+                <button
+                  type="button"
+                  onClick={() => setDiscountDetailsOpen(true)}
+                  title="View discount details"
+                  aria-label="View discount details"
+                  className="flex h-7 w-7 items-center justify-center rounded-lg border border-green-200 bg-green-50 text-green-700 transition hover:border-green-300 hover:bg-green-100"
+                >
+                  <Eye className="h-3.5 w-3.5" />
+                </button>
+              )}
+            </span>
+            <span className={`text-sm font-semibold ${row.value < 0 ? "text-green-700" : "text-gray-800"}`}>
+              {row.value < 0 ? `-${fmtPeso(Math.abs(row.value))}` : fmtPeso(row.value)}
+            </span>
           </div>
         ))}
         <div className="flex items-center justify-between border-t-2 border-gray-200 py-2.5">
@@ -344,6 +378,52 @@ function CostSummaryTab({ result }: { result: ProvisionalQuotationTierResult }) 
           <span className={`text-2xl font-extrabold ${TIER_ACCENT[result.tier]}`}>{fmtPeso(result.grand_total)}</span>
         </div>
       </div>
+      <Dialog open={discountDetailsOpen} onOpenChange={setDiscountDetailsOpen}>
+        <DialogContent className="max-w-2xl rounded-2xl border-0 bg-white p-0 shadow-2xl">
+          <div className="border-b border-gray-100 px-6 py-4">
+            <p className="text-lg font-bold text-gray-900">Discount Details</p>
+            <p className="text-sm text-gray-500">Supplier rules that reduced this quotation.</p>
+          </div>
+          <div className="max-h-[60vh] overflow-y-auto p-6">
+            <div className="flex flex-col gap-3">
+              {supplierRuleDiscountDetails.map((detail) => (
+                <div key={detail.lineId} className="rounded-xl border border-gray-100 bg-gray-50/60 p-4">
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <p className="text-sm font-bold text-gray-900">{detail.itemName}</p>
+                      <p className="text-xs text-gray-500">{detail.supplierName}</p>
+                    </div>
+                    <p className="shrink-0 text-sm font-bold text-green-700">-{fmtPeso(detail.savings)}</p>
+                  </div>
+                  <div className="mt-3 grid grid-cols-3 gap-3 text-xs">
+                    <div>
+                      <p className="font-semibold uppercase tracking-wide text-gray-400">Original</p>
+                      <p className="mt-0.5 text-gray-700">{fmtPeso(detail.originalUnitPrice)}</p>
+                    </div>
+                    <div>
+                      <p className="font-semibold uppercase tracking-wide text-gray-400">Discounted</p>
+                      <p className="mt-0.5 text-gray-700">{fmtPeso(detail.discountedUnitPrice)}</p>
+                    </div>
+                    <div>
+                      <p className="font-semibold uppercase tracking-wide text-gray-400">Quantity</p>
+                      <p className="mt-0.5 text-gray-700">{detail.quantity.toFixed(2)}</p>
+                    </div>
+                  </div>
+                  {detail.ruleLabels.length > 0 && (
+                    <div className="mt-3 flex flex-wrap gap-1.5">
+                      {detail.ruleLabels.map((label) => (
+                        <span key={label} className="rounded-full bg-green-100 px-2 py-1 text-[10px] font-bold text-green-700">
+                          {label}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

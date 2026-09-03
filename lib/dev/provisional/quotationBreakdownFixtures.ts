@@ -255,6 +255,25 @@ function supplierRuleDiscountedPrice(unitPrice: number, rule: SupplierRuleEntry)
   return unitPrice;
 }
 
+function supplierRuleNote(rule: SupplierRuleEntry): string {
+  if (rule.rule_type === 'Preferred Supplier') return 'Preferred supplier selected';
+  if (rule.discount_percentage_rate !== null) return `${rule.discount_percentage_rate}% ${rule.rule_type.toLowerCase()} applied`;
+  if (rule.fixed_discount_amount !== null) return `${fmtPeso(rule.fixed_discount_amount)} ${rule.rule_type.toLowerCase()} applied`;
+  return `${rule.rule_type} applied`;
+}
+
+function isNegotiatedRule(rule: SupplierRuleEntry): rule is SupplierRuleEntry & { rule_type: 'Negotiated Price' } {
+  return rule.rule_type === 'Negotiated Price';
+}
+
+function isBulkRule(rule: SupplierRuleEntry): rule is SupplierRuleEntry & { rule_type: 'Bulk Discount' } {
+  return rule.rule_type === 'Bulk Discount';
+}
+
+function isPreferredRule(rule: SupplierRuleEntry): rule is SupplierRuleEntry & { rule_type: 'Preferred Supplier' } {
+  return rule.rule_type === 'Preferred Supplier';
+}
+
 function activeSupplierRulesFor(supplierId: number | null, supplierRules: SupplierRuleEntry[]): SupplierRuleEntry[] {
   if (supplierId === null) return [];
   return supplierRules
@@ -262,25 +281,43 @@ function activeSupplierRulesFor(supplierId: number | null, supplierRules: Suppli
     .sort((a, b) => b.effective_date.localeCompare(a.effective_date));
 }
 
-function supplierHasPreferredRule(supplierId: number | null, supplierRules: SupplierRuleEntry[]): boolean {
-  return activeSupplierRulesFor(supplierId, supplierRules).some((rule) => rule.rule_type === 'Preferred Supplier');
+function preferredSupplierRuleFor(supplierId: number | null, supplierRules: SupplierRuleEntry[]): SupplierRuleEntry | undefined {
+  return activeSupplierRulesFor(supplierId, supplierRules).find(isPreferredRule);
 }
 
-function applySupplierPriceRules(unitPrice: number, quantity: number, supplierId: number | null, supplierRules: SupplierRuleEntry[]): number {
+function supplierHasPreferredRule(supplierId: number | null, supplierRules: SupplierRuleEntry[]): boolean {
+  return preferredSupplierRuleFor(supplierId, supplierRules) !== undefined;
+}
+
+function applySupplierPriceRules(unitPrice: number, quantity: number, supplierId: number | null, supplierRules: SupplierRuleEntry[]) {
   const activeRules = activeSupplierRulesFor(supplierId, supplierRules);
-  const negotiatedRule = activeRules.find((rule) => rule.rule_type === 'Negotiated Price');
-  const bulkRule = activeRules.find((rule) => rule.rule_type === 'Bulk Discount');
+  const negotiatedRule = activeRules.find(isNegotiatedRule);
+  const bulkRule = activeRules.find(isBulkRule);
+  const preferredRule = activeRules.find(isPreferredRule);
+  const appliedRules: NonNullable<ProvisionalSupplierOption['applied_supplier_rules']> = [];
   let discountedPrice = unitPrice;
 
   if (negotiatedRule) {
-    discountedPrice = supplierRuleDiscountedPrice(discountedPrice, negotiatedRule);
+    const nextPrice = supplierRuleDiscountedPrice(discountedPrice, negotiatedRule);
+    if (nextPrice !== discountedPrice) {
+      discountedPrice = nextPrice;
+      appliedRules.push({ rule_type: negotiatedRule.rule_type, label: supplierRuleNote(negotiatedRule) });
+    }
   }
 
   if (bulkRule && quantity * discountedPrice >= (bulkRule.minimum_order_amount ?? 0)) {
-    discountedPrice = supplierRuleDiscountedPrice(discountedPrice, bulkRule);
+    const nextPrice = supplierRuleDiscountedPrice(discountedPrice, bulkRule);
+    if (nextPrice !== discountedPrice) {
+      discountedPrice = nextPrice;
+      appliedRules.push({ rule_type: bulkRule.rule_type, label: supplierRuleNote(bulkRule) });
+    }
   }
 
-  return discountedPrice;
+  if (preferredRule) {
+    appliedRules.push({ rule_type: preferredRule.rule_type, label: supplierRuleNote(preferredRule) });
+  }
+
+  return { unitPrice: discountedPrice, appliedRules };
 }
 
 function applySupplierRulesToOptions(
@@ -291,7 +328,13 @@ function applySupplierRulesToOptions(
   return options
     .map((option) => {
       if (option.source_type === 'DPWH') return option;
-      return { ...option, unit_price: applySupplierPriceRules(option.unit_price, quantity, option.supplier_id, supplierRules) };
+      const priced = applySupplierPriceRules(option.unit_price, quantity, option.supplier_id, supplierRules);
+      return {
+        ...option,
+        unit_price: priced.unitPrice,
+        original_unit_price: priced.unitPrice < option.unit_price ? option.unit_price : undefined,
+        applied_supplier_rules: priced.appliedRules.length > 0 ? priced.appliedRules : undefined,
+      };
     })
     .sort((a, b) => {
       const aPreferred = supplierHasPreferredRule(a.supplier_id, supplierRules);

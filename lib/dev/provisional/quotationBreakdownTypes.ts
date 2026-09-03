@@ -74,8 +74,13 @@ export interface ProvisionalSupplierOption {
   brand: string | null;
   location?: string | null;
   unit_price: number;
+  original_unit_price?: number;
   quantity_available: number | null; // PROVISIONAL, no supplier_item_stock table exists
   source_type: PricelistBasis;
+  applied_supplier_rules?: {
+    rule_type: 'Bulk Discount' | 'Negotiated Price' | 'Preferred Supplier';
+    label: string;
+  }[];
 }
 
 export type ItemCategory = 'Material' | 'Labor';
