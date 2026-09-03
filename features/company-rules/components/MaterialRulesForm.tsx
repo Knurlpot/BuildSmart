@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { AlertTriangle, CheckCircle2, Filter, Pencil, Search, X, XCircle } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Filter, Pencil, Plus, Search, X, XCircle } from "lucide-react";
 import { RuleListDetailPanel } from "./RuleListDetailPanel";
 import { useMaterialRules, useCheckRuleUsage, stagingId } from "@/lib/dev/provisional/useCompanyRulesProvisional";
 import { useEditableRuleList } from "@/lib/dev/provisional/useEditableRuleList";
@@ -83,6 +83,7 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
   const [mode, setMode] = useState<"idle" | "details" | "browse" | "configure" | "edit-group">("idle");
   const [search, setSearch] = useState("");
   const [filtersOpen, setFiltersOpen] = useState(false);
+  const [editMaterialPickerOpen, setEditMaterialPickerOpen] = useState(false);
   const [supplierFilter, setSupplierFilter] = useState<string>("");
   const [pendingSupplierFilter, setPendingSupplierFilter] = useState<string>("");
   const [categoryFilter, setCategoryFilter] = useState<CategoryType | "">("");
@@ -127,9 +128,9 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
   }, [categoryIdByType, supplierCatalogRecords]);
 
   useEffect(() => {
-    if (mode !== "browse" && mode !== "edit-group") return;
+    if (mode !== "browse" && !(mode === "edit-group" && editMaterialPickerOpen)) return;
     supplierCatalogLoad();
-  }, [mode, supplierCatalogLoad]);
+  }, [editMaterialPickerOpen, mode, supplierCatalogLoad]);
 
   const filteredItems = catalogItems.filter((item) => {
     const matchesSearch = search.trim() === "" || item.item_name.toLowerCase().includes(search.trim().toLowerCase());
@@ -330,6 +331,7 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
     setCheckedCatalogItems(existingItems);
     setSearch("");
     setFiltersOpen(false);
+    setEditMaterialPickerOpen(false);
     setSupplierFilter("");
     setPendingSupplierFilter("");
     setCategoryFilter("");
@@ -1073,6 +1075,17 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
                     <p className="text-sm font-bold text-gray-900">Materials in Treatment</p>
                     <p className="text-xs text-gray-400">{checkedItems.length} selected</p>
                   </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditMaterialPickerOpen((open) => !open);
+                      setFiltersOpen(false);
+                    }}
+                    className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-primary/30 bg-orange-50 px-3 py-2 text-xs font-bold text-primary transition hover:border-primary"
+                  >
+                    {editMaterialPickerOpen ? <X className="h-3.5 w-3.5" /> : <Plus className="h-3.5 w-3.5" />}
+                    {editMaterialPickerOpen ? "Close" : "Add Materials"}
+                  </button>
                 </div>
 
                 <div className={`divide-y divide-gray-100 overflow-hidden rounded-lg border border-gray-100 bg-white ${checkedItems.length > 4 ? "max-h-44 overflow-y-auto" : ""}`}>
@@ -1100,6 +1113,8 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
                   )}
                 </div>
 
+                {editMaterialPickerOpen && (
+                <div className="contents">
                 <div className="relative flex flex-col gap-2">
                   <div className="flex items-start gap-2">
                     <div className="relative min-w-0 flex-1">
@@ -1156,6 +1171,8 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
                       </label>
                     ))}
                   </div>
+                )}
+                </div>
                 )}
               </div>
 

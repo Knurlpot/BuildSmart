@@ -195,7 +195,7 @@ export function MyClientsTab({ onClientCountChange, showImport = false, importFi
           <p className="mt-1 text-sm text-gray-500">Try a different name, contact person, or email.</p>
         </div>
       ) : (
-        <div className="flex flex-wrap justify-start gap-4">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
           {filtered.map((client) => {
             const selected = selectedClientIds.has(client.client_id);
             return (
@@ -220,7 +220,7 @@ export function MyClientsTab({ onClientCountChange, showImport = false, importFi
                   router.push(`/clients/${client.client_id}`);
                 }
               }}
-              className={`group relative flex min-h-80 w-full max-w-[22rem] basis-full cursor-pointer flex-col items-center overflow-hidden rounded-2xl border bg-white text-center shadow-sm transition-all hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-md sm:basis-[22rem] ${
+              className={`group relative flex min-h-80 w-full cursor-pointer flex-col items-center overflow-hidden rounded-2xl border bg-white text-center shadow-sm transition-all hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-md ${
                 selected ? "border-primary ring-2 ring-primary/15" : "border-gray-100"
               }`}
             >
