@@ -68,6 +68,7 @@ const TIER_META: Record<ProvisionalTier, { tagline: string; badge: string; accen
 };
 
 const DEFAULT_BASIS: PricelistBasis = "Uploaded";
+const TIER_DISPLAY_ORDER: ProvisionalTier[] = ["Practical", "Premium"];
 type QuotationPrioritySource = "Uploaded" | "DPWH";
 type QuotationFallbackRule = "Use next available source" | "Use lowest uploaded rate" | "Flag for manual review";
 
@@ -122,7 +123,8 @@ function uniqueActiveTiers(strategies: ReturnType<typeof usePricingStrategies>["
   const tiers = (active.length > 0 ? active : PROVISIONAL_TIERS).filter(
     (tier, index, list) => list.indexOf(tier) === index
   );
-  return tiers.length > 0 ? tiers : PROVISIONAL_TIERS;
+  const resolvedTiers = tiers.length > 0 ? tiers : PROVISIONAL_TIERS;
+  return TIER_DISPLAY_ORDER.filter((tier) => resolvedTiers.includes(tier));
 }
 
 function applyQuotationRuleToLines(

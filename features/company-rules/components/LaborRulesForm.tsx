@@ -67,7 +67,7 @@ export function LaborRulesForm({ focusRuleId, onFocusHandled }: LaborRulesFormPr
   const [treatmentType, setTreatmentType] = useState("");
   const [region, setRegion] = useState<PhRegion | "">("");
   const [trade, setTrade] = useState("");
-  const [workerCount, setWorkerCount] = useState<number | "">(1);
+  const [workerCount, setWorkerCount] = useState<number | "">("");
   const [rate, setRate] = useState<number | "">("");
   const [rushMultiplier, setRushMultiplier] = useState<number | "">("");
   const [productivity, setProductivity] = useState<number | "">("");
@@ -101,7 +101,7 @@ export function LaborRulesForm({ focusRuleId, onFocusHandled }: LaborRulesFormPr
     setTreatmentType("");
     setRegion("");
     setTrade("");
-    setWorkerCount(1);
+    setWorkerCount("");
     setRate("");
     setRushMultiplier("");
     setProductivity("");
@@ -398,30 +398,7 @@ export function LaborRulesForm({ focusRuleId, onFocusHandled }: LaborRulesFormPr
                 </div>
               )}
 
-              <div className="grid grid-cols-2 gap-4">
-                <div className="flex flex-col gap-1.5">
-                  <div className="relative">
-                    <input
-                      id="labor-worker-count"
-                      type="text"
-                      inputMode="numeric"
-                      value={workerCount}
-                      onChange={(e) => {
-                        const next = e.target.value.replace(/[^\d]/g, "");
-                        setWorkerCount(next === "" ? "" : Number(next));
-                      }}
-                      placeholder=" "
-                      className="peer w-full rounded-lg border border-gray-200 bg-gray-50 px-3 pb-2 pt-5 text-sm outline-none transition focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/20"
-                    />
-                    <label
-                      htmlFor="labor-worker-count"
-                      className="pointer-events-none absolute left-3 top-1.5 text-[10px] font-semibold text-gray-500 transition-all peer-placeholder-shown:top-1/2 peer-placeholder-shown:-translate-y-1/2 peer-placeholder-shown:text-sm peer-placeholder-shown:font-medium peer-focus:top-1.5 peer-focus:translate-y-0 peer-focus:text-[10px] peer-focus:font-semibold peer-focus:text-primary"
-                    >
-                      No. of Workers <span className="text-red-500">*</span>
-                    </label>
-                  </div>
-                  {touched && !workerCountValid && <p className="text-xs text-red-500">Enter at least 1 worker.</p>}
-                </div>
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
                 <div className="flex flex-col gap-1.5">
                   <div className="relative">
                     <input
@@ -445,9 +422,29 @@ export function LaborRulesForm({ focusRuleId, onFocusHandled }: LaborRulesFormPr
                   </div>
                   {touched && !rateValid && <p className="text-xs text-red-500">Must be greater than 0.</p>}
                 </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
+                <div className="flex flex-col gap-1.5">
+                  <div className="relative">
+                    <input
+                      id="labor-worker-count"
+                      type="text"
+                      inputMode="numeric"
+                      value={workerCount}
+                      onChange={(e) => {
+                        const next = e.target.value.replace(/[^\d]/g, "");
+                        setWorkerCount(next === "" ? "" : Number(next));
+                      }}
+                      placeholder=" "
+                      className="peer w-full rounded-lg border border-gray-200 bg-gray-50 px-3 pb-2 pt-5 text-sm outline-none transition focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/20"
+                    />
+                    <label
+                      htmlFor="labor-worker-count"
+                      className="pointer-events-none absolute left-3 top-1.5 text-[10px] font-semibold text-gray-500 transition-all peer-placeholder-shown:top-1/2 peer-placeholder-shown:-translate-y-1/2 peer-placeholder-shown:text-sm peer-placeholder-shown:font-medium peer-focus:top-1.5 peer-focus:translate-y-0 peer-focus:text-[10px] peer-focus:font-semibold peer-focus:text-primary"
+                    >
+                      No. of Workers <span className="text-red-500">*</span>
+                    </label>
+                  </div>
+                  {touched && !workerCountValid && <p className="text-xs text-red-500">Enter at least 1 worker.</p>}
+                </div>
                 <div className="flex flex-col gap-1.5">
                   <div className="relative">
                     <input
