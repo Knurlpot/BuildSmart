@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { AlertTriangle, CheckCircle2, Pencil, X, XCircle } from "lucide-react";
+import { FieldHelp } from "./FieldHelp";
 import { usePricingStrategies } from "@/lib/dev/provisional/useCompanyRulesProvisional";
 import { apiClient } from "@/lib/api/client";
 import { isPercent, warnContingency, warnMarkup, warnOverhead, warnProfitMargin, warnVat } from "@/lib/dev/provisional/ruleValidation";
@@ -13,20 +14,23 @@ import {
 
 interface SliderPercentFieldProps {
   label: string;
+  help: string;
   value: number | "";
   onChange: (v: number | "") => void;
   touched: boolean;
   warn?: (n: number) => string | null;
 }
 
-function SliderPercentField({ label, value, onChange, touched, warn }: SliderPercentFieldProps) {
+function SliderPercentField({ label, help, value, onChange, touched, warn }: SliderPercentFieldProps) {
   const valid = value !== "" && isPercent(Number(value));
   const warning = valid && warn ? warn(Number(value)) : null;
   return (
     <div className="flex flex-col gap-1.5">
       <div className="flex items-center justify-between">
-        <label className="text-xs font-semibold text-gray-600">
-          {label} <span className="text-red-500">*</span>
+        <label className="flex items-center gap-1.5 text-xs font-semibold text-gray-600">
+          {label}
+          <FieldHelp text={help} />
+          <span className="text-red-500">*</span>
         </label>
         <span className="text-xs font-bold text-gray-700">{value === "" ? "-" : `${value}%`}</span>
       </div>
@@ -208,9 +212,10 @@ function StrategyPanel({ tier, strategy, isBusy, error, onSave, onDisable }: Str
       {isEditing ? (
         <>
           <div className="grid gap-4 md:grid-cols-2">
-            <SliderPercentField label="Markup" value={draft.markup} onChange={(v) => setField("markup", v)} touched={touched} warn={warnMarkup} />
+            <SliderPercentField label="Markup" help="Additional percentage added to base cost to cover pricing adjustments." value={draft.markup} onChange={(v) => setField("markup", v)} touched={touched} warn={warnMarkup} />
             <SliderPercentField
               label="Contingency"
+              help="Allowance for uncertainty, minor scope changes, or unexpected project cost changes."
               value={draft.contingency}
               onChange={(v) => setField("contingency", v)}
               touched={touched}
@@ -218,6 +223,7 @@ function StrategyPanel({ tier, strategy, isBusy, error, onSave, onDisable }: Str
             />
             <SliderPercentField
               label="Overhead (OCM)"
+              help="Company operating cost allocation such as management, supervision, admin, and coordination."
               value={draft.overhead}
               onChange={(v) => setField("overhead", v)}
               touched={touched}
@@ -225,6 +231,7 @@ function StrategyPanel({ tier, strategy, isBusy, error, onSave, onDisable }: Str
             />
             <SliderPercentField
               label="Profit Margin"
+              help="Target profit percentage added to the quotation after direct and overhead costs."
               value={draft.profitMargin}
               onChange={(v) => setField("profitMargin", v)}
               touched={touched}
@@ -241,10 +248,12 @@ function StrategyPanel({ tier, strategy, isBusy, error, onSave, onDisable }: Str
                 className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-2 focus:ring-primary/30"
               />
               Apply VAT
+              <FieldHelp text="Controls whether this pricing strategy includes VAT as a separate quotation line." />
             </label>
             {draft.vatEnabled && (
               <SliderPercentField
                 label="VAT Rate"
+                help="VAT percentage used when VAT is applied to a quotation."
                 value={draft.vatPercentage}
                 onChange={(v) => setField("vatPercentage", v)}
                 touched={touched}

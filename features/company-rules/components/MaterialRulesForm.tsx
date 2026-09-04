@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { AlertTriangle, CheckCircle2, Filter, Pencil, Plus, Search, X, XCircle } from "lucide-react";
+import { FieldHelp } from "./FieldHelp";
 import { RuleListDetailPanel } from "./RuleListDetailPanel";
 import { useMaterialRules, useCheckRuleUsage, stagingId } from "@/lib/dev/provisional/useCompanyRulesProvisional";
 import { useEditableRuleList } from "@/lib/dev/provisional/useEditableRuleList";
@@ -684,8 +685,10 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
               </div>
 
               <div className="flex flex-col gap-1.5">
-                <label className="text-xs font-semibold text-gray-600">
-                  Treatment Level <span className="text-red-500">*</span>
+                <label className="flex items-center gap-1.5 text-xs font-semibold text-gray-600">
+                  Treatment Level
+                  <FieldHelp text="Separates practical and premium material sets for the same treatment." />
+                  <span className="text-red-500">*</span>
                 </label>
                 <div className="grid grid-cols-2 gap-2">
                   {MATERIAL_TREATMENT_TIERS.map((tier) => (
@@ -734,6 +737,9 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
                   >
                     Treatment Type <span className="text-red-500">*</span>
                   </label>
+                  <span className="absolute right-8 top-2">
+                    <FieldHelp text="Defines which treatment this group of materials will be used for during quotation generation." />
+                  </span>
                 </div>
                 {touched && !TREATMENT_OPTIONS.includes(treatmentType as (typeof TREATMENT_OPTIONS)[number]) && (
                   <p className="text-xs text-red-500">Choose one of BuildSmart&apos;s treatment types.</p>
@@ -766,6 +772,9 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
                     >
                       Warranty Years <span className="text-red-500">*</span>
                     </label>
+                    <span className="absolute right-2 top-2">
+                      <FieldHelp text="Warranty period promised for this treatment/material system." />
+                    </span>
                   </div>
                   {touched && (warrantyYears === "" || Number(warrantyYears) <= 0) && <p className="text-xs text-red-500">Warranty years is required.</p>}
                 </div>
@@ -789,6 +798,9 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
                     >
                       Expected Lifespan Years <span className="text-red-500">*</span>
                     </label>
+                    <span className="absolute right-2 top-2">
+                      <FieldHelp text="Expected useful service life of the treatment before major repair or replacement." />
+                    </span>
                   </div>
                   {touched && (lifespanYears === "" || Number(lifespanYears) <= 0) && <p className="text-xs text-red-500">Expected lifespan years is required.</p>}
                 </div>
@@ -972,8 +984,10 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
               </div>
 
               <div className="flex flex-col gap-1.5">
-                <label htmlFor="edit-material-treatment-type" className="text-xs font-semibold text-gray-600">
-                  Treatment Type <span className="text-red-500">*</span>
+                <label htmlFor="edit-material-treatment-type" className="flex items-center gap-1.5 text-xs font-semibold text-gray-600">
+                  Treatment Type
+                  <FieldHelp text="Defines which treatment this group of materials will be used for during quotation generation." />
+                  <span className="text-red-500">*</span>
                 </label>
                 <select
                   id="edit-material-treatment-type"
@@ -999,8 +1013,10 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
               </div>
 
               <div className="flex flex-col gap-1.5">
-                <label className="text-xs font-semibold text-gray-600">
-                  Treatment Level <span className="text-red-500">*</span>
+                <label className="flex items-center gap-1.5 text-xs font-semibold text-gray-600">
+                  Treatment Level
+                  <FieldHelp text="Separates practical and premium material sets for the same treatment." />
+                  <span className="text-red-500">*</span>
                 </label>
                 <div className="grid grid-cols-2 gap-2">
                   {MATERIAL_TREATMENT_TIERS.map((tier) => (
@@ -1041,6 +1057,9 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
                     >
                       Warranty Years <span className="text-red-500">*</span>
                     </label>
+                    <span className="absolute right-2 top-2">
+                      <FieldHelp text="Warranty period promised for this treatment/material system." />
+                    </span>
                   </div>
                   {touched && (warrantyYears === "" || Number(warrantyYears) <= 0) && <p className="text-xs text-red-500">Warranty years is required.</p>}
                 </div>
@@ -1064,6 +1083,9 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
                     >
                       Expected Lifespan Years <span className="text-red-500">*</span>
                     </label>
+                    <span className="absolute right-2 top-2">
+                      <FieldHelp text="Expected useful service life of the treatment before major repair or replacement." />
+                    </span>
                   </div>
                   {touched && (lifespanYears === "" || Number(lifespanYears) <= 0) && <p className="text-xs text-red-500">Expected lifespan years is required.</p>}
                 </div>

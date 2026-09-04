@@ -8,6 +8,7 @@
 // list+detail layout.
 import { type Dispatch, type KeyboardEvent, type SetStateAction, useEffect, useState } from "react";
 import { AlertTriangle, CheckCircle2, Filter, Pencil, X, XCircle } from "lucide-react";
+import { FieldHelp } from "./FieldHelp";
 import { RuleListDetailPanel } from "./RuleListDetailPanel";
 import { useSupplierRules } from "@/lib/dev/provisional/useCompanyRulesProvisional";
 import { useSuppliers } from "@/hooks/useSuppliers";
@@ -504,8 +505,10 @@ export function SupplierRulesForm({ focusRuleId, onFocusHandled }: SupplierRules
               </div>
 
               <div className="flex flex-col gap-1.5">
-                <label className="text-xs font-semibold text-gray-600">
-                  Supplier <span className="text-red-500">*</span>
+                <label className="flex items-center gap-1.5 text-xs font-semibold text-gray-600">
+                  Supplier
+                  <FieldHelp text="The supplier this rule applies to during quotation pricing and supplier ranking." />
+                  <span className="text-red-500">*</span>
                 </label>
                 <select value={supplierId} onChange={(e) => setSupplierId(e.target.value ? Number(e.target.value) : "")} className={inputCls}>
                   <option value="">Select…</option>
@@ -520,8 +523,10 @@ export function SupplierRulesForm({ focusRuleId, onFocusHandled }: SupplierRules
               </div>
 
               <div className="flex flex-col gap-1.5">
-                <label className="text-xs font-semibold text-gray-600">
-                  Rule Type <span className="text-red-500">*</span>
+                <label className="flex items-center gap-1.5 text-xs font-semibold text-gray-600">
+                  Rule Type
+                  <FieldHelp text="Defines how the supplier rule behaves: discount, negotiated price, minimum order, or preferred supplier." />
+                  <span className="text-red-500">*</span>
                 </label>
                 <select value={ruleType} onChange={(e) => setRuleType(e.target.value as SupplierRuleType)} className={inputCls}>
                   <option value="">Select…</option>
@@ -539,7 +544,10 @@ export function SupplierRulesForm({ focusRuleId, onFocusHandled }: SupplierRules
                   {usesDiscountFields(ruleType) && (
                     <div className="flex min-w-0 flex-col gap-2">
                       <div className="grid grid-cols-1 gap-2">
-                        <label className="text-xs font-semibold text-gray-600">Discount</label>
+                        <label className="flex items-center gap-1.5 text-xs font-semibold text-gray-600">
+                          Discount
+                          <FieldHelp text="The price reduction applied when this supplier rule is used in quotation generation." />
+                        </label>
                         <div className="grid min-w-0 grid-cols-1 gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
                           <div className="grid min-w-0 grid-cols-2 gap-1 rounded-lg border border-gray-200 bg-white p-1">
                             {(["percentage", "fixed"] as DiscountKind[]).map((k) => (
@@ -594,8 +602,10 @@ export function SupplierRulesForm({ focusRuleId, onFocusHandled }: SupplierRules
                     <div className="flex min-w-0 flex-col gap-2">
                       <div className="grid grid-cols-1 gap-1.5">
                         <div>
-                          <label className="whitespace-nowrap text-xs font-semibold text-gray-600">
-                            {ruleType === "Minimum Order" ? "Minimum Order Amount" : "Order Threshold"} (₱) <span className="text-red-500">*</span>
+                          <label className="flex items-center gap-1.5 whitespace-nowrap text-xs font-semibold text-gray-600">
+                            {ruleType === "Minimum Order" ? "Minimum Order Amount" : "Order Threshold"} (₱)
+                            <FieldHelp text="Minimum Order records the supplier policy. Order Threshold controls when a bulk discount becomes available." />
+                            <span className="text-red-500">*</span>
                           </label>
                         </div>
                         <div className="relative min-w-0">
@@ -626,14 +636,18 @@ export function SupplierRulesForm({ focusRuleId, onFocusHandled }: SupplierRules
 
               <div className="grid grid-cols-2 gap-4">
                 <div className="flex flex-col gap-1.5">
-                  <label className="text-xs font-semibold text-gray-600">
-                    Effective Date <span className="text-red-500">*</span>
+                  <label className="flex items-center gap-1.5 text-xs font-semibold text-gray-600">
+                    Effective Date
+                    <FieldHelp text="The date when this supplier rule starts being considered by the system." />
+                    <span className="text-red-500">*</span>
                   </label>
                   <input type="date" value={effectiveDate} onChange={(e) => setEffectiveDate(e.target.value)} className={inputCls} />
                 </div>
                 <div className="flex flex-col gap-1.5">
-                  <label className="text-xs font-semibold text-gray-600">
-                    Expiration Date <span className="text-[10px] font-medium text-gray-400">(optional)</span>
+                  <label className="flex items-center gap-1.5 text-xs font-semibold text-gray-600">
+                    Expiration Date
+                    <FieldHelp text="Optional end date. Leave blank if this rule should remain active until manually disabled." />
+                    <span className="text-[10px] font-medium text-gray-400">(optional)</span>
                   </label>
                   <input type="date" value={expirationDate} onChange={(e) => setExpirationDate(e.target.value)} className={inputCls} />
                   {touched && !expirationValid && <p className="text-xs text-red-500">Expiration can&apos;t be before the effective date.</p>}

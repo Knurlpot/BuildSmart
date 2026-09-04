@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { AlertTriangle, CheckCircle2, Filter, Pencil, X, XCircle } from "lucide-react";
+import { FieldHelp } from "./FieldHelp";
 import { RuleListDetailPanel } from "./RuleListDetailPanel";
 import {
   useLaborRules,
@@ -394,7 +395,10 @@ export function LaborRulesForm({ focusRuleId, onFocusHandled }: LaborRulesFormPr
               </div>
 
               <div className="flex flex-col gap-1.5">
-                <label className="text-xs font-semibold text-gray-600">Rule Scope</label>
+                <label className="flex items-center gap-1.5 text-xs font-semibold text-gray-600">
+                  Rule Scope
+                  <FieldHelp text="Determines when this labor rule is used: by treatment, as a general fallback, or by trade and region." />
+                </label>
                 <div className="flex gap-2">
                   <button
                     type="button"
@@ -436,7 +440,11 @@ export function LaborRulesForm({ focusRuleId, onFocusHandled }: LaborRulesFormPr
               {scope === "Treatment" && (
                 <div className="flex flex-col gap-1.5">
                   <label htmlFor="labor-treatment-type" className="text-xs font-semibold text-gray-600">
-                    Treatment Type <span className="text-red-500">*</span>
+                    <span className="inline-flex items-center gap-1.5">
+                      Treatment Type
+                      <FieldHelp text="Connects this labor rate to a specific treatment type selected during quotation generation." />
+                    </span>{" "}
+                    <span className="text-red-500">*</span>
                   </label>
                   <select
                     id="labor-treatment-type"
@@ -465,8 +473,10 @@ export function LaborRulesForm({ focusRuleId, onFocusHandled }: LaborRulesFormPr
               {scope === "Trade" && (
                 <div className="grid grid-cols-2 gap-4">
                   <div className="flex flex-col gap-1.5">
-                    <label className="text-xs font-semibold text-gray-600">
-                      Labor Trade <span className="text-red-500">*</span>
+                    <label className="flex items-center gap-1.5 text-xs font-semibold text-gray-600">
+                      Labor Trade
+                      <FieldHelp text="Used when labor is priced by trade, such as mason, painter, installer, or electrician." />
+                      <span className="text-red-500">*</span>
                     </label>
                     <select value={trade} onChange={(e) => setTrade(e.target.value)} className={inputCls}>
                       <option value="">Select…</option>
@@ -477,8 +487,10 @@ export function LaborRulesForm({ focusRuleId, onFocusHandled }: LaborRulesFormPr
                     {touched && !tradeValid && <p className="text-xs text-red-500">Select a trade.</p>}
                   </div>
                   <div className="flex flex-col gap-1.5">
-                    <label className="text-xs font-semibold text-gray-600">
-                      Region <span className="font-normal normal-case text-gray-400">(optional)</span>
+                    <label className="flex items-center gap-1.5 text-xs font-semibold text-gray-600">
+                      Region
+                      <FieldHelp text="Limits this labor rule to a specific project region when rates vary by location." />
+                      <span className="font-normal normal-case text-gray-400">(optional)</span>
                     </label>
                     <select value={region} onChange={(e) => setRegion(e.target.value as PhRegion)} className={inputCls}>
                       <option value="">Any region</option>
@@ -511,6 +523,9 @@ export function LaborRulesForm({ focusRuleId, onFocusHandled }: LaborRulesFormPr
                     >
                       Labor Rate (₱{rateUnit(scope)}) <span className="text-red-500">*</span>
                     </label>
+                    <span className="absolute right-2 top-2">
+                      <FieldHelp text="Base labor cost used in the quotation before rush or productivity adjustments." />
+                    </span>
                   </div>
                   {touched && !rateValid && <p className="text-xs text-red-500">Must be greater than 0.</p>}
                 </div>
@@ -534,6 +549,9 @@ export function LaborRulesForm({ focusRuleId, onFocusHandled }: LaborRulesFormPr
                     >
                       No. of Workers <span className="text-red-500">*</span>
                     </label>
+                    <span className="absolute right-2 top-2">
+                      <FieldHelp text="Standard crew size for this labor rule. The quotation uses this manpower count in labor cost estimates." />
+                    </span>
                   </div>
                   {touched && !workerCountValid && <p className="text-xs text-red-500">Enter at least 1 worker.</p>}
                 </div>
@@ -557,6 +575,9 @@ export function LaborRulesForm({ focusRuleId, onFocusHandled }: LaborRulesFormPr
                     >
                       Productivity Index
                     </label>
+                    <span className="absolute right-2 top-2">
+                      <FieldHelp text="Optional efficiency factor for site difficulty or crew speed. Example: 1.0 normal, 0.8 slower, 1.2 faster." />
+                    </span>
                   </div>
                   {touched && !productivityValid && <p className="text-xs text-red-500">Must be greater than 0.</p>}
                 </div>
@@ -583,6 +604,9 @@ export function LaborRulesForm({ focusRuleId, onFocusHandled }: LaborRulesFormPr
                     >
                       Productivity sqm/day
                     </label>
+                    <span className="absolute right-2 top-2">
+                      <FieldHelp text="Estimated square meters the crew can finish per day, used for duration planning." />
+                    </span>
                   </div>
                   {touched && !productivitySqmValid && <p className="text-xs text-red-500">Must be greater than 0.</p>}
                 </div>
@@ -606,6 +630,9 @@ export function LaborRulesForm({ focusRuleId, onFocusHandled }: LaborRulesFormPr
                     >
                       Min. Duration Days
                     </label>
+                    <span className="absolute right-2 top-2">
+                      <FieldHelp text="Smallest practical number of work days for this rule, even if the computed area is low." />
+                    </span>
                   </div>
                   {touched && !minDurationValid && <p className="text-xs text-red-500">Must be greater than 0.</p>}
                 </div>
@@ -629,6 +656,9 @@ export function LaborRulesForm({ focusRuleId, onFocusHandled }: LaborRulesFormPr
                     >
                       Safety Buffer Days
                     </label>
+                    <span className="absolute right-2 top-2">
+                      <FieldHelp text="Extra schedule allowance for curing time, access delays, weather, or coordination risk." />
+                    </span>
                   </div>
                   {touched && !safetyBufferValid && <p className="text-xs text-red-500">Must be greater than 0.</p>}
                 </div>
@@ -654,6 +684,9 @@ export function LaborRulesForm({ focusRuleId, onFocusHandled }: LaborRulesFormPr
                   >
                     Rush Multiplier <span className="font-normal normal-case text-gray-400">(optional)</span>
                   </label>
+                  <span className="absolute right-7 top-2">
+                    <FieldHelp text="Optional percentage added to labor when the job is rushed or needs extra manpower." />
+                  </span>
                   <span className="pointer-events-none absolute right-3 top-[1.9rem] -translate-y-1/2 text-xs text-gray-400">%</span>
                 </div>
                 {touched && !rushValid && <p className="text-xs text-red-500">Enter a value between 0 and 100.</p>}

@@ -39,15 +39,15 @@ function OpenProjectsClients() {
             type="button"
             onClick={toggleClientImport}
             aria-expanded={showClientImport}
-            className={`flex items-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-semibold shadow-sm transition ${
+            aria-label={showClientImport ? "Hide client import" : "Import clients"}
+            title={showClientImport ? "Hide client import" : "Import clients"}
+            className={`flex h-10 w-10 items-center justify-center rounded-xl border text-sm font-semibold shadow-sm transition ${
               showClientImport
                 ? "border-primary bg-orange-50 text-primary"
                 : "border-gray-200 bg-white text-gray-700 hover:border-primary hover:text-primary"
             }`}
           >
-            <Upload className="h-4 w-4" />
-            Import Clients
-            {showClientImport && <ChevronUp className="h-4 w-4" />}
+            {showClientImport ? <ChevronUp className="h-4 w-4" /> : <Upload className="h-4 w-4" />}
           </button>
         </div>
       </div>

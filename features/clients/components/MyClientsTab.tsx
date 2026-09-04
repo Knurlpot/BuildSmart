@@ -53,11 +53,7 @@ export function MyClientsTab({ onClientCountChange, showImport = false, importFi
   const filtered = useMemo(() => {
     const query = search.trim().toLowerCase();
     if (!query) return clients;
-    return clients.filter(
-      (client) => client.client_name.toLowerCase().includes(query) ||
-        (client.contact_person ?? "").toLowerCase().includes(query) ||
-        (client.contact_email ?? "").toLowerCase().includes(query)
-    );
+    return clients.filter((client) => client.client_name.toLowerCase().includes(query));
   }, [clients, search]);
   const selectedClients = useMemo(() => clients.filter((client) => selectedClientIds.has(client.client_id)), [clients, selectedClientIds]);
   const selectedCount = selectedClients.length;
@@ -116,7 +112,7 @@ export function MyClientsTab({ onClientCountChange, showImport = false, importFi
             <input
               value={search}
               onChange={(event) => setSearch(event.target.value)}
-              placeholder="Search by client name, contact person, or email..."
+              placeholder="Search Client Name"
               className="w-full rounded-lg border border-gray-200 bg-gray-50 py-2 pl-9 pr-3 text-sm outline-none transition focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/20"
             />
           </div>
@@ -187,12 +183,10 @@ export function MyClientsTab({ onClientCountChange, showImport = false, importFi
         <div className="flex flex-col items-center rounded-2xl border border-gray-100 bg-white p-5 text-center shadow-sm">
           <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-orange-50 text-primary"><UserRound className="h-6 w-6" /></div>
           <p className="mt-4 font-medium text-gray-900">No clients yet</p>
-          <p className="mt-1 text-sm text-gray-500">Add a client from Quotation Generation, or import a spreadsheet.</p>
         </div>
       ) : filtered.length === 0 ? (
         <div className="rounded-2xl border border-gray-100 bg-white p-5 text-center shadow-sm">
           <p className="font-medium text-gray-900">No matching clients</p>
-          <p className="mt-1 text-sm text-gray-500">Try a different name, contact person, or email.</p>
         </div>
       ) : (
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { AlertTriangle, CheckCircle2, Pencil, X } from "lucide-react";
+import { FieldHelp } from "./FieldHelp";
 import { RuleListDetailPanel } from "./RuleListDetailPanel";
 import {
   useScopeTemplates,
@@ -273,14 +274,19 @@ export function ScopeTemplatesForm({ focusRuleId, onFocusHandled }: ScopeTemplat
                   >
                     Template Name <span className="text-red-500">*</span>
                   </label>
+                  <span className="absolute right-2 top-2">
+                    <FieldHelp text="Readable name for this scope template, used to identify the treatment setup later." />
+                  </span>
                 </div>
                 {touched && !nameValid && <p className="text-xs text-red-500">Template name is required.</p>}
               </div>
 
               <div className="grid gap-4 md:grid-cols-2">
                 <div className="flex flex-col gap-1.5">
-                  <label className="text-xs font-semibold text-gray-600">
-                    Treatment Type <span className="text-red-500">*</span>
+                  <label className="flex items-center gap-1.5 text-xs font-semibold text-gray-600">
+                    Treatment Type
+                    <FieldHelp text="The service/treatment this scope template represents for quotation setup." />
+                    <span className="text-red-500">*</span>
                   </label>
                   <select
                     value={treatmentChoice}
@@ -309,8 +315,10 @@ export function ScopeTemplatesForm({ focusRuleId, onFocusHandled }: ScopeTemplat
                 </div>
 
                 <div className="flex flex-col gap-1.5">
-                  <label className="text-xs font-semibold text-gray-600">
-                    Service Specialization <span className="text-red-500">*</span>
+                  <label className="flex items-center gap-1.5 text-xs font-semibold text-gray-600">
+                    Service Specialization
+                    <FieldHelp text="Connects this template to the company service specialization that performs the work." />
+                    <span className="text-red-500">*</span>
                   </label>
                   <select value={specialization} onChange={(e) => setSpecialization(e.target.value)} className={inputCls}>
                     <option value="">Select…</option>
@@ -328,8 +336,10 @@ export function ScopeTemplatesForm({ focusRuleId, onFocusHandled }: ScopeTemplat
               </div>
 
               <div className="flex flex-col gap-1.5">
-                <label className="text-xs font-semibold text-gray-600">
-                  Applicable Material Categories <span className="text-red-500">*</span>
+                <label className="flex items-center gap-1.5 text-xs font-semibold text-gray-600">
+                  Applicable Material Categories
+                  <FieldHelp text="Suggested material categories normally needed for this treatment scope." />
+                  <span className="text-red-500">*</span>
                 </label>
                 <div className="flex flex-wrap gap-2">
                   {CATEGORY_TYPES.map((c) => (
@@ -352,8 +362,10 @@ export function ScopeTemplatesForm({ focusRuleId, onFocusHandled }: ScopeTemplat
 
               {categories.includes("Others") && (
                 <div className="flex flex-col gap-1.5">
-                  <label className="text-xs font-semibold text-gray-600">
-                    Describe &quot;Others&quot; <span className="text-red-500">*</span>
+                  <label className="flex items-center gap-1.5 text-xs font-semibold text-gray-600">
+                    Describe &quot;Others&quot;
+                    <FieldHelp text="Explains what the Others category covers so reviewers understand the scope." />
+                    <span className="text-red-500">*</span>
                   </label>
                   <input
                     value={othersDescription}
@@ -370,14 +382,17 @@ export function ScopeTemplatesForm({ focusRuleId, onFocusHandled }: ScopeTemplat
 
               <div className="grid gap-3 rounded-xl border border-gray-100 bg-gray-50/60 p-3.5 md:grid-cols-2">
                 {[
-                  ["Warranty Years", warrantyYears, setWarrantyYears],
-                  ["Expected Lifespan Years", lifespanYears, setLifespanYears],
-                  ["Productivity sqm/day", productivitySqmPerDay, setProductivitySqmPerDay],
-                  ["Minimum Duration Days", minDurationDays, setMinDurationDays],
-                  ["Safety Buffer Days", safetyBufferDays, setSafetyBufferDays],
-                ].map(([label, value, setter]) => (
+                  ["Warranty Years", warrantyYears, setWarrantyYears, "Warranty period promised for this treatment."],
+                  ["Expected Lifespan Years", lifespanYears, setLifespanYears, "Expected useful life before major repair or replacement."],
+                  ["Productivity sqm/day", productivitySqmPerDay, setProductivitySqmPerDay, "Estimated area completed per day for this treatment."],
+                  ["Minimum Duration Days", minDurationDays, setMinDurationDays, "Smallest practical duration for this treatment scope."],
+                  ["Safety Buffer Days", safetyBufferDays, setSafetyBufferDays, "Extra schedule allowance for site risk, curing, access, or delays."],
+                ].map(([label, value, setter, help]) => (
                   <label key={label as string} className="flex flex-col gap-1.5 text-xs font-semibold text-gray-600">
-                    {label as string}
+                    <span className="inline-flex items-center gap-1.5">
+                      {label as string}
+                      <FieldHelp text={help as string} />
+                    </span>
                     <input
                       type="number"
                       min={0}
