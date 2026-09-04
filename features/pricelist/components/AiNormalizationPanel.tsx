@@ -14,6 +14,7 @@ import {
   Pencil,
   RefreshCw,
   Save,
+  Sparkles,
   Trash2,
   Upload,
   UploadCloud,
@@ -237,6 +238,7 @@ function ReviewItemRow({
   const displayRegion = item.region || inferRegionFromLocation(item.location) || "—";
   const displayLocation = item.location || "—";
   const displaySource = item.supplier_name || item.source || "Supplier";
+  const aiReviewIssue = item.description?.match(/(?:^|\s\|\s)AI review: (.+)$/)?.[1] ?? null;
 
   const checkboxCell = (
     <td className="w-8 py-2 pr-2">
@@ -255,7 +257,17 @@ function ReviewItemRow({
     return (
       <tr>
         {checkboxCell}
-        <td className="py-2 pr-4 font-medium text-gray-800">{item.raw_name}</td>
+        <td className="py-2 pr-4 font-medium text-gray-800">
+          <div className="flex min-w-[14rem] flex-col gap-1">
+            <span>{item.raw_name}</span>
+            {aiReviewIssue && (
+              <span className="inline-flex w-fit items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-bold text-amber-700">
+                <Sparkles className="h-3 w-3" />
+                AI review
+              </span>
+            )}
+          </div>
+        </td>
         <td className="py-2 pr-4 text-gray-500">{item.raw_unit}</td>
         <td className="py-2 pr-4 text-gray-500">{fmt(item.raw_price)}</td>
         <td className="py-2 pr-4 text-gray-500">{item.suggested_category_type ?? "—"}</td>
@@ -266,7 +278,13 @@ function ReviewItemRow({
           </>
         ) : (
           <>
-            <td className="py-2 pr-4 text-gray-500">{item.description || "—"}</td>
+            <td className="py-2 pr-4 text-gray-500">
+              {aiReviewIssue ? (
+                <span className="text-amber-700">{aiReviewIssue}</span>
+              ) : (
+                item.description || "—"
+              )}
+            </td>
             <td className="py-2 pr-4 text-gray-500">{item.color || "—"}</td>
             <td className="py-2 pr-4 text-gray-500">{item.suggested_brand || "Generic"}</td>
           </>

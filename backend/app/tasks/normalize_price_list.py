@@ -11,6 +11,7 @@ from app.services.candidates import get_item_candidates
 from app.services.match_cache import get_cache_lookup
 from app.services.normalize_batch import normalize_pricelist
 from app.services.philippine_regions import infer_region_from_location
+from app.services.pricelist_ai_review import review_pdf_rows
 from app.services.pricelist_parser import MissingColumnsError, expand_dpwh_deo_price_columns, parse_pricelist_file
 from app.services.normalizer import determine_category
 
@@ -77,6 +78,15 @@ def _review_description_from_row(row) -> str:
     return _fit(_optional_text(getattr(row, "description", None)), 255) or ""
 
 
+def _review_description_with_ai_note(row, ai_issue: str | None) -> str:
+    description = _review_description_from_row(row)
+    issue = _fit(ai_issue, 180)
+    if not issue:
+        return description
+    note = f"AI review: {issue}"
+    return _fit(f"{description} | {note}" if description else note, 255) or ""
+
+
 def _optional_price(value) -> float | None:
     if value is None:
         return None
@@ -129,18 +139,24 @@ def _add_review_item_for_row(
     row_color: str | None,
     row_region: str | None = None,
     row_location: str | None = None,
+    ai_review=None,
 ) -> None:
-    review_name = _fit((getattr(row, "raw_name", None) or "").strip() or (match.material or "").strip(), 255) or "Unknown material"
+    ai_name = getattr(ai_review, "raw_name", None) if ai_review is not None else None
+    ai_unit = getattr(ai_review, "raw_unit", None) if ai_review is not None else None
+    ai_price = getattr(ai_review, "raw_price", None) if ai_review is not None else None
+    ai_confidence = getattr(ai_review, "confidence", None) if ai_review is not None else None
+    ai_issue = getattr(ai_review, "issue", None) if ai_review is not None else None
+    review_name = _fit((ai_name or getattr(row, "raw_name", None) or "").strip() or (match.material or "").strip(), 255) or "Unknown material"
     session.add(
         PriceListReviewItem(
             raw_name=review_name,
-            raw_unit=_fit(row.raw_unit, 30) or "unit",
-            raw_price=_optional_price(row.raw_price),
-            confidence=match.confidence,
+            raw_unit=_fit(ai_unit or row.raw_unit, 30) or "unit",
+            raw_price=_optional_price(ai_price if ai_price is not None else row.raw_price),
+            confidence=min(float(match.confidence), float(ai_confidence)) if ai_confidence is not None else match.confidence,
             suggested_category_type=match.category_type or determine_category(review_name or ""),
             suggested_material=_fit(match.material, 255),
             suggested_brand=_fit(getattr(row, "raw_brand", None), 100) or "Generic",
-            description=_review_description_from_row(row),
+            description=_review_description_with_ai_note(row, ai_issue),
             color=_fit(row_color, 50),
             region=_fit(row_region, 255),
             location=_fit(row_location, 255),
@@ -188,6 +204,7 @@ def normalize_price_list(
         df = parse_pricelist_file(file_path, column_mapping=column_mapping)
         if source == "DPWH":
             df = expand_dpwh_deo_price_columns(df, default_region="NIR")
+        ai_reviews = review_pdf_rows(df, file_path)
         candidates = _get_scoped_item_candidates(session, company_id)
         cache_lookup = {} if force_review else get_cache_lookup(session, company_id=company_id)
         results = normalize_pricelist(df, candidates, cache_lookup=cache_lookup)
@@ -196,7 +213,7 @@ def normalize_price_list(
         new_items_created = 0
         needs_review = 0
 
-        for row, match in zip(df.itertuples(), results):
+        for row_index, (row, match) in enumerate(zip(df.itertuples(), results)):
             row_price = _optional_price(getattr(row, "raw_price", None))
             row_color = (getattr(row, "color", None) or "").strip() or None
             row_description = (getattr(row, "description", None) or "").strip() or None
@@ -217,6 +234,7 @@ def normalize_price_list(
                     row_color=row_color,
                     row_region=row_region,
                     row_location=row_location if source == "DPWH" else None,
+                    ai_review=ai_reviews.get(row_index),
                 )
                 needs_review += 1
                 continue
@@ -236,6 +254,7 @@ def normalize_price_list(
                     row_color=row_color,
                     row_region=row_region,
                     row_location=row_location if source == "DPWH" else None,
+                    ai_review=ai_reviews.get(row_index),
                 )
                 needs_review += 1
                 continue
