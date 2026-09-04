@@ -9,10 +9,12 @@ This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-
 GEMINI_API_KEY=<a real key — only needed for the DPWH/PSA automated ingestion pipeline, not the pricelist upload/matching flow>
 DATABASE_URL="postgresql://postgres:<your local postgres password>@localhost:5432/BuildSmart"
 REDIS_URL="redis://localhost:6379/0"
+SESSION_SECRET="<a long random string for signing local session cookies>"
 FRONTEND_ORIGIN="http://localhost:3000"
 NEXT_PUBLIC_NORMALIZATION_API_BASE_URL="http://localhost:8000"
 
 DATABASE_URL's credentials should match your own local Postgres user — "password" above is just a placeholder.
+Production deployments must set SESSION_SECRET or NEXTAUTH_SECRET; the app will refuse to use the local development fallback in production.
 
 ### 2. Local services
 

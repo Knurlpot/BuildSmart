@@ -4,7 +4,19 @@ import crypto from "crypto";
 import { NextRequest, NextResponse } from "next/server";
 
 const COOKIE_NAME = "buildsmart_session";
-const SECRET = process.env.SESSION_SECRET || process.env.NEXTAUTH_SECRET || "buildsmart-dev-secret";
+
+function getSessionSecret(): string {
+  const secret = process.env.SESSION_SECRET || process.env.NEXTAUTH_SECRET;
+  if (secret) return secret;
+
+  if (process.env.NODE_ENV === "production") {
+    throw new Error("SESSION_SECRET or NEXTAUTH_SECRET is required in production");
+  }
+
+  return "buildsmart-dev-secret";
+}
+
+const SECRET = getSessionSecret();
 
 function base64UrlEncode(value: string): string {
   return Buffer.from(value).toString("base64url");
