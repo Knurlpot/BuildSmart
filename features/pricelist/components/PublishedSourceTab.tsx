@@ -78,7 +78,7 @@ export function PublishedSourceTab({
     dpwhVersionResult,
     dpwhCatalog,
   } = usePricelistPublishedSource();
-  const [region, setRegion] = useState("NCR");
+  const [region, setRegion] = useState("All");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
   const catalogLoad = dpwhCatalog.load;
@@ -305,6 +305,7 @@ export function PublishedSourceTab({
               {/* DPWH-CMPD publishes for every region — the full 18-value set (not the
                   short analytics filter list), so the dropdown never silently excludes
                   one the user actually needs to fetch. */}
+              <option>All</option>
               {ALL_REGIONS.map((r) => (
                 <option key={r}>{r}</option>
               ))}
@@ -351,7 +352,7 @@ export function PublishedSourceTab({
               {dpwhCatalog.records.length > 0 && (
                 <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
                   <div className="border-b border-gray-100 px-4 py-3 text-sm font-semibold text-gray-700">
-                    DPWH prices for {region}
+                    DPWH prices{region === "All" ? "" : ` for ${region}`}
                   </div>
                   <DataTable
                     columns={dpwhCatalogColumns}
