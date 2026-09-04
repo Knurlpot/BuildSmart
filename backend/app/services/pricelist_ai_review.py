@@ -91,6 +91,7 @@ def _cleanup_material_name(value: str) -> str | None:
         r"\s+assi\s+\(a\s+\(i\s+\(\s*ai\s+\(ai\s+\(\s*i\s+\(a\s+\(\s*aiat[ée]\s+i\s*ar\)?\b.*$",
         r"\s+rs\s+ie\b.*$",
         r"\s+N{5,}\S*\s+C+O?SO+T+T+S+Y?S?\b.*$",
+        r"\s+[UW]{6,}[UW\s]*$",
     ]
     for pattern in junk_tail_patterns:
         cleaned = re.sub(pattern, "", cleaned, flags=re.IGNORECASE)
@@ -103,6 +104,9 @@ def _cleanup_material_name(value: str) -> str | None:
     cleaned = re.sub(r"\s*8\)\s*$", "", cleaned)
     cleaned = re.sub(r"[{}[\]|`_]+", " ", cleaned)
     cleaned = re.sub(r"\bPENETRATION\s*GRADE\b", "PENETRATION GRADE", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"\bEMULSIFIED\s*ASPHALT\b", "EMULSIFIED ASPHALT", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"\bCATIONIC\s*SSt\s*i\s*SWt\b.*$", "CATIONIC SS-1", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"\bCATIONICSSt\s*i\s*SWt\b.*$", "CATIONIC SS-1", cleaned, flags=re.IGNORECASE)
     cleaned = re.sub(r"\bCATIONIC\s*CRS\s*2\.2\b.*$", "CATIONIC CRS-2", cleaned, flags=re.IGNORECASE)
     cleaned = re.sub(r"\bCATIONICCRS\s*2\.2\b.*$", "CATIONIC CRS-2", cleaned, flags=re.IGNORECASE)
     cleaned = re.sub(r"\bRUST\s+CONVERTER/REMOVER\s+7\b", "RUST CONVERTER/REMOVER", cleaned, flags=re.IGNORECASE)
