@@ -686,8 +686,7 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
 
               <div className="flex flex-col gap-1.5">
                 <label className="flex items-center gap-1.5 text-xs font-semibold text-gray-600">
-                  Treatment Level
-                  <FieldHelp text="Separates practical and premium material sets for the same treatment." />
+                  <FieldHelp label="Treatment Level" text="Separates practical and premium material sets for the same treatment." />
                   <span className="text-red-500">*</span>
                 </label>
                 <div className="grid grid-cols-2 gap-2">
@@ -733,13 +732,10 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
                   </select>
                   <label
                     htmlFor="material-treatment-type"
-                    className="pointer-events-none absolute left-3 top-1.5 text-[10px] font-semibold text-gray-500 transition-all peer-focus:text-primary"
+                    className="absolute left-3 top-1.5 text-[10px] font-semibold text-gray-500 transition-all peer-focus:text-primary"
                   >
-                    Treatment Type <span className="text-red-500">*</span>
+                    <FieldHelp label="Treatment Type" text="Defines which treatment this group of materials will be used for during quotation generation." /> <span className="text-red-500">*</span>
                   </label>
-                  <span className="absolute right-8 top-2">
-                    <FieldHelp text="Defines which treatment this group of materials will be used for during quotation generation." />
-                  </span>
                 </div>
                 {touched && !TREATMENT_OPTIONS.includes(treatmentType as (typeof TREATMENT_OPTIONS)[number]) && (
                   <p className="text-xs text-red-500">Choose one of BuildSmart&apos;s treatment types.</p>
@@ -768,13 +764,10 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
                     />
                     <label
                       htmlFor="material-warranty-years"
-                      className="pointer-events-none absolute left-3 top-1.5 text-[10px] font-semibold text-gray-500 transition-all peer-placeholder-shown:top-1/2 peer-placeholder-shown:-translate-y-1/2 peer-placeholder-shown:text-sm peer-placeholder-shown:font-medium peer-focus:top-1.5 peer-focus:translate-y-0 peer-focus:text-[10px] peer-focus:font-semibold peer-focus:text-primary"
+                      className="absolute left-3 top-1.5 text-[10px] font-semibold text-gray-500 transition-all peer-placeholder-shown:top-1/2 peer-placeholder-shown:-translate-y-1/2 peer-placeholder-shown:text-sm peer-placeholder-shown:font-medium peer-focus:top-1.5 peer-focus:translate-y-0 peer-focus:text-[10px] peer-focus:font-semibold peer-focus:text-primary"
                     >
-                      Warranty Years <span className="text-red-500">*</span>
+                      <FieldHelp label="Warranty Years" text="Warranty period promised for this treatment/material system." /> <span className="text-red-500">*</span>
                     </label>
-                    <span className="absolute right-2 top-2">
-                      <FieldHelp text="Warranty period promised for this treatment/material system." />
-                    </span>
                   </div>
                   {touched && (warrantyYears === "" || Number(warrantyYears) <= 0) && <p className="text-xs text-red-500">Warranty years is required.</p>}
                 </div>
@@ -794,13 +787,10 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
                     />
                     <label
                       htmlFor="material-lifespan-years"
-                      className="pointer-events-none absolute left-3 top-1.5 text-[10px] font-semibold text-gray-500 transition-all peer-placeholder-shown:top-1/2 peer-placeholder-shown:-translate-y-1/2 peer-placeholder-shown:text-sm peer-placeholder-shown:font-medium peer-focus:top-1.5 peer-focus:translate-y-0 peer-focus:text-[10px] peer-focus:font-semibold peer-focus:text-primary"
+                      className="absolute left-3 top-1.5 text-[10px] font-semibold text-gray-500 transition-all peer-placeholder-shown:top-1/2 peer-placeholder-shown:-translate-y-1/2 peer-placeholder-shown:text-sm peer-placeholder-shown:font-medium peer-focus:top-1.5 peer-focus:translate-y-0 peer-focus:text-[10px] peer-focus:font-semibold peer-focus:text-primary"
                     >
-                      Expected Lifespan Years <span className="text-red-500">*</span>
+                      <FieldHelp label="Expected Lifespan Years" text="Expected useful service life of the treatment before major repair or replacement." /> <span className="text-red-500">*</span>
                     </label>
-                    <span className="absolute right-2 top-2">
-                      <FieldHelp text="Expected useful service life of the treatment before major repair or replacement." />
-                    </span>
                   </div>
                   {touched && (lifespanYears === "" || Number(lifespanYears) <= 0) && <p className="text-xs text-red-500">Expected lifespan years is required.</p>}
                 </div>
@@ -985,8 +975,7 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
 
               <div className="flex flex-col gap-1.5">
                 <label htmlFor="edit-material-treatment-type" className="flex items-center gap-1.5 text-xs font-semibold text-gray-600">
-                  Treatment Type
-                  <FieldHelp text="Defines which treatment this group of materials will be used for during quotation generation." />
+                  <FieldHelp label="Treatment Type" text="Defines which treatment this group of materials will be used for during quotation generation." />
                   <span className="text-red-500">*</span>
                 </label>
                 <select
@@ -1014,8 +1003,7 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
 
               <div className="flex flex-col gap-1.5">
                 <label className="flex items-center gap-1.5 text-xs font-semibold text-gray-600">
-                  Treatment Level
-                  <FieldHelp text="Separates practical and premium material sets for the same treatment." />
+                  <FieldHelp label="Treatment Level" text="Separates practical and premium material sets for the same treatment." />
                   <span className="text-red-500">*</span>
                 </label>
                 <div className="grid grid-cols-2 gap-2">
@@ -1053,13 +1041,10 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
                     />
                     <label
                       htmlFor="edit-material-warranty-years"
-                      className="pointer-events-none absolute left-3 top-1.5 text-[10px] font-semibold text-gray-500 transition-all peer-placeholder-shown:top-1/2 peer-placeholder-shown:-translate-y-1/2 peer-placeholder-shown:text-sm peer-placeholder-shown:font-medium peer-focus:top-1.5 peer-focus:translate-y-0 peer-focus:text-[10px] peer-focus:font-semibold peer-focus:text-primary"
+                      className="absolute left-3 top-1.5 text-[10px] font-semibold text-gray-500 transition-all peer-placeholder-shown:top-1/2 peer-placeholder-shown:-translate-y-1/2 peer-placeholder-shown:text-sm peer-placeholder-shown:font-medium peer-focus:top-1.5 peer-focus:translate-y-0 peer-focus:text-[10px] peer-focus:font-semibold peer-focus:text-primary"
                     >
-                      Warranty Years <span className="text-red-500">*</span>
+                      <FieldHelp label="Warranty Years" text="Warranty period promised for this treatment/material system." /> <span className="text-red-500">*</span>
                     </label>
-                    <span className="absolute right-2 top-2">
-                      <FieldHelp text="Warranty period promised for this treatment/material system." />
-                    </span>
                   </div>
                   {touched && (warrantyYears === "" || Number(warrantyYears) <= 0) && <p className="text-xs text-red-500">Warranty years is required.</p>}
                 </div>
@@ -1079,13 +1064,10 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
                     />
                     <label
                       htmlFor="edit-material-lifespan-years"
-                      className="pointer-events-none absolute left-3 top-1.5 text-[10px] font-semibold text-gray-500 transition-all peer-placeholder-shown:top-1/2 peer-placeholder-shown:-translate-y-1/2 peer-placeholder-shown:text-sm peer-placeholder-shown:font-medium peer-focus:top-1.5 peer-focus:translate-y-0 peer-focus:text-[10px] peer-focus:font-semibold peer-focus:text-primary"
+                      className="absolute left-3 top-1.5 text-[10px] font-semibold text-gray-500 transition-all peer-placeholder-shown:top-1/2 peer-placeholder-shown:-translate-y-1/2 peer-placeholder-shown:text-sm peer-placeholder-shown:font-medium peer-focus:top-1.5 peer-focus:translate-y-0 peer-focus:text-[10px] peer-focus:font-semibold peer-focus:text-primary"
                     >
-                      Expected Lifespan Years <span className="text-red-500">*</span>
+                      <FieldHelp label="Expected Lifespan Years" text="Expected useful service life of the treatment before major repair or replacement." /> <span className="text-red-500">*</span>
                     </label>
-                    <span className="absolute right-2 top-2">
-                      <FieldHelp text="Expected useful service life of the treatment before major repair or replacement." />
-                    </span>
                   </div>
                   {touched && (lifespanYears === "" || Number(lifespanYears) <= 0) && <p className="text-xs text-red-500">Expected lifespan years is required.</p>}
                 </div>

@@ -270,13 +270,10 @@ export function ScopeTemplatesForm({ focusRuleId, onFocusHandled }: ScopeTemplat
                   />
                   <label
                     htmlFor="scope-template-name"
-                    className="pointer-events-none absolute left-3 top-1.5 text-[10px] font-semibold text-gray-500 transition-all peer-placeholder-shown:top-1/2 peer-placeholder-shown:-translate-y-1/2 peer-placeholder-shown:text-sm peer-placeholder-shown:font-medium peer-focus:top-1.5 peer-focus:translate-y-0 peer-focus:text-[10px] peer-focus:font-semibold peer-focus:text-primary"
+                    className="absolute left-3 top-1.5 text-[10px] font-semibold text-gray-500 transition-all peer-placeholder-shown:top-1/2 peer-placeholder-shown:-translate-y-1/2 peer-placeholder-shown:text-sm peer-placeholder-shown:font-medium peer-focus:top-1.5 peer-focus:translate-y-0 peer-focus:text-[10px] peer-focus:font-semibold peer-focus:text-primary"
                   >
-                    Template Name <span className="text-red-500">*</span>
+                    <FieldHelp label="Template Name" text="Readable name for this scope template, used to identify the treatment setup later." /> <span className="text-red-500">*</span>
                   </label>
-                  <span className="absolute right-2 top-2">
-                    <FieldHelp text="Readable name for this scope template, used to identify the treatment setup later." />
-                  </span>
                 </div>
                 {touched && !nameValid && <p className="text-xs text-red-500">Template name is required.</p>}
               </div>
@@ -284,8 +281,7 @@ export function ScopeTemplatesForm({ focusRuleId, onFocusHandled }: ScopeTemplat
               <div className="grid gap-4 md:grid-cols-2">
                 <div className="flex flex-col gap-1.5">
                   <label className="flex items-center gap-1.5 text-xs font-semibold text-gray-600">
-                    Treatment Type
-                    <FieldHelp text="The service/treatment this scope template represents for quotation setup." />
+                    <FieldHelp label="Treatment Type" text="The service/treatment this scope template represents for quotation setup." />
                     <span className="text-red-500">*</span>
                   </label>
                   <select
@@ -316,8 +312,7 @@ export function ScopeTemplatesForm({ focusRuleId, onFocusHandled }: ScopeTemplat
 
                 <div className="flex flex-col gap-1.5">
                   <label className="flex items-center gap-1.5 text-xs font-semibold text-gray-600">
-                    Service Specialization
-                    <FieldHelp text="Connects this template to the company service specialization that performs the work." />
+                    <FieldHelp label="Service Specialization" text="Connects this template to the company service specialization that performs the work." />
                     <span className="text-red-500">*</span>
                   </label>
                   <select value={specialization} onChange={(e) => setSpecialization(e.target.value)} className={inputCls}>
@@ -337,8 +332,7 @@ export function ScopeTemplatesForm({ focusRuleId, onFocusHandled }: ScopeTemplat
 
               <div className="flex flex-col gap-1.5">
                 <label className="flex items-center gap-1.5 text-xs font-semibold text-gray-600">
-                  Applicable Material Categories
-                  <FieldHelp text="Suggested material categories normally needed for this treatment scope." />
+                  <FieldHelp label="Applicable Material Categories" text="Suggested material categories normally needed for this treatment scope." />
                   <span className="text-red-500">*</span>
                 </label>
                 <div className="flex flex-wrap gap-2">
@@ -363,8 +357,7 @@ export function ScopeTemplatesForm({ focusRuleId, onFocusHandled }: ScopeTemplat
               {categories.includes("Others") && (
                 <div className="flex flex-col gap-1.5">
                   <label className="flex items-center gap-1.5 text-xs font-semibold text-gray-600">
-                    Describe &quot;Others&quot;
-                    <FieldHelp text="Explains what the Others category covers so reviewers understand the scope." />
+                    <FieldHelp label={<>Describe &quot;Others&quot;</>} text="Explains what the Others category covers so reviewers understand the scope." />
                     <span className="text-red-500">*</span>
                   </label>
                   <input
@@ -390,8 +383,7 @@ export function ScopeTemplatesForm({ focusRuleId, onFocusHandled }: ScopeTemplat
                 ].map(([label, value, setter, help]) => (
                   <label key={label as string} className="flex flex-col gap-1.5 text-xs font-semibold text-gray-600">
                     <span className="inline-flex items-center gap-1.5">
-                      {label as string}
-                      <FieldHelp text={help as string} />
+                      <FieldHelp label={label as string} text={help as string} />
                     </span>
                     <input
                       type="number"

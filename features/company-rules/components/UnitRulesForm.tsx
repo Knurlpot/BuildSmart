@@ -248,8 +248,7 @@ export function UnitRulesForm({ focusRuleId, onFocusHandled }: UnitRulesFormProp
 
               <div className="flex flex-col gap-1.5">
                 <label className="flex items-center gap-1.5 text-xs font-semibold text-gray-600">
-                  Applies To
-                  <FieldHelp text="Choose whether this quantity rule applies to a whole material category or one specific catalog item." />
+                  <FieldHelp label="Applies To" text="Choose whether this quantity rule applies to a whole material category or one specific catalog item." />
                 </label>
                 <div className="flex gap-2">
                   <button
@@ -279,8 +278,7 @@ export function UnitRulesForm({ focusRuleId, onFocusHandled }: UnitRulesFormProp
 
               <div className="flex flex-col gap-1.5">
                 <label className="flex items-center gap-1.5 text-xs font-semibold text-gray-600">
-                  {targetKind === "category" ? "Material Category" : "Item's Category"}
-                  <FieldHelp text="The category used to find which material quantities this conversion and wastage rule should affect." />
+                  <FieldHelp label={targetKind === "category" ? "Material Category" : "Item's Category"} text="The category used to find which material quantities this conversion and wastage rule should affect." />
                   <span className="text-red-500">*</span>
                 </label>
                 <select
@@ -324,13 +322,10 @@ export function UnitRulesForm({ focusRuleId, onFocusHandled }: UnitRulesFormProp
                         className="peer w-full rounded-lg border border-gray-200 bg-gray-50 px-3 pb-2 pt-5 text-sm outline-none transition focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/20"
                       />
                       <label
-                        className="pointer-events-none absolute left-3 top-1.5 text-[10px] font-semibold text-gray-500 transition-all peer-placeholder-shown:top-1/2 peer-placeholder-shown:-translate-y-1/2 peer-placeholder-shown:text-sm peer-placeholder-shown:font-medium peer-focus:top-1.5 peer-focus:translate-y-0 peer-focus:text-[10px] peer-focus:font-semibold peer-focus:text-primary"
+                        className="absolute left-3 top-1.5 text-[10px] font-semibold text-gray-500 transition-all peer-placeholder-shown:top-1/2 peer-placeholder-shown:-translate-y-1/2 peer-placeholder-shown:text-sm peer-placeholder-shown:font-medium peer-focus:top-1.5 peer-focus:translate-y-0 peer-focus:text-[10px] peer-focus:font-semibold peer-focus:text-primary"
                       >
-                        Item <span className="text-red-500">*</span>
+                        <FieldHelp label="Item" text="Specific catalog material that should use this conversion and wastage rule instead of the category default." /> <span className="text-red-500">*</span>
                       </label>
-                      <span className="absolute right-2 top-2">
-                        <FieldHelp text="Specific catalog material that should use this conversion and wastage rule instead of the category default." />
-                      </span>
                       {itemPickerOpen && (
                         <div className="absolute z-20 mt-1 max-h-56 w-full overflow-auto rounded-lg border border-gray-200 bg-white py-1 shadow-lg">
                           {relatedItems.length > 0 ? (
@@ -382,13 +377,10 @@ export function UnitRulesForm({ focusRuleId, onFocusHandled }: UnitRulesFormProp
                     />
                     <label
                       htmlFor="unit-wastage-allowance"
-                      className="pointer-events-none absolute left-3 top-1.5 text-[10px] font-semibold text-gray-500 transition-all peer-placeholder-shown:top-1/2 peer-placeholder-shown:-translate-y-1/2 peer-placeholder-shown:text-sm peer-placeholder-shown:font-medium peer-focus:top-1.5 peer-focus:translate-y-0 peer-focus:text-[10px] peer-focus:font-semibold peer-focus:text-primary"
+                      className="absolute left-3 top-1.5 text-[10px] font-semibold text-gray-500 transition-all peer-placeholder-shown:top-1/2 peer-placeholder-shown:-translate-y-1/2 peer-placeholder-shown:text-sm peer-placeholder-shown:font-medium peer-focus:top-1.5 peer-focus:translate-y-0 peer-focus:text-[10px] peer-focus:font-semibold peer-focus:text-primary"
                     >
-                      Wastage Allowance <span className="text-red-500">*</span>
+                      <FieldHelp label="Wastage Allowance" text="Extra material percentage added for cuts, overlap, spillage, defects, or site waste." /> <span className="text-red-500">*</span>
                     </label>
-                    <span className="absolute right-7 top-2">
-                      <FieldHelp text="Extra material percentage added for cuts, overlap, spillage, defects, or site waste." />
-                    </span>
                     <span className="pointer-events-none absolute right-3 top-[1.9rem] -translate-y-1/2 text-xs text-gray-400">%</span>
                   </div>
                   {touched && !wastageValid && <p className="text-xs text-red-500">Enter a value between 0 and 100.</p>}
@@ -410,13 +402,10 @@ export function UnitRulesForm({ focusRuleId, onFocusHandled }: UnitRulesFormProp
                     />
                     <label
                       htmlFor="unit-conversion-factor"
-                      className="pointer-events-none absolute left-3 top-1.5 text-[10px] font-semibold text-gray-500 transition-all peer-placeholder-shown:top-1/2 peer-placeholder-shown:-translate-y-1/2 peer-placeholder-shown:text-sm peer-placeholder-shown:font-medium peer-focus:top-1.5 peer-focus:translate-y-0 peer-focus:text-[10px] peer-focus:font-semibold peer-focus:text-primary"
+                      className="absolute left-3 top-1.5 text-[10px] font-semibold text-gray-500 transition-all peer-placeholder-shown:top-1/2 peer-placeholder-shown:-translate-y-1/2 peer-placeholder-shown:text-sm peer-placeholder-shown:font-medium peer-focus:top-1.5 peer-focus:translate-y-0 peer-focus:text-[10px] peer-focus:font-semibold peer-focus:text-primary"
                     >
-                      Conversion Factor <span className="text-red-500">*</span>
+                      <FieldHelp label="Conversion Factor" text="Converts treatment area into material quantity. Formula: area x conversion factor x wastage." /> <span className="text-red-500">*</span>
                     </label>
-                    <span className="absolute right-2 top-2">
-                      <FieldHelp text="Converts treatment area into material quantity. Formula: area x conversion factor x wastage." />
-                    </span>
                   </div>
                   {touched && !factorValid && <p className="text-xs text-red-500">Must be greater than 0.</p>}
                 </div>

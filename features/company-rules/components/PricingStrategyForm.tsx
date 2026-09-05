@@ -28,8 +28,7 @@ function SliderPercentField({ label, help, value, onChange, touched, warn }: Sli
     <div className="flex flex-col gap-1.5">
       <div className="flex items-center justify-between">
         <label className="flex items-center gap-1.5 text-xs font-semibold text-gray-600">
-          {label}
-          <FieldHelp text={help} />
+          <FieldHelp label={label} text={help} />
           <span className="text-red-500">*</span>
         </label>
         <span className="text-xs font-bold text-gray-700">{value === "" ? "-" : `${value}%`}</span>
@@ -247,8 +246,7 @@ function StrategyPanel({ tier, strategy, isBusy, error, onSave, onDisable }: Str
                 onChange={(e) => setField("vatEnabled", e.target.checked)}
                 className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-2 focus:ring-primary/30"
               />
-              Apply VAT
-              <FieldHelp text="Controls whether this pricing strategy includes VAT as a separate quotation line." />
+              <FieldHelp label="Apply VAT" text="Controls whether this pricing strategy includes VAT as a separate quotation line." />
             </label>
             {draft.vatEnabled && (
               <SliderPercentField
