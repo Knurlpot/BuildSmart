@@ -9,6 +9,7 @@ from tenacity import retry, stop_after_attempt, wait_exponential
 
 
 MODEL = os.environ.get("GEMINI_MODEL", "gemini-flash-latest")
+GEMINI_REVIEW_BATCH_SIZE = int(os.environ.get("GEMINI_REVIEW_BATCH_SIZE", "40"))
 
 
 class GeminiPricelistRowReview(BaseModel):
@@ -79,6 +80,61 @@ def _balanced_parentheses(value: str) -> str:
     return text
 
 
+def _normalize_asphalt_name(value: str) -> str:
+    cleaned = value
+    cleaned = re.sub(r"\bASPHALT,\s*RC\s*70\s+1\b", "ASPHALT, RC70", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"\bASPHALT,\s*RC70\s+1\b", "ASPHALT, RC70", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"\bCUT-BACK\s*ASPHALT\s*,?\s*RC\s*B00\b", "CUT-BACK ASPHALT, RC800", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"\bCUT-BACKASPHALT\s*,?\s*RCB00\b", "CUT-BACK ASPHALT, RC800", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"\bCUT-BACK\s*ASPHALT\s*,?\s*RC\s*3000\s+0\b", "CUT-BACK ASPHALT, RC3000", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"\bCUT-BACKASPHALT\s*,?\s*RC3000\s+0\b", "CUT-BACK ASPHALT, RC3000", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"\bEMULSIFIED\s*ASPHALT\b", "EMULSIFIED ASPHALT", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"\bCATIONIC\s*SSt\s*i\s*SWt\b.*$", "CATIONIC SS-1", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"\bCATIONICSSt\s*i\s*SWt\b.*$", "CATIONIC SS-1", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"\bCATIONIC\s*CRS\s*2\.2\b.*$", "CATIONIC CRS-2", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"\bCATIONICCRS\s*2\.2\b.*$", "CATIONIC CRS-2", cleaned, flags=re.IGNORECASE)
+    return cleaned
+
+
+def _normalize_pipe_name(value: str) -> str:
+    cleaned = value
+    replacements = [
+        (r"\bPVC\s+PIPE\s*\(2\s+1/2\"\s+163\s*mm\s*@\)\s*1\b", 'PVC PIPE (2 1/2" / 63 mm) (Series 1)'),
+        (r"\bPVC\s+PIPE\s*\(3/4\s+19\s*mm\s*@\)\s*Sees\s*2\b", 'PVC PIPE (3/4" / 19-25 mm) (Series 2)'),
+        (r"\bPVC\s+PIPE\s*\(1[°\"]\s+25\.4\s*mm\s+B\)", 'PVC PIPE (1" / 25.4 mm) (Series B)'),
+        (r"\bPVC\s+PIPE\s*\(3\"\s+76\s*mm\s+9\)\s*rs\b", 'PVC PIPE 3" (76 mm) (Series 900)'),
+        (r"\bPVC\s+PIPE\s*\(2\"\s+50\s*mm\s+9\)\s*ae\s*a\s*2\b", 'PVC PIPE 2" (50 mm)'),
+        (r"\bPVC\s+PIPE\s*\(3\s+1/2\"\s+89\s*mm\s+9\)", 'PVC PIPE 3 1/2" (89 mm)'),
+        (r"\bPVC\s+PIPE\s*\(4\"\s+101\s*mm\s*@\)?", 'PVC PIPE 4" (110 mm OD / 101 mm ID)'),
+    ]
+    for pattern, replacement in replacements:
+        cleaned = re.sub(pattern, replacement, cleaned, flags=re.IGNORECASE)
+
+    cleaned = re.sub(r"\bPVC\s+PIPE\s*\((1\s*/?\s*1/2)\"?\s+(38\s*mm)\s*$", r"PVC PIPE (\1 \2)", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(
+        r"\bGI\s+PIPE,\s*SCHEDULE\s+40\s*\((1\s+1/2\"?|1/2\"|3/4\"|1\"|3\"|4\"|5\"|6\"?)\s+([0-9.]+\s*mm)\s*$",
+        lambda match: f"GI PIPE, SCHEDULE 40 ({match.group(1).rstrip(chr(34)) if match.group(1) == '6' else match.group(1)} {match.group(2)})",
+        cleaned,
+        flags=re.IGNORECASE,
+    )
+    cleaned = re.sub(r"\bREINFORCED\s+CONCRETE\s+PIPE,\s*CLASS\s+IV\s*\((36\")\s+(910\s*mm)\s*$", r"REINFORCED CONCRETE PIPE, CLASS IV (\1 \2)", cleaned, flags=re.IGNORECASE)
+    return cleaned
+
+
+def _normalize_concrete_lumber_name(value: str) -> str:
+    cleaned = value
+    cleaned = re.sub(r"\bCHB\s+LOAD\s+BEARING\s*\((6\"\s*x\s*8\"\s*x\s*16\")\s*$", r"CHB LOAD BEARING (\1)", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"\bCHB\s+LOAD\s+BEARING\s*\((6\s*x\s*8[°\"]?\s*x\s*16\")\s*$", 'CHB LOAD BEARING (6" x 8" x 16")', cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"\bOONCRETE\s*NEUTRALIZER\b", "CONCRETE NEUTRALIZER", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"\bCOCO\s*LUMBERE\s*ET\b", "COCO LUMBER E.T.", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"\bLACQUER\s+THINNER\s+ES\s+aaa\b", "LACQUER THINNER ES AAA", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"\bQUICK-DRYING\s*ENAMEL\s*PAINT\b", "Quick-Drying Enamel Paint", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"\bCONCRETE,\s*(3500\s*PSI\s*@\s*7\s*DAYS,\s*G1)\b", r"CONCRETE (\1)", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"\bCONCRETE,\s*(4000\s*PSI\s*@\s*28\s*DAYS,\s*Gi)\b", r"CONCRETE (\1)", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"\bGi\b", "G1", cleaned)
+    return cleaned
+
+
 def _cleanup_material_name(value: str) -> str | None:
     text = _text(value)
     if not text:
@@ -96,6 +152,7 @@ def _cleanup_material_name(value: str) -> str | None:
     for pattern in junk_tail_patterns:
         cleaned = re.sub(pattern, "", cleaned, flags=re.IGNORECASE)
 
+    cleaned = _normalize_pipe_name(cleaned)
     cleaned = re.sub(r"\s+[iIl1]\s+[iIl1]\S*.*$", "", cleaned)
     cleaned = re.sub(r"\s+\(\s*\(\s*[A-Za-z].*$", "", cleaned)
     cleaned = re.sub(r"\bCS[ée]t[eé]\b.*$", "", cleaned)
@@ -103,12 +160,11 @@ def _cleanup_material_name(value: str) -> str | None:
     cleaned = re.sub(r"\s*@\)\s*$", "", cleaned)
     cleaned = re.sub(r"\s*8\)\s*$", "", cleaned)
     cleaned = re.sub(r"[{}[\]|`_]+", " ", cleaned)
+    cleaned = re.sub(r"\bSTONE,\s*CLASS\s+B\s*\((30\s*-\s*70)\s*ka\)", r"STONE, CLASS B (\1 kg)", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"\bSTONE,\s*CLASS\s+D\s*\((100\s*-\s*200)\s*ka\)", r"STONE, CLASS D (\1 kg)", cleaned, flags=re.IGNORECASE)
     cleaned = re.sub(r"\bPENETRATION\s*GRADE\b", "PENETRATION GRADE", cleaned, flags=re.IGNORECASE)
-    cleaned = re.sub(r"\bEMULSIFIED\s*ASPHALT\b", "EMULSIFIED ASPHALT", cleaned, flags=re.IGNORECASE)
-    cleaned = re.sub(r"\bCATIONIC\s*SSt\s*i\s*SWt\b.*$", "CATIONIC SS-1", cleaned, flags=re.IGNORECASE)
-    cleaned = re.sub(r"\bCATIONICSSt\s*i\s*SWt\b.*$", "CATIONIC SS-1", cleaned, flags=re.IGNORECASE)
-    cleaned = re.sub(r"\bCATIONIC\s*CRS\s*2\.2\b.*$", "CATIONIC CRS-2", cleaned, flags=re.IGNORECASE)
-    cleaned = re.sub(r"\bCATIONICCRS\s*2\.2\b.*$", "CATIONIC CRS-2", cleaned, flags=re.IGNORECASE)
+    cleaned = _normalize_asphalt_name(cleaned)
+    cleaned = _normalize_concrete_lumber_name(cleaned)
     cleaned = re.sub(r"\bRUST\s+CONVERTER/REMOVER\s+7\b", "RUST CONVERTER/REMOVER", cleaned, flags=re.IGNORECASE)
     cleaned = re.sub(r"\bGASOLINE,\s*REGULAR\s+as\b", "GASOLINE, REGULAR", cleaned, flags=re.IGNORECASE)
     cleaned = re.sub(r"\bFORM\s+OIL\s+T\b", "FORM OIL", cleaned, flags=re.IGNORECASE)
@@ -212,37 +268,60 @@ def review_pdf_rows(df: pd.DataFrame, file_path: str) -> dict[int, GeminiPriceli
     if Path(file_path).suffix.lower() != ".pdf":
         return {}
 
+    flagged = deterministic_pdf_reviews(df, file_path)
+
+    if not should_review_with_gemini(file_path):
+        return flagged
+
+    for chunk_reviews in iter_gemini_pdf_reviews(df, file_path):
+        flagged.update(chunk_reviews)
+    return flagged
+
+
+def deterministic_pdf_reviews(df: pd.DataFrame, file_path: str) -> dict[int, GeminiPricelistRowReview]:
+    if Path(file_path).suffix.lower() != ".pdf":
+        return {}
+
     all_rows = _row_payload(df, limit=None)
     if not all_rows:
         return {}
 
-    flagged = {
+    return {
         row["row_index"]: _review_with_fallback(row["row_index"], row.get("raw_name", ""))
         for row in all_rows
         if _cleanup_material_name(row.get("raw_name", "")) or _looks_garbled(row.get("raw_name", ""))
     }
 
+
+def iter_gemini_pdf_reviews(
+    df: pd.DataFrame,
+    file_path: str,
+    *,
+    batch_size: int = GEMINI_REVIEW_BATCH_SIZE,
+):
     if not should_review_with_gemini(file_path):
-        return flagged
+        return
 
-    gemini_rows = _row_payload(df)
-    try:
-        review = _call_gemini(gemini_rows, file_path)
-    except (Exception, ValidationError):
-        return flagged
+    all_rows = _row_payload(df, limit=None)
+    if not all_rows:
+        return
 
-    for item in review.rows:
-        if item.status == "needs_review":
-            flagged[item.row_index] = item
+    batch_size = max(1, batch_size)
+    for start in range(0, len(all_rows), batch_size):
+        batch_rows = all_rows[start : start + batch_size]
+        try:
+            review = _call_gemini(batch_rows, file_path)
+        except (Exception, ValidationError):
+            yield {}
+            continue
 
-    for row in all_rows:
-        row_index = row["row_index"]
-        raw_name = row.get("raw_name", "")
-        fallback = _cleanup_material_name(raw_name)
-        if row_index in flagged:
-            item = flagged[row_index]
+        flagged: dict[int, GeminiPricelistRowReview] = {}
+        for item in review.rows:
+            if item.status != "needs_review":
+                continue
+            row = all_rows[item.row_index] if 0 <= item.row_index < len(all_rows) else None
+            fallback = _cleanup_material_name(row.get("raw_name", "")) if row is not None else None
             if fallback and (not item.raw_name or _looks_garbled(item.raw_name)):
-                flagged[row_index] = item.model_copy(update={"raw_name": fallback})
-        elif fallback or _looks_garbled(raw_name):
-            flagged[row_index] = _review_with_fallback(row_index, raw_name)
-    return flagged
+                item = item.model_copy(update={"raw_name": fallback})
+            flagged[item.row_index] = item
+        yield flagged

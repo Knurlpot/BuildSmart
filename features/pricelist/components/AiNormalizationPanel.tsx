@@ -121,6 +121,8 @@ function fmt(n: number | null) {
 }
 
 function QueueItemRow({ item }: { item: QueueItem }) {
+  const autoStored = item.result?.auto_stored ?? item.result?.matched ?? 0;
+
   return (
     <div className="flex items-start gap-3 rounded-xl border border-gray-100 bg-gray-50 px-3 py-2.5 text-sm">
       <FileIcon className="mt-0.5 h-4 w-4 shrink-0 text-gray-400" />
@@ -142,7 +144,7 @@ function QueueItemRow({ item }: { item: QueueItem }) {
             </p>
           ) : (
             <p className="text-xs text-green-700">
-              Processed {item.result.processed}. {item.result.needs_review} ready for review.
+              File is processed. {autoStored} records automatically stored in the database. {item.result.needs_review} for Review
             </p>
           )
         )}
@@ -239,6 +241,7 @@ function ReviewItemRow({
   const displayLocation = item.location || "—";
   const displaySource = item.supplier_name || item.source || "Supplier";
   const aiReviewIssue = item.description?.match(/(?:^|\s\|\s)AI review: (.+)$/)?.[1] ?? null;
+  const confidencePercent = Math.round(item.confidence * 100);
 
   const checkboxCell = (
     <td className="w-8 py-2 pr-2">
@@ -260,6 +263,9 @@ function ReviewItemRow({
         <td className="py-2 pr-4 font-medium text-gray-800">
           <div className="flex min-w-[14rem] flex-col gap-1">
             <span>{item.raw_name}</span>
+            <span className="inline-flex w-fit rounded-full border border-gray-200 bg-gray-50 px-2 py-0.5 text-[10px] font-bold text-gray-600">
+              Confidence {confidencePercent}%
+            </span>
             {aiReviewIssue && (
               <span className="inline-flex w-fit items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-bold text-amber-700">
                 <Sparkles className="h-3 w-3" />
@@ -654,11 +660,8 @@ export function AiNormalizationPanel({ companyId, defaultSupplierMode = "existin
     });
   };
 
-  const approveSelectedReviewItems = async (candidateItems: PricelistReviewItem[]) => {
-    const ids = candidateItems
-      .map((item) => item.review_id)
-      .filter((reviewId) => selectedReviewIds.has(reviewId));
-    if (ids.length === 0) return;
+  const approveReviewItems = async (itemsToApprove: PricelistReviewItem[]) => {
+    if (itemsToApprove.length === 0) return;
 
     setIsBulkApproving(true);
     setReviewSaveError(null);
@@ -666,9 +669,8 @@ export function AiNormalizationPanel({ companyId, defaultSupplierMode = "existin
 
     // Sequential rather than Promise.all because each approval writes to the
     // shared catalog and approval cache.
-    for (const reviewId of ids) {
-      const item = reviewItems.find((r) => r.review_id === reviewId);
-      if (!item) continue;
+    for (const item of itemsToApprove) {
+      const reviewId = item.review_id;
       setSavingId(reviewId);
       try {
         await updateReviewItem(reviewId, { ...draftToPatch(reviewItemToDraft(item)), status: "Approved" });
@@ -690,19 +692,23 @@ export function AiNormalizationPanel({ companyId, defaultSupplierMode = "existin
     }
   };
 
-  const deleteSelectedReviewItems = async (candidateItems: PricelistReviewItem[]) => {
-    const ids = candidateItems
-      .map((item) => item.review_id)
-      .filter((reviewId) => selectedReviewIds.has(reviewId));
-    if (ids.length === 0) return;
+  const approveSelectedReviewItems = async (candidateItems: PricelistReviewItem[]) => {
+    await approveReviewItems(candidateItems.filter((item) => selectedReviewIds.has(item.review_id)));
+  };
+
+  const approveAllReviewItems = async () => {
+    await approveReviewItems(reviewItems);
+  };
+
+  const deleteReviewItems = async (itemsToDelete: PricelistReviewItem[]) => {
+    if (itemsToDelete.length === 0) return;
 
     setIsBulkDeleting(true);
     setReviewSaveError(null);
     const failedNames: string[] = [];
 
-    for (const reviewId of ids) {
-      const item = reviewItems.find((r) => r.review_id === reviewId);
-      if (!item) continue;
+    for (const item of itemsToDelete) {
+      const reviewId = item.review_id;
       setSavingId(reviewId);
       try {
         await deleteReviewItem(reviewId);
@@ -729,6 +735,14 @@ export function AiNormalizationPanel({ companyId, defaultSupplierMode = "existin
     }
   };
 
+  const deleteSelectedReviewItems = async (candidateItems: PricelistReviewItem[]) => {
+    await deleteReviewItems(candidateItems.filter((item) => selectedReviewIds.has(item.review_id)));
+  };
+
+  const deleteAllReviewItems = async () => {
+    await deleteReviewItems(reviewItems);
+  };
+
   const handleDeleteReview = (items: PricelistReviewItem[]) => {
     deleteSelectedReviewItems(items).catch(() => {});
   };
@@ -737,6 +751,12 @@ export function AiNormalizationPanel({ companyId, defaultSupplierMode = "existin
     ["queued", "uploading", "pending", "processing"].includes(item.status)
   );
   const hasFinishedItems = queue.some((item) => item.status === "done" || item.status === "failed");
+
+  useEffect(() => {
+    if (isQueueBusy) {
+      setReviewPagesBySource({});
+    }
+  }, [isQueueBusy]);
 
   const reviewGroups = useMemo(() => {
     const grouped = new Map<string, PricelistReviewItem[]>();
@@ -1129,13 +1149,6 @@ export function AiNormalizationPanel({ companyId, defaultSupplierMode = "existin
           </div>
         )}
 
-        {/* The status endpoint only ever returns {status, result} — no per-row
-            progress (e.g. "row 4 of 10"). Showing that would need the Celery
-            task to report intermediate state (task.update_state with a
-            {current, total} meta dict, via a bound task) and the router to
-            surface it while state is STARTED/PROGRESS. Not implemented here —
-            this is an explanation of *why* it's slow, not a fabricated
-            progress bar. */}
         {queue.length > 0 && (
           <div className="mt-4 flex flex-col gap-2">
             <div className="flex items-center justify-between">
@@ -1217,7 +1230,7 @@ export function AiNormalizationPanel({ companyId, defaultSupplierMode = "existin
             {reviewGroups.map(([sourceKey, sourceItems]) => {
               const useDpwhColumns = sourceKey === "DPWH";
               const pageCount = Math.max(1, Math.ceil(sourceItems.length / REVIEW_PAGE_SIZE));
-              const currentPage = Math.min(Math.max(1, reviewPagesBySource[sourceKey] ?? 1), pageCount);
+              const currentPage = isQueueBusy ? 1 : Math.min(Math.max(1, reviewPagesBySource[sourceKey] ?? 1), pageCount);
               const showPagination = sourceItems.length > REVIEW_PAGE_SIZE;
               const pageStart = (currentPage - 1) * REVIEW_PAGE_SIZE;
               const pagedItems = showPagination
@@ -1239,6 +1252,17 @@ export function AiNormalizationPanel({ companyId, defaultSupplierMode = "existin
                       {!isEditingAll && (
                         <button
                           type="button"
+                          onClick={approveAllReviewItems}
+                          disabled={reviewItems.length === 0 || isBulkApproving || isBulkDeleting}
+                          className="flex items-center gap-1.5 rounded-lg border border-primary/20 bg-primary/10 px-3 py-1.5 text-xs font-bold text-primary transition hover:bg-primary/15 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          {isBulkApproving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+                          {isBulkApproving ? "Approving…" : "Approve All"}
+                        </button>
+                      )}
+                      {!isEditingAll && (
+                        <button
+                          type="button"
                           onClick={() => approveSelectedReviewItems(pagedItems)}
                           disabled={selectedCount === 0 || isBulkApproving || isBulkDeleting}
                           className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-bold text-primary-foreground shadow-sm transition hover:bg-(--primary-hover) disabled:cursor-not-allowed disabled:opacity-50"
@@ -1255,6 +1279,17 @@ export function AiNormalizationPanel({ companyId, defaultSupplierMode = "existin
                           className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-600 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
                         >
                           {allDisplayedItemsSelected ? "Deselect All" : "Select All"}
+                        </button>
+                      )}
+                      {!isEditingAll && (
+                        <button
+                          type="button"
+                          onClick={deleteAllReviewItems}
+                          disabled={reviewItems.length === 0 || isBulkDeleting || isBulkApproving}
+                          className="flex items-center gap-1.5 rounded-lg border border-red-100 bg-red-50 px-3 py-1.5 text-xs font-bold text-red-600 transition hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          {isBulkDeleting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+                          {isBulkDeleting ? "Removing…" : "Remove All"}
                         </button>
                       )}
                       {!isEditingAll && (
@@ -1321,7 +1356,7 @@ export function AiNormalizationPanel({ companyId, defaultSupplierMode = "existin
                         <button
                           type="button"
                           onClick={() => setReviewPageForSource(sourceKey, (page) => Math.max(1, page - 1))}
-                          disabled={currentPage === 1}
+                          disabled={isQueueBusy || currentPage === 1}
                           aria-label={`Previous ${sourceKey} page`}
                           title="Previous page"
                           className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-600 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
@@ -1334,7 +1369,7 @@ export function AiNormalizationPanel({ companyId, defaultSupplierMode = "existin
                         <button
                           type="button"
                           onClick={() => setReviewPageForSource(sourceKey, (page) => Math.min(pageCount, page + 1))}
-                          disabled={currentPage === pageCount}
+                          disabled={isQueueBusy || currentPage === pageCount}
                           aria-label={`Next ${sourceKey} page`}
                           title="Next page"
                           className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-600 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"

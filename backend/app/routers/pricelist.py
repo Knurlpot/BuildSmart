@@ -20,6 +20,7 @@ from app.schemas.pricelist import NormalizedPriceRecord, SourceAgency
 from app.services.match_cache import invalidate_cached_match, upsert_cached_match
 from app.services.file_hash import calculate_file_hash, calculate_file_size
 from app.services.philippine_regions import infer_region_from_location
+from app.services.pricelist_ai_review import _cleanup_material_name
 from app.services.pricelist_json_normalizer import normalize_pricelist_dataframe
 from app.services.pricelist_parser import MissingColumnsError, parse_pricelist_file
 from app.services.published_version_check import check_published_version
@@ -130,7 +131,9 @@ class ReviewItemUpdateRequest(BaseModel):
 
 
 def _review_item_response(row: PriceListReviewItem, supplier_name: str | None = None) -> ReviewItemResponse:
-    return ReviewItemResponse.model_validate(row).model_copy(update={"supplier_name": supplier_name})
+    response = ReviewItemResponse.model_validate(row)
+    clean_name = _cleanup_material_name(response.raw_name)
+    return response.model_copy(update={"raw_name": clean_name or response.raw_name, "supplier_name": supplier_name})
 
 
 class VersionCheckRequest(BaseModel):
@@ -642,8 +645,9 @@ async def upload_pricelist(
     default_quarter, default_year = _default_period()
     period_quarter, period_year = quarter or default_quarter, year or default_year
     upload_effective_date = _parse_effective_date(effective_date, period_quarter, period_year)
-    file_hash = calculate_file_hash(dest)
-    file_size = calculate_file_size(dest)
+    is_pdf_upload = dest.suffix.lower() == ".pdf"
+    file_hash = f"pending-{file_upload_token}" if is_pdf_upload else calculate_file_hash(dest)
+    file_size = None if is_pdf_upload else calculate_file_size(dest)
     db_upload: PriceListUpload | None = None
     force_review_for_cross_company_file = False
 
@@ -721,38 +725,28 @@ async def upload_pricelist(
         db.commit()
         db.refresh(db_upload)
 
-    # Validated synchronously (not inside the Celery task) so a column-match
-    # failure comes back as an immediate, structured response the frontend
-    # can turn into a ColumnMappingStep prompt — rather than surfacing only
-    # after a poll cycle as an opaque task failure. The saved file is kept
-    # (not deleted) so /upload/{upload_id}/confirm-mapping can reuse it
-    # instead of asking the user to re-select and re-upload the same file.
-    try:
-        parse_pricelist_file(str(dest))
-    except MissingColumnsError as exc:
-        return JSONResponse(
-            status_code=422,
-            content=MissingColumnsResponse(
-                error=str(exc),
-                missing_columns=exc.missing_columns,
-                available_columns=exc.available_columns,
-                detected_mapping=exc.detected_mapping,
-                preview_rows=exc.preview_rows,
-                upload_id=file_upload_token,
-            ).model_dump(),
-        )
-    except ValueError as exc:
-        # Not every column-match failure qualifies for the structured
-        # MissingColumnsError path (see parse_pricelist_file's narrow gate for
-        # it) — an unsupported extension, unreadable file, or a wide/generic
-        # header set still raises a plain ValueError, and that must reach the
-        # client as a clean 4xx too, not bubble up as an unhandled 500.
-        if db_upload is not None:
-            db_upload.processing_status = "failed"
-            db_upload.error_message = str(exc)
-            db.commit()
-        dest.unlink(missing_ok=True)
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    if not is_pdf_upload:
+        try:
+            parse_pricelist_file(str(dest))
+        except MissingColumnsError as exc:
+            return JSONResponse(
+                status_code=422,
+                content=MissingColumnsResponse(
+                    error=str(exc),
+                    missing_columns=exc.missing_columns,
+                    available_columns=exc.available_columns,
+                    detected_mapping=exc.detected_mapping,
+                    preview_rows=exc.preview_rows,
+                    upload_id=file_upload_token,
+                ).model_dump(),
+            )
+        except ValueError as exc:
+            if db_upload is not None:
+                db_upload.processing_status = "failed"
+                db_upload.error_message = str(exc)
+                db.commit()
+            dest.unlink(missing_ok=True)
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     task = normalize_price_list.delay(
         str(dest),
@@ -922,6 +916,8 @@ def get_task_status(task_id: str):
         # async_result.result is the exception instance itself on failure —
         # stringify it so callers actually see why it failed instead of null.
         result = {"error": str(async_result.result)}
+    elif isinstance(async_result.info, dict):
+        result = async_result.info
     else:
         result = None
 

@@ -22,9 +22,13 @@ async function normalizationApiClient<T>(endpoint: string, options?: RequestInit
 export interface NormalizationSummary {
   processed: number;
   matched: number;
+  auto_stored?: number;
   new_items_created: number;
   needs_review: number;
   upload_id?: number | null;
+  phase?: string;
+  gemini_reviewed?: number;
+  gemini_total?: number;
   skipped_duplicate?: boolean;
   message?: string;
   records_imported?: number | null;
@@ -172,13 +176,17 @@ export function usePricelistNormalization(companyId?: number | null) {
   const queueRef = useRef<QueueItem[]>([]);
   const [queue, setQueue] = useState<QueueItem[]>([]);
   const processingRef = useRef(false);
+  const reviewItemsRef = useRef<PricelistReviewItem[]>([]);
 
   const [reviewItems, setReviewItems] = useState<PricelistReviewItem[]>([]);
   const [isLoadingReview, setIsLoadingReview] = useState(false);
   const [reviewError, setReviewError] = useState<Error | null>(null);
 
   const refetchReview = useCallback(() => {
-    setIsLoadingReview(true);
+    const hasExistingReviewItems = reviewItemsRef.current.length > 0;
+    if (!hasExistingReviewItems) {
+      setIsLoadingReview(true);
+    }
     setReviewError(null);
     // No `credentials: 'include'` — FastAPI's /pricelist routes have no cookie/session
     // auth to send (unlike the Next.js routes apiClient calls), and sending it forces
@@ -188,9 +196,16 @@ export function usePricelistNormalization(companyId?: number | null) {
     if (companyId != null) params.set('company_id', String(companyId));
     const query = `?${params.toString()}`;
     normalizationApiClient<PricelistReviewItem[]>(`/pricelist/review${query}`)
-      .then(setReviewItems)
+      .then((items) => {
+        reviewItemsRef.current = items;
+        setReviewItems(items);
+      })
       .catch((err) => setReviewError(err instanceof Error ? err : new Error(String(err))))
-      .finally(() => setIsLoadingReview(false));
+      .finally(() => {
+        if (!hasExistingReviewItems) {
+          setIsLoadingReview(false);
+        }
+      });
   }, [companyId]);
 
   useEffect(() => {
@@ -216,7 +231,10 @@ export function usePricelistNormalization(companyId?: number | null) {
               updateItem(itemId, { status: 'failed', failureReason: reason });
               resolve();
             } else {
-              updateItem(itemId, { status: res.status });
+              updateItem(itemId, { status: res.status, result: res.result as NormalizationSummary | undefined });
+              if ((res.result as NormalizationSummary | null)?.phase === 'gemini_review') {
+                refetchReview();
+              }
               setTimeout(poll, POLL_INTERVAL_MS);
             }
           })
@@ -409,6 +427,7 @@ export function usePricelistNormalization(companyId?: number | null) {
     try {
       const query = companyId != null ? `?company_id=${encodeURIComponent(String(companyId))}` : '';
       await normalizationApiClient<{ deleted_count: number }>(`/pricelist/review${query}`, { method: 'DELETE' });
+      reviewItemsRef.current = [];
       setReviewItems([]);
     } catch (err) {
       setClearReviewError(err instanceof Error ? err : new Error(String(err)));
@@ -424,10 +443,14 @@ export function usePricelistNormalization(companyId?: number | null) {
       body: JSON.stringify(patch),
     });
     setReviewItems((items) => {
+      let nextItems: PricelistReviewItem[];
       if (updated.status !== 'Pending') {
-        return items.filter((item) => item.review_id !== reviewId);
+        nextItems = items.filter((item) => item.review_id !== reviewId);
+      } else {
+        nextItems = items.map((item) => (item.review_id === reviewId ? updated : item));
       }
-      return items.map((item) => (item.review_id === reviewId ? updated : item));
+      reviewItemsRef.current = nextItems;
+      return nextItems;
     });
     return updated;
   }, []);
@@ -440,7 +463,11 @@ export function usePricelistNormalization(companyId?: number | null) {
       // (Pending/Approved/Rejected) — 'Deleted' was rejected at the DB level.
       body: JSON.stringify({ status: 'Rejected' }),
     });
-    setReviewItems((items) => items.filter((item) => item.review_id !== reviewId));
+    setReviewItems((items) => {
+      const nextItems = items.filter((item) => item.review_id !== reviewId);
+      reviewItemsRef.current = nextItems;
+      return nextItems;
+    });
   }, []);
 
   return {
