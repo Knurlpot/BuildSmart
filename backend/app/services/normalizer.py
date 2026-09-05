@@ -1,6 +1,7 @@
 import re
 
 from app.schemas.normalization import MaterialMatch
+from app.services.dpwh_material_dictionary import match_dpwh_material
 from app.services.normalizer_mock import ItemCandidate, normalize_material_mock
 from app.services.categories import CATEGORY_TYPES
 
@@ -51,7 +52,19 @@ def normalize_material(
     candidates: list[ItemCandidate],
     raw_brand: str | None = None,
 ) -> MaterialMatch:
+    dpwh_match = match_dpwh_material(raw_name, raw_unit)
     if not candidates:
+        if dpwh_match is not None:
+            return MaterialMatch(
+                matched_item_code=None,
+                confidence=dpwh_match.confidence,
+                category_type=dpwh_match.category_type,
+                item_name=raw_name,
+                material=dpwh_match.canonical_name,
+                brand=raw_brand or "Generic",
+                unit=raw_unit or dpwh_match.unit,
+                is_new_item=True,
+            )
         return MaterialMatch(
             matched_item_code=None,
             confidence=0.0,
@@ -65,7 +78,17 @@ def normalize_material(
 
     result = normalize_material_mock(raw_name, raw_unit, candidates)
 
-    if result.is_new_item:
+    if dpwh_match is not None and dpwh_match.confidence > result.confidence:
+        result.confidence = dpwh_match.confidence
+        result.category_type = dpwh_match.category_type
+        result.material = dpwh_match.canonical_name
+        if result.is_new_item:
+            result.item_name = raw_name
+            result.unit = raw_unit or dpwh_match.unit
+        elif dpwh_match.unit:
+            result.unit = result.unit or dpwh_match.unit
+
+    if result.is_new_item and dpwh_match is None:
         result.category_type = determine_category(raw_name)
         result.material = raw_name
 

@@ -22,7 +22,7 @@ from app.services.pricelist_ai_review import (
 from app.services.pricelist_parser import MissingColumnsError, expand_dpwh_deo_price_columns, parse_pricelist_file
 from app.services.normalizer import determine_category, normalize_material
 
-CONFIDENCE_THRESHOLD = 0.60
+CONFIDENCE_THRESHOLD = 0.85
 
 
 def _fit(value: str | None, max_length: int) -> str | None:
@@ -133,33 +133,6 @@ def _find_existing_supplier_price(
     return session.execute(statement).scalars().first()
 
 
-def _find_completed_duplicate_upload(
-    session: Session,
-    *,
-    current_upload_id: int,
-    company_id: int,
-    file_hash: str,
-    effective_date: date,
-    source: str,
-    supplier_id: int | None,
-) -> PriceListUpload | None:
-    statement = (
-        select(PriceListUpload)
-        .where(PriceListUpload.upload_id != current_upload_id)
-        .where(PriceListUpload.company_id == company_id)
-        .where(PriceListUpload.file_hash == file_hash)
-        .where(PriceListUpload.effective_date == effective_date)
-        .where(PriceListUpload.source == (source.strip() or "Supplier"))
-        .where(PriceListUpload.processing_status == "completed")
-        .order_by(PriceListUpload.upload_timestamp.desc(), PriceListUpload.upload_id.desc())
-    )
-    if supplier_id is None:
-        statement = statement.where(PriceListUpload.supplier_id.is_(None))
-    else:
-        statement = statement.where(PriceListUpload.supplier_id == supplier_id)
-    return session.execute(statement).scalars().first()
-
-
 def _persist_matched_price(
     session: Session,
     *,
@@ -179,6 +152,7 @@ def _persist_matched_price(
 ) -> bool:
     item_code = match.matched_item_code
     raw_name = getattr(row, "raw_name", "") or (match.material or "")
+    item_name = _cleanup_material_name(raw_name) or _cleanup_material_name(getattr(match, "item_name", "")) or match.item_name
 
     if match.is_new_item:
         category_type_to_use = match.category_type or determine_category(raw_name)
@@ -186,7 +160,7 @@ def _persist_matched_price(
         new_item = Items(
             category_id=category.category_id,
             company_id=company_id,
-            item_name=_fit(match.item_name, 255) or "Unknown material",
+            item_name=_fit(item_name, 255) or "Unknown material",
             brand=_fit(match.brand, 100) or "Generic",
             unit=_fit(match.unit, 30) or "unit",
             color=row_color,
@@ -197,9 +171,12 @@ def _persist_matched_price(
         session.add(new_item)
         session.flush()
         item_code = new_item.item_code
-    elif item_code is not None and (row_color or row_description or company_id is not None):
+    elif item_code is not None and (row_color or row_description or company_id is not None or source == "DPWH"):
         existing_item = session.get(Items, item_code)
         if existing_item is not None:
+            clean_existing_name = _cleanup_material_name(existing_item.item_name)
+            if source == "DPWH" and clean_existing_name:
+                existing_item.item_name = clean_existing_name
             if row_color and not existing_item.color:
                 existing_item.color = row_color
             if row_description:
@@ -269,14 +246,13 @@ def _add_review_item_for_row(
     ai_name = getattr(ai_review, "raw_name", None) if ai_review is not None else None
     ai_unit = getattr(ai_review, "raw_unit", None) if ai_review is not None else None
     ai_price = getattr(ai_review, "raw_price", None) if ai_review is not None else None
-    ai_confidence = getattr(ai_review, "confidence", None) if ai_review is not None else None
     ai_issue = getattr(ai_review, "issue", None) if ai_review is not None else None
     review_name = _fit((ai_name or getattr(row, "raw_name", None) or "").strip() or (match.material or "").strip(), 255) or "Unknown material"
     item = PriceListReviewItem(
         raw_name=review_name,
         raw_unit=_fit(ai_unit or row.raw_unit, 30) or "unit",
         raw_price=_optional_price(ai_price if ai_price is not None else row.raw_price),
-        confidence=min(float(match.confidence), float(ai_confidence)) if ai_confidence is not None else match.confidence,
+        confidence=match.confidence,
         suggested_category_type=match.category_type or determine_category(review_name or ""),
         suggested_material=_fit(match.material, 255),
         suggested_brand=_fit(getattr(row, "raw_brand", None), 100) or "Generic",
@@ -297,7 +273,6 @@ def _apply_ai_review_to_review_item(item: PriceListReviewItem, ai_review) -> Non
     ai_name = getattr(ai_review, "raw_name", None)
     ai_unit = getattr(ai_review, "raw_unit", None)
     ai_price = getattr(ai_review, "raw_price", None)
-    ai_confidence = getattr(ai_review, "confidence", None)
     ai_issue = getattr(ai_review, "issue", None)
     if ai_name:
         cleaned_ai_name = _cleanup_material_name(str(ai_name)) or str(ai_name).strip()
@@ -307,8 +282,6 @@ def _apply_ai_review_to_review_item(item: PriceListReviewItem, ai_review) -> Non
         item.raw_unit = _fit(str(ai_unit).strip(), 30) or item.raw_unit
     if ai_price is not None:
         item.raw_price = _optional_price(ai_price)
-    if ai_confidence is not None:
-        item.confidence = min(float(item.confidence), float(ai_confidence))
     if ai_issue:
         current = item.description or ""
         note = f"AI review: {_fit(ai_issue, 180)}"
@@ -351,36 +324,6 @@ def normalize_price_list(
                 if Path(file_path).suffix.lower() == ".pdf":
                     real_file_hash = calculate_file_hash(file_path)
                     upload.file_size = calculate_file_size(file_path)
-                    duplicate_upload = (
-                        _find_completed_duplicate_upload(
-                            session,
-                            current_upload_id=upload.upload_id,
-                            company_id=company_id,
-                            file_hash=real_file_hash,
-                            effective_date=price_effective_date,
-                            source=source,
-                            supplier_id=supplier_id,
-                        )
-                        if company_id is not None
-                        else None
-                    )
-                    if duplicate_upload is not None:
-                        upload.processing_status = "completed"
-                        upload.records_imported = duplicate_upload.records_imported
-                        upload.error_message = None
-                        session.commit()
-                        Path(file_path).unlink(missing_ok=True)
-                        return {
-                            "processed": 0,
-                            "matched": duplicate_upload.records_imported or 0,
-                            "auto_stored": duplicate_upload.records_imported or 0,
-                            "new_items_created": 0,
-                            "needs_review": 0,
-                            "upload_id": upload_id,
-                            "skipped_duplicate": True,
-                            "message": f"This file was already processed on {duplicate_upload.upload_timestamp}",
-                            "records_imported": duplicate_upload.records_imported,
-                        }
                     upload.file_hash = real_file_hash
                 session.flush()
         df = parse_pricelist_file(file_path, column_mapping=column_mapping)
@@ -411,8 +354,7 @@ def normalize_price_list(
             if row_region is None:
                 row_region = infer_region_from_location(row_location)
             ai_review = ai_reviews.get(row_index)
-            ai_confidence = getattr(ai_review, "confidence", None) if ai_review is not None else None
-            effective_confidence = min(float(match.confidence), float(ai_confidence)) if ai_confidence is not None else float(match.confidence)
+            effective_confidence = float(match.confidence)
 
             if force_review or row_price is None or effective_confidence < CONFIDENCE_THRESHOLD:
                 review_item = _add_review_item_for_row(

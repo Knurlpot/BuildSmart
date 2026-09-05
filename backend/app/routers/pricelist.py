@@ -574,57 +574,6 @@ def _refresh_upload_review_status(upload_id: int | None, db: Session, imported_d
         upload.processing_status = "completed"
 
 
-def _upload_has_review_history(upload_id: int, db: Session) -> bool:
-    review_count = db.execute(
-        select(func.count())
-        .select_from(PriceListReviewItem)
-        .where(PriceListReviewItem.upload_id == upload_id)
-    ).scalar_one()
-    return review_count > 0
-
-
-def _upload_has_catalog_rows(upload: PriceListUpload, db: Session) -> bool:
-    statement = (
-        select(func.count())
-        .select_from(HistoricalPriceRecord)
-        .join(Items, HistoricalPriceRecord.item_code == Items.item_code)
-        .where(HistoricalPriceRecord.price_source == (upload.source or "Supplier"))
-        .where(HistoricalPriceRecord.effective_date == upload.effective_date)
-    )
-    if upload.supplier_id is None:
-        statement = statement.where(HistoricalPriceRecord.supplier_id.is_(None))
-    else:
-        statement = statement.where(HistoricalPriceRecord.supplier_id == upload.supplier_id)
-    statement = statement.where((Items.company_id.is_(None)) | (Items.company_id == upload.company_id))
-    return db.execute(statement).scalar_one() > 0
-
-
-def _find_existing_upload_for_scope(
-    db: Session,
-    *,
-    company_id: int,
-    file_hash: str,
-    effective_date,
-    source: str,
-    supplier_id: int | None,
-) -> PriceListUpload | None:
-    statement = (
-        select(PriceListUpload)
-        .where(
-            PriceListUpload.company_id == company_id,
-            PriceListUpload.file_hash == file_hash,
-            PriceListUpload.effective_date == effective_date,
-            PriceListUpload.source == (source.strip() or "Supplier"),
-        )
-        .order_by(PriceListUpload.upload_timestamp.desc(), PriceListUpload.upload_id.desc())
-    )
-    if supplier_id is None:
-        statement = statement.where(PriceListUpload.supplier_id.is_(None))
-    else:
-        statement = statement.where(PriceListUpload.supplier_id == supplier_id)
-    return db.execute(statement).scalars().first()
-
-
 @router.post("/upload", response_model=UploadResponse, response_model_exclude_none=True)
 async def upload_pricelist(
     file: UploadFile = File(...),
@@ -649,79 +598,21 @@ async def upload_pricelist(
     file_hash = f"pending-{file_upload_token}" if is_pdf_upload else calculate_file_hash(dest)
     file_size = None if is_pdf_upload else calculate_file_size(dest)
     db_upload: PriceListUpload | None = None
-    force_review_for_cross_company_file = False
 
     if company_id is not None:
-        cross_company_upload = db.execute(
-            select(PriceListUpload)
-            .where(
-                PriceListUpload.company_id != company_id,
-                PriceListUpload.file_hash == file_hash,
-                PriceListUpload.effective_date == upload_effective_date,
-                PriceListUpload.processing_status == "completed",
-            )
-            .order_by(PriceListUpload.upload_timestamp.desc(), PriceListUpload.upload_id.desc())
-        ).scalars().first()
-        force_review_for_cross_company_file = cross_company_upload is not None
-
-        existing_upload = _find_existing_upload_for_scope(
-            db,
+        db_upload = PriceListUpload(
             company_id=company_id,
+            file_name=file.filename or "unknown",
             file_hash=file_hash,
-            effective_date=upload_effective_date,
-            source=source,
+            file_size=file_size,
+            source=source.strip() or "Supplier",
             supplier_id=supplier_id,
+            effective_date=upload_effective_date,
+            quarter=period_quarter,
+            year=period_year,
+            processing_status="pending",
         )
-
-        existing_upload_is_reviewed = (
-            existing_upload is not None
-            and (
-                not force_review_for_cross_company_file
-                or _upload_has_review_history(existing_upload.upload_id, db)
-            )
-        )
-
-        if (
-            existing_upload is not None
-            and existing_upload.processing_status == "completed"
-            and existing_upload_is_reviewed
-            and _upload_has_catalog_rows(existing_upload, db)
-        ):
-            dest.unlink(missing_ok=True)
-            return UploadResponse(
-                status="already_approved",
-                message=f"This file was already processed on {existing_upload.upload_timestamp}",
-                upload_id=existing_upload.upload_id,
-                allow_skip_review=True,
-                records_imported=existing_upload.records_imported,
-            )
-
-        if existing_upload is not None:
-            db_upload = existing_upload
-            db_upload.file_name = file.filename or "unknown"
-            db_upload.file_size = file_size
-            db_upload.source = source.strip() or "Supplier"
-            db_upload.supplier_id = supplier_id
-            db_upload.effective_date = upload_effective_date
-            db_upload.quarter = period_quarter
-            db_upload.year = period_year
-            db_upload.processing_status = "pending"
-            db_upload.records_imported = None
-            db_upload.error_message = None
-        else:
-            db_upload = PriceListUpload(
-                company_id=company_id,
-                file_name=file.filename or "unknown",
-                file_hash=file_hash,
-                file_size=file_size,
-                source=source.strip() or "Supplier",
-                supplier_id=supplier_id,
-                effective_date=upload_effective_date,
-                quarter=period_quarter,
-                year=period_year,
-                processing_status="pending",
-            )
-            db.add(db_upload)
+        db.add(db_upload)
         db.commit()
         db.refresh(db_upload)
 
@@ -758,7 +649,7 @@ async def upload_pricelist(
         quarter=period_quarter,
         year=period_year,
         effective_date=upload_effective_date.isoformat(),
-        force_review=force_review_for_cross_company_file,
+        force_review=False,
     )
     return UploadResponse(task_id=task.id)
 
@@ -785,80 +676,23 @@ async def confirm_column_mapping(
     period_quarter, period_year = quarter or default_quarter, year or default_year
     upload_effective_date = _parse_effective_date(effective_date, period_quarter, period_year)
     db_upload: PriceListUpload | None = None
-    force_review_for_cross_company_file = False
 
     if company_id is not None:
         file_hash = calculate_file_hash(dest)
         file_size = calculate_file_size(dest)
-        cross_company_upload = db.execute(
-            select(PriceListUpload)
-            .where(
-                PriceListUpload.company_id != company_id,
-                PriceListUpload.file_hash == file_hash,
-                PriceListUpload.effective_date == upload_effective_date,
-                PriceListUpload.processing_status == "completed",
-            )
-            .order_by(PriceListUpload.upload_timestamp.desc(), PriceListUpload.upload_id.desc())
-        ).scalars().first()
-        force_review_for_cross_company_file = cross_company_upload is not None
-
-        existing_upload = _find_existing_upload_for_scope(
-            db,
+        db_upload = PriceListUpload(
             company_id=company_id,
+            file_name=dest.name,
             file_hash=file_hash,
-            effective_date=upload_effective_date,
-            source=source,
+            file_size=file_size,
+            source=source.strip() or "Supplier",
             supplier_id=supplier_id,
+            effective_date=upload_effective_date,
+            quarter=period_quarter,
+            year=period_year,
+            processing_status="pending",
         )
-
-        existing_upload_is_reviewed = (
-            existing_upload is not None
-            and (
-                not force_review_for_cross_company_file
-                or _upload_has_review_history(existing_upload.upload_id, db)
-            )
-        )
-
-        if (
-            existing_upload is not None
-            and existing_upload.processing_status == "completed"
-            and existing_upload_is_reviewed
-            and _upload_has_catalog_rows(existing_upload, db)
-        ):
-            dest.unlink(missing_ok=True)
-            return UploadResponse(
-                status="already_approved",
-                message=f"This file was already processed on {existing_upload.upload_timestamp}",
-                upload_id=existing_upload.upload_id,
-                allow_skip_review=True,
-                records_imported=existing_upload.records_imported,
-            )
-
-        if existing_upload is not None:
-            db_upload = existing_upload
-            db_upload.file_size = file_size
-            db_upload.source = source.strip() or "Supplier"
-            db_upload.supplier_id = supplier_id
-            db_upload.effective_date = upload_effective_date
-            db_upload.quarter = period_quarter
-            db_upload.year = period_year
-            db_upload.processing_status = "pending"
-            db_upload.records_imported = None
-            db_upload.error_message = None
-        else:
-            db_upload = PriceListUpload(
-                company_id=company_id,
-                file_name=dest.name,
-                file_hash=file_hash,
-                file_size=file_size,
-                source=source.strip() or "Supplier",
-                supplier_id=supplier_id,
-                effective_date=upload_effective_date,
-                quarter=period_quarter,
-                year=period_year,
-                processing_status="pending",
-            )
-            db.add(db_upload)
+        db.add(db_upload)
         db.commit()
         db.refresh(db_upload)
 
@@ -900,7 +734,7 @@ async def confirm_column_mapping(
         quarter=period_quarter,
         year=period_year,
         effective_date=upload_effective_date.isoformat(),
-        force_review=force_review_for_cross_company_file,
+        force_review=False,
     )
     return UploadResponse(task_id=task.id)
 
@@ -1095,7 +929,7 @@ def get_dpwh_catalog(db: Session = Depends(get_db)):
         DpwhCatalogRow(
             historicalrec_id=row.historicalrec_id,
             item_code=row.item_code,
-            item_name=row.item_name,
+            item_name=_cleanup_material_name(row.item_name) or row.item_name,
             category_type=row.category_type,
             region=row.region,
             location=row.location,

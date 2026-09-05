@@ -191,10 +191,6 @@ class PriceListUpload(Base):
     records_imported: Mapped[int | None]
     error_message: Mapped[str | None] = mapped_column(Text)
 
-    __table_args__ = (
-        UniqueConstraint("company_id", "file_hash", "supplier_id", "effective_date", name="uq_company_file_supplier_effective_date"),
-    )
-
 
 class ApprovedMatchCache(Base):
     __tablename__ = "approved_match_cache"
