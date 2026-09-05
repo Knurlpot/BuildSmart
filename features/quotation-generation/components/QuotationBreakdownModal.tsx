@@ -320,6 +320,7 @@ function CostSummaryTab({ result }: { result: ProvisionalQuotationTierResult }) 
     }];
   });
   const supplierRuleDiscount = supplierRuleDiscountDetails.reduce((total, detail) => total + detail.savings, 0);
+  const hasMultipleDiscounts = supplierRuleDiscountDetails.length > 1;
   const rows: { label: string; value: number; bold?: boolean }[] = [
     { label: "Materials Subtotal", value: result.materials_subtotal },
     ...(supplierRuleDiscount > 0 ? [{ label: "Discounts", value: -supplierRuleDiscount }] : []),
@@ -379,13 +380,13 @@ function CostSummaryTab({ result }: { result: ProvisionalQuotationTierResult }) 
         </div>
       </div>
       <Dialog open={discountDetailsOpen} onOpenChange={setDiscountDetailsOpen}>
-        <DialogContent className="max-w-2xl rounded-2xl border-0 bg-white p-0 shadow-2xl">
+        <DialogContent className={`${hasMultipleDiscounts ? "sm:max-w-5xl" : "sm:max-w-lg"} rounded-2xl border-0 bg-white p-0 shadow-2xl`}>
           <div className="border-b border-gray-100 px-6 py-4">
             <p className="text-lg font-bold text-gray-900">Discount Details</p>
             <p className="text-sm text-gray-500">Supplier rules that reduced this quotation.</p>
           </div>
           <div className="max-h-[60vh] overflow-y-auto p-6">
-            <div className="flex flex-col gap-3">
+            <div className={hasMultipleDiscounts ? "grid grid-cols-1 gap-3 lg:grid-cols-2" : "flex flex-col gap-3"}>
               {supplierRuleDiscountDetails.map((detail) => (
                 <div key={detail.lineId} className="rounded-xl border border-gray-100 bg-gray-50/60 p-4">
                   <div className="flex items-start justify-between gap-4">
