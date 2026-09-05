@@ -260,21 +260,15 @@ export function ScopeTemplatesForm({ focusRuleId, onFocusHandled }: ScopeTemplat
               </div>
 
               <div className="flex flex-col gap-1.5">
-                <div className="group relative">
-                  <input
-                    id="scope-template-name"
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    placeholder=" "
-                    className="peer w-full rounded-lg border border-gray-200 bg-gray-50 px-3 pb-2 pt-5 text-sm outline-none transition focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/20"
-                  />
-                  <label
-                    htmlFor="scope-template-name"
-                    className="absolute left-3 top-1.5 text-[10px] font-semibold text-gray-500 transition-all peer-placeholder-shown:top-1/2 peer-placeholder-shown:-translate-y-1/2 peer-placeholder-shown:text-sm peer-placeholder-shown:font-medium peer-focus:top-1.5 peer-focus:translate-y-0 peer-focus:text-[10px] peer-focus:font-semibold peer-focus:text-primary"
-                  >
-                    <FieldHelp label="Template Name" text="Readable name for this scope template, used to identify the treatment setup later." /> <span className="text-red-500">*</span>
-                  </label>
-                </div>
+                <label htmlFor="scope-template-name" className="flex items-center gap-1.5 text-xs font-semibold text-gray-600">
+                  <FieldHelp label="Template Name" text="Readable name for this scope template, used to identify the treatment setup later." /> <span className="text-red-500">*</span>
+                </label>
+                <input
+                  id="scope-template-name"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  className={inputCls}
+                />
                 {touched && !nameValid && <p className="text-xs text-red-500">Template name is required.</p>}
               </div>
 

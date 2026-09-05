@@ -19,6 +19,7 @@ interface SelectableConfig<TData> {
   selectedIds: Set<string>;
   onToggle: (id: string) => void;
   onToggleAll: (visibleIds: string[]) => void;
+  showHeaderCheckbox?: boolean;
 }
 
 interface DataTableProps<TData> {
@@ -54,6 +55,7 @@ export function DataTable<TData>({
     enableGlobalFilter: false,
     enableSorting: false,
     header: ({ table: t }) => {
+      if (selectable!.showHeaderCheckbox === false) return null;
       const pageIds = t.getRowModel().rows.map((r) => selectable!.getRowId(r.original));
       const allSelected = pageIds.length > 0 && pageIds.every((id) => selectable!.selectedIds.has(id));
       return (

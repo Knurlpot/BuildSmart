@@ -343,12 +343,6 @@ export function PriceCatalogTab() {
         enableGlobalFilter: false,
         cell: ({ getValue }) => <span className="font-semibold text-gray-900">{fmt(getValue<number>())}</span>,
       },
-      {
-        accessorKey: "effective_date",
-        header: "Effective",
-        enableGlobalFilter: false,
-        cell: ({ getValue }) => <span className="text-gray-500">{formatDate(getValue<string>())}</span>,
-      },
     ],
     [selectedIds, isBulkDeleting]
   );

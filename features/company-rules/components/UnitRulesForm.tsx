@@ -306,7 +306,10 @@ export function UnitRulesForm({ focusRuleId, onFocusHandled }: UnitRulesFormProp
                   ) : items.length === 0 ? (
                     <p className="text-xs text-amber-600">No items in your catalog. Upload a pricelist first.</p>
                   ) : (
-                    <div className="relative">
+                    <div className="relative flex flex-col gap-1.5">
+                      <label className="flex items-center gap-1.5 text-xs font-semibold text-gray-600">
+                        <FieldHelp label="Item" text="Specific catalog material that should use this conversion and wastage rule instead of the category default." /> <span className="text-red-500">*</span>
+                      </label>
                       <input
                         value={itemSearch}
                         onFocus={() => setItemPickerOpen(true)}
@@ -318,14 +321,8 @@ export function UnitRulesForm({ focusRuleId, onFocusHandled }: UnitRulesFormProp
                           setItemCode(match ? String(match.item_code) : "");
                           setItemPickerOpen(true);
                         }}
-                        placeholder=" "
-                        className="peer w-full rounded-lg border border-gray-200 bg-gray-50 px-3 pb-2 pt-5 text-sm outline-none transition focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/20"
+                        className={inputCls}
                       />
-                      <label
-                        className="absolute left-3 top-1.5 text-[10px] font-semibold text-gray-500 transition-all peer-placeholder-shown:top-1/2 peer-placeholder-shown:-translate-y-1/2 peer-placeholder-shown:text-sm peer-placeholder-shown:font-medium peer-focus:top-1.5 peer-focus:translate-y-0 peer-focus:text-[10px] peer-focus:font-semibold peer-focus:text-primary"
-                      >
-                        <FieldHelp label="Item" text="Specific catalog material that should use this conversion and wastage rule instead of the category default." /> <span className="text-red-500">*</span>
-                      </label>
                       {itemPickerOpen && (
                         <div className="absolute z-20 mt-1 max-h-56 w-full overflow-auto rounded-lg border border-gray-200 bg-white py-1 shadow-lg">
                           {relatedItems.length > 0 ? (
@@ -362,51 +359,27 @@ export function UnitRulesForm({ focusRuleId, onFocusHandled }: UnitRulesFormProp
 
               <div className="grid gap-3 sm:grid-cols-2">
                 <div className="flex flex-col gap-1.5">
+                  <label htmlFor="unit-wastage-allowance" className="flex items-center gap-1.5 text-xs font-semibold text-gray-600">
+                    <FieldHelp label="Wastage Allowance" text="Extra material percentage added for cuts, overlap, spillage, defects, or site waste." /> <span className="text-red-500">*</span>
+                  </label>
                   <div className="relative">
-                    <input
-                      id="unit-wastage-allowance"
-                      type="text"
-                      inputMode="decimal"
-                      value={wastage}
-                      onChange={(e) => {
-                        const next = e.target.value.replace(/[^\d.]/g, "");
-                        setWastage(next === "" ? "" : Number(next));
-                      }}
-                      placeholder=" "
-                      className="peer w-full rounded-lg border border-gray-200 bg-gray-50 px-3 pb-2 pr-8 pt-5 text-sm outline-none transition focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/20"
-                    />
-                    <label
-                      htmlFor="unit-wastage-allowance"
-                      className="absolute left-3 top-1.5 text-[10px] font-semibold text-gray-500 transition-all peer-placeholder-shown:top-1/2 peer-placeholder-shown:-translate-y-1/2 peer-placeholder-shown:text-sm peer-placeholder-shown:font-medium peer-focus:top-1.5 peer-focus:translate-y-0 peer-focus:text-[10px] peer-focus:font-semibold peer-focus:text-primary"
-                    >
-                      <FieldHelp label="Wastage Allowance" text="Extra material percentage added for cuts, overlap, spillage, defects, or site waste." /> <span className="text-red-500">*</span>
-                    </label>
-                    <span className="pointer-events-none absolute right-3 top-[1.9rem] -translate-y-1/2 text-xs text-gray-400">%</span>
+                    <input id="unit-wastage-allowance" type="text" inputMode="decimal" value={wastage} onChange={(e) => {
+                      const next = e.target.value.replace(/[^\d.]/g, "");
+                      setWastage(next === "" ? "" : Number(next));
+                    }} className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 pr-8 text-sm outline-none transition focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/20" />
+                    <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400">%</span>
                   </div>
                   {touched && !wastageValid && <p className="text-xs text-red-500">Enter a value between 0 and 100.</p>}
                 </div>
 
                 <div className="flex flex-col gap-1.5">
-                  <div className="relative">
-                    <input
-                      id="unit-conversion-factor"
-                      type="text"
-                      inputMode="decimal"
-                      value={conversionFactor}
-                      onChange={(e) => {
-                        const next = e.target.value.replace(/[^\d.]/g, "");
-                        setConversionFactor(next === "" ? "" : Number(next));
-                      }}
-                      placeholder=" "
-                      className="peer w-full rounded-lg border border-gray-200 bg-gray-50 px-3 pb-2 pt-5 text-sm outline-none transition focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/20"
-                    />
-                    <label
-                      htmlFor="unit-conversion-factor"
-                      className="absolute left-3 top-1.5 text-[10px] font-semibold text-gray-500 transition-all peer-placeholder-shown:top-1/2 peer-placeholder-shown:-translate-y-1/2 peer-placeholder-shown:text-sm peer-placeholder-shown:font-medium peer-focus:top-1.5 peer-focus:translate-y-0 peer-focus:text-[10px] peer-focus:font-semibold peer-focus:text-primary"
-                    >
-                      <FieldHelp label="Conversion Factor" text="Converts treatment area into material quantity. Formula: area x conversion factor x wastage." /> <span className="text-red-500">*</span>
-                    </label>
-                  </div>
+                  <label htmlFor="unit-conversion-factor" className="flex items-center gap-1.5 text-xs font-semibold text-gray-600">
+                    <FieldHelp label="Conversion Factor" text="Converts treatment area into material quantity. Formula: area x conversion factor x wastage." /> <span className="text-red-500">*</span>
+                  </label>
+                  <input id="unit-conversion-factor" type="text" inputMode="decimal" value={conversionFactor} onChange={(e) => {
+                    const next = e.target.value.replace(/[^\d.]/g, "");
+                    setConversionFactor(next === "" ? "" : Number(next));
+                  }} className={inputCls} />
                   {touched && !factorValid && <p className="text-xs text-red-500">Must be greater than 0.</p>}
                 </div>
               </div>

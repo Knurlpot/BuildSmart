@@ -157,7 +157,7 @@ export function PublishedSourceTab({
   }, [handleCheckDpwh]);
 
   useEffect(() => {
-    if (region !== "NCR") return;
+    if (region !== "NCR" && region !== "All") return;
     triggerPsaIndex().catch(() => {});
   }, [region, triggerPsaIndex]);
 
@@ -495,17 +495,17 @@ export function PublishedSourceTab({
 
 
 
-          {region === "NCR" && (psaIndexResult || isFetchingPsaIndex || fetchPsaIndexError) && (
+          {(region === "NCR" || region === "All") && (psaIndexResult || isFetchingPsaIndex || fetchPsaIndexError) && (
             <div className="flex flex-col gap-3 rounded-2xl border border-indigo-100 bg-indigo-50/30 p-4">
               <div className="flex items-center gap-2">
                 <Landmark className="h-4 w-4 text-indigo-500" />
                 <p className="text-xs font-bold uppercase tracking-wider text-indigo-500">
-                  PSA CMRPI Rates (NCR): Analytics Only
+                  PSA CMRPI Rates (NCR Only): Analytics Only
                 </p>
               </div>
               <p className="text-xs text-indigo-400">
                 PSA supports market trend analysis and escalation reference, not exact material
-                prices.
+                prices. These rates apply to NCR only.
               </p>
               <QueryState
                 isLoading={isFetchingPsaIndex}

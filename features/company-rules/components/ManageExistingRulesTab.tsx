@@ -438,6 +438,15 @@ export function ManageExistingRulesTab({ onViewRule }: ManageExistingRulesTabPro
             />
           </div>
           <div className="flex min-w-0 flex-wrap items-center gap-2 xl:justify-end">
+            <span className="text-xs font-semibold text-gray-500">{selectedRuleCount} selected</span>
+            <button
+              type="button"
+              onClick={() => toggleAllVisibleRules(selectableRuleIds)}
+              disabled={selectableRuleIds.length === 0 || isCheckingUsage || isDisabling || activeRuleId !== null}
+              className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-600 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {allVisibleSelected ? "Deselect All" : "Select All"}
+            </button>
             <div className="relative">
               <button
                 type="button"
@@ -467,71 +476,24 @@ export function ManageExistingRulesTab({ onViewRule }: ManageExistingRulesTabPro
                 <div className="absolute right-0 top-full z-20 mt-2 w-56 overflow-hidden rounded-xl border border-gray-200 bg-white py-2 shadow-lg">
                   <div className="px-2">
                     <p className="px-2 pb-1 text-[10px] font-bold uppercase tracking-wider text-gray-400">Rule Type</p>
-                    <button
-                      type="button"
-                      onClick={() => setDraftRuleFilter("all")}
-                      className={`flex w-full rounded-lg px-2 py-1.5 text-left text-sm font-medium transition hover:bg-gray-50 ${
-                        draftRuleFilter === "all" ? "text-primary" : "text-gray-700"
-                      }`}
-                    >
-                      All
-                    </button>
+                    <button type="button" onClick={() => setDraftRuleFilter("all")} className={`flex w-full rounded-lg px-2 py-1.5 text-left text-sm font-medium transition hover:bg-gray-50 ${draftRuleFilter === "all" ? "text-primary" : "text-gray-700"}`}>All</button>
                     {RULE_FILTER_KINDS.map((kind) => (
-                      <button
-                        key={kind}
-                        type="button"
-                        onClick={() => setDraftRuleFilter(kind)}
-                        className={`flex w-full rounded-lg px-2 py-1.5 text-left text-sm font-medium transition hover:bg-gray-50 ${
-                          draftRuleFilter === kind ? "text-primary" : "text-gray-700"
-                        }`}
-                      >
-                        {RULE_KIND_LABEL[kind]}
-                      </button>
+                      <button key={kind} type="button" onClick={() => setDraftRuleFilter(kind)} className={`flex w-full rounded-lg px-2 py-1.5 text-left text-sm font-medium transition hover:bg-gray-50 ${draftRuleFilter === kind ? "text-primary" : "text-gray-700"}`}>{RULE_KIND_LABEL[kind]}</button>
                     ))}
                   </div>
                   <div className="mt-2 border-t border-gray-100 px-2 pt-2">
                     <p className="px-2 pb-1 text-[10px] font-bold uppercase tracking-wider text-gray-400">Status</p>
                     {STATUS_FILTERS.map((status) => (
-                      <button
-                        key={status}
-                        type="button"
-                        onClick={() => setDraftStatusFilter(status)}
-                        className={`flex w-full rounded-lg px-2 py-1.5 text-left text-sm font-medium transition hover:bg-gray-50 ${
-                          draftStatusFilter === status ? "text-primary" : "text-gray-700"
-                        }`}
-                      >
-                        {status === "all" ? "All" : status}
-                      </button>
+                      <button key={status} type="button" onClick={() => setDraftStatusFilter(status)} className={`flex w-full rounded-lg px-2 py-1.5 text-left text-sm font-medium transition hover:bg-gray-50 ${draftStatusFilter === status ? "text-primary" : "text-gray-700"}`}>{status === "all" ? "All" : status}</button>
                     ))}
                   </div>
                   <div className="mt-2 flex items-center justify-end gap-2 border-t border-gray-100 px-2 pt-2">
-                    <button
-                      type="button"
-                      onClick={clearFilters}
-                      className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-600 transition hover:bg-gray-50"
-                    >
-                      Clear
-                    </button>
-                    <button
-                      type="button"
-                      onClick={applyFilters}
-                      className="rounded-lg bg-primary px-3 py-1.5 text-xs font-bold text-primary-foreground transition hover:bg-(--primary-hover)"
-                    >
-                      Apply
-                    </button>
+                    <button type="button" onClick={clearFilters} className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-600 transition hover:bg-gray-50">Clear</button>
+                    <button type="button" onClick={applyFilters} className="rounded-lg bg-primary px-3 py-1.5 text-xs font-bold text-primary-foreground transition hover:bg-(--primary-hover)">Apply</button>
                   </div>
                 </div>
               )}
             </div>
-            <span className="text-xs font-semibold text-gray-500">{selectedRuleCount} selected</span>
-            <button
-              type="button"
-              onClick={() => toggleAllVisibleRules(selectableRuleIds)}
-              disabled={selectableRuleIds.length === 0 || isCheckingUsage || isDisabling || activeRuleId !== null}
-              className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-600 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {allVisibleSelected ? "Deselect All" : "Select All"}
-            </button>
             <button
               type="button"
               onClick={() => handleBatchDisable().catch(() => {})}
@@ -580,6 +542,7 @@ export function ManageExistingRulesTab({ onViewRule }: ManageExistingRulesTabPro
               selectedIds: selectedRuleIds,
               onToggle: toggleRuleSelection,
               onToggleAll: toggleAllVisibleRules,
+              showHeaderCheckbox: false,
             }}
             onRowClick={onViewRule}
           />

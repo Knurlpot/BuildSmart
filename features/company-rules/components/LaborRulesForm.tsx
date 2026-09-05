@@ -500,149 +500,74 @@ export function LaborRulesForm({ focusRuleId, onFocusHandled }: LaborRulesFormPr
 
               <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
                 <div className="flex flex-col gap-1.5">
-                  <div className="relative">
-                    <input
-                      id="labor-rate"
-                      type="text"
-                      inputMode="decimal"
-                      value={rate}
-                      onChange={(e) => {
-                        const next = e.target.value.replace(/[^\d.]/g, "");
-                        setRate(next === "" ? "" : Number(next));
-                      }}
-                      placeholder=" "
-                      className="peer w-full rounded-lg border border-gray-200 bg-gray-50 px-3 pb-2 pt-5 text-sm outline-none transition focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/20"
-                    />
-                    <label
-                      htmlFor="labor-rate"
-                      className="absolute left-3 top-1.5 text-[10px] font-semibold text-gray-500 transition-all peer-placeholder-shown:top-1/2 peer-placeholder-shown:-translate-y-1/2 peer-placeholder-shown:text-sm peer-placeholder-shown:font-medium peer-focus:top-1.5 peer-focus:translate-y-0 peer-focus:text-[10px] peer-focus:font-semibold peer-focus:text-primary"
-                    >
-                      <FieldHelp label={`Labor Rate (₱${rateUnit(scope)})`} text="Base labor cost used in the quotation before rush or productivity adjustments." /> <span className="text-red-500">*</span>
-                    </label>
-                  </div>
+                  <label htmlFor="labor-rate" className="flex items-center gap-1.5 text-xs font-semibold text-gray-600">
+                    <FieldHelp label={`Labor Rate (₱${rateUnit(scope)})`} text="Base labor cost used in the quotation before rush or productivity adjustments." /> <span className="text-red-500">*</span>
+                  </label>
+                  <input id="labor-rate" type="text" inputMode="decimal" value={rate} onChange={(e) => {
+                    const next = e.target.value.replace(/[^\d.]/g, "");
+                    setRate(next === "" ? "" : Number(next));
+                  }} className={inputCls} />
                   {touched && !rateValid && <p className="text-xs text-red-500">Must be greater than 0.</p>}
                 </div>
                 <div className="flex flex-col gap-1.5">
-                  <div className="relative">
-                    <input
-                      id="labor-worker-count"
-                      type="text"
-                      inputMode="numeric"
-                      value={workerCount}
-                      onChange={(e) => {
-                        const next = e.target.value.replace(/[^\d]/g, "");
-                        setWorkerCount(next === "" ? "" : Number(next));
-                      }}
-                      placeholder=" "
-                      className="peer w-full rounded-lg border border-gray-200 bg-gray-50 px-3 pb-2 pt-5 text-sm outline-none transition focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/20"
-                    />
-                    <label
-                      htmlFor="labor-worker-count"
-                      className="absolute left-3 top-1.5 text-[10px] font-semibold text-gray-500 transition-all peer-placeholder-shown:top-1/2 peer-placeholder-shown:-translate-y-1/2 peer-placeholder-shown:text-sm peer-placeholder-shown:font-medium peer-focus:top-1.5 peer-focus:translate-y-0 peer-focus:text-[10px] peer-focus:font-semibold peer-focus:text-primary"
-                    >
-                      <FieldHelp label="No. of Workers" text="Standard crew size for this labor rule. The quotation uses this manpower count in labor cost estimates." /> <span className="text-red-500">*</span>
-                    </label>
-                  </div>
+                  <label htmlFor="labor-worker-count" className="flex items-center gap-1.5 text-xs font-semibold text-gray-600">
+                    <FieldHelp label="No. of Workers" text="Standard crew size for this labor rule. The quotation uses this manpower count in labor cost estimates." /> <span className="text-red-500">*</span>
+                  </label>
+                  <input id="labor-worker-count" type="text" inputMode="numeric" value={workerCount} onChange={(e) => {
+                    const next = e.target.value.replace(/[^\d]/g, "");
+                    setWorkerCount(next === "" ? "" : Number(next));
+                  }} className={inputCls} />
                   {touched && !workerCountValid && <p className="text-xs text-red-500">Enter at least 1 worker.</p>}
                 </div>
                 <div className="flex flex-col gap-1.5">
-                  <div className="relative">
-                    <input
-                      id="labor-productivity-index"
-                      type="text"
-                      inputMode="decimal"
-                      value={productivity}
-                      onChange={(e) => {
-                        const next = e.target.value.replace(/[^\d.]/g, "");
-                        setProductivity(next === "" ? "" : Number(next));
-                      }}
-                      placeholder=" "
-                      className="peer w-full rounded-lg border border-gray-200 bg-gray-50 px-3 pb-2 pt-5 text-sm outline-none transition focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/20"
-                    />
-                    <label
-                      htmlFor="labor-productivity-index"
-                      className="absolute left-3 top-1.5 text-[10px] font-semibold text-gray-500 transition-all peer-placeholder-shown:top-1/2 peer-placeholder-shown:-translate-y-1/2 peer-placeholder-shown:text-sm peer-placeholder-shown:font-medium peer-focus:top-1.5 peer-focus:translate-y-0 peer-focus:text-[10px] peer-focus:font-semibold peer-focus:text-primary"
-                    >
-                      <FieldHelp label="Productivity Index" text="Optional efficiency factor for site difficulty or crew speed. Example: 1.0 normal, 0.8 slower, 1.2 faster." />
-                    </label>
-                  </div>
+                  <label htmlFor="labor-productivity-index" className="flex items-center gap-1.5 text-xs font-semibold text-gray-600">
+                    <FieldHelp label="Productivity Index" text="Optional efficiency factor for site difficulty or crew speed. Example: 1.0 normal, 0.8 slower, 1.2 faster." />
+                  </label>
+                  <input id="labor-productivity-index" type="text" inputMode="decimal" value={productivity} onChange={(e) => {
+                    const next = e.target.value.replace(/[^\d.]/g, "");
+                    setProductivity(next === "" ? "" : Number(next));
+                  }} className={inputCls} />
                   {touched && !productivityValid && <p className="text-xs text-red-500">Must be greater than 0.</p>}
                 </div>
               </div>
 
               <div className="grid grid-cols-3 gap-3">
                 <div className="flex flex-col gap-1.5">
-                  <div className="relative">
-                    <input
-                      id="labor-productivity-sqm-per-day"
-                      type="text"
-                      inputMode="decimal"
-                      value={productivitySqmPerDay}
-                      onChange={(e) => {
-                        const next = e.target.value.replace(/[^\d.]/g, "");
-                        setProductivitySqmPerDay(next === "" ? "" : Number(next));
-                      }}
-                      placeholder=" "
-                      className="peer w-full rounded-lg border border-gray-200 bg-gray-50 px-3 pb-2 pt-5 text-sm outline-none transition focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/20"
-                    />
-                    <label
-                      htmlFor="labor-productivity-sqm-per-day"
-                      className="absolute left-3 top-1.5 text-[10px] font-semibold text-gray-500 transition-all peer-placeholder-shown:top-1/2 peer-placeholder-shown:-translate-y-1/2 peer-placeholder-shown:text-sm peer-placeholder-shown:font-medium peer-focus:top-1.5 peer-focus:translate-y-0 peer-focus:text-[10px] peer-focus:font-semibold peer-focus:text-primary"
-                    >
-                      <FieldHelp label="Productivity sqm/day" text="Estimated square meters the crew can finish per day, used for duration planning." />
-                    </label>
-                  </div>
+                  <label htmlFor="labor-productivity-sqm-per-day" className="flex items-center gap-1.5 text-xs font-semibold text-gray-600">
+                    <FieldHelp label="Productivity sqm/day" text="Estimated square meters the crew can finish per day, used for duration planning." />
+                  </label>
+                  <input id="labor-productivity-sqm-per-day" type="text" inputMode="decimal" value={productivitySqmPerDay} onChange={(e) => {
+                    const next = e.target.value.replace(/[^\d.]/g, "");
+                    setProductivitySqmPerDay(next === "" ? "" : Number(next));
+                  }} className={inputCls} />
                   {touched && !productivitySqmValid && <p className="text-xs text-red-500">Must be greater than 0.</p>}
                 </div>
                 <div className="flex flex-col gap-1.5">
-                  <div className="relative">
-                    <input
-                      id="labor-min-duration-days"
-                      type="text"
-                      inputMode="decimal"
-                      value={minDurationDays}
-                      onChange={(e) => {
-                        const next = e.target.value.replace(/[^\d.]/g, "");
-                        setMinDurationDays(next === "" ? "" : Number(next));
-                      }}
-                      placeholder=" "
-                      className="peer w-full rounded-lg border border-gray-200 bg-gray-50 px-3 pb-2 pt-5 text-sm outline-none transition focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/20"
-                    />
-                    <label
-                      htmlFor="labor-min-duration-days"
-                      className="absolute left-3 top-1.5 text-[10px] font-semibold text-gray-500 transition-all peer-placeholder-shown:top-1/2 peer-placeholder-shown:-translate-y-1/2 peer-placeholder-shown:text-sm peer-placeholder-shown:font-medium peer-focus:top-1.5 peer-focus:translate-y-0 peer-focus:text-[10px] peer-focus:font-semibold peer-focus:text-primary"
-                    >
-                      <FieldHelp label="Min. Duration Days" text="Smallest practical number of work days for this rule, even if the computed area is low." />
-                    </label>
-                  </div>
+                  <label htmlFor="labor-min-duration-days" className="flex items-center gap-1.5 text-xs font-semibold text-gray-600">
+                    <FieldHelp label="Min. Duration Days" text="Smallest practical number of work days for this rule, even if the computed area is low." />
+                  </label>
+                  <input id="labor-min-duration-days" type="text" inputMode="decimal" value={minDurationDays} onChange={(e) => {
+                    const next = e.target.value.replace(/[^\d.]/g, "");
+                    setMinDurationDays(next === "" ? "" : Number(next));
+                  }} className={inputCls} />
                   {touched && !minDurationValid && <p className="text-xs text-red-500">Must be greater than 0.</p>}
                 </div>
                 <div className="flex flex-col gap-1.5">
-                  <div className="relative">
-                    <input
-                      id="labor-safety-buffer-days"
-                      type="text"
-                      inputMode="decimal"
-                      value={safetyBufferDays}
-                      onChange={(e) => {
-                        const next = e.target.value.replace(/[^\d.]/g, "");
-                        setSafetyBufferDays(next === "" ? "" : Number(next));
-                      }}
-                      placeholder=" "
-                      className="peer w-full rounded-lg border border-gray-200 bg-gray-50 px-3 pb-2 pt-5 text-sm outline-none transition focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/20"
-                    />
-                    <label
-                      htmlFor="labor-safety-buffer-days"
-                      className="absolute left-3 top-1.5 text-[10px] font-semibold text-gray-500 transition-all peer-placeholder-shown:top-1/2 peer-placeholder-shown:-translate-y-1/2 peer-placeholder-shown:text-sm peer-placeholder-shown:font-medium peer-focus:top-1.5 peer-focus:translate-y-0 peer-focus:text-[10px] peer-focus:font-semibold peer-focus:text-primary"
-                    >
-                      <FieldHelp label="Safety Buffer Days" text="Extra schedule allowance for curing time, access delays, weather, or coordination risk." />
-                    </label>
-                  </div>
+                  <label htmlFor="labor-safety-buffer-days" className="flex items-center gap-1.5 text-xs font-semibold text-gray-600">
+                    <FieldHelp label="Safety Buffer Days" text="Extra schedule allowance for curing time, access delays, weather, or coordination risk." />
+                  </label>
+                  <input id="labor-safety-buffer-days" type="text" inputMode="decimal" value={safetyBufferDays} onChange={(e) => {
+                    const next = e.target.value.replace(/[^\d.]/g, "");
+                    setSafetyBufferDays(next === "" ? "" : Number(next));
+                  }} className={inputCls} />
                   {touched && !safetyBufferValid && <p className="text-xs text-red-500">Must be greater than 0.</p>}
                 </div>
               </div>
 
               <div className="flex flex-col gap-1.5">
+                <label htmlFor="labor-rush-multiplier" className="flex items-center gap-1.5 text-xs font-semibold text-gray-600">
+                  <FieldHelp label="Rush Multiplier" text="Optional percentage added to labor when the job is rushed or needs extra manpower." /> <span className="font-normal normal-case text-gray-400">(optional)</span>
+                </label>
                 <div className="relative">
                   <input
                     id="labor-rush-multiplier"
@@ -653,16 +578,9 @@ export function LaborRulesForm({ focusRuleId, onFocusHandled }: LaborRulesFormPr
                       const next = e.target.value.replace(/[^\d.]/g, "");
                       setRushMultiplier(next === "" ? "" : Number(next));
                     }}
-                    placeholder=" "
-                    className="peer w-full rounded-lg border border-gray-200 bg-gray-50 px-3 pb-2 pr-8 pt-5 text-sm outline-none transition focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/20"
+                    className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 pr-8 text-sm outline-none transition focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/20"
                   />
-                  <label
-                    htmlFor="labor-rush-multiplier"
-                    className="absolute left-3 top-1.5 text-[10px] font-semibold text-gray-500 transition-all peer-placeholder-shown:top-1/2 peer-placeholder-shown:-translate-y-1/2 peer-placeholder-shown:text-sm peer-placeholder-shown:font-medium peer-focus:top-1.5 peer-focus:translate-y-0 peer-focus:text-[10px] peer-focus:font-semibold peer-focus:text-primary"
-                  >
-                    <FieldHelp label="Rush Multiplier" text="Optional percentage added to labor when the job is rushed or needs extra manpower." /> <span className="font-normal normal-case text-gray-400">(optional)</span>
-                  </label>
-                  <span className="pointer-events-none absolute right-3 top-[1.9rem] -translate-y-1/2 text-xs text-gray-400">%</span>
+                  <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400">%</span>
                 </div>
                 {touched && !rushValid && <p className="text-xs text-red-500">Enter a value between 0 and 100.</p>}
                 <p className="text-[11px] text-gray-400">{rushPreview}</p>

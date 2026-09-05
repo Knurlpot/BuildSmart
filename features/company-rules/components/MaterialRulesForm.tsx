@@ -709,34 +709,29 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
               </div>
 
               <div className="flex flex-col gap-1.5">
-                <div className="relative">
-                  <select
-                    id="material-treatment-type"
-                    value={treatmentType}
-                    onChange={(e) => {
-                      const nextTreatment = e.target.value;
-                      setTreatmentType(nextTreatment);
-                      const nextAvailableTiers = MATERIAL_TREATMENT_TIERS.filter(
-                        (tier) => !activeTiersForTreatment(nextTreatment).has(tier)
-                      );
-                      setTreatmentTier(nextAvailableTiers[0] ?? "Practical");
-                    }}
-                    className="peer w-full rounded-lg border border-gray-200 bg-gray-50 px-3 pb-2 pt-5 text-sm outline-none transition focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/20"
-                  >
-                    <option value="">Select...</option>
-                    {availableTreatmentOptions.map((type) => (
-                      <option key={type} value={type}>
-                        {type}
-                      </option>
-                    ))}
-                  </select>
-                  <label
-                    htmlFor="material-treatment-type"
-                    className="absolute left-3 top-1.5 text-[10px] font-semibold text-gray-500 transition-all peer-focus:text-primary"
-                  >
-                    <FieldHelp label="Treatment Type" text="Defines which treatment this group of materials will be used for during quotation generation." /> <span className="text-red-500">*</span>
-                  </label>
-                </div>
+                <label htmlFor="material-treatment-type" className="flex items-center gap-1.5 text-xs font-semibold text-gray-600">
+                  <FieldHelp label="Treatment Type" text="Defines which treatment this group of materials will be used for during quotation generation." /> <span className="text-red-500">*</span>
+                </label>
+                <select
+                  id="material-treatment-type"
+                  value={treatmentType}
+                  onChange={(e) => {
+                    const nextTreatment = e.target.value;
+                    setTreatmentType(nextTreatment);
+                    const nextAvailableTiers = MATERIAL_TREATMENT_TIERS.filter(
+                      (tier) => !activeTiersForTreatment(nextTreatment).has(tier)
+                    );
+                    setTreatmentTier(nextAvailableTiers[0] ?? "Practical");
+                  }}
+                  className={inputCls}
+                >
+                  <option value="">Select...</option>
+                  {availableTreatmentOptions.map((type) => (
+                    <option key={type} value={type}>
+                      {type}
+                    </option>
+                  ))}
+                </select>
                 {touched && !TREATMENT_OPTIONS.includes(treatmentType as (typeof TREATMENT_OPTIONS)[number]) && (
                   <p className="text-xs text-red-500">Choose one of BuildSmart&apos;s treatment types.</p>
                 )}
@@ -749,49 +744,37 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
 
               <div className="grid grid-cols-2 gap-3">
                 <div className="flex flex-col gap-1.5">
-                  <div className="relative">
-                    <input
-                      id="material-warranty-years"
-                      type="text"
-                      inputMode="decimal"
-                      value={warrantyYears}
-                      onChange={(e) => {
-                        const next = e.target.value.replace(/[^\d.]/g, "");
-                        setWarrantyYears(next === "" ? "" : Number(next));
-                      }}
-                      placeholder=" "
-                      className="peer w-full rounded-lg border border-gray-200 bg-gray-50 px-3 pb-2 pt-5 text-sm outline-none transition focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/20"
-                    />
-                    <label
-                      htmlFor="material-warranty-years"
-                      className="absolute left-3 top-1.5 text-[10px] font-semibold text-gray-500 transition-all peer-placeholder-shown:top-1/2 peer-placeholder-shown:-translate-y-1/2 peer-placeholder-shown:text-sm peer-placeholder-shown:font-medium peer-focus:top-1.5 peer-focus:translate-y-0 peer-focus:text-[10px] peer-focus:font-semibold peer-focus:text-primary"
-                    >
-                      <FieldHelp label="Warranty Years" text="Warranty period promised for this treatment/material system." /> <span className="text-red-500">*</span>
-                    </label>
-                  </div>
+                  <label htmlFor="material-warranty-years" className="flex items-center gap-1.5 text-xs font-semibold text-gray-600">
+                    <FieldHelp label="Warranty Years" text="Warranty period promised for this treatment/material system." /> <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    id="material-warranty-years"
+                    type="text"
+                    inputMode="decimal"
+                    value={warrantyYears}
+                    onChange={(e) => {
+                      const next = e.target.value.replace(/[^\d.]/g, "");
+                      setWarrantyYears(next === "" ? "" : Number(next));
+                    }}
+                    className={inputCls}
+                  />
                   {touched && (warrantyYears === "" || Number(warrantyYears) <= 0) && <p className="text-xs text-red-500">Warranty years is required.</p>}
                 </div>
                 <div className="flex flex-col gap-1.5">
-                  <div className="relative">
-                    <input
-                      id="material-lifespan-years"
-                      type="text"
-                      inputMode="decimal"
-                      value={lifespanYears}
-                      onChange={(e) => {
-                        const next = e.target.value.replace(/[^\d.]/g, "");
-                        setLifespanYears(next === "" ? "" : Number(next));
-                      }}
-                      placeholder=" "
-                      className="peer w-full rounded-lg border border-gray-200 bg-gray-50 px-3 pb-2 pt-5 text-sm outline-none transition focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/20"
-                    />
-                    <label
-                      htmlFor="material-lifespan-years"
-                      className="absolute left-3 top-1.5 text-[10px] font-semibold text-gray-500 transition-all peer-placeholder-shown:top-1/2 peer-placeholder-shown:-translate-y-1/2 peer-placeholder-shown:text-sm peer-placeholder-shown:font-medium peer-focus:top-1.5 peer-focus:translate-y-0 peer-focus:text-[10px] peer-focus:font-semibold peer-focus:text-primary"
-                    >
-                      <FieldHelp label="Expected Lifespan Years" text="Expected useful service life of the treatment before major repair or replacement." /> <span className="text-red-500">*</span>
-                    </label>
-                  </div>
+                  <label htmlFor="material-lifespan-years" className="flex items-center gap-1.5 text-xs font-semibold text-gray-600">
+                    <FieldHelp label="Expected Lifespan Years" text="Expected useful service life of the treatment before major repair or replacement." /> <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    id="material-lifespan-years"
+                    type="text"
+                    inputMode="decimal"
+                    value={lifespanYears}
+                    onChange={(e) => {
+                      const next = e.target.value.replace(/[^\d.]/g, "");
+                      setLifespanYears(next === "" ? "" : Number(next));
+                    }}
+                    className={inputCls}
+                  />
                   {touched && (lifespanYears === "" || Number(lifespanYears) <= 0) && <p className="text-xs text-red-500">Expected lifespan years is required.</p>}
                 </div>
               </div>
@@ -1026,49 +1009,37 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
 
               <div className="grid grid-cols-2 gap-3">
                 <div className="flex flex-col gap-1.5">
-                  <div className="relative">
-                    <input
-                      id="edit-material-warranty-years"
-                      type="text"
-                      inputMode="decimal"
-                      value={warrantyYears}
-                      onChange={(e) => {
-                        const next = e.target.value.replace(/[^\d.]/g, "");
-                        setWarrantyYears(next === "" ? "" : Number(next));
-                      }}
-                      placeholder=" "
-                      className="peer w-full rounded-lg border border-gray-200 bg-gray-50 px-3 pb-2 pt-5 text-sm outline-none transition focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/20"
-                    />
-                    <label
-                      htmlFor="edit-material-warranty-years"
-                      className="absolute left-3 top-1.5 text-[10px] font-semibold text-gray-500 transition-all peer-placeholder-shown:top-1/2 peer-placeholder-shown:-translate-y-1/2 peer-placeholder-shown:text-sm peer-placeholder-shown:font-medium peer-focus:top-1.5 peer-focus:translate-y-0 peer-focus:text-[10px] peer-focus:font-semibold peer-focus:text-primary"
-                    >
-                      <FieldHelp label="Warranty Years" text="Warranty period promised for this treatment/material system." /> <span className="text-red-500">*</span>
-                    </label>
-                  </div>
+                  <label htmlFor="edit-material-warranty-years" className="flex items-center gap-1.5 text-xs font-semibold text-gray-600">
+                    <FieldHelp label="Warranty Years" text="Warranty period promised for this treatment/material system." /> <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    id="edit-material-warranty-years"
+                    type="text"
+                    inputMode="decimal"
+                    value={warrantyYears}
+                    onChange={(e) => {
+                      const next = e.target.value.replace(/[^\d.]/g, "");
+                      setWarrantyYears(next === "" ? "" : Number(next));
+                    }}
+                    className={inputCls}
+                  />
                   {touched && (warrantyYears === "" || Number(warrantyYears) <= 0) && <p className="text-xs text-red-500">Warranty years is required.</p>}
                 </div>
                 <div className="flex flex-col gap-1.5">
-                  <div className="relative">
-                    <input
-                      id="edit-material-lifespan-years"
-                      type="text"
-                      inputMode="decimal"
-                      value={lifespanYears}
-                      onChange={(e) => {
-                        const next = e.target.value.replace(/[^\d.]/g, "");
-                        setLifespanYears(next === "" ? "" : Number(next));
-                      }}
-                      placeholder=" "
-                      className="peer w-full rounded-lg border border-gray-200 bg-gray-50 px-3 pb-2 pt-5 text-sm outline-none transition focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/20"
-                    />
-                    <label
-                      htmlFor="edit-material-lifespan-years"
-                      className="absolute left-3 top-1.5 text-[10px] font-semibold text-gray-500 transition-all peer-placeholder-shown:top-1/2 peer-placeholder-shown:-translate-y-1/2 peer-placeholder-shown:text-sm peer-placeholder-shown:font-medium peer-focus:top-1.5 peer-focus:translate-y-0 peer-focus:text-[10px] peer-focus:font-semibold peer-focus:text-primary"
-                    >
-                      <FieldHelp label="Expected Lifespan Years" text="Expected useful service life of the treatment before major repair or replacement." /> <span className="text-red-500">*</span>
-                    </label>
-                  </div>
+                  <label htmlFor="edit-material-lifespan-years" className="flex items-center gap-1.5 text-xs font-semibold text-gray-600">
+                    <FieldHelp label="Expected Lifespan Years" text="Expected useful service life of the treatment before major repair or replacement." /> <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    id="edit-material-lifespan-years"
+                    type="text"
+                    inputMode="decimal"
+                    value={lifespanYears}
+                    onChange={(e) => {
+                      const next = e.target.value.replace(/[^\d.]/g, "");
+                      setLifespanYears(next === "" ? "" : Number(next));
+                    }}
+                    className={inputCls}
+                  />
                   {touched && (lifespanYears === "" || Number(lifespanYears) <= 0) && <p className="text-xs text-red-500">Expected lifespan years is required.</p>}
                 </div>
               </div>

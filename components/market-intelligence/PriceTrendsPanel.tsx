@@ -74,6 +74,7 @@ type VarianceAnalysisRow = {
   actualPrice: number;
   dpwhRate: number | null;
   psaAdjustedRate: number | null;
+  psaPercentChange: number | null;
   psaCommodityGroup: string;
   psaMappingType: CmrpiMappingResult["matchType"];
   psaMappingReason: string;
@@ -376,6 +377,7 @@ export function PriceTrendsPanel({ compact = false }: PriceTrendsPanelProps) {
         actualPrice: point.actualPrice,
         dpwhRate: point.dpwhRate,
         psaAdjustedRate,
+        psaPercentChange: psa?.percent_change ?? null,
         psaCommodityGroup: cmrpiMapping.commodityGroup,
         psaMappingType: cmrpiMapping.matchType,
         psaMappingReason: cmrpiMapping.reason,
@@ -855,7 +857,7 @@ export function PriceTrendsPanel({ compact = false }: PriceTrendsPanelProps) {
                   <th className="px-3 py-2">PSA Group</th>
                   <th className="whitespace-nowrap px-3 py-2 text-right">Actual Price</th>
                   <th className="whitespace-nowrap px-3 py-2 text-right">DPWH Rate</th>
-                  <th className="whitespace-nowrap px-3 py-2 text-right">PSA Rate</th>
+                  <th className="whitespace-nowrap px-3 py-2 text-right">DPWH (PSA CMRPI)</th>
                   <th className="whitespace-nowrap px-3 py-2 text-right">Unit Difference</th>
                   <th className="whitespace-nowrap px-3 py-2 text-right">Variance</th>
                   <th className="px-3 py-2">Status</th>
@@ -877,7 +879,11 @@ export function PriceTrendsPanel({ compact = false }: PriceTrendsPanelProps) {
                     </td>
                     <td className="whitespace-nowrap px-3 py-2 text-right">{fmt(row.actualPrice)}</td>
                     <td className="whitespace-nowrap px-3 py-2 text-right">{fmtMaybe(row.dpwhRate)}</td>
-                    <td className="whitespace-nowrap px-3 py-2 text-right">{fmtMaybe(row.psaAdjustedRate)}</td>
+                    <td className="whitespace-nowrap px-3 py-2 text-right">
+                      {row.psaAdjustedRate === null
+                        ? "N/A"
+                        : `${fmt(row.psaAdjustedRate)}${row.psaPercentChange === null ? "" : ` (${pct(row.psaPercentChange)})`}`}
+                    </td>
                     <td className={`whitespace-nowrap px-3 py-2 text-right font-semibold ${(row.unitVariance ?? 0) > 0 ? "text-red-500" : "text-green-600"}`}>
                       {fmtMaybe(row.unitVariance)}
                     </td>

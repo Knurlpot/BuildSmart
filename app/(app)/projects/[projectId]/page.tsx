@@ -3,7 +3,6 @@
 import { useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import {
-  ArrowLeft,
   Award,
   CheckCircle2,
   Clock,
@@ -267,14 +266,6 @@ function ProjectDetailContent({ projectId }: { projectId: string }) {
   return (
     <div className="flex flex-col gap-5">
       <div className="flex items-start justify-between gap-3">
-        <button
-          type="button"
-          onClick={() => router.replace("/projects")}
-          title="Back to Open Projects"
-          className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-gray-200 bg-white text-gray-500 transition hover:border-primary hover:text-primary"
-        >
-          <ArrowLeft className="h-4 w-4" />
-        </button>
         <button
           type="button"
           onClick={handleRefresh}

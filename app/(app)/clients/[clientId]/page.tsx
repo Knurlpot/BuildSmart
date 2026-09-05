@@ -221,14 +221,16 @@ function ClientDetailsContent() {
           <div className="absolute -left-8 -top-12 h-32 w-32 rounded-full bg-white/20 blur-xl" />
           <div className="absolute -bottom-14 right-2 h-32 w-32 rounded-full bg-white/25 blur-2xl" />
 
-          <Link
-            href="/projects?tab=clients"
-            aria-label="Back to clients"
-            title="Back to clients"
-            className="absolute left-4 top-4 z-10 flex h-10 w-10 items-center justify-center rounded-xl border border-white/80 bg-white/90 text-gray-600 shadow-sm transition hover:bg-white hover:text-primary"
-          >
-            <ArrowLeft className="h-4 w-4" />
-          </Link>
+          {!editForm && (
+            <Link
+              href="/projects?tab=clients"
+              aria-label="Back to clients"
+              title="Back to clients"
+              className="absolute left-4 top-4 z-10 flex h-10 w-10 items-center justify-center rounded-xl border border-white/80 bg-white/90 text-gray-600 shadow-sm transition hover:bg-white hover:text-primary"
+            >
+              <ArrowLeft className="h-4 w-4" />
+            </Link>
+          )}
 
           <div className="absolute right-4 top-4 z-10 flex items-center gap-2">
             <span className={`rounded-full px-3 py-1 text-xs font-bold shadow-sm ${client.status === "Active" ? "bg-white text-green-700" : "bg-white text-gray-600"}`}>
@@ -381,7 +383,7 @@ function ClientDetailsContent() {
             <input
               value={projectSearch}
               onChange={(event) => setProjectSearch(event.target.value)}
-              placeholder="Search projects"
+              placeholder="Search Project Name"
               className="h-11 w-full rounded-full border border-gray-200 bg-white pl-11 pr-4 text-sm text-gray-800 shadow-sm outline-none transition placeholder:text-gray-400 focus:border-primary focus:ring-2 focus:ring-primary/20"
             />
           </label>
@@ -396,7 +398,7 @@ function ClientDetailsContent() {
               <SlidersHorizontal className="h-4 w-4" />
             </button>
             {projectFiltersOpen && (
-              <div className="absolute right-0 top-[3.25rem] z-20 w-40 rounded-xl border border-gray-200 bg-white p-2 shadow-lg">
+              <div className="absolute right-0 top-[3.25rem] z-20 w-44 rounded-xl border border-gray-200 bg-white p-2 shadow-lg">
                 {(["All", "Draft", "Final"] as const).map((status) => (
                   <button
                     key={status}
@@ -405,7 +407,7 @@ function ClientDetailsContent() {
                       setProjectStatus(status);
                       setProjectFiltersOpen(false);
                     }}
-                    className={`w-full rounded-lg px-3 py-2 text-left text-xs font-semibold transition ${projectStatus === status ? "bg-orange-50 text-primary" : "text-gray-600 hover:bg-gray-50"}`}
+                    className={`mb-1 flex w-full items-center justify-center rounded-lg border px-3 py-2 text-xs font-semibold transition last:mb-0 ${projectStatus === status ? "border-primary bg-orange-50 text-primary" : "border-gray-200 bg-white text-gray-600 hover:border-primary/40 hover:text-primary"}`}
                   >
                     {status === "All" ? "All projects" : status}
                   </button>
