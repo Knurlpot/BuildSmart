@@ -100,41 +100,52 @@ export default function Header({ workflow }: HeaderProps) {
       <div className="relative shrink-0">
         <Link
           href="/account"
-          className={`flex items-center gap-2 rounded-xl px-2 py-1.5 transition ${
-            lightHeaderContent ? "hover:bg-white/10" : "hover:bg-gray-50"
+          className={`flex items-center overflow-hidden rounded-2xl border px-2 py-1.5 shadow-sm transition ${
+            lightHeaderContent
+              ? "border-white/30 bg-white/10 hover:bg-white/15"
+              : "border-gray-200 bg-white hover:border-gray-300 hover:bg-gray-50"
           }`}
           title="Profile"
-          aria-label="Open profile"
+          aria-label={`Open ${fullName}'s profile for ${companyName}`}
         >
-          {company?.company_logo && (
-            // eslint-disable-next-line @next/next/no-img-element -- company logos may use uploaded or external URLs
-            <img
-              src={company.company_logo}
-              alt={`${companyName} logo`}
-              className={`h-9 w-9 shrink-0 rounded-lg bg-white object-contain p-0.5 ${
-                lightHeaderContent ? "border-2 border-white/40" : "border border-gray-100"
-              }`}
-            />
-          )}
-          {profile?.profile_picture ? (
-            // eslint-disable-next-line @next/next/no-img-element -- arbitrary external URL, not a static asset
-            <img
-              src={profile.profile_picture}
-              alt=""
-              className={`h-9 w-9 shrink-0 rounded-full object-cover ${lightHeaderContent ? "border-2 border-white/40" : "border border-gray-100"}`}
-            />
-          ) : (
-            <div
-              className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-sm font-bold ${
-                lightHeaderContent ? "bg-white text-primary" : "bg-primary text-primary-foreground"
-              }`}
-            >
-              {profileInitials}
+          <div className="flex min-w-0 items-center gap-2.5 px-1 pr-3">
+            {company?.company_logo ? (
+              // eslint-disable-next-line @next/next/no-img-element -- company logos may use uploaded or external URLs
+              <img
+                src={company.company_logo}
+                alt={`${companyName} logo`}
+                className={`h-9 w-9 shrink-0 rounded-full bg-white object-contain p-0.5 ${
+                  lightHeaderContent ? "ring-2 ring-white/40" : "ring-1 ring-gray-200"
+                }`}
+              />
+            ) : (
+              <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-xs font-extrabold ${lightHeaderContent ? "bg-white text-primary" : "bg-orange-50 text-primary"}`}>
+                {companyName.slice(0, 2).toUpperCase()}
+              </div>
+            )}
+            <div className="hidden min-w-0 text-left sm:block">
+              <p className={`max-w-44 truncate text-xs font-bold leading-tight ${lightHeaderContent ? "text-white" : "text-gray-900"}`}>
+                {companyName}
+              </p>
+              <p className={`mt-0.5 text-[9px] font-semibold uppercase tracking-wider ${lightHeaderContent ? "text-white/65" : "text-gray-400"}`}>
+                Company
+              </p>
             </div>
-          )}
-          <div className="text-left">
-            <p className={`text-xs font-semibold leading-tight ${lightHeaderContent ? "text-white" : "text-gray-800"}`}>{fullName}</p>
-            <p className={`text-[10px] ${lightHeaderContent ? "text-white/70" : "text-gray-500"}`}>{companyName}</p>
+          </div>
+          <div className={`h-7 w-px shrink-0 ${lightHeaderContent ? "bg-white/25" : "bg-gray-200"}`} />
+          <div className="pl-2">
+            {profile?.profile_picture ? (
+              // eslint-disable-next-line @next/next/no-img-element -- arbitrary external URL, not a static asset
+              <img
+                src={profile.profile_picture}
+                alt={`${fullName} profile`}
+                className={`h-10 w-10 shrink-0 rounded-full object-cover ${lightHeaderContent ? "ring-2 ring-white/40" : "ring-2 ring-white shadow-sm"}`}
+              />
+            ) : (
+              <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-sm font-bold ${lightHeaderContent ? "bg-white text-primary" : "bg-primary text-primary-foreground"}`}>
+                {profileInitials}
+              </div>
+            )}
           </div>
         </Link>
       </div>
