@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
-import { Check, Minus, Move, PenLine, Plus, ZoomIn, ZoomOut, RotateCcw, ScanLine } from "lucide-react";
+import { Check, Grid3X3, Minus, Move, PenLine, Plus, ZoomIn, ZoomOut, RotateCcw, ScanLine } from "lucide-react";
 import { confidenceBand, type DraftSegment, type SegmentPolygon } from "../lib/draftSegment";
 
 const BAND_COLOR: Record<ReturnType<typeof confidenceBand>, string> = {
@@ -21,6 +21,8 @@ const DEFAULT_CROP_SCALE = 1.18;
 const FLOOR_CROP_PADDING_RATIO = 0.04;
 const TOOLTIP_WIDTH = 210;
 const TOOLTIP_HEIGHT = 96;
+const GRID_SIZE = 5;
+const AUTO_STRAIGHTEN_TOLERANCE = 12;
 
 const pointsToSvg = (points: [number, number][]) => points.map(([x, y]) => `${x},${y}`).join(" ");
 
@@ -54,6 +56,37 @@ const insertPointOnNearestEdge = (points: [number, number][], point: [number, nu
     }
   }
   return [...points.slice(0, insertIndex), point, ...points.slice(insertIndex)];
+};
+
+const snapPointToGrid = (point: [number, number], gridSize: number, imageWidth: number, imageHeight: number): [number, number] => [
+  Math.min(Math.max(Math.round(point[0] / gridSize) * gridSize, 0), imageWidth),
+  Math.min(Math.max(Math.round(point[1] / gridSize) * gridSize, 0), imageHeight),
+];
+
+const straightenMovedPoint = (points: SegmentPolygon, pointIndex: number, point: [number, number]): [number, number] => {
+  const previous = points[(pointIndex - 1 + points.length) % points.length];
+  const next = points[(pointIndex + 1) % points.length];
+  const candidates: [number, number][] = [];
+
+  if (Math.abs(point[0] - previous[0]) <= AUTO_STRAIGHTEN_TOLERANCE) candidates.push([previous[0], point[1]]);
+  if (Math.abs(point[1] - previous[1]) <= AUTO_STRAIGHTEN_TOLERANCE) candidates.push([point[0], previous[1]]);
+  if (Math.abs(point[0] - next[0]) <= AUTO_STRAIGHTEN_TOLERANCE) candidates.push([next[0], point[1]]);
+  if (Math.abs(point[1] - next[1]) <= AUTO_STRAIGHTEN_TOLERANCE) candidates.push([point[0], next[1]]);
+
+  if (candidates.length === 0) return point;
+  return candidates.reduce((best, candidate) =>
+    Math.hypot(candidate[0] - point[0], candidate[1] - point[1]) < Math.hypot(best[0] - point[0], best[1] - point[1]) ? candidate : best,
+  );
+};
+
+const straightenPolygon = (points: SegmentPolygon): SegmentPolygon =>
+  points.map((point, index) => straightenMovedPoint(points, index, point));
+
+const gridLines = (start: number, end: number, step: number) => {
+  const first = Math.floor(start / step) * step;
+  const lines: number[] = [];
+  for (let value = first; value <= end + step; value += step) lines.push(value);
+  return lines;
 };
 
 type HighlightEditTool = "move" | "move-shape" | "add" | "remove";
@@ -138,6 +171,7 @@ export function BlueprintOverlay({
   const [selectedEditId, setSelectedEditId] = useState<string | null>(null);
   const [selectedEditPolygonIndex, setSelectedEditPolygonIndex] = useState(0);
   const [highlightEditTool, setHighlightEditTool] = useState<HighlightEditTool>("move");
+  const [showGrid, setShowGrid] = useState(true);
 
   // ── Scan animation — RAF-driven, not setInterval, per the task's explicit ask. ──
   // readOnly starts fully "scanned" (scanning=false) so a Segment Breakdown viewer sees
@@ -225,13 +259,20 @@ export function BlueprintOverlay({
     ];
   };
 
-  const updatePolygonPoint = (draftId: string, polygonIndex: number, pointIndex: number, point: [number, number]) => {
+  const updatePolygonPoint = (
+    draftId: string,
+    polygonIndex: number,
+    pointIndex: number,
+    point: [number, number],
+  ) => {
     const segment = segments.find((seg) => seg.draft_id === draftId);
     const points = segment ? segmentPolygons(segment)[polygonIndex] : null;
     if (!points) return;
+    const nextPoint = snapPointToGrid(point, GRID_SIZE, imageWidth, imageHeight);
+    const nextPolygon = points.map((existing, index) => (index === pointIndex ? nextPoint : existing));
     onSegmentPolygonChange?.(
       draftId,
-      points.map((existing, index) => (index === pointIndex ? point : existing)),
+      straightenPolygon(nextPolygon),
       polygonIndex,
     );
   };
@@ -249,14 +290,22 @@ export function BlueprintOverlay({
       if (!polygon) return;
       const dx = point[0] - draggingShape.lastPoint[0];
       const dy = point[1] - draggingShape.lastPoint[1];
-      onSegmentPolygonChange?.(
-        draggingShape.draftId,
-        polygon.map(([x, y]) => [
-          Math.min(Math.max(x + dx, 0), imageWidth),
-          Math.min(Math.max(y + dy, 0), imageHeight),
-        ]),
-        draggingShape.polygonIndex,
-      );
+      const moved = polygon.map(([x, y]) => [
+        Math.min(Math.max(x + dx, 0), imageWidth),
+        Math.min(Math.max(y + dy, 0), imageHeight),
+      ] as [number, number]);
+      const snapped = moved.length > 0
+        ? (() => {
+            const anchor = snapPointToGrid(moved[0], GRID_SIZE, imageWidth, imageHeight);
+            const snapDx = anchor[0] - moved[0][0];
+            const snapDy = anchor[1] - moved[0][1];
+            return moved.map(([x, y]) => [
+              Math.min(Math.max(x + snapDx, 0), imageWidth),
+              Math.min(Math.max(y + snapDy, 0), imageHeight),
+            ] as [number, number]);
+          })()
+        : moved;
+      onSegmentPolygonChange?.(draggingShape.draftId, straightenPolygon(snapped), draggingShape.polygonIndex);
       setDraggingShape({ ...draggingShape, lastPoint: point });
     }
   };
@@ -273,7 +322,8 @@ export function BlueprintOverlay({
     const point = svgPointFromPointer(e as unknown as React.PointerEvent<SVGElement>);
     if (!point) return;
     const polygon = segmentPolygons(segment)[selectedEditPolygonIndex] ?? segmentPolygons(segment)[0];
-    onSegmentPolygonChange?.(segment.draft_id, insertPointOnNearestEdge(polygon, point), selectedEditPolygonIndex);
+    const nextPoint = snapPointToGrid(point, GRID_SIZE, imageWidth, imageHeight);
+    onSegmentPolygonChange?.(segment.draft_id, straightenPolygon(insertPointOnNearestEdge(polygon, nextPoint)), selectedEditPolygonIndex);
   };
 
   const tooltipLeft = cursor && cursor.x + TOOLTIP_WIDTH + 20 > cursor.containerWidth ? cursor.x - TOOLTIP_WIDTH - 14 : (cursor?.x ?? 0) + 14;
@@ -325,6 +375,9 @@ export function BlueprintOverlay({
   const cropX = Math.min(Math.max(focusCenterX - cropWidth / 2, 0), Math.max(imageWidth - cropWidth, 0));
   const cropY = Math.min(Math.max(focusCenterY - cropHeight / 2, 0), Math.max(imageHeight - cropHeight, 0));
   const croppedViewBox = `${cropX} ${cropY} ${cropWidth} ${cropHeight}`;
+  const verticalGridLines = gridLines(cropX, cropX + cropWidth, GRID_SIZE);
+  const horizontalGridLines = gridLines(cropY, cropY + cropHeight, GRID_SIZE);
+  const majorGridSize = GRID_SIZE * 8;
 
   return (
     <div className="flex flex-col gap-2">
@@ -429,6 +482,19 @@ export function BlueprintOverlay({
               );
             })}
           </div>
+          <div className="flex overflow-hidden rounded-lg border border-orange-200 bg-white">
+            <button
+              type="button"
+              title="Show alignment grid"
+              aria-label="Show alignment grid"
+              onClick={() => setShowGrid((visible) => !visible)}
+              className={`flex items-center gap-1 border-r border-orange-100 px-2.5 py-1.5 font-semibold ${
+                showGrid ? "bg-primary text-primary-foreground" : "text-gray-600 hover:bg-orange-50"
+              }`}
+            >
+              <Grid3X3 className="h-3.5 w-3.5" /> Grid
+            </button>
+          </div>
         </div>
       )}
 
@@ -452,6 +518,34 @@ export function BlueprintOverlay({
           onPointerLeave={handleSvgPointerUp}
         >
           <image href={imageUrl} x={0} y={0} width={imageWidth} height={imageHeight} />
+          {highlightEditingActive && showGrid && (
+            <g pointerEvents="none">
+              {verticalGridLines.map((x) => (
+                <line
+                  key={`grid-x-${x}`}
+                  x1={x}
+                  y1={cropY}
+                  x2={x}
+                  y2={cropY + cropHeight}
+                  stroke={x % majorGridSize === 0 ? "#f97316" : "#64748b"}
+                  strokeWidth={x % majorGridSize === 0 ? 1.2 : 0.7}
+                  strokeOpacity={x % majorGridSize === 0 ? 0.34 : 0.2}
+                />
+              ))}
+              {horizontalGridLines.map((y) => (
+                <line
+                  key={`grid-y-${y}`}
+                  x1={cropX}
+                  y1={y}
+                  x2={cropX + cropWidth}
+                  y2={y}
+                  stroke={y % majorGridSize === 0 ? "#f97316" : "#64748b"}
+                  strokeWidth={y % majorGridSize === 0 ? 1.2 : 0.7}
+                  strokeOpacity={y % majorGridSize === 0 ? 0.34 : 0.2}
+                />
+              ))}
+            </g>
+          )}
           <g>
             {segments.map((seg) => {
               const polygons = segmentPolygons(seg);
@@ -492,7 +586,8 @@ export function BlueprintOverlay({
                       const point = svgPointFromPointer(e);
                       if (!point) return;
                       if (highlightEditTool === "add") {
-                        onSegmentPolygonChange?.(seg.draft_id, insertPointOnNearestEdge(points, point), polygonIndex);
+                        const nextPoint = snapPointToGrid(point, GRID_SIZE, imageWidth, imageHeight);
+                        onSegmentPolygonChange?.(seg.draft_id, straightenPolygon(insertPointOnNearestEdge(points, nextPoint)), polygonIndex);
                         return;
                       }
                       if (highlightEditTool === "move-shape") {
