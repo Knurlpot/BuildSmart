@@ -151,7 +151,7 @@ export async function POST(request: NextRequest, { params }: Params) {
     if (!accepted) return NextResponse.json({ error: "Quotation not found." }, { status: 404 });
     return NextResponse.json(accepted);
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Unable to accept quotation.";
-    return NextResponse.json({ error: message }, { status: 500 });
+    console.error("Unable to accept quotation", error);
+    return NextResponse.json({ error: "Unable to accept quotation." }, { status: 500 });
   }
 }

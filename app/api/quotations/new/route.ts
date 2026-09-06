@@ -118,6 +118,10 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(quotation, { status: 201 });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unable to create quotation.";
-    return NextResponse.json({ error: message }, { status: message.startsWith("No price found") ? 400 : 500 });
+    if (message.startsWith("No price found")) {
+      return NextResponse.json({ error: message }, { status: 400 });
+    }
+    console.error("Unable to create quotation", error);
+    return NextResponse.json({ error: "Unable to create quotation." }, { status: 500 });
   }
 }

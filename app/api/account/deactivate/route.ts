@@ -47,8 +47,8 @@ export async function POST(request: NextRequest) {
     await client.query("COMMIT");
   } catch (error) {
     await client.query("ROLLBACK");
-    const message = error instanceof Error ? error.message : "Could not delete account.";
-    return NextResponse.json({ error: message }, { status: 500 });
+    console.error("Could not delete account", error);
+    return NextResponse.json({ error: "Could not delete account." }, { status: 500 });
   } finally {
     client.release();
   }

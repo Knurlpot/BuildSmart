@@ -31,6 +31,9 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
+*.log
+.fastapi*.log
+backend/*.log
 
 # env files (can opt-in for committing if needed)
 .env*
@@ -45,6 +48,8 @@ __pycache__/
 .pytest_cache/
 backend/uploads/*
 !backend/uploads/.gitkeep
+public/uploads/*
+!public/uploads/.gitkeep
 
 # typescript
 *.tsbuildinfo

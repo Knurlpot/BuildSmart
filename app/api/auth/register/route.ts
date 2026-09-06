@@ -163,8 +163,8 @@ export async function POST(request: NextRequest) {
     if (isPgUniqueViolation(error, "users_email_key")) {
       return NextResponse.json({ error: "An account with this email already exists. Please sign in instead." }, { status: 409 });
     }
-    const message = error instanceof Error ? error.message : "Registration failed";
-    return NextResponse.json({ error: message }, { status: 400 });
+    console.error("Registration failed", error);
+    return NextResponse.json({ error: "Registration failed. Please check your information and try again." }, { status: 400 });
   } finally {
     client.release();
   }

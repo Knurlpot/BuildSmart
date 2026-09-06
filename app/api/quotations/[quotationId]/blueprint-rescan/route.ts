@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { authContext, isAuthContext } from "../../pricing";
 import { pool } from "@/lib/server/db";
+import { getNormalizationApiBaseUrl } from "@/lib/server/config";
 
-const API_BASE = process.env.NEXT_PUBLIC_NORMALIZATION_API_BASE_URL || "http://localhost:8000";
+const API_BASE = getNormalizationApiBaseUrl();
 
 type Params = { params: Promise<{ quotationId: string }> };
 
@@ -35,7 +36,8 @@ export async function POST(request: NextRequest, { params }: Params) {
     });
     const body = await response.json().catch(() => null);
     if (!response.ok) {
-      return NextResponse.json({ error: body?.detail || "Blueprint rescan failed." }, { status: response.status });
+      console.error("Blueprint rescan service failed", body);
+      return NextResponse.json({ error: "Blueprint rescan failed." }, { status: response.status });
     }
     return NextResponse.json(body);
   } catch {

@@ -1,20 +1,32 @@
 import { randomUUID } from "crypto";
 import { mkdir, writeFile } from "fs/promises";
 import path from "path";
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
+import { readSession } from "@/lib/server/session";
 
 const MAX_FILE_SIZE_BYTES = 5 * 1024 * 1024;
-const ALLOWED_MIME_PREFIX = "image/";
+const ALLOWED_IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
 
-function extensionFromMimeType(mimeType: string): string {
-  const subtype = mimeType.split("/")[1]?.toLowerCase() || "";
-  if (subtype === "jpeg") return "jpg";
-  if (subtype === "svg+xml") return "svg";
-  if (/^[a-z0-9.+-]+$/.test(subtype)) return subtype;
-  return "bin";
+function hasExpectedImageSignature(bytes: Buffer, mimeType: string): boolean {
+  if (mimeType === "image/jpeg") return bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
+  if (mimeType === "image/png") return bytes.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
+  if (mimeType === "image/webp") return bytes.subarray(0, 4).toString("ascii") === "RIFF" && bytes.subarray(8, 12).toString("ascii") === "WEBP";
+  if (mimeType === "image/gif") return ["GIF87a", "GIF89a"].includes(bytes.subarray(0, 6).toString("ascii"));
+  return false;
 }
 
-export async function POST(request: Request) {
+function extensionFromMimeType(mimeType: string): string {
+    const subtype = mimeType.split("/")[1]?.toLowerCase() || "";
+    if (subtype === "jpeg") return "jpg";
+    if (/^[a-z0-9.+-]+$/.test(subtype)) return subtype;
+    return "bin";
+}
+
+export async function POST(request: NextRequest) {
+  if (!readSession(request)) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   try {
     const formData = await request.formData();
     const fileEntry = formData.get("file");
@@ -23,8 +35,8 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "No file was uploaded" }, { status: 400 });
     }
 
-    if (!fileEntry.type.startsWith(ALLOWED_MIME_PREFIX)) {
-      return NextResponse.json({ error: "Only image files are allowed" }, { status: 400 });
+    if (!ALLOWED_IMAGE_TYPES.has(fileEntry.type)) {
+      return NextResponse.json({ error: "Only JPG, PNG, WebP, or GIF images are allowed" }, { status: 400 });
     }
 
     if (fileEntry.size === 0) {
@@ -47,11 +59,17 @@ export async function POST(request: Request) {
 
     const absoluteFilePath = path.join(absoluteDir, fileName);
     const bytes = Buffer.from(await fileEntry.arrayBuffer());
+    if (bytes.length !== fileEntry.size) {
+      return NextResponse.json({ error: "Uploaded file could not be read" }, { status: 400 });
+    }
+    if (!hasExpectedImageSignature(bytes, fileEntry.type)) {
+      return NextResponse.json({ error: "Uploaded file is not a valid image" }, { status: 400 });
+    }
     await writeFile(absoluteFilePath, bytes);
 
     return NextResponse.json({ url: `/${relativeDir}/${fileName}` }, { status: 201 });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Failed to upload company logo";
-    return NextResponse.json({ error: message }, { status: 500 });
+    console.error("Failed to upload company logo", error);
+    return NextResponse.json({ error: "Failed to upload company logo" }, { status: 500 });
   }
 }

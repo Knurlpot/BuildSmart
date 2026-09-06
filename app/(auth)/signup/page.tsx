@@ -1,14 +1,13 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Check, ChevronDown, ChevronRight, Eye, EyeOff, Upload, X } from "lucide-react";
+import { Check, ChevronDown, ChevronRight, Eye, EyeOff } from "lucide-react";
 import { AuthBrandPanel } from "@/components/auth/AuthBrandPanel";
 import { TermsModal } from "@/components/auth/TermsModal";
 import { SpecializationSelect } from "@/components/forms/SpecializationSelect";
 import { useAuth } from "@/providers/AuthProvider";
-import { useMutation } from "@/hooks/useMutation";
 import { checkCompany, type CompanyLookupResult } from "@/lib/api/auth";
 import { resolveOnboardingRoute } from "@/lib/onboarding";
 import { specializationsToColumns } from "@/lib/specializations";
@@ -21,7 +20,6 @@ const MAX = {
   companyName: 75,
   companyAddress: 255,
   companyContactEmail: 100,
-  companyLogo: 255,
   email: 100,
 } as const;
 
@@ -45,7 +43,6 @@ interface FormData {
   companyContactEmail: string;
   companyContactNumber: string;
   specializations: string[];
-  companyLogo: string;
   companyLookupEmail: string;
 }
 
@@ -62,7 +59,6 @@ const INIT: FormData = {
   companyContactEmail: "",
   companyContactNumber: "",
   specializations: [],
-  companyLogo: "",
   companyLookupEmail: "",
 };
 
@@ -90,7 +86,7 @@ function formatPhDisplayNumber(digits: string): string {
   return national ? `+63 ${national}` : "";
 }
 
-const TOTAL_FIELD_CHECKS = 13;
+const TOTAL_FIELD_CHECKS = 12;
 
 function countValidFields(d: FormData, termsAccepted: boolean): number {
   const checks = [
@@ -105,7 +101,6 @@ function countValidFields(d: FormData, termsAccepted: boolean): number {
     isValidEmail(d.companyContactEmail),
     d.companyContactNumber.length === PH_NATIONAL_NUMBER_LENGTH,
     d.specializations.length > 0,
-    d.companyLogo.trim().length > 0,
     termsAccepted,
   ];
   return checks.filter(Boolean).length;
@@ -183,67 +178,6 @@ export default function SignUpPage() {
       pendingPhoneCursorRef.current = null;
     }
   });
-
-  type LogoStep = "idle" | "menu" | "upload" | "url";
-  const [logoStep, setLogoStep] = useState<LogoStep>("idle");
-  const [logoFileName, setLogoFileName] = useState("");
-  const [logoUrlDraft, setLogoUrlDraft] = useState("");
-  const [logoDragOver, setLogoDragOver] = useState(false);
-  const logoFieldRef = useRef<HTMLDivElement>(null);
-  const logoInputRef = useRef<HTMLInputElement>(null);
-  const logoUpload = useMutation<{ url: string }>();
-
-  // Close the "Add Company Logo" dropdown on an outside click, same as any other menu.
-  useEffect(() => {
-    if (logoStep !== "menu") return;
-    const handleClickOutside = (e: MouseEvent) => {
-      if (logoFieldRef.current && !logoFieldRef.current.contains(e.target as Node)) {
-        setLogoStep("idle");
-      }
-    };
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, [logoStep]);
-
-  const uploadLogoFile = async (file: File) => {
-    setLogoFileName(file.name);
-    const body = new FormData();
-    body.append("file", file);
-    try {
-      const { url } = await logoUpload.mutate("/api/uploads/company-logo", body, "POST");
-      set("companyLogo", url);
-      setLogoStep("idle");
-    } catch {
-      // No fabricated success
-    }
-  };
-
-  const handleLogoFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) uploadLogoFile(file);
-  };
-
-  const handleLogoDrop = (e: React.DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    setLogoDragOver(false);
-    const file = e.dataTransfer.files?.[0];
-    if (file) uploadLogoFile(file);
-  };
-
-  const confirmLogoUrl = () => {
-    if (!logoUrlDraft.trim()) return;
-    set("companyLogo", logoUrlDraft.trim());
-    setLogoFileName("");
-    setLogoStep("idle");
-  };
-
-  const removeLogo = () => {
-    set("companyLogo", "");
-    setLogoFileName("");
-    setLogoUrlDraft("");
-    setLogoStep("idle");
-    logoUpload.reset();
-  };
 
   const filledCount = useMemo(() => countValidFields(form, termsAccepted), [form, termsAccepted]);
 
@@ -387,7 +321,6 @@ export default function SignUpPage() {
                 contact_email: form.companyContactEmail,
                 contact_number: formatPhDisplayNumber(form.companyContactNumber),
                 ...specializationsToColumns(form.specializations),
-                company_logo: form.companyLogo || undefined,
               },
             };
       const user = await register({
@@ -889,66 +822,6 @@ export default function SignUpPage() {
                   onChange={(next) => set("specializations", next)}
                   error={errors.specializations}
                 />
-
-                <div ref={logoFieldRef} className="flex flex-col gap-1.5">
-                  <label className="text-xs font-semibold uppercase tracking-wide text-gray-600">
-                    Company Logo <span className="font-normal normal-case text-gray-400">(optional)</span>
-                  </label>
-
-                  {form.companyLogo ? (
-                    <div className="flex items-center gap-3 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5">
-                      {/* eslint-disable-next-line @next/next/no-img-element -- arbitrary external URL, not a static asset */}
-                      <img
-                        src={form.companyLogo}
-                        alt="Company logo preview"
-                        className="h-10 w-10 shrink-0 rounded-lg border border-gray-200 object-cover"
-                      />
-                      <span className="flex-1 truncate text-sm text-gray-700">
-                        {logoFileName || form.companyLogo}
-                      </span>
-                      <div className="flex items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={() => logoInputRef.current?.click()}
-                          className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm font-semibold text-gray-700 transition hover:bg-gray-100"
-                        >
-                          {logoUpload.isLoading ? "Uploading..." : "Upload Company Logo"}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={removeLogo}
-                          title="Remove logo"
-                          className="shrink-0 text-gray-400 transition hover:text-red-500"
-                        >
-                          <X className="h-4 w-4" />
-                        </button>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="flex flex-col gap-2">
-                      <button
-                        type="button"
-                        onClick={() => logoInputRef.current?.click()}
-                        className="flex w-full items-center justify-center gap-2 rounded-xl border border-gray-200 bg-gray-50 px-4 py-2.5 text-sm font-semibold text-gray-700 transition hover:bg-gray-100"
-                      >
-                        <Upload className="h-4 w-4" />
-                        Upload Company Logo
-                      </button>
-                      <input
-                        ref={logoInputRef}
-                        type="file"
-                        accept="image/*"
-                        onChange={handleLogoFileChange}
-                        className="hidden"
-                      />
-                      {logoUpload.error && (
-                        <p className="text-xs text-red-500">
-                          Couldn&apos;t upload logo: {logoUpload.error.message}
-                        </p>
-                      )}
-                    </div>
-                  )}
-                </div>
 
                   </>
                 )}

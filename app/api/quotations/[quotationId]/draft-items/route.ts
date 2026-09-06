@@ -200,7 +200,7 @@ export async function POST(request: NextRequest, { params }: Params) {
     if (!saved) return NextResponse.json({ error: "Quotation not found." }, { status: 404 });
     return NextResponse.json({ items: saved });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Unable to save draft quotation items.";
-    return NextResponse.json({ error: message }, { status: 500 });
+    console.error("Unable to save draft quotation items", error);
+    return NextResponse.json({ error: "Unable to save draft quotation items." }, { status: 500 });
   }
 }

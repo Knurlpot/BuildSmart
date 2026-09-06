@@ -148,7 +148,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json(result.rows);
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Failed to load supplier benchmarks";
-    return NextResponse.json({ error: message }, { status: 500 });
+    console.error("Failed to load supplier benchmarks", error);
+    return NextResponse.json({ error: "Failed to load supplier benchmarks" }, { status: 500 });
   }
 }

@@ -2,8 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { authContext, isAuthContext } from "../../pricing";
 import { pool } from "@/lib/server/db";
 import { linkBlueprintToQuotation } from "@/lib/server/blueprintPersistence.mjs";
+import { getNormalizationApiBaseUrl } from "@/lib/server/config";
 
-const API_BASE = process.env.NEXT_PUBLIC_NORMALIZATION_API_BASE_URL || "http://localhost:8000";
+const API_BASE = getNormalizationApiBaseUrl();
 const MAX_FILE_BYTES = 25 * 1024 * 1024;
 const ALLOWED_EXTENSIONS = new Set(["pdf", "dxf"]);
 
@@ -46,7 +47,8 @@ export async function POST(request: NextRequest, { params }: Params) {
     });
     const body = await response.json().catch(() => null);
     if (!response.ok) {
-      return NextResponse.json({ error: body?.detail || "Blueprint extraction failed." }, { status: response.status });
+      console.error("Blueprint extraction service failed", body);
+      return NextResponse.json({ error: "Blueprint extraction failed." }, { status: response.status });
     }
     if (body?.blueprint_file_path) {
       try {

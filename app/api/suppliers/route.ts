@@ -106,7 +106,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(result.rows[0], { status: 201 });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Unable to save supplier";
-    return NextResponse.json({ error: message }, { status: 500 });
+    console.error("Unable to save supplier", error);
+    return NextResponse.json({ error: "Unable to save supplier" }, { status: 500 });
   }
 }
