@@ -756,6 +756,7 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
                       const next = e.target.value.replace(/[^\d.]/g, "");
                       setWarrantyYears(next === "" ? "" : Number(next));
                     }}
+                    placeholder="Warranty Years"
                     className={inputCls}
                   />
                   {touched && (warrantyYears === "" || Number(warrantyYears) <= 0) && <p className="text-xs text-red-500">Warranty years is required.</p>}
@@ -773,6 +774,7 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
                       const next = e.target.value.replace(/[^\d.]/g, "");
                       setLifespanYears(next === "" ? "" : Number(next));
                     }}
+                    placeholder="Expected Lifespan Years"
                     className={inputCls}
                   />
                   {touched && (lifespanYears === "" || Number(lifespanYears) <= 0) && <p className="text-xs text-red-500">Expected lifespan years is required.</p>}
@@ -1021,6 +1023,7 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
                       const next = e.target.value.replace(/[^\d.]/g, "");
                       setWarrantyYears(next === "" ? "" : Number(next));
                     }}
+                    placeholder="Warranty Years"
                     className={inputCls}
                   />
                   {touched && (warrantyYears === "" || Number(warrantyYears) <= 0) && <p className="text-xs text-red-500">Warranty years is required.</p>}
@@ -1038,6 +1041,7 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
                       const next = e.target.value.replace(/[^\d.]/g, "");
                       setLifespanYears(next === "" ? "" : Number(next));
                     }}
+                    placeholder="Expected Lifespan Years"
                     className={inputCls}
                   />
                   {touched && (lifespanYears === "" || Number(lifespanYears) <= 0) && <p className="text-xs text-red-500">Expected lifespan years is required.</p>}
