@@ -54,10 +54,11 @@ export default function PricelistPage() {
     if (currentUser && pricelistDone) {
       advanceOnboardingStep(currentUser.onboardingStep, 1, updateOnboardingStep);
     }
-    // updateOnboardingStep is recreated every AuthProvider render; advanceOnboardingStep
-    // no-ops once past the target step, so omitting it here can't miss or double-fire.
+    // Depend on the primitive step instead of the whole user object. If the server
+    // clamps a premature advance back to step 0, AuthProvider still creates a fresh
+    // user object; depending on that object would immediately retry forever.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentUser, pricelistDone]);
+  }, [currentUser?.onboardingStep, pricelistDone]);
 
   const needsAttention: Partial<Record<TabId, boolean>> = {
     upload: !pricelistDone,
