@@ -144,18 +144,22 @@ async function applySupplierDiscount(
   const bulkRule = result.rows.find((rule) => rule.rule_type === "Bulk Discount");
 
   if (negotiatedRule?.discount_percentage_rate != null) {
-    discountedPrice = discountedPrice * (1 - negotiatedRule.discount_percentage_rate / 100);
+    const nextPrice = discountedPrice * (1 - negotiatedRule.discount_percentage_rate / 100);
+    if (nextPrice > 0) discountedPrice = nextPrice;
   } else if (negotiatedRule?.fixed_discount_amount != null) {
-    discountedPrice = Math.max(0, discountedPrice - negotiatedRule.fixed_discount_amount);
+    const nextPrice = discountedPrice - negotiatedRule.fixed_discount_amount;
+    if (nextPrice > 0) discountedPrice = nextPrice;
   }
 
   if (bulkRule) {
     const minimum = bulkRule.minimum_order_amount ?? 0;
     if (quantity * discountedPrice >= minimum) {
       if (bulkRule.discount_percentage_rate != null) {
-        discountedPrice = discountedPrice * (1 - bulkRule.discount_percentage_rate / 100);
+        const nextPrice = discountedPrice * (1 - bulkRule.discount_percentage_rate / 100);
+        if (nextPrice > 0) discountedPrice = nextPrice;
       } else if (bulkRule.fixed_discount_amount != null) {
-        discountedPrice = Math.max(0, discountedPrice - bulkRule.fixed_discount_amount);
+        const nextPrice = discountedPrice - bulkRule.fixed_discount_amount;
+        if (nextPrice > 0) discountedPrice = nextPrice;
       }
     }
   }

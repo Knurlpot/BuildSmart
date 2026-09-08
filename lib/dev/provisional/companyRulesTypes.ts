@@ -91,6 +91,8 @@ export interface MaterialRuleEntry extends RuleEnvelope {
   // what the schema itself permits.
   preferred_item_code: string | null;
   preferred_item_name: string; // denormalized display label, avoids a second catalog lookup per row
+  selected_supplier_id?: number | null;
+  selected_supplier_name?: string | null;
   material_priority: number; // 1 = preferred, 2 = fallback, ... — rank among alternatives for the same need
   priority_source: PriceSource;
   fallback_rule: MaterialFallbackRule; // the "if the supplier runs out" case — client-confirmed real

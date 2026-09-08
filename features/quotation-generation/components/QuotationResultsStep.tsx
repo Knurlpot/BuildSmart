@@ -530,12 +530,11 @@ export function QuotationResultsStep({
       </div>
 
       {breakdownTier && (
-        // Part A — strictly read-only: no onItemsChange/onLinesChange prop exists on this
-        // component at all anymore. See QuotationBreakdownModal.tsx.
         <QuotationBreakdownModal
           tier={breakdownTier}
           result={tierResults[breakdownTier]!}
           pricelistBasis={pricelistBasis}
+          onItemsChange={updateTierItems}
           onClose={() => setBreakdownTier(null)}
           segments={segments}
           blueprintFloors={blueprintFloors}
