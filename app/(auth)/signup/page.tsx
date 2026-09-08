@@ -10,7 +10,6 @@ import { SpecializationSelect } from "@/components/forms/SpecializationSelect";
 import { useAuth } from "@/providers/AuthProvider";
 import { useMutation } from "@/hooks/useMutation";
 import { checkCompany, type CompanyLookupResult } from "@/lib/api/auth";
-import { resolveOnboardingRoute } from "@/lib/onboarding";
 import { specializationsToColumns } from "@/lib/specializations";
 import { USER_ROLES, type Users } from "@/types/entities";
 
@@ -390,7 +389,7 @@ export default function SignUpPage() {
                 company_logo: form.companyLogo || undefined,
               },
             };
-      const user = await register({
+      await register({
         first_name: form.firstName,
         last_name: form.lastName,
         middle_name: form.middleName || undefined,
@@ -399,7 +398,7 @@ export default function SignUpPage() {
         user_role: companyMode === "join" ? form.userRole || "Owner" : "Owner",
         ...companyPayload,
       });
-      router.push(resolveOnboardingRoute(user.onboardingStep));
+      router.push("/dashboard");
     } catch (err) {
       // No fabricated success — surface the real error and keep everything the user
       // entered so far (form state is untouched on failure, no wizard reset).

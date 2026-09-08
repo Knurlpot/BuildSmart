@@ -8,7 +8,6 @@ import { Eye, EyeOff, AlertCircle, Lock } from "lucide-react";
 import { AuthBrandPanel } from "@/components/auth/AuthBrandPanel";
 import { logoFrame } from "@/components/logo-frames";
 import { useAuth } from "@/providers/AuthProvider";
-import { resolveOnboardingRoute } from "@/lib/onboarding";
 
 export default function LoginPage() {
   const { login } = useAuth();
@@ -31,8 +30,8 @@ export default function LoginPage() {
     setAttemptsRemaining(null);
 
     try {
-      const user = await login(email, password);
-      router.push(resolveOnboardingRoute(user.onboardingStep));
+      await login(email, password);
+      router.push("/dashboard");
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : "Unable to sign in. Please check your credentials or try again.";
       setError(errorMessage);

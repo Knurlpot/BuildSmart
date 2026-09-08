@@ -2,6 +2,7 @@ import { apiClient } from "./client";
 import type { Users } from "@/types/entities";
 
 export interface AuthUser {
+  first_name?: string | null;
   id: unknown;
   email: string | null;
   companyId: unknown;
