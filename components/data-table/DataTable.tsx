@@ -30,6 +30,7 @@ interface DataTableProps<TData> {
   enablePagination?: boolean;
   pageSize?: number;
   compact?: boolean;
+  fillHeight?: boolean;
   selectable?: SelectableConfig<TData>;
   rowClassName?: (row: TData) => string;
   onRowClick?: (row: TData) => void;
@@ -43,6 +44,7 @@ export function DataTable<TData>({
   enablePagination = false,
   pageSize = 50,
   compact = false,
+  fillHeight = false,
   selectable,
   rowClassName,
   onRowClick,
@@ -104,7 +106,8 @@ export function DataTable<TData>({
     : "px-4 py-3.5 first:pl-6 last:pr-6";
 
   return (
-    <div className="overflow-x-auto">
+    <div className={fillHeight ? "flex h-full min-h-0 flex-col" : ""}>
+      <div className={fillHeight ? "min-h-0 flex-1 overflow-auto" : "overflow-x-auto"}>
       <table className={`w-full ${compact ? "text-xs" : "text-sm"}`}>
         <thead>
           {table.getHeaderGroups().map((headerGroup) => (
@@ -150,9 +153,10 @@ export function DataTable<TData>({
           ))}
         </tbody>
       </table>
+      </div>
 
       {enablePagination && (
-        <div className="flex items-center justify-between border-t border-gray-100 px-4 py-3 text-xs text-gray-500">
+        <div className="shrink-0 flex items-center justify-between border-t border-gray-100 px-4 py-3 text-xs text-gray-500">
           <span>
             Page {table.getState().pagination.pageIndex + 1} of{" "}
             {Math.max(table.getPageCount(), 1)} · {data.length} row{data.length !== 1 ? "s" : ""}

@@ -506,7 +506,7 @@ export function ManageExistingRulesTab({ onViewRule }: ManageExistingRulesTabPro
             </button>
           </div>
         </div>
-        <div className="h-[31rem] overflow-y-auto">
+        <div className="h-[31rem]">
           <QueryState
             isLoading={isLoading || materialRulesLoading}
             error={error ?? materialRulesError}
@@ -537,6 +537,7 @@ export function ManageExistingRulesTab({ onViewRule }: ManageExistingRulesTabPro
               columns={columns}
               data={filteredRules}
               enablePagination
+              fillHeight
               pageSize={50}
               selectable={{
                 getRowId: (rule) => rule.rule_id,

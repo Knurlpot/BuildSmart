@@ -239,6 +239,7 @@ function UserProfileSection() {
   const [logoFileName, setLogoFileName] = useState("");
   const profilePictureInputRef = useRef<HTMLInputElement>(null);
   const logoInputRef = useRef<HTMLInputElement>(null);
+  const canEditCompany = userData?.user_role === "Owner";
 
   const uploadProfilePicture = async (file: File) => {
     setProfilePictureFileName(file.name);
@@ -264,6 +265,7 @@ function UserProfileSection() {
   };
 
   const uploadLogoFile = async (file: File) => {
+    if (!canEditCompany) return;
     setLogoFileName(file.name);
     const body = new FormData();
     body.append("file", file);
@@ -281,6 +283,7 @@ function UserProfileSection() {
   };
 
   const removeLogo = () => {
+    if (!canEditCompany) return;
     setCompanyForm((current) => ({ ...current, company_logo: "" }));
     setLogoFileName("");
     logoUpload.reset();
@@ -303,7 +306,7 @@ function UserProfileSection() {
     e.preventDefault();
     if (!userEndpoint || !companyEndpoint) return;
 
-    if (columnsToSpecializations(companyForm).length === 0) {
+    if (canEditCompany && columnsToSpecializations(companyForm).length === 0) {
       setSpecializationError("At least one specialization is required");
       return;
     }
@@ -317,14 +320,15 @@ function UserProfileSection() {
       const savedUser = await updateUser.mutate(userEndpoint, userBody, "PATCH");
       setUserForm(savedUser);
 
-      // Update company profile
-      const companyBody: Partial<Company> = { ...companyForm };
-      companyBody.company_logo = normalizeLogoUrl(companyBody.company_logo);
-      delete companyBody.company_id;
-      const savedCompany = await updateCompany.mutate(companyEndpoint, companyBody, "PATCH");
-      setCompanyForm(savedCompany);
+      if (canEditCompany) {
+        const companyBody: Partial<Company> = { ...companyForm };
+        companyBody.company_logo = normalizeLogoUrl(companyBody.company_logo);
+        delete companyBody.company_id;
+        const savedCompany = await updateCompany.mutate(companyEndpoint, companyBody, "PATCH");
+        setCompanyForm(savedCompany);
+      }
       window.dispatchEvent(new Event("user-profile-updated"));
-      window.dispatchEvent(new Event("company-profile-updated"));
+      if (canEditCompany) window.dispatchEvent(new Event("company-profile-updated"));
 
       setEditing(false);
     } catch {
@@ -557,109 +561,118 @@ function UserProfileSection() {
                 <p className="text-xs text-gray-500">Company Information</p>
               </div>
             </div>
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <Field label="Company Name">
-                <input
-                  required
-                  value={companyForm.company_name}
-                  onChange={(e) => setCompanyForm({ ...companyForm, company_name: e.target.value })}
-                  className={inputCls}
-                />
-              </Field>
-              <Field label="Company Address">
-                <input
-                  required
-                  value={companyForm.company_address}
-                  onChange={(e) => setCompanyForm({ ...companyForm, company_address: e.target.value })}
-                  className={inputCls}
-                />
-              </Field>
-              <Field label="Contact Email">
-                <input
-                  type="email"
-                  required
-                  value={companyForm.contact_email}
-                  onChange={(e) => setCompanyForm({ ...companyForm, contact_email: e.target.value })}
-                  className={inputCls}
-                />
-              </Field>
-              <Field label="Contact Number">
-                <input
-                  required
-                  value={companyForm.contact_number}
-                  onChange={(e) => setCompanyForm({ ...companyForm, contact_number: e.target.value })}
-                  className={inputCls}
-                />
-              </Field>
-              <div className="sm:col-span-2">
-                <SpecializationSelect
-                  selected={columnsToSpecializations(companyForm)}
-                  onChange={(next) => {
-                    setCompanyForm({ ...companyForm, ...specializationsToColumns(next) });
-                    if (next.length > 0) setSpecializationError("");
-                  }}
-                  error={specializationError}
-                />
-              </div>
-              <div className="sm:col-span-2 flex flex-col gap-1.5">
-                <span className={labelCls}>Company Logo</span>
-                {getLogoCandidates(companyForm.company_logo).length > 0 ? (
-                  <div className="flex items-center gap-3 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5">
-                    <LogoImage
-                      key={companyForm.company_logo}
-                      value={companyForm.company_logo}
-                      alt="Company logo preview"
-                      className="h-10 w-10 shrink-0 rounded-lg border border-gray-200 object-cover"
-                    />
-                    <span className="flex-1 truncate text-sm text-gray-700">
-                      {logoFileName ? `Selected: ${logoFileName}` : "Logo"}
-                    </span>
-                    <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => logoInputRef.current?.click()}
-                        className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm font-semibold text-gray-700 transition hover:bg-gray-100"
-                      >
-                        {logoUpload.isLoading ? "Uploading..." : "Upload Image"}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={removeLogo}
-                        title="Remove logo"
-                        className="shrink-0 text-gray-400 transition hover:text-red-500"
-                      >
-                        <X className="h-4 w-4" />
-                      </button>
+            {canEditCompany ? (
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <Field label="Company Name">
+                  <input
+                    required
+                    value={companyForm.company_name}
+                    onChange={(e) => setCompanyForm({ ...companyForm, company_name: e.target.value })}
+                    className={inputCls}
+                  />
+                </Field>
+                <Field label="Company Address">
+                  <input
+                    required
+                    value={companyForm.company_address}
+                    onChange={(e) => setCompanyForm({ ...companyForm, company_address: e.target.value })}
+                    className={inputCls}
+                  />
+                </Field>
+                <Field label="Contact Email">
+                  <input
+                    type="email"
+                    required
+                    value={companyForm.contact_email}
+                    onChange={(e) => setCompanyForm({ ...companyForm, contact_email: e.target.value })}
+                    className={inputCls}
+                  />
+                </Field>
+                <Field label="Contact Number">
+                  <input
+                    required
+                    value={companyForm.contact_number}
+                    onChange={(e) => setCompanyForm({ ...companyForm, contact_number: e.target.value })}
+                    className={inputCls}
+                  />
+                </Field>
+                <div className="sm:col-span-2">
+                  <SpecializationSelect
+                    selected={columnsToSpecializations(companyForm)}
+                    onChange={(next) => {
+                      setCompanyForm({ ...companyForm, ...specializationsToColumns(next) });
+                      if (next.length > 0) setSpecializationError("");
+                    }}
+                    error={specializationError}
+                  />
+                </div>
+                <div className="sm:col-span-2 flex flex-col gap-1.5">
+                  <span className={labelCls}>Company Logo</span>
+                  {getLogoCandidates(companyForm.company_logo).length > 0 ? (
+                    <div className="flex items-center gap-3 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5">
+                      <LogoImage
+                        key={companyForm.company_logo}
+                        value={companyForm.company_logo}
+                        alt="Company logo preview"
+                        className="h-10 w-10 shrink-0 rounded-lg border border-gray-200 object-cover"
+                      />
+                      <span className="flex-1 truncate text-sm text-gray-700">
+                        {logoFileName ? `Selected: ${logoFileName}` : "Logo"}
+                      </span>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => logoInputRef.current?.click()}
+                          className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm font-semibold text-gray-700 transition hover:bg-gray-100"
+                        >
+                          {logoUpload.isLoading ? "Uploading..." : "Upload Image"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={removeLogo}
+                          title="Remove logo"
+                          className="shrink-0 text-gray-400 transition hover:text-red-500"
+                        >
+                          <X className="h-4 w-4" />
+                        </button>
+                      </div>
                     </div>
-                  </div>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => logoInputRef.current?.click()}
-                    className="flex w-full items-center justify-center gap-2 rounded-xl border border-gray-200 bg-gray-50 px-4 py-2.5 text-sm font-semibold text-gray-700 transition hover:bg-gray-100"
-                  >
-                    <Upload className="h-4 w-4" />
-                    {logoUpload.isLoading ? "Uploading..." : "Upload Company Logo"}
-                  </button>
-                )}
-                <input
-                  ref={logoInputRef}
-                  type="file"
-                  accept="image/*"
-                  onChange={handleLogoFileChange}
-                  className="hidden"
-                />
-                {logoUpload.error && (
-                  <p className="text-xs text-red-500">Couldn&apos;t upload logo: {logoUpload.error.message}</p>
-                )}
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => logoInputRef.current?.click()}
+                      className="flex w-full items-center justify-center gap-2 rounded-xl border border-gray-200 bg-gray-50 px-4 py-2.5 text-sm font-semibold text-gray-700 transition hover:bg-gray-100"
+                    >
+                      <Upload className="h-4 w-4" />
+                      {logoUpload.isLoading ? "Uploading..." : "Upload Company Logo"}
+                    </button>
+                  )}
+                  <input
+                    ref={logoInputRef}
+                    type="file"
+                    accept="image/*"
+                    onChange={handleLogoFileChange}
+                    className="hidden"
+                  />
+                  {logoUpload.error && (
+                    <p className="text-xs text-red-500">Couldn&apos;t upload logo: {logoUpload.error.message}</p>
+                  )}
+                </div>
               </div>
-            </div>
+            ) : (
+              <dl className="grid grid-cols-1 gap-x-8 gap-y-8 sm:grid-cols-3">
+                <ReadOnlyRow label="Company Address" value={companyForm.company_address} />
+                <ReadOnlyRow label="Company Contact Email" value={companyForm.contact_email} />
+                <ReadOnlyRow label="Company Contact Number" value={companyForm.contact_number} />
+                <ReadOnlyListRow label="Specializations" values={specializationList} />
+              </dl>
+            )}
           </section>
 
           <div className="flex items-center gap-3">
             <button
               type="submit"
-              disabled={updateUser.isLoading || updateCompany.isLoading || !userEndpoint || !companyEndpoint}
+              disabled={updateUser.isLoading || updateCompany.isLoading || !userEndpoint || (canEditCompany && !companyEndpoint)}
               className={btnCls}
             >
               {updateUser.isLoading || updateCompany.isLoading ? "Saving…" : "Save Profile"}
