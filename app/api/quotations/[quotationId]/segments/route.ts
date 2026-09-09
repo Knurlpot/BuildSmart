@@ -60,8 +60,8 @@ export async function GET(request: NextRequest, { params }: Params) {
 
   const result = await withTransaction(async (client) => {
     const quote = await client.query(
-      "SELECT quote_id FROM quotation WHERE quote_id = $1 AND company_id = $2 AND user_id = $3 LIMIT 1",
-      [quoteId, auth.companyId, auth.userId]
+      "SELECT quote_id FROM quotation WHERE quote_id = $1 AND company_id = $2 LIMIT 1",
+      [quoteId, auth.companyId]
     );
     if (!quote.rows[0]) return null;
 
@@ -101,8 +101,8 @@ export async function POST(request: NextRequest, { params }: Params) {
   try {
     const savedCount = await withTransaction(async (client) => {
       const quote = await client.query(
-        "SELECT quote_id FROM quotation WHERE quote_id = $1 AND company_id = $2 AND user_id = $3 LIMIT 1",
-        [quoteId, auth.companyId, auth.userId]
+        "SELECT quote_id FROM quotation WHERE quote_id = $1 AND company_id = $2 LIMIT 1",
+        [quoteId, auth.companyId]
       );
       if (!quote.rows[0]) return null;
 
@@ -136,7 +136,7 @@ export async function POST(request: NextRequest, { params }: Params) {
         );
       }
 
-      await client.query("UPDATE quotation SET updated_at = CURRENT_TIMESTAMP WHERE quote_id = $1", [quoteId]);
+      await client.query("UPDATE quotation SET updated_by_user_id = $1, updated_at = CURRENT_TIMESTAMP WHERE quote_id = $2", [auth.userId, quoteId]);
       return body.segments!.length;
     });
 

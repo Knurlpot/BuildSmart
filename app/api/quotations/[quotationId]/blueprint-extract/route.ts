@@ -18,10 +18,9 @@ export async function POST(request: NextRequest, { params }: Params) {
   const quoteId = Number(quotationId);
   if (!Number.isInteger(quoteId)) return NextResponse.json({ error: "Invalid quotation id." }, { status: 400 });
 
-  const quote = await pool.query("SELECT quote_id FROM quotation WHERE quote_id = $1 AND company_id = $2 AND user_id = $3 LIMIT 1", [
+  const quote = await pool.query("SELECT quote_id FROM quotation WHERE quote_id = $1 AND company_id = $2 LIMIT 1", [
     quoteId,
     auth.companyId,
-    auth.userId,
   ]);
   if (!quote.rows[0]) return NextResponse.json({ error: "Quotation not found." }, { status: 404 });
 
@@ -53,6 +52,11 @@ export async function POST(request: NextRequest, { params }: Params) {
     if (body?.blueprint_file_path) {
       try {
         await linkBlueprintToQuotation(pool, body.blueprint_file_path, quoteId, auth.companyId);
+        await pool.query("UPDATE quotation SET updated_by_user_id = $1 WHERE quote_id = $2 AND company_id = $3", [
+          auth.userId,
+          quoteId,
+          auth.companyId,
+        ]);
       } catch {
         body.blueprint_file_path = null;
         body.persistence_warning = "The scan completed, but its saved file could not be linked to this quotation.";

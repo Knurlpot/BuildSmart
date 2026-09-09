@@ -33,9 +33,9 @@ export async function POST(request: NextRequest, { params }: Params) {
       }>(
         `SELECT quote_id, project_region, total_service_cost::float AS total_service_cost
          FROM quotation
-         WHERE quote_id = $1 AND company_id = $2 AND user_id = $3
+         WHERE quote_id = $1 AND company_id = $2
          FOR UPDATE`,
-        [quoteId, auth.companyId, auth.userId]
+        [quoteId, auth.companyId]
       );
       const quotation = quoteResult.rows[0];
       if (!quotation) throw new Error("Quotation not found.");
@@ -126,9 +126,10 @@ export async function POST(request: NextRequest, { params }: Params) {
         `UPDATE quotation
          SET total_material_cost = $1,
              grand_total = $1 + total_service_cost,
+             updated_by_user_id = $2,
              updated_at = CURRENT_TIMESTAMP
-         WHERE quote_id = $2`,
-        [newTotalMaterialCost, quoteId]
+         WHERE quote_id = $3`,
+        [newTotalMaterialCost, auth.userId, quoteId]
       );
 
       return {

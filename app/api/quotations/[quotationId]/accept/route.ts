@@ -72,8 +72,8 @@ export async function POST(request: NextRequest, { params }: Params) {
   try {
     const accepted = await withTransaction(async (client) => {
       const quote = await client.query<{ quote_id: number }>(
-        "SELECT quote_id FROM quotation WHERE quote_id = $1 AND company_id = $2 AND user_id = $3 LIMIT 1",
-        [quoteId, auth.companyId, auth.userId]
+        "SELECT quote_id FROM quotation WHERE quote_id = $1 AND company_id = $2 LIMIT 1",
+        [quoteId, auth.companyId]
       );
       if (!quote.rows[0]) return null;
 
@@ -124,9 +124,10 @@ export async function POST(request: NextRequest, { params }: Params) {
              total_material_cost = $2,
              total_service_cost = $3,
              grand_total = $4,
+             updated_by_user_id = $5,
              updated_at = CURRENT_TIMESTAMP
-         WHERE quote_id = $5 AND company_id = $6
-         RETURNING quote_id, company_id, user_id, client_id, project_name, project_location,
+         WHERE quote_id = $6 AND company_id = $7
+         RETURNING quote_id, company_id, user_id, updated_by_user_id, client_id, project_name, project_location,
                    project_region, input_method, status, accepted_tier, total_material_cost::float AS total_material_cost,
                    total_service_cost::float AS total_service_cost, grand_total::float AS grand_total,
                    created_at::text AS created_at, updated_at::text AS updated_at`,
@@ -135,6 +136,7 @@ export async function POST(request: NextRequest, { params }: Params) {
           Number(body.total_material_cost.toFixed(2)),
           Number(body.total_service_cost.toFixed(2)),
           Number(body.grand_total.toFixed(2)),
+          auth.userId,
           quoteId,
           auth.companyId,
         ]

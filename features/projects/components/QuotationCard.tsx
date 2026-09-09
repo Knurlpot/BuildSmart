@@ -10,12 +10,9 @@ export interface ClientQuotationCardData {
   accepted_tier: "Practical" | "Premium" | null;
   grand_total: number;
   created_at: string;
-}
-
-function formatDate(value: string) {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "Not available";
-  return date.toLocaleDateString("en-PH", { month: "short", day: "numeric", year: "numeric" });
+  updated_at?: string;
+  updated_by_user_name?: string | null;
+  updated_by_user_email?: string | null;
 }
 
 function formatPeso(value: number, status: string) {
@@ -106,8 +103,10 @@ export function QuotationCard({ project, clientName }: { project: ClientQuotatio
           <p className="mt-1 truncate text-xs font-medium text-gray-600">{formatPeso(project.grand_total, project.status)}</p>
         </div>
         <div className="min-w-0">
-          <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">Created</p>
-          <p className="mt-1 truncate text-xs font-medium text-gray-600">{formatDate(project.created_at)}</p>
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">Saved By</p>
+          <p className="mt-1 truncate text-xs font-medium text-gray-600" title={project.updated_by_user_email ?? undefined}>
+            {project.updated_by_user_name || project.updated_by_user_email || "Not available"}
+          </p>
         </div>
       </div>
     </article>

@@ -16,8 +16,8 @@ export async function POST(request: NextRequest, { params }: Params) {
   if (!Number.isInteger(quoteId)) return NextResponse.json({ error: "Invalid quotation id." }, { status: 400 });
 
   const quote = await pool.query<{ blueprint_file_path: string | null }>(
-    "SELECT blueprint_file_path FROM quotation WHERE quote_id = $1 AND company_id = $2 AND user_id = $3 LIMIT 1",
-    [quoteId, auth.companyId, auth.userId],
+    "SELECT blueprint_file_path FROM quotation WHERE quote_id = $1 AND company_id = $2 LIMIT 1",
+    [quoteId, auth.companyId],
   );
   const savedPath = quote.rows[0]?.blueprint_file_path;
   if (!quote.rows[0]) return NextResponse.json({ error: "Quotation not found." }, { status: 404 });
@@ -39,6 +39,11 @@ export async function POST(request: NextRequest, { params }: Params) {
       console.error("Blueprint rescan service failed", body);
       return NextResponse.json({ error: "Blueprint rescan failed." }, { status: response.status });
     }
+    await pool.query("UPDATE quotation SET updated_by_user_id = $1, updated_at = CURRENT_TIMESTAMP WHERE quote_id = $2 AND company_id = $3", [
+      auth.userId,
+      quoteId,
+      auth.companyId,
+    ]);
     return NextResponse.json(body);
   } catch {
     return NextResponse.json({ error: "Blueprint scanner is unavailable. Start the FastAPI service and try again." }, { status: 503 });

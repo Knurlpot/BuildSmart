@@ -250,10 +250,12 @@ CREATE TABLE quotation (
     total_material_cost DECIMAL(15,2) NOT NULL DEFAULT 0 CHECK (total_material_cost >= 0),
     total_service_cost DECIMAL(15,2) NOT NULL DEFAULT 0 CHECK (total_service_cost >= 0),
     grand_total DECIMAL(15,2) NOT NULL DEFAULT 0 CHECK (grand_total >= 0),
+    updated_by_user_id INT,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT fk_quotation_company FOREIGN KEY (company_id) REFERENCES company(company_id) ON DELETE CASCADE,
     CONSTRAINT fk_quotation_user FOREIGN KEY (user_id) REFERENCES users(user_id),
+    CONSTRAINT fk_quotation_updated_by_user FOREIGN KEY (updated_by_user_id) REFERENCES users(user_id),
     CONSTRAINT fk_quotation_client FOREIGN KEY (client_id) REFERENCES client(client_id) ON DELETE SET NULL
 );
 
