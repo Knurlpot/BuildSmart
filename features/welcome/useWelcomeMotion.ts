@@ -18,7 +18,6 @@ export function useWelcomeMotion(root: RefObject<HTMLDivElement | null>, enabled
     const element = root.current;
     if (!element || !enabled) return;
     const sections = Array.from(element.querySelectorAll<HTMLElement>("[data-reveal]"));
-    const skyline = element.querySelector<HTMLElement>("[data-skyline]");
     const progress = element.querySelector<HTMLElement>("[data-reading-progress]");
     const observer = new IntersectionObserver((entries) => {
       entries.forEach((entry) => {
@@ -34,9 +33,6 @@ export function useWelcomeMotion(root: RefObject<HTMLDivElement | null>, enabled
     const paint = () => {
       frame = 0;
       const scroll = window.scrollY;
-      const travel = Math.min(scroll, 750);
-      skyline?.style.setProperty("--city-rise", `${-travel * 0.075}px`);
-      skyline?.style.setProperty("--city-spread", `${travel * 0.035}px`);
       const total = document.documentElement.scrollHeight - window.innerHeight;
       progress?.style.setProperty("--reading-progress", `${total > 0 ? Math.min(scroll / total, 1) : 0}`);
     };
@@ -50,8 +46,6 @@ export function useWelcomeMotion(root: RefObject<HTMLDivElement | null>, enabled
       window.removeEventListener("scroll", update);
       window.removeEventListener("resize", update);
       element.removeAttribute("data-motion-ready");
-      skyline?.style.removeProperty("--city-rise");
-      skyline?.style.removeProperty("--city-spread");
     };
   }, [root, enabled]);
 }

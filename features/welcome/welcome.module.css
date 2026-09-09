@@ -1,4 +1,6 @@
 .welcome {
+  position: relative;
+  isolation: isolate;
   --ink: #282a27;
   --muted: #696d66;
   --paper: #fbfaf7;
@@ -9,6 +11,7 @@
   font-family: var(--font-montserrat), sans-serif;
   overflow-x: clip;
 }
+.welcome > main { position: relative; z-index: 1; }
 .welcome *, .welcome *::before, .welcome *::after { box-sizing: border-box; }
 .welcome button, .welcome a { -webkit-tap-highlight-color: transparent; }
 .welcome button { cursor: pointer; }
@@ -83,13 +86,6 @@
 .blueDescription { border-color: #bfd5e8; }
 .blueDescription .descriptionDot { background: #4388c6; box-shadow: 0 0 0 5px #4388c614; }
 .sceneHint { position: absolute; top: calc(89% + 80px); left: 12%; right: 0; text-align: center; color: #7b847b; font-size: 9px; }
-.skyline { position: absolute; left: 0; right: 0; bottom: 36px; height: clamp(180px, 22vw, 300px); z-index: 1; pointer-events: none; }
-.cityLayer { position: absolute; inset: 0; background: #c45d26; mask: url('/welcome/manila-skyline.svg') center bottom / 100% 100% no-repeat; transform: translate3d(0, var(--city-rise, 0px), 0); transform-origin: bottom; opacity: .25; will-change: transform; }
-.cityBack { opacity: .1; transform: translate(2%, calc(20px + var(--city-rise, 0px))) scale(1.08, 1.14); background: #7d260c; }
-.cityLeft { clip-path: inset(0 66.6% 0 0); transform: translate3d(calc(-1 * var(--city-spread, 0px)), var(--city-rise, 0px), 0); }
-.cityCenter { clip-path: inset(0 33.3% 0 33.3%); background: #e07b39; opacity: .24; transform: translate3d(0, calc(var(--city-rise, 0px) * 1.3), 0); }
-.cityRight { clip-path: inset(0 0 0 66.6%); transform: translate3d(var(--city-spread, 0px), calc(var(--city-rise, 0px) * .7), 0); }
-.cityHaze { position: absolute; inset: 20% 0 -2px; background: linear-gradient(0deg, var(--paper), #fbfaf7a6 19%, transparent 65%); }
 .heroFoot { position: absolute; bottom: 24px; left: 64px; right: 64px; display: flex; align-items: center; justify-content: space-between; z-index: 5; font-size: 8px; font-weight: 550; letter-spacing: .14em; color: #7d8176; }
 .heroFoot :is(span, a) { display: flex; align-items: center; gap: 9px; }
 .heroFoot a { min-height: 44px; color: #515b4c; }
@@ -192,7 +188,7 @@
 .closing .primaryButton { margin-top: 30px; }
 .closingGlow { position: absolute; inset: 0; z-index: -1; background: radial-gradient(ellipse at 50% 100%, #f0c9a98c, transparent 65%), radial-gradient(ellipse at 80% 60%, #e07b3933, transparent 55%); animation: meshBreathe 12s ease-in-out infinite alternate; }
 .backToTop { display: flex; width: fit-content; margin: 25px auto 0; align-items: center; gap: 8px; font-size: 9px; color: #837b6c; min-height: 44px; }
-.footer { border-top: 1px solid #dedfd4; padding: 28px 64px; display: flex; align-items: center; justify-content: space-between; gap: 24px; background: #f5f5ef; }
+.footer { position: relative; z-index: 1; border-top: 1px solid #dedfd4; padding: 28px 64px; display: flex; align-items: center; justify-content: space-between; gap: 24px; background: #f5f5efb8; }
 .footer .wordmark { font-size: 16px; }
 .footer .brandMark { width: 24px; height: 28px; }
 .footer > p { font-size: 10px; color: #78806d; }
@@ -202,7 +198,6 @@
 .welcome[data-motion="off"] *, .welcome[data-motion="off"] *::before, .welcome[data-motion="off"] *::after { animation: none !important; }
 .welcome[data-motion="off"] [data-reveal] { opacity: 1; transform: none; transition: none; }
 .welcome[data-motion="off"] .modelButton { transition: none; }
-.welcome[data-motion="off"] .cityLayer { will-change: auto; }
 @keyframes houseFloat { 0%, 100% { transform: translateY(0) rotate(-5deg); } 50% { transform: translateY(-14px) rotate(-3deg); } }
 @keyframes buildingFloat { 0%, 100% { transform: translateY(-10px) rotate(6deg); } 50% { transform: translateY(7px) rotate(4deg); } }
 @keyframes meshBreathe { from { transform: scale(1); opacity: .75; } to { transform: scale(1.12) translateY(-1%); opacity: 1; } }
@@ -305,7 +300,6 @@
   .orbitInner { height: 70%; }
   .sceneSparkOne { top: 17%; left: 6%; }
   .sceneSparkTwo { bottom: 23%; right: 6%; }
-  .skyline { height: 155px; width: 750px; left: 50%; right: auto; transform: translateX(-50%); bottom: 30px; }
   .heroFoot { left: 24px; right: 24px; bottom: 15px; font-size: 6.5px; letter-spacing: .08em; }
   .heroFoot :is(span, a) { gap: 5px; }
   .heroFoot svg { width: 11px; }
@@ -364,5 +358,4 @@
 @media (prefers-reduced-motion: reduce) {
   .welcome *, .welcome *::before, .welcome *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
   .welcome[data-motion-ready] [data-reveal] { opacity: 1; transform: none; }
-  .cityLayer { will-change: auto; }
 }

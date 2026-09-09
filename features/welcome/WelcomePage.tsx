@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
+import { type MouseEvent as ReactMouseEvent, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowDown, ArrowRight, ArrowUpRight, Check, CircleHelp, Compass, FileText, Layers3, LockKeyhole, LogOut, MapPin, Menu, MoveUpRight, Pause, Play, ScanLine, ShieldCheck, Sparkles, UserRound, X } from "lucide-react";
 import { logoFrame } from "@/components/logo-frames";
@@ -12,6 +12,7 @@ import { useAuth } from "@/providers/AuthProvider";
 import { useFetch } from "@/hooks/useFetch";
 import { resolveOnboardingRoute } from "@/lib/onboarding";
 import { useReducedMotion, useWelcomeMotion } from "./useWelcomeMotion";
+import { SkylineBackground } from "./skyline/SkylineBackground";
 import styles from "./welcome.module.css";
 
 const workflow = [
@@ -88,10 +89,6 @@ function ArchitectureScene() {
   </div>;
 }
 
-function ManilaSkyline() {
-  return <div className={styles.skyline} data-skyline role="img" aria-label="Manila skyline, reproduced from your supplied illustration"><div className={`${styles.cityLayer} ${styles.cityBack}`} aria-hidden="true" /><div className={`${styles.cityLayer} ${styles.cityLeft}`} aria-hidden="true" /><div className={`${styles.cityLayer} ${styles.cityCenter}`} aria-hidden="true" /><div className={`${styles.cityLayer} ${styles.cityRight}`} aria-hidden="true" /><div className={styles.cityHaze} aria-hidden="true" /></div>;
-}
-
 function ConstructionFilm({ motion }: { motion: boolean }) {
   const video = useRef<HTMLVideoElement>(null);
   const [playing, setPlaying] = useState(false);
@@ -142,6 +139,7 @@ function WorkspaceSection({ onboardingStep }: { onboardingStep: number }) {
 export function WelcomePage() {
   const { currentUser } = useAuth();
   const root = useRef<HTMLDivElement>(null);
+  const scrollAnimation = useRef<number | null>(null);
   const reducedMotion = useReducedMotion();
   const [paused, setPaused] = useState(false);
   const motion = !reducedMotion && !paused;
@@ -149,7 +147,56 @@ export function WelcomePage() {
   const ready = onboardingStep >= 2;
   const firstName = currentUser?.first_name?.trim() || currentUser?.email?.split("@")[0] || "builder";
   useWelcomeMotion(root, motion);
-  return <div ref={root} className={styles.welcome} data-motion={motion ? "on" : "off"}>
+  useEffect(() => () => {
+    if (scrollAnimation.current !== null) cancelAnimationFrame(scrollAnimation.current);
+  }, []);
+
+  function handlePageAnchorClick(event: ReactMouseEvent<HTMLDivElement>) {
+    if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    if (!(event.target instanceof Element)) return;
+
+    const link = event.target.closest<HTMLAnchorElement>('a[href^="#"]');
+    if (!link || !event.currentTarget.contains(link)) return;
+
+    const hash = link.getAttribute("href");
+    if (!hash || hash === "#") return;
+
+    const target = document.getElementById(decodeURIComponent(hash.slice(1)));
+    if (!target) return;
+
+    event.preventDefault();
+    if (scrollAnimation.current !== null) cancelAnimationFrame(scrollAnimation.current);
+
+    const scrollMargin = Number.parseFloat(window.getComputedStyle(target).scrollMarginTop) || 0;
+    const maximumScroll = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
+    const destination = Math.min(maximumScroll, Math.max(0, window.scrollY + target.getBoundingClientRect().top - scrollMargin));
+    const start = window.scrollY;
+    const distance = destination - start;
+
+    if (window.location.hash !== hash) window.history.pushState(null, "", hash);
+
+    if (!motion || Math.abs(distance) < 2) {
+      window.scrollTo({ top: destination });
+      scrollAnimation.current = null;
+      return;
+    }
+
+    const duration = Math.min(560, Math.max(280, Math.abs(distance) * 0.18));
+    const startedAt = performance.now();
+    const animate = (now: number) => {
+      const progress = Math.min(1, (now - startedAt) / duration);
+      const eased = progress < 0.5
+        ? 4 * progress * progress * progress
+        : 1 - Math.pow(-2 * progress + 2, 3) / 2;
+      window.scrollTo({ top: start + distance * eased });
+      if (progress < 1) scrollAnimation.current = requestAnimationFrame(animate);
+      else scrollAnimation.current = null;
+    };
+    scrollAnimation.current = requestAnimationFrame(animate);
+  }
+
+  return <div ref={root} className={styles.welcome} data-motion={motion ? "on" : "off"} onClick={handlePageAnchorClick}>
+    <SkylineBackground page={root} enabled={motion} />
     <a className={styles.skipLink} href="#welcome-content">Skip to welcome content</a>
     <WelcomeNav motion={motion} reducedMotion={reducedMotion} onToggleMotion={() => setPaused(!paused)} />
     <main id="welcome-content">
@@ -159,7 +206,7 @@ export function WelcomePage() {
         <p className={styles.heroDescription}>From a first home to a growing skyline. BuildSmart helps you turn project ideas into clearer, more confident construction quotations.</p>
         <div className={styles.heroActions}><Button asChild className={styles.primaryButton}><Link href={ready ? "/quotations/new" : resolveOnboardingRoute(onboardingStep)}>{ready ? "Start a quotation" : "Set up your workspace"}<ArrowUpRight size={18} /></Link></Button><a href="#our-story" className={styles.textButton}>Meet BuildSmart <ArrowRight size={16} /></a></div>
         <p className={styles.heroNote}><ShieldCheck size={14} /> AI-assisted. Built around your judgment.</p>
-      </div><ArchitectureScene /></div><ManilaSkyline /><div className={styles.heroFoot}><span><MapPin size={13} /> ROOTED IN THE PHILIPPINES</span><a href="#how-it-works">SCROLL TO DISCOVER <ArrowDown size={14} /></a><span>BUILT FOR WHAT&apos;S NEXT</span></div></section>
+      </div><ArchitectureScene /></div><div className={styles.heroFoot}><span><MapPin size={13} /> ROOTED IN THE PHILIPPINES</span><a href="#how-it-works">SCROLL TO DISCOVER <ArrowDown size={14} /></a><span>BUILT FOR WHAT&apos;S NEXT</span></div></section>
 
       <section id="how-it-works" className={`${styles.workflow} ${styles.section}`}><div className={styles.sectionHeading} data-reveal><div><p className={styles.eyebrow}><span /> FROM VISION TO QUOTATION</p><h2>A little less guesswork.<br /><span>A lot more clarity.</span></h2></div><p>One connected process for the details that matter. Your inputs lead the way, and you stay in control of the final call.</p></div><div className={styles.workflowGrid} data-reveal>{workflow.map(({ title, text, icon: Icon, number }) => <article key={number} className={styles.workflowCard}><div className={styles.workflowCardTop}><span>{number}</span><Icon size={27} strokeWidth={1.4} /></div><h3>{title}</h3><p>{text}</p><span className={styles.workflowLine} aria-hidden="true" /></article>)}</div><p className={styles.tierNote}><CircleHelp size={14} /> Practical and Premium are quotation options, not limits on your project&apos;s size.</p></section>
 

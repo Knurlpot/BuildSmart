@@ -1,0 +1,55 @@
+.environment {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  overflow: clip;
+  pointer-events: none;
+  user-select: none;
+  --skyline-art-width: max(100vw, 760px);
+  --skyline-footer-height: 84px;
+}
+
+.viewport {
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  overflow: clip;
+}
+
+.atmosphere {
+  position: absolute;
+  inset: 0;
+  opacity: var(--skyline-atmosphere, 0.36);
+  background: radial-gradient(ellipse at 85% 40%, #f2c29d33, transparent 70%);
+}
+
+.artwork {
+  position: absolute;
+  left: 50%;
+  bottom: calc(var(--skyline-footer-height) - var(--skyline-art-width) * 0.23558179);
+  width: var(--skyline-art-width);
+  height: auto;
+  max-width: none;
+  /* Layout centering only: building size never changes with scroll. */
+  transform: translateX(-50%);
+  filter: drop-shadow(0 5px 7px #8d3f1210);
+}
+
+.contentVeil {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse 58% 38% at 46% 38%, #fbfaf7ed 18%, #fbfaf7b0 55%, #fbfaf700 100%),
+    linear-gradient(to bottom, #fbfaf7b0, #fbfaf700 28%);
+}
+
+@media (max-width: 800px) {
+  .contentVeil {
+    background: radial-gradient(ellipse 70% 46% at 45% 36%, #fbfaf7f0 12%, #fbfaf7bf 60%, #fbfaf700 100%);
+  }
+  .artwork { filter: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .artwork [data-building] { transform: none !important; }
+}
