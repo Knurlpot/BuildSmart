@@ -33,6 +33,9 @@ export interface ClientInsights {
     updated_at: string;
     updated_by_user_name: string | null;
     updated_by_user_email: string | null;
+    made_by_user_id: number;
+    made_by_user_name: string | null;
+    made_by_user_email: string | null;
   }[];
   mostRecentProject: {
     quote_id: number;
@@ -45,6 +48,9 @@ export interface ClientInsights {
     updated_at: string;
     updated_by_user_name: string | null;
     updated_by_user_email: string | null;
+    made_by_user_id: number;
+    made_by_user_name: string | null;
+    made_by_user_email: string | null;
   } | null;
 }
 
