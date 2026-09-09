@@ -25,7 +25,7 @@
 .brandMark { width: 34px; height: 38px; position: relative; display: inline-grid; place-items: center; isolation: isolate; flex-shrink: 0; }
 .brandSymbol { position: relative; width: 100%; height: 100%; object-fit: contain; z-index: 2; }
 .brandEcho { position: absolute; width: 100%; height: 100%; object-fit: contain; opacity: 0; filter: blur(4px) saturate(1.8); transform: scale(1.3); animation: logoPulse 7s ease-in-out infinite; }
-.brandHalo { position: absolute; inset: -25%; background: conic-gradient(from 60deg, #f4b78300, #e07b3966, #72b9f84d, #fbe1b200); filter: blur(13px); opacity: .45; animation: haloDrift 12s ease-in-out infinite alternate; }
+.brandHalo { position: absolute; inset: -25%; background: conic-gradient(from 60deg, #f4b78300, #e07b3966, #b952204d, #fbe1b200); filter: blur(13px); opacity: .45; animation: haloDrift 12s ease-in-out infinite alternate; }
 .desktopNav { display: flex; gap: 30px; align-items: center; }
 .desktopNav a { font-size: 12px; font-weight: 550; color: #5d635b; padding: 12px 0; transition: color .2s; }
 .desktopNav a:hover { color: var(--orange); }
@@ -42,7 +42,7 @@
 .menuPanel nav :is(a, button) { display: flex; align-items: center; justify-content: space-between; padding: 12px; border-radius: 8px; font-size: 13px; text-align: left; background: none; border: none; width: 100%; }
 .menuPanel nav :is(a, button):hover { background: #faf1e8; color: var(--orange); }
 .menuError { font-size: 12px; padding: 12px; color: #a93623; }
-.readingProgress { position: absolute; bottom: -1px; left: 0; height: 2px; width: 100%; background: linear-gradient(90deg, #e07b39, #7b9fbd); transform: scaleX(var(--reading-progress, 0)); transform-origin: left; }
+.readingProgress { position: absolute; bottom: -1px; left: 0; height: 2px; width: 100%; background: linear-gradient(90deg, #e07b39, #b95220); transform: scaleX(var(--reading-progress, 0)); transform-origin: left; }
 .hero { position: relative; min-height: 810px; isolation: isolate; overflow: hidden; }
 .heroInner { max-width: 1440px; margin: auto; padding: 84px 64px 224px; display: grid; grid-template-columns: 1fr 1fr; align-items: center; gap: 28px; position: relative; z-index: 3; }
 .heroCopy { max-width: 600px; }
@@ -57,7 +57,7 @@
 .textButton { display: inline-flex; align-items: center; gap: 13px; font-size: 12px; font-weight: 600; min-height: 44px; }
 .textButton:hover { color: var(--orange); }
 .heroNote { font-size: 10px; color: #75796e; display: flex; align-items: center; gap: 7px; margin-top: 24px; }
-.heroMesh { position: absolute; z-index: -2; inset: 0; background: radial-gradient(ellipse at 77% 24%, #c8dded88, transparent 36%), radial-gradient(ellipse at 46% 68%, #f5cfaa66, transparent 36%), radial-gradient(ellipse at 82% 88%, #efd9b67a, transparent 42%); animation: meshBreathe 16s ease-in-out infinite alternate; }
+.heroMesh { position: absolute; z-index: -2; inset: 0; background: radial-gradient(ellipse at 77% 24%, #f2b07966, transparent 36%), radial-gradient(ellipse at 46% 68%, #f5cfaa66, transparent 36%), radial-gradient(ellipse at 82% 88%, #e07b3940, transparent 42%); animation: meshBreathe 16s ease-in-out infinite alternate; }
 .heroGrid { position: absolute; inset: 0; z-index: -1; opacity: .22; background-image: linear-gradient(#a39d8526 1px, transparent 1px), linear-gradient(90deg, #a39d8526 1px, transparent 1px); background-size: 70px 70px; mask-image: linear-gradient(to right, transparent 32%, #000 80%); }
 .architectureScene { height: 470px; position: relative; isolation: isolate; margin-top: 0; }
 .orbit, .orbitInner { position: absolute; border: 1px solid #a3b3ad45; width: 90%; height: 65%; left: 5%; top: 17%; border-radius: 50%; transform: rotate(-23deg); pointer-events: none; z-index: -1; }
@@ -84,10 +84,10 @@
 .blueDescription .descriptionDot { background: #4388c6; box-shadow: 0 0 0 5px #4388c614; }
 .sceneHint { position: absolute; top: calc(89% + 80px); left: 12%; right: 0; text-align: center; color: #7b847b; font-size: 9px; }
 .skyline { position: absolute; left: 0; right: 0; bottom: 36px; height: clamp(180px, 22vw, 300px); z-index: 1; pointer-events: none; }
-.cityLayer { position: absolute; inset: 0; background: #94aeb7; mask: url('/welcome/manila-skyline.svg') center bottom / 100% 100% no-repeat; transform: translate3d(0, var(--city-rise, 0px), 0); transform-origin: bottom; opacity: .22; will-change: transform; }
-.cityBack { opacity: .09; transform: translate(2%, calc(20px + var(--city-rise, 0px))) scale(1.08, 1.14); background: #528dac; }
+.cityLayer { position: absolute; inset: 0; background: #c45d26; mask: url('/welcome/manila-skyline.svg') center bottom / 100% 100% no-repeat; transform: translate3d(0, var(--city-rise, 0px), 0); transform-origin: bottom; opacity: .25; will-change: transform; }
+.cityBack { opacity: .1; transform: translate(2%, calc(20px + var(--city-rise, 0px))) scale(1.08, 1.14); background: #7d260c; }
 .cityLeft { clip-path: inset(0 66.6% 0 0); transform: translate3d(calc(-1 * var(--city-spread, 0px)), var(--city-rise, 0px), 0); }
-.cityCenter { clip-path: inset(0 33.3% 0 33.3%); background: #bc9e7c; opacity: .24; transform: translate3d(0, calc(var(--city-rise, 0px) * 1.3), 0); }
+.cityCenter { clip-path: inset(0 33.3% 0 33.3%); background: #e07b39; opacity: .24; transform: translate3d(0, calc(var(--city-rise, 0px) * 1.3), 0); }
 .cityRight { clip-path: inset(0 0 0 66.6%); transform: translate3d(var(--city-spread, 0px), calc(var(--city-rise, 0px) * .7), 0); }
 .cityHaze { position: absolute; inset: 20% 0 -2px; background: linear-gradient(0deg, var(--paper), #fbfaf7a6 19%, transparent 65%); }
 .heroFoot { position: absolute; bottom: 24px; left: 64px; right: 64px; display: flex; align-items: center; justify-content: space-between; z-index: 5; font-size: 8px; font-weight: 550; letter-spacing: .14em; color: #7d8176; }
@@ -136,9 +136,9 @@
 .principleInner { max-width: 1100px; margin: 0 auto; padding: 90px 64px; display: grid; grid-template-columns: .6fr 1fr; gap: 80px; align-items: center; }
 .brandMarkLarge { width: 180px; height: 210px; margin: auto; }
 .brandMarkLarge .brandSymbol { filter: drop-shadow(0 20px 25px #b2704844); }
-.brandMarkLarge .brandHalo { inset: -35%; filter: blur(24px); opacity: .85; background: conic-gradient(from 60deg, #c8dceb00, #e4ac7a8c, #72b9f84d, #f1be7e80, #c8dceb00); }
+.brandMarkLarge .brandHalo { inset: -35%; filter: blur(24px); opacity: .85; background: conic-gradient(from 60deg, #f3c39b00, #e4ac7a8c, #b952205c, #f1be7e80, #f3c39b00); }
 .brandMarkLarge .brandEcho { animation-duration: 9s; filter: blur(13px) saturate(1.8); }
-.principleMesh { position: absolute; inset: 0; z-index: -1; background: radial-gradient(ellipse at 30% 20%, #e8a16430, transparent 60%), radial-gradient(ellipse at 5% 80%, #bbcfd955, transparent 45%); animation: meshBreathe 11s ease-in-out infinite alternate; }
+.principleMesh { position: absolute; inset: 0; z-index: -1; background: radial-gradient(ellipse at 30% 20%, #e8a16430, transparent 60%), radial-gradient(ellipse at 5% 80%, #c46a3730, transparent 45%); animation: meshBreathe 11s ease-in-out infinite alternate; }
 .principleInner h2 { font-size: clamp(30px, 3vw, 44px); }
 .principleInner > div > p:not(.eyebrow) { max-width: 500px; font-size: 12px; line-height: 1.9; margin-top: 22px; color: #69715f; }
 .trustPills { display: flex; align-items: center; flex-wrap: wrap; gap: 10px 18px; margin-top: 25px; }
@@ -190,7 +190,7 @@
 .closing h2 { font-size: clamp(46px, 5.5vw, 75px); line-height: 1.09; letter-spacing: -.065em; }
 .closing h2 > span { color: var(--primary); }
 .closing .primaryButton { margin-top: 30px; }
-.closingGlow { position: absolute; inset: 0; z-index: -1; background: radial-gradient(ellipse at 50% 100%, #f0c9a98c, transparent 65%), radial-gradient(ellipse at 80% 60%, #c9dce32f, transparent 55%); animation: meshBreathe 12s ease-in-out infinite alternate; }
+.closingGlow { position: absolute; inset: 0; z-index: -1; background: radial-gradient(ellipse at 50% 100%, #f0c9a98c, transparent 65%), radial-gradient(ellipse at 80% 60%, #e07b3933, transparent 55%); animation: meshBreathe 12s ease-in-out infinite alternate; }
 .backToTop { display: flex; width: fit-content; margin: 25px auto 0; align-items: center; gap: 8px; font-size: 9px; color: #837b6c; min-height: 44px; }
 .footer { border-top: 1px solid #dedfd4; padding: 28px 64px; display: flex; align-items: center; justify-content: space-between; gap: 24px; background: #f5f5ef; }
 .footer .wordmark { font-size: 16px; }
