@@ -750,7 +750,7 @@ def get_task_status(task_id: str):
         # async_result.result is the exception instance itself on failure —
         # stringify it so callers actually see why it failed instead of null.
         result = {"error": str(async_result.result)}
-    elif isinstance(async_result.info, dict):
+    elif isinstance(getattr(async_result, "info", None), dict):
         result = async_result.info
     else:
         result = None

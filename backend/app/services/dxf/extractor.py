@@ -249,7 +249,7 @@ CATEGORY_MATRIX: tuple[tuple[str, tuple[str, ...], str, float], ...] = (
     ("Living Areas", ("living", "dining", "family", "great room"), "#80B3FF", 0.35),
     ("Bedrooms / Suites", ("bed", "br", "bedroom", "suite"), "#FFB3BA", 0.35),
     ("Kitchen & Dining", ("kitchen", "pantry", "nook", "bar"), "#FFCC80", 0.35),
-    ("Bathrooms & Services", ("bath", "wc", "powder", "toilet", "utility", "laundry", "cr"), "#A8E6CF", 0.35),
+    ("Bathrooms & Services", ("bath", "bathroom", "wc", "powder", "toilet", "utility", "laundry", "cr"), "#A8E6CF", 0.35),
     ("Commercial & Storage", ("shop", "store", "commercial", "storage"), "#4ECDC4", 0.35),
     ("Balconies & Porches", ("porch", "veranda", "balcony", "deck"), "#E8A0BF", 0.35),
     ("Circulation & Hallways", ("hall", "corridor", "passage", "stair", "stairs", "entrance"), "#9B59B6", 0.35),
@@ -1799,9 +1799,14 @@ def _to_segment(
     labeled = space.label is not None or symbol_inferred
     if not labeled and canonical_name(name) in {"unclassified space", "unlabeled space", "unlabeled"}:
         name = f"UNLABELED_SPACE_{unlabeled_id}"
+    category, color_hex, alpha = _category_for_space(name, space.polygon, labeled)
     return ExtractedSegment(
-        segment_name=space.name[:150],
+        segment_name=name[:150],
         area_sqm=space.reported_area_sqm or round(space.polygon.area * metre_factor * metre_factor, 2),
+        category=category,
+        color_hex=color_hex,
+        alpha=alpha,
+        overlay=RoomOverlay(category=category, color_hex=color_hex, alpha=alpha, rgba=_hex_to_rgba(color_hex, alpha)),
         polygon_coords=coords,
         confidence_score=space.confidence,
         geometry_flagged=bool(space.warnings),
@@ -1913,6 +1918,7 @@ def extract_dxf_blueprint(content: bytes, config: DxfExtractionConfig | None = N
     geometry_regions = _floor_regions_from_geometry(entities, labels, drawing_bounds)
     cluster_regions = _floor_regions_from_space_label_clusters(labels, drawing_bounds)
     proposal_label_regions = [region for region in label_regions if "proposal" in region.name.lower()]
+    explicit_floor_label_count = sum(1 for label in labels if normalize_floor_label(label.text))
     if len(proposal_label_regions) >= 2:
         regions = proposal_label_regions
     elif len(dbscan_regions) >= 2:
@@ -1920,6 +1926,8 @@ def extract_dxf_blueprint(content: bytes, config: DxfExtractionConfig | None = N
     elif len(grid_regions) >= 2:
         regions = grid_regions
     elif len(label_regions) > 1:
+        regions = label_regions
+    elif explicit_floor_label_count == 1 and len(label_regions) == 1:
         regions = label_regions
     elif cluster_regions and len(cluster_regions) >= len(geometry_regions):
         regions = cluster_regions

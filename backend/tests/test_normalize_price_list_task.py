@@ -66,7 +66,9 @@ def test_normalize_price_list_writes_matched_rows_and_flags_new_items(db_session
         for r in db_session.execute(select(HistoricalPriceRecord)).scalars()
         if r.historicalrec_id not in existing_record_ids
     ]
-    assert len(new_records) == 5
+    # Duplicate same-day supplier matches update the existing item/source/date
+    # row instead of inserting a second historical record.
+    assert len(new_records) == 3
     assert all(r.price_source == "Supplier" for r in new_records)
     assert all(r.supplier_id is None for r in new_records)
 

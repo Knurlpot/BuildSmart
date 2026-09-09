@@ -1,4 +1,5 @@
 import re
+import math
 from typing import Any
 
 from app.schemas.pricelist import (
@@ -110,16 +111,16 @@ def _canonicalize_name(raw_name: str, raw_unit: str) -> tuple[str, CategoryType]
     def _find(pattern: str) -> re.Match[str] | None:
         return re.search(pattern, lower)
 
-    if "cement" in lower:
+    if "cement" in lower or re.search(r"\bcem\b", lower):
         type_match = _find(r"type\s*([1-9ivx]+)|t\s*1|t1|type\s*i\b")
         type_label = "Type 1" if type_match else "Type 1"
         weight_match = _find(r"(40\s*kg|40kg|50\s*kg|50kg|25\s*kg|25kg)")
-        size_label = "40kg Bag" if weight_match is None else weight_match.group(1).replace(" ", "")
+        size_label = "40kg Bag" if weight_match is None else f"{weight_match.group(1).replace(' ', '')} Bag"
         return f"Portland Cement ({type_label}, {size_label})", "Concrete & Masonry"
 
     if re.search(r"\b(chb|concrete hollow block|hollow block)\b", lower):
         size = "4-inch"
-        size_match = _find(r"(\d+(?:\.\d+)?)["" ]?\s*-?inch")
+        size_match = _find(r'(\d+(?:\.\d+)?)[" ]?\s*-?inch')
         if size_match:
             size = f"{size_match.group(1)}-inch"
         elif _find(r"\b4\b"):
@@ -129,7 +130,8 @@ def _canonicalize_name(raw_name: str, raw_unit: str) -> tuple[str, CategoryType]
 
     if re.search(r"\b(deformed steel bar|deformd steel bar|deformed bar|deformd bar|rebar|steel bar)\b", lower):
         grade = _find(r"\bgrade\s*(\d+)|\bg\s*(\d+)|\bgr\s*(\d+)\b")
-        grade_label = f"Grade {grade.group(1)}" if grade else "Grade 40"
+        grade_value = next((value for value in grade.groups() if value), None) if grade else None
+        grade_label = f"Grade {grade_value}" if grade_value else "Grade 40"
         diameter = _find(r"(\d+(?:\.\d+)?)\s*mm")
         diameter_label = f"{diameter.group(1)}mm" if diameter else "12mm"
         length_suffix = "x 6m"
@@ -228,7 +230,10 @@ def _parse_price(raw_price: Any) -> tuple[float | None, str | None]:
         return None, "Missing price"
 
     if isinstance(raw_price, (int, float)):
-        return float(raw_price), None
+        value = float(raw_price)
+        if not math.isfinite(value):
+            return None, "Missing price"
+        return value, None
 
     price_text = str(raw_price).strip()
     if price_text == "":
@@ -238,6 +243,8 @@ def _parse_price(raw_price: Any) -> tuple[float | None, str | None]:
     cleaned = cleaned.replace("PHP", "")
     try:
         value = float(cleaned)
+        if not math.isfinite(value):
+            return None, "Invalid price value"
         return value, None
     except ValueError:
         return None, f"Invalid price value: {raw_price}"

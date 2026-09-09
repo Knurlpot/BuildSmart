@@ -1670,7 +1670,10 @@ def parse_pricelist_file(file_path: str, column_mapping: Mapping[str, str] | Non
     suffix = path.suffix.lower()
 
     if suffix == ".csv":
-        df = pd.read_csv(path)
+        try:
+            df = pd.read_csv(path, encoding="utf-8-sig")
+        except UnicodeDecodeError:
+            df = pd.read_csv(path, encoding="cp1252")
     elif suffix in (".xlsx", ".xls"):
         try:
             df = pd.read_excel(path, engine="openpyxl")

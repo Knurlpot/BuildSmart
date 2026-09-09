@@ -25,6 +25,9 @@
 *.pem
 .cache/
 .npm-cache/
+.backend-tools/
+.uv-cache/
+.uv-python/
 
 # debug
 npm-debug.log*
