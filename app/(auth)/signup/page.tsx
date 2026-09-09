@@ -79,7 +79,7 @@ function formatPhNationalNumber(digits: string): string {
   return [digits.slice(0, 3), digits.slice(3, 6), digits.slice(6, 10)].filter(Boolean).join(" ");
 }
 
-// Added "+63" in PH format
+// "+63" in Phil Number format
 function formatPhDisplayNumber(digits: string): string {
   const national = formatPhNationalNumber(digits);
   return national ? `+63 ${national}` : "";

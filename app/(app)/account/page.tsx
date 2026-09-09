@@ -236,12 +236,14 @@ function UserProfileSection() {
   const [editing, setEditing] = useState(false);
   const [specializationError, setSpecializationError] = useState("");
   const [profilePictureFileName, setProfilePictureFileName] = useState("");
+  const [profilePictureFileError, setProfilePictureFileError] = useState("");
   const [logoFileName, setLogoFileName] = useState("");
   const profilePictureInputRef = useRef<HTMLInputElement>(null);
   const logoInputRef = useRef<HTMLInputElement>(null);
   const canEditCompany = userData?.user_role === "Owner";
 
   const uploadProfilePicture = async (file: File) => {
+    setProfilePictureFileError("");
     setProfilePictureFileName(file.name);
     const body = new FormData();
     body.append("file", file);
@@ -255,12 +257,22 @@ function UserProfileSection() {
 
   const handleProfilePictureFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) uploadProfilePicture(file);
+    if (!file) return;
+
+    if (!["image/jpeg", "image/png"].includes(file.type)) {
+      setProfilePictureFileError("Only JPG or PNG images are allowed.");
+      setProfilePictureFileName("");
+      e.target.value = "";
+      return;
+    }
+
+    uploadProfilePicture(file);
   };
 
   const removeProfilePicture = () => {
     setUserForm((current) => ({ ...current, profile_picture: "" }));
     setProfilePictureFileName("");
+    setProfilePictureFileError("");
     profilePictureUpload.reset();
   };
 
@@ -297,6 +309,7 @@ function UserProfileSection() {
     profilePictureUpload.reset();
     logoUpload.reset();
     setProfilePictureFileName("");
+    setProfilePictureFileError("");
     setLogoFileName("");
     setSpecializationError("");
     setEditing(false);
@@ -439,58 +452,6 @@ function UserProfileSection() {
           {/* User Fields */}
           <div>
             <p className="mb-3 text-sm font-semibold text-gray-700">User Information</p>
-            <div className="mb-4 flex flex-col gap-1.5">
-              <span className={labelCls}>Profile Picture</span>
-              {userForm.profile_picture ? (
-                <div className="flex items-center gap-3 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5">
-                  <LogoImage
-                    key={userForm.profile_picture}
-                    value={userForm.profile_picture}
-                    alt="Profile picture preview"
-                    className="h-10 w-10 shrink-0 rounded-full border border-gray-200 object-cover"
-                  />
-                  <span className="flex-1 truncate text-sm text-gray-700">
-                    {profilePictureFileName ? `Selected: ${profilePictureFileName}` : "Profile picture"}
-                  </span>
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => profilePictureInputRef.current?.click()}
-                      className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm font-semibold text-gray-700 transition hover:bg-gray-100"
-                    >
-                      {profilePictureUpload.isLoading ? "Uploading..." : "Change Image"}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={removeProfilePicture}
-                      title="Remove profile picture"
-                      className="shrink-0 text-gray-400 transition hover:text-red-500"
-                    >
-                      <X className="h-4 w-4" />
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => profilePictureInputRef.current?.click()}
-                  className="flex w-full items-center justify-center gap-2 rounded-xl border border-gray-200 bg-gray-50 px-4 py-2.5 text-sm font-semibold text-gray-700 transition hover:bg-gray-100"
-                >
-                  <Upload className="h-4 w-4" />
-                  {profilePictureUpload.isLoading ? "Uploading..." : "Upload Profile Picture"}
-                </button>
-              )}
-              <input
-                ref={profilePictureInputRef}
-                type="file"
-                accept="image/*"
-                onChange={handleProfilePictureFileChange}
-                className="hidden"
-              />
-              {profilePictureUpload.error && (
-                <p className="text-xs text-red-500">Couldn&apos;t upload profile picture: {profilePictureUpload.error.message}</p>
-              )}
-            </div>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <Field label="First Name">
                 <input
@@ -535,6 +496,61 @@ function UserProfileSection() {
                   ))}
                 </select>
               </Field>
+              <div className="flex flex-col gap-1.5">
+                <span className={labelCls}>Profile Picture</span>
+                {userForm.profile_picture ? (
+                  <div className="flex min-h-[42px] items-center gap-3 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5">
+                    <LogoImage
+                      key={userForm.profile_picture}
+                      value={userForm.profile_picture}
+                      alt="Profile picture preview"
+                      className="h-10 w-10 shrink-0 rounded-full border border-gray-200 object-cover"
+                    />
+                    <span className="min-w-0 flex-1 truncate text-sm text-gray-700">
+                      {profilePictureFileName ? `Selected: ${profilePictureFileName}` : "Profile picture"}
+                    </span>
+                    <div className="flex shrink-0 items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => profilePictureInputRef.current?.click()}
+                        className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm font-semibold text-gray-700 transition hover:bg-gray-100"
+                      >
+                        {profilePictureUpload.isLoading ? "Uploading..." : "Change Image"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={removeProfilePicture}
+                        title="Remove profile picture"
+                        className="shrink-0 text-gray-400 transition hover:text-red-500"
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => profilePictureInputRef.current?.click()}
+                    className="flex min-h-[42px] w-full items-center justify-center gap-2 rounded-xl border border-gray-200 bg-gray-50 px-4 py-2.5 text-sm font-semibold text-gray-700 transition hover:bg-gray-100"
+                  >
+                    <Upload className="h-4 w-4" />
+                    {profilePictureUpload.isLoading ? "Uploading..." : "Upload Profile Picture"}
+                  </button>
+                )}
+                <input
+                  ref={profilePictureInputRef}
+                  type="file"
+                  accept="image/jpeg,image/png,.jpg,.jpeg,.png"
+                  onChange={handleProfilePictureFileChange}
+                  className="hidden"
+                />
+                {profilePictureFileError && (
+                  <p className="text-xs text-red-500">{profilePictureFileError}</p>
+                )}
+                {profilePictureUpload.error && (
+                  <p className="text-xs text-red-500">Couldn&apos;t upload profile picture: {profilePictureUpload.error.message}</p>
+                )}
+              </div>
             </div>
           </div>
         </section>

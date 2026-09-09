@@ -27,7 +27,7 @@ import type { MaterialRuleEntry } from "@/lib/dev/provisional/companyRulesTypes"
 import { useClients } from "@/hooks/useClients";
 
 
-// 
+// Metadata for each provisional tier
 const TIER_META: Record<ProvisionalTier, { accent: string; headerBg: string; accentBg: string }> = {
   Practical: {
     accent: "text-primary",
