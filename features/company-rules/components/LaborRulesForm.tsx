@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { AlertTriangle, CheckCircle2, Filter, Pencil, X, XCircle } from "lucide-react";
 import { FieldHelp } from "./FieldHelp";
 import { RuleListDetailPanel } from "./RuleListDetailPanel";
+import { SearchableSelect } from "./SearchableSelect";
 import {
   useLaborRules,
   useLaborTradeOptions,
@@ -321,25 +322,29 @@ export function LaborRulesForm({ focusRuleId, onFocusHandled }: LaborRulesFormPr
                 <div className="grid grid-cols-1 gap-3">
                   <div className="flex flex-col gap-1.5">
                     <label className="text-xs font-semibold text-gray-600">Rule Scope</label>
-                    <select value={pendingScopeFilter} onChange={(e) => setPendingScopeFilter(e.target.value as LaborRuleScope | "")} className={inputCls}>
-                      <option value="">All scopes</option>
-                      {(["Treatment", "General", "Trade"] as LaborRuleScope[]).map((scope) => (
-                        <option key={scope} value={scope}>
-                          {scope}
-                        </option>
-                      ))}
-                    </select>
+                    <SearchableSelect
+                      value={pendingScopeFilter}
+                      onChange={(value) => setPendingScopeFilter(value as LaborRuleScope | "")}
+                      className={inputCls}
+                      placeholder="All scopes"
+                      options={[
+                        { value: "", label: "All scopes" },
+                        ...(["Treatment", "General", "Trade"] as LaborRuleScope[]).map((scope) => ({ value: scope, label: scope })),
+                      ]}
+                    />
                   </div>
                   <div className="flex flex-col gap-1.5">
                     <label className="text-xs font-semibold text-gray-600">Treatment Type</label>
-                    <select value={pendingTreatmentFilter} onChange={(e) => setPendingTreatmentFilter(e.target.value)} className={inputCls}>
-                      <option value="">All treatment types</option>
-                      {treatmentOptions.map((treatment) => (
-                        <option key={treatment} value={treatment}>
-                          {treatment}
-                        </option>
-                      ))}
-                    </select>
+                    <SearchableSelect
+                      value={pendingTreatmentFilter}
+                      onChange={setPendingTreatmentFilter}
+                      className={inputCls}
+                      placeholder="All treatment types"
+                      options={[
+                        { value: "", label: "All treatment types" },
+                        ...treatmentOptions.map((treatment) => ({ value: treatment, label: treatment })),
+                      ]}
+                    />
                   </div>
                 </div>
                 <div className="mt-3 flex justify-end gap-2">
@@ -444,21 +449,17 @@ export function LaborRulesForm({ focusRuleId, onFocusHandled }: LaborRulesFormPr
                     </span>{" "}
                     <span className="text-red-500">*</span>
                   </label>
-                  <select
-                    id="labor-treatment-type"
+                  <SearchableSelect
                     value={treatmentChoice}
-                    onChange={(e) => {
-                      const next = e.target.value;
+                    onChange={(next) => {
                       setTreatmentChoice(next);
                       setTreatmentType(next);
                     }}
                     className={inputCls}
-                  >
-                    <option value="">Select…</option>
-                    {treatmentOptions.map((treatment) => (
-                      <option key={treatment}>{treatment}</option>
-                    ))}
-                  </select>
+                    ariaLabel="Treatment Type"
+                    placeholder="Select..."
+                    options={treatmentOptions.map((treatment) => ({ value: treatment, label: treatment }))}
+                  />
                   {treatmentOptions.length === 0 && (
                     <p className="text-[11px] text-amber-600">
                       Add treatment-tagged Material Rules first.
@@ -475,12 +476,13 @@ export function LaborRulesForm({ focusRuleId, onFocusHandled }: LaborRulesFormPr
                       <FieldHelp label="Labor Trade" text="Used when labor is priced by trade, such as mason, painter, installer, or electrician." />
                       <span className="text-red-500">*</span>
                     </label>
-                    <select value={trade} onChange={(e) => setTrade(e.target.value)} className={inputCls}>
-                      <option value="">Select…</option>
-                      {laborTradeOptions.map((t) => (
-                        <option key={t}>{t}</option>
-                      ))}
-                    </select>
+                    <SearchableSelect
+                      value={trade}
+                      onChange={setTrade}
+                      className={inputCls}
+                      placeholder="Select..."
+                      options={laborTradeOptions.map((t) => ({ value: t, label: t }))}
+                    />
                     {touched && !tradeValid && <p className="text-xs text-red-500">Select a trade.</p>}
                   </div>
                   <div className="flex flex-col gap-1.5">
@@ -488,12 +490,16 @@ export function LaborRulesForm({ focusRuleId, onFocusHandled }: LaborRulesFormPr
                       <FieldHelp label="Region" text="Limits this labor rule to a specific project region when rates vary by location." />
                       <span className="font-normal normal-case text-gray-400">(optional)</span>
                     </label>
-                    <select value={region} onChange={(e) => setRegion(e.target.value as PhRegion)} className={inputCls}>
-                      <option value="">Any region</option>
-                      {PH_REGIONS.map((r) => (
-                        <option key={r}>{r}</option>
-                      ))}
-                    </select>
+                    <SearchableSelect
+                      value={region}
+                      onChange={(value) => setRegion(value as PhRegion)}
+                      className={inputCls}
+                      placeholder="Any region"
+                      options={[
+                        { value: "", label: "Any region" },
+                        ...PH_REGIONS.map((r) => ({ value: r, label: r })),
+                      ]}
+                    />
                   </div>
                 </div>
               )}

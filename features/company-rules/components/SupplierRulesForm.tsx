@@ -10,6 +10,7 @@ import { type Dispatch, type KeyboardEvent, type SetStateAction, useEffect, useS
 import { AlertTriangle, CheckCircle2, Filter, Pencil, X, XCircle } from "lucide-react";
 import { FieldHelp } from "./FieldHelp";
 import { RuleListDetailPanel } from "./RuleListDetailPanel";
+import { SearchableSelect } from "./SearchableSelect";
 import { useSupplierRules } from "@/lib/dev/provisional/useCompanyRulesProvisional";
 import { useSuppliers } from "@/hooks/useSuppliers";
 import { isPercent, isPositiveNumber } from "@/lib/dev/provisional/ruleValidation";
@@ -445,25 +446,29 @@ export function SupplierRulesForm({ focusRuleId, onFocusHandled }: SupplierRules
                 <div className="grid grid-cols-1 gap-3">
                   <div className="flex flex-col gap-1.5">
                     <label className="text-xs font-semibold text-gray-600">Supplier</label>
-                    <select value={pendingSupplierFilter} onChange={(e) => setPendingSupplierFilter(e.target.value ? Number(e.target.value) : "")} className={inputCls}>
-                      <option value="">All suppliers</option>
-                      {supplierFilterOptions.map((supplier) => (
-                        <option key={supplier.supplier_id} value={supplier.supplier_id}>
-                          {supplier.supplier_name}
-                        </option>
-                      ))}
-                    </select>
+                    <SearchableSelect
+                      value={pendingSupplierFilter === "" ? "" : String(pendingSupplierFilter)}
+                      onChange={(value) => setPendingSupplierFilter(value ? Number(value) : "")}
+                      className={inputCls}
+                      placeholder="All suppliers"
+                      options={[
+                        { value: "", label: "All suppliers" },
+                        ...supplierFilterOptions.map((supplier) => ({ value: String(supplier.supplier_id), label: supplier.supplier_name })),
+                      ]}
+                    />
                   </div>
                   <div className="flex flex-col gap-1.5">
                     <label className="text-xs font-semibold text-gray-600">Rule Type</label>
-                    <select value={pendingRuleTypeFilter} onChange={(e) => setPendingRuleTypeFilter(e.target.value as SupplierRuleType | "")} className={inputCls}>
-                      <option value="">All rule types</option>
-                      {SUPPLIER_RULE_TYPES.map((type) => (
-                        <option key={type} value={type}>
-                          {type}
-                        </option>
-                      ))}
-                    </select>
+                    <SearchableSelect
+                      value={pendingRuleTypeFilter}
+                      onChange={(value) => setPendingRuleTypeFilter(value as SupplierRuleType | "")}
+                      className={inputCls}
+                      placeholder="All rule types"
+                      options={[
+                        { value: "", label: "All rule types" },
+                        ...SUPPLIER_RULE_TYPES.map((type) => ({ value: type, label: type })),
+                      ]}
+                    />
                   </div>
                 </div>
                 <div className="mt-3 flex justify-end gap-2">
@@ -509,15 +514,16 @@ export function SupplierRulesForm({ focusRuleId, onFocusHandled }: SupplierRules
                   <FieldHelp label="Supplier" text="The supplier this rule applies to during quotation pricing and supplier ranking." />
                   <span className="text-red-500">*</span>
                 </label>
-                <select value={supplierId} onChange={(e) => setSupplierId(e.target.value ? Number(e.target.value) : "")} className={inputCls}>
-                  <option value="">Select…</option>
-                  {supplierOptions.map((s) => (
-                    <option key={s.supplier_id} value={s.supplier_id}>
-                      {s.supplier_name}
-                      {s.status !== "Active" ? " (Inactive)" : ""}
-                    </option>
-                  ))}
-                </select>
+                <SearchableSelect
+                  value={supplierId === "" ? "" : String(supplierId)}
+                  onChange={(value) => setSupplierId(value ? Number(value) : "")}
+                  className={inputCls}
+                  placeholder="Select..."
+                  options={supplierOptions.map((s) => ({
+                      value: String(s.supplier_id),
+                      label: `${s.supplier_name}${s.status !== "Active" ? " (Inactive)" : ""}`,
+                    }))}
+                />
                 {touched && !supplierValid && <p className="text-xs text-red-500">Select a supplier.</p>}
               </div>
 
@@ -526,14 +532,13 @@ export function SupplierRulesForm({ focusRuleId, onFocusHandled }: SupplierRules
                   <FieldHelp label="Rule Type" text="Defines how the supplier rule behaves: discount, negotiated price, minimum order, or preferred supplier." />
                   <span className="text-red-500">*</span>
                 </label>
-                <select value={ruleType} onChange={(e) => setRuleType(e.target.value as SupplierRuleType)} className={inputCls}>
-                  <option value="">Select…</option>
-                  {SUPPLIER_RULE_TYPES.map((t) => (
-                    <option key={t} value={t}>
-                      {t}
-                    </option>
-                  ))}
-                </select>
+                <SearchableSelect
+                  value={ruleType}
+                  onChange={(value) => setRuleType(value as SupplierRuleType)}
+                  className={inputCls}
+                  placeholder="Select..."
+                  options={SUPPLIER_RULE_TYPES.map((t) => ({ value: t, label: t }))}
+                />
                 {touched && !ruleTypeValid && <p className="text-xs text-red-500">Select a rule type.</p>}
               </div>
 
