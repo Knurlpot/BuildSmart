@@ -4,6 +4,7 @@ import crypto from "crypto";
 import { NextRequest, NextResponse } from "next/server";
 
 const COOKIE_NAME = "buildsmart_session";
+const SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 7;
 
 function getSessionSecret(): string {
   const secret = process.env.SESSION_SECRET || process.env.NEXTAUTH_SECRET;
@@ -52,8 +53,15 @@ export function readSession(request: NextRequest): { userId: number; onboardingS
   if (sign(payload) !== signature) return null;
 
   try {
-    const parsed = JSON.parse(payload) as { userId?: unknown; onboardingStep?: unknown };
+    const parsed = JSON.parse(payload) as { userId?: unknown; onboardingStep?: unknown; issuedAt?: unknown };
     if (typeof parsed.userId !== "number") return null;
+    if (typeof parsed.issuedAt !== "number") return null;
+    if (!Number.isFinite(parsed.issuedAt)) return null;
+
+    const now = Date.now();
+    if (parsed.issuedAt > now) return null;
+    if (now - parsed.issuedAt > SESSION_MAX_AGE_SECONDS * 1000) return null;
+
     return {
       userId: parsed.userId,
       onboardingStep: typeof parsed.onboardingStep === "number" ? parsed.onboardingStep : 0,
@@ -71,7 +79,7 @@ export function setSessionCookie(response: NextResponse, userId: number, onboard
     sameSite: "lax",
     path: "/",
     secure: process.env.NODE_ENV === "production",
-    maxAge: 60 * 60 * 24 * 7,
+    maxAge: SESSION_MAX_AGE_SECONDS,
   });
 }
 

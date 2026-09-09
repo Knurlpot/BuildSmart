@@ -79,10 +79,11 @@ export default function CompanyRulesShell() {
     if (currentUser && rulesConfigured) {
       advanceOnboardingStep(currentUser.onboardingStep, 2, updateOnboardingStep);
     }
-    // updateOnboardingStep is recreated every AuthProvider render; advanceOnboardingStep
-    // no-ops once past the target step, so omitting it here can't miss or double-fire.
+    // Depend on the primitive step instead of the whole user object. If the server
+    // clamps a premature advance, AuthProvider still creates a fresh user object;
+    // depending on that object would immediately retry.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentUser, rulesConfigured]);
+  }, [currentUser?.onboardingStep, rulesConfigured]);
 
   useEffect(() => {
     const refetchByKind: Record<string, () => void> = {

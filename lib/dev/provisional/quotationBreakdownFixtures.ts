@@ -247,10 +247,12 @@ function pricingReferenceFor(basis: PricelistBasis): ProvisionalPricingReference
 
 function supplierRuleDiscountedPrice(unitPrice: number, rule: SupplierRuleEntry): number {
   if (rule.discount_percentage_rate !== null) {
-    return round2(unitPrice * (1 - rule.discount_percentage_rate / 100));
+    const discounted = round2(unitPrice * (1 - rule.discount_percentage_rate / 100));
+    return discounted > 0 ? discounted : unitPrice;
   }
   if (rule.fixed_discount_amount !== null) {
-    return round2(Math.max(0, unitPrice - rule.fixed_discount_amount));
+    const discounted = round2(unitPrice - rule.fixed_discount_amount);
+    return discounted > 0 ? discounted : unitPrice;
   }
   return unitPrice;
 }
@@ -457,7 +459,10 @@ function buildCompanyRuleLine(
   const matchingDpwhPrices = dpwhPrices
     .filter((price) => String(price.item_code) === String(rule.preferred_item_code))
     .sort((a, b) => a.price - b.price);
-  const selectedUploadedPrice = matchingUploadedPrices[0] ?? null;
+  const selectedUploadedPrice =
+    matchingUploadedPrices.find((price) => price.supplier_id !== null && price.supplier_id === rule.selected_supplier_id) ??
+    matchingUploadedPrices[0] ??
+    null;
   const selectedDpwhPrice = matchingDpwhPrices[0] ?? null;
   const selectedPrice = basis === 'DPWH' ? selectedDpwhPrice : selectedUploadedPrice;
   const uploadedOptions: ProvisionalSupplierOption[] = matchingUploadedPrices.map((price) => ({
@@ -479,8 +484,12 @@ function buildCompanyRuleLine(
     source_type: 'DPWH',
   }));
   const supplierOptions = basis === 'DPWH' ? dpwhOptions : applySupplierRulesToOptions(uploadedOptions, qty, supplierRules);
-  const selectedSupplierId = supplierOptions[0]?.supplier_id ?? null;
-  const unitPrice = supplierOptions[0]?.unit_price ?? selectedPrice?.price ?? null;
+  const preferredSupplierOption =
+    basis === 'DPWH'
+      ? supplierOptions[0] ?? null
+      : supplierOptions.find((option) => option.supplier_id === rule.selected_supplier_id) ?? supplierOptions[0] ?? null;
+  const selectedSupplierId = preferredSupplierOption?.supplier_id ?? null;
+  const unitPrice = preferredSupplierOption?.unit_price ?? selectedPrice?.price ?? null;
 
   return {
     line_id: stagingId('item'),

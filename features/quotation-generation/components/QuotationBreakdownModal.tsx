@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { AlertTriangle, BarChart2, BookOpen, Check, ChevronDown, ChevronUp, Eye, Layers, Pencil, ShoppingBag, TrendingDown, X } from "lucide-react";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
-import { fmtPeso } from "@/lib/dev/provisional/quotationBreakdownFixtures";
+import { fmtPeso, recomputeItemLine } from "@/lib/dev/provisional/quotationBreakdownFixtures";
 import type { ItemCategory, PricelistBasis, ProvisionalItemLine, ProvisionalQuotationTierResult, ProvisionalTier } from "@/lib/dev/provisional/quotationBreakdownTypes";
 import type { BlueprintFloor } from "@/lib/dev/provisional/quotationGenerationTypes";
 import type { DraftSegment } from "../lib/draftSegment";
@@ -16,6 +16,7 @@ interface QuotationBreakdownModalProps {
   result: ProvisionalQuotationTierResult;
   pricelistBasis: PricelistBasis;
   onClose: () => void;
+  onItemsChange?: (tier: ProvisionalTier, items: ProvisionalItemLine[]) => void;
   // Task 7, Part B — Segment Breakdown's split-view blueprint preview (left half). null/
   // undefined = this quote wasn't blueprint-sourced (Quick Measurement/Manual), OR (some
   // saved projects) no blueprint snapshot was captured — either way the tab degrades to a
@@ -433,14 +434,12 @@ function CostSummaryTab({ result }: { result: ProvisionalQuotationTierResult }) 
 // stock/availability at all (out of scope — a quoting tool, not inventory), so there is no
 // "Available"/"Can Fulfil?" column here anymore. Comparing suppliers by price, plus the
 // Uploaded-Pricelist-vs-DPWH toggle in the header above, is the whole of this tab.
-function BenchmarkingTab({ items }: { items: ProvisionalItemLine[] }) {
+function BenchmarkingTab({ tier, items, onItemsChange }: { tier: ProvisionalTier; items: ProvisionalItemLine[]; onItemsChange?: (tier: ProvisionalTier, items: ProvisionalItemLine[]) => void }) {
   const withSuppliers = items.filter((line) => line.category === "Material" && line.supplier_options.length > 0);
   const [editingLineId, setEditingLineId] = useState<string | null>(null);
-  const [selectedSuppliers, setSelectedSuppliers] = useState<Record<string, string | number | null>>({});
   const offerCount = withSuppliers.reduce((total, line) => total + line.supplier_options.length, 0);
   const selectedTotal = withSuppliers.reduce((total, line) => {
-    const selectedId = selectedSuppliers[line.line_id] ?? line.selected_supplier_id;
-    const selected = line.supplier_options.find((supplier) => supplier.supplier_id === selectedId);
+    const selected = line.supplier_options.find((supplier) => supplier.supplier_id === line.selected_supplier_id);
     return total + (selected?.unit_price ?? line.unit_price ?? 0) * line.quantity;
   }, 0);
   const lowestTotal = withSuppliers.reduce((total, line) => {
@@ -502,8 +501,7 @@ function BenchmarkingTab({ items }: { items: ProvisionalItemLine[] }) {
                 {[...line.supplier_options]
                   .sort((a, b) => a.unit_price - b.unit_price)
                   .map((sup, index, sorted) => {
-                    const selectedSupplier = selectedSuppliers[line.line_id] ?? line.selected_supplier_id;
-                    const isSelected = sup.supplier_id === selectedSupplier;
+                    const isSelected = sup.supplier_id === line.selected_supplier_id;
                     const difference = sup.unit_price - (sorted[0]?.unit_price ?? sup.unit_price);
                     return (
                       <tr
@@ -511,7 +509,14 @@ function BenchmarkingTab({ items }: { items: ProvisionalItemLine[] }) {
                         className={`border-b border-gray-100 last:border-0 ${isSelected ? "bg-orange-50/40" : ""} ${editingLineId === line.line_id ? "cursor-pointer hover:bg-gray-50" : ""}`}
                         onClick={() => {
                           if (editingLineId !== line.line_id) return;
-                          setSelectedSuppliers((prev) => ({ ...prev, [line.line_id]: sup.supplier_id }));
+                          onItemsChange?.(
+                            tier,
+                            items.map((item) =>
+                              item.line_id === line.line_id
+                                ? recomputeItemLine(item, { selected_supplier_id: sup.supplier_id })
+                                : item
+                            )
+                          );
                         }}
                       >
                         <td className="px-3 py-2">
@@ -547,7 +552,7 @@ function BenchmarkingTab({ items }: { items: ProvisionalItemLine[] }) {
   );
 }
 
-export function QuotationBreakdownModal({ tier, result, pricelistBasis, onClose, blueprintFloors, segments }: QuotationBreakdownModalProps) {
+export function QuotationBreakdownModal({ tier, result, pricelistBasis, onClose, onItemsChange, blueprintFloors, segments }: QuotationBreakdownModalProps) {
   const [activeTab, setActiveTab] = useState<TabId>("segments");
   const TABS: { id: TabId; label: string; icon: typeof BookOpen }[] = [
     { id: "segments", label: "Segment Breakdown", icon: Layers },
@@ -610,7 +615,7 @@ export function QuotationBreakdownModal({ tier, result, pricelistBasis, onClose,
           {activeTab === "segments" && <SegmentBreakdownTab items={result.items} segments={segments} blueprintFloors={blueprintFloors} />}
           {activeTab === "boq" && <BoqTab items={result.items} />}
           {activeTab === "cost-summary" && <CostSummaryTab result={result} />}
-          {activeTab === "benchmarking" && <BenchmarkingTab items={result.items} />}
+          {activeTab === "benchmarking" && <BenchmarkingTab tier={tier} items={result.items} onItemsChange={onItemsChange} />}
         </div>
       </DialogContent>
     </Dialog>

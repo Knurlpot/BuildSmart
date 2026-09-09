@@ -147,6 +147,10 @@ export async function POST(request: NextRequest, { params }: Params) {
     return NextResponse.json(result);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unable to refresh quotation prices.";
-    return NextResponse.json({ error: message }, { status: message === "Quotation not found." ? 404 : 500 });
+    if (message === "Quotation not found.") {
+      return NextResponse.json({ error: message }, { status: 404 });
+    }
+    console.error("Unable to refresh quotation prices", error);
+    return NextResponse.json({ error: "Unable to refresh quotation prices." }, { status: 500 });
   }
 }

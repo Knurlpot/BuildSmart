@@ -15,7 +15,8 @@ load_dotenv(Path(__file__).resolve().parents[2] / ".env")
 
 FRONTEND_ORIGIN = os.environ["FRONTEND_ORIGIN"]
 
-init_db()
+if os.environ.get("AUTO_INIT_DB", "").lower() == "true":
+    init_db()
 
 app = FastAPI(title="BuildSmart API")
 app.add_middleware(

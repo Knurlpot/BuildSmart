@@ -143,7 +143,7 @@ export async function POST(request: NextRequest, { params }: Params) {
     if (savedCount === null) return NextResponse.json({ error: "Quotation not found." }, { status: 404 });
     return NextResponse.json({ saved_count: savedCount });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Unable to save segments.";
-    return NextResponse.json({ error: message }, { status: 500 });
+    console.error("Unable to save segments", error);
+    return NextResponse.json({ error: "Unable to save segments." }, { status: 500 });
   }
 }

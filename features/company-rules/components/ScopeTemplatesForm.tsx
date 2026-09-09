@@ -369,12 +369,12 @@ export function ScopeTemplatesForm({ focusRuleId, onFocusHandled }: ScopeTemplat
 
               <div className="grid gap-3 rounded-xl border border-gray-100 bg-gray-50/60 p-3.5 md:grid-cols-2">
                 {[
-                  ["Warranty Years", warrantyYears, setWarrantyYears, "Warranty period promised for this treatment."],
-                  ["Expected Lifespan Years", lifespanYears, setLifespanYears, "Expected useful life before major repair or replacement."],
+                  ["Warranty Years", warrantyYears, setWarrantyYears, "Warranty period promised for this treatment.", "Warranty Years"],
+                  ["Expected Lifespan Years", lifespanYears, setLifespanYears, "Expected useful life before major repair or replacement.", "Expected Lifespan Years"],
                   ["Productivity sqm/day", productivitySqmPerDay, setProductivitySqmPerDay, "Estimated area completed per day for this treatment."],
                   ["Minimum Duration Days", minDurationDays, setMinDurationDays, "Smallest practical duration for this treatment scope."],
                   ["Safety Buffer Days", safetyBufferDays, setSafetyBufferDays, "Extra schedule allowance for site risk, curing, access, or delays."],
-                ].map(([label, value, setter, help]) => (
+                ].map(([label, value, setter, help, placeholder]) => (
                   <label key={label as string} className="flex flex-col gap-1.5 text-xs font-semibold text-gray-600">
                     <span className="inline-flex items-center gap-1.5">
                       <FieldHelp label={label as string} text={help as string} />
@@ -384,6 +384,7 @@ export function ScopeTemplatesForm({ focusRuleId, onFocusHandled }: ScopeTemplat
                       min={0}
                       step="0.1"
                       value={value as number | ""}
+                      placeholder={placeholder as string}
                       onChange={(e) => (setter as (next: number | "") => void)(e.target.value === "" ? "" : Number(e.target.value))}
                       className={inputCls}
                     />
