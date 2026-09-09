@@ -238,6 +238,7 @@ function UserProfileSection() {
   const [profilePictureFileName, setProfilePictureFileName] = useState("");
   const [profilePictureFileError, setProfilePictureFileError] = useState("");
   const [logoFileName, setLogoFileName] = useState("");
+  const [logoFileError, setLogoFileError] = useState("");
   const profilePictureInputRef = useRef<HTMLInputElement>(null);
   const logoInputRef = useRef<HTMLInputElement>(null);
   const canEditCompany = userData?.user_role === "Owner";
@@ -278,6 +279,7 @@ function UserProfileSection() {
 
   const uploadLogoFile = async (file: File) => {
     if (!canEditCompany) return;
+    setLogoFileError("");
     setLogoFileName(file.name);
     const body = new FormData();
     body.append("file", file);
@@ -291,13 +293,23 @@ function UserProfileSection() {
 
   const handleLogoFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) uploadLogoFile(file);
+    if (!file) return;
+
+    if (!["image/jpeg", "image/png"].includes(file.type)) {
+      setLogoFileError("Only JPG or PNG images are allowed.");
+      setLogoFileName("");
+      e.target.value = "";
+      return;
+    }
+
+    uploadLogoFile(file);
   };
 
   const removeLogo = () => {
     if (!canEditCompany) return;
     setCompanyForm((current) => ({ ...current, company_logo: "" }));
     setLogoFileName("");
+    setLogoFileError("");
     logoUpload.reset();
   };
 
@@ -311,6 +323,7 @@ function UserProfileSection() {
     setProfilePictureFileName("");
     setProfilePictureFileError("");
     setLogoFileName("");
+    setLogoFileError("");
     setSpecializationError("");
     setEditing(false);
   };
@@ -666,10 +679,13 @@ function UserProfileSection() {
                   <input
                     ref={logoInputRef}
                     type="file"
-                    accept="image/*"
+                    accept="image/jpeg,image/png,.jpg,.jpeg,.png"
                     onChange={handleLogoFileChange}
                     className="hidden"
                   />
+                  {logoFileError && (
+                    <p className="text-xs text-red-500">{logoFileError}</p>
+                  )}
                   {logoUpload.error && (
                     <p className="text-xs text-red-500">Couldn&apos;t upload logo: {logoUpload.error.message}</p>
                   )}
