@@ -3,7 +3,8 @@
 import { useMemo, useState } from "react";
 import { AlertTriangle, ArrowLeft, CheckCircle2, Circle, Sparkles, Zap } from "lucide-react";
 import { useSaveSegments, useUpdateQuotationInputMethod } from "@/hooks/useQuotationGeneration";
-import { useLaborTradeOptions, useMaterialRules } from "@/lib/dev/provisional/useCompanyRulesProvisional";
+import { useLaborRules, useMaterialRules } from "@/lib/dev/provisional/useCompanyRulesProvisional";
+import { laborRuleScope } from "@/lib/dev/provisional/companyRulesTypes";
 import { SEGMENT_CONDITION_TAGS, type SegmentConditionTag } from "@/types/entities/segment-tag";
 import {
   computeQuotationInputMethod,
@@ -88,6 +89,11 @@ function SegmentConfigForm({ segment, treatmentOptions, laborTradeOptions, onSav
                 <option key={trade}>{trade}</option>
               ))}
             </select>
+            {laborTradeOptions.length === 0 && (
+              <p className="text-[11px] text-amber-600">
+                Set up an active By Trade labor rule in Preferences &amp; Rules &gt; Labor Rules first.
+              </p>
+            )}
             {!segment.labor_trade && <p className="text-xs text-amber-600">Required when labor is priced by trade.</p>}
             </div>
           )}
@@ -291,6 +297,11 @@ interface ApplyToAllPanelProps {
                 <option key={trade}>{trade}</option>
               ))}
             </select>
+            {laborTradeOptions.length === 0 && (
+              <p className="text-[11px] text-amber-600">
+                Set up an active By Trade labor rule in Preferences &amp; Rules &gt; Labor Rules first.
+              </p>
+            )}
             {!laborValid && <p className="text-xs text-amber-600">Select a trade to apply by trade.</p>}
           </div>
         )}
@@ -353,7 +364,7 @@ export function ConfigureSegmentsStep({ quoteId, segments, onChange, onSaved, on
   const { saveSegments, isSaving, saveError } = useSaveSegments();
   const { updateInputMethod } = useUpdateQuotationInputMethod();
   const { rules: materialRules } = useMaterialRules();
-  const { options: laborTradeOptions } = useLaborTradeOptions();
+  const { rules: laborRules } = useLaborRules();
   const [selectedId, setSelectedId] = useState<string | null>(segments[0]?.draft_id ?? null);
   const [applyAllOpen, setApplyAllOpen] = useState(false);
   const [applyRevision, setApplyRevision] = useState(0);
@@ -376,6 +387,18 @@ export function ConfigureSegmentsStep({ quoteId, segments, onChange, onSaved, on
     [materialRules]
   );
   const treatmentOptionsKey = treatmentOptions.join("|");
+  const laborTradeOptions = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          laborRules
+            .filter((rule) => rule.is_active && laborRuleScope(rule) === "Trade")
+            .map((rule) => rule.labor_trade?.trim())
+            .filter((value): value is string => !!value)
+        )
+      ).sort(),
+    [laborRules]
+  );
 
   const updateSegment = (draftId: string, patch: Partial<DraftSegment>) => {
     onChange(segments.map((s) => (s.draft_id === draftId ? { ...s, ...patch } : s)));

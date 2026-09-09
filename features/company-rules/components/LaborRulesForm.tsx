@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { AlertTriangle, CheckCircle2, Filter, Pencil, X, XCircle } from "lucide-react";
+import { AlertTriangle, CheckCircle2, ChevronDown, ChevronUp, Filter, Pencil, X, XCircle } from "lucide-react";
 import { FieldHelp } from "./FieldHelp";
 import { RuleListDetailPanel } from "./RuleListDetailPanel";
 import { SearchableSelect } from "./SearchableSelect";
@@ -31,6 +31,40 @@ function rateUnit(scope: LaborRuleScope): string {
   if (scope === "Treatment") return "/sqm";
   if (scope === "Trade") return "/day";
   return "";
+}
+
+function parseDecimalInput(value: string): string {
+  const cleaned = value.replace(/[^\d.]/g, "");
+  const [whole, ...decimalParts] = cleaned.split(".");
+  return decimalParts.length === 0 ? whole : `${whole}.${decimalParts.join("")}`;
+}
+
+function formatProductivityInput(value: string): string {
+  if (value === "") return "";
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) return value;
+  const capped = Math.min(parsed, 2);
+  return Number.isInteger(capped) ? capped.toFixed(1) : String(capped);
+}
+
+function parseProductivityInput(value: string, current: string): string {
+  const next = parseDecimalInput(value);
+  if (next === "" || next === ".") return next;
+  if (/^\d$/.test(next)) {
+    const parsedWhole = Number(next);
+    if (!Number.isFinite(parsedWhole) || parsedWhole > 2) return current;
+    return `${next}.`;
+  }
+  const parsed = Number(next);
+  if (!Number.isFinite(parsed) || parsed > 2) return current;
+  return next;
+}
+
+function stepProductivityInput(value: string, direction: 1 | -1): string {
+  const current = Number(value);
+  const base = Number.isFinite(current) && current > 0 ? current : 0.9;
+  const next = Math.min(2, Math.max(0.1, Math.round((base + direction * 0.1) * 10) / 10));
+  return next.toFixed(1);
 }
 
 interface LaborRulesFormProps {
@@ -75,9 +109,9 @@ export function LaborRulesForm({ focusRuleId, onFocusHandled }: LaborRulesFormPr
   const [region, setRegion] = useState<PhRegion | "">("");
   const [trade, setTrade] = useState("");
   const [workerCount, setWorkerCount] = useState<number | "">("");
-  const [rate, setRate] = useState<number | "">("");
-  const [rushMultiplier, setRushMultiplier] = useState<number | "">("");
-  const [productivity, setProductivity] = useState<number | "">("");
+  const [rate, setRate] = useState("");
+  const [rushMultiplier, setRushMultiplier] = useState("");
+  const [productivity, setProductivity] = useState("");
   const [productivitySqmPerDay, setProductivitySqmPerDay] = useState<number | "">("");
   const [minDurationDays, setMinDurationDays] = useState<number | "">("");
   const [safetyBufferDays, setSafetyBufferDays] = useState<number | "">("");
@@ -96,7 +130,8 @@ export function LaborRulesForm({ focusRuleId, onFocusHandled }: LaborRulesFormPr
   const workerCountValid = workerCount !== "" && Number.isInteger(Number(workerCount)) && Number(workerCount) > 0;
   const rateValid = rate !== "" && isPositiveNumber(Number(rate));
   const rushValid = rushMultiplier === "" || isPercent(Number(rushMultiplier));
-  const productivityValid = productivity === "" || isPositiveNumber(Number(productivity));
+  const productivityValue = Number(productivity);
+  const productivityValid = productivity === "" || (Number.isFinite(productivityValue) && productivityValue > 0 && productivityValue <= 2);
   const productivitySqmValid = productivitySqmPerDay === "" || isPositiveNumber(Number(productivitySqmPerDay));
   const minDurationValid = minDurationDays === "" || isPositiveNumber(Number(minDurationDays));
   const safetyBufferValid = safetyBufferDays === "" || isPositiveNumber(Number(safetyBufferDays));
@@ -135,9 +170,9 @@ export function LaborRulesForm({ focusRuleId, onFocusHandled }: LaborRulesFormPr
     setRegion(r.region ?? "");
     setTrade(r.labor_trade ?? "");
     setWorkerCount(r.worker_count ?? 1);
-    setRate(r.labor_rate);
-    setRushMultiplier(r.rush_multiplier_percentage ?? "");
-    setProductivity(r.productivity_index ?? "");
+    setRate(String(r.labor_rate));
+    setRushMultiplier(r.rush_multiplier_percentage === null ? "" : String(r.rush_multiplier_percentage));
+    setProductivity(r.productivity_index === null ? "" : String(r.productivity_index));
     setProductivitySqmPerDay(r.productivity_sqm_per_day ?? "");
     setMinDurationDays(r.min_duration_days ?? "");
     setSafetyBufferDays(r.safety_buffer_days ?? "");
@@ -510,8 +545,7 @@ export function LaborRulesForm({ focusRuleId, onFocusHandled }: LaborRulesFormPr
                     <FieldHelp label={`Labor Rate (₱${rateUnit(scope)})`} text="Base labor cost used in the quotation before rush or productivity adjustments." /> <span className="text-red-500">*</span>
                   </label>
                   <input id="labor-rate" type="text" inputMode="decimal" value={rate} onChange={(e) => {
-                    const next = e.target.value.replace(/[^\d.]/g, "");
-                    setRate(next === "" ? "" : Number(next));
+                    setRate(parseDecimalInput(e.target.value));
                   }} className={inputCls} />
                   {touched && !rateValid && <p className="text-xs text-red-500">Must be greater than 0.</p>}
                 </div>
@@ -529,11 +563,44 @@ export function LaborRulesForm({ focusRuleId, onFocusHandled }: LaborRulesFormPr
                   <label htmlFor="labor-productivity-index" className="flex items-center gap-1.5 text-xs font-semibold text-gray-600">
                     <FieldHelp label="Productivity Index" text="Optional efficiency factor for site difficulty or crew speed. Example: 1.0 normal, 0.8 slower, 1.2 faster." />
                   </label>
-                  <input id="labor-productivity-index" type="text" inputMode="decimal" value={productivity} onChange={(e) => {
-                    const next = e.target.value.replace(/[^\d.]/g, "");
-                    setProductivity(next === "" ? "" : Number(next));
-                  }} className={inputCls} />
-                  {touched && !productivityValid && <p className="text-xs text-red-500">Must be greater than 0.</p>}
+                  <div className="relative">
+                    <input
+                      id="labor-productivity-index"
+                      type="text"
+                      inputMode="decimal"
+                      value={productivity}
+                      onChange={(e) => setProductivity((current) => parseProductivityInput(e.target.value, current))}
+                      onKeyDown={(e) => {
+                        if (e.key === "Backspace" && /^\d\.$/.test(productivity)) {
+                          e.preventDefault();
+                          setProductivity("");
+                        }
+                      }}
+                      onBlur={() => setProductivity((current) => formatProductivityInput(current))}
+                      className={`${inputCls} pr-9`}
+                    />
+                    <div className="absolute bottom-1.5 right-1.5 top-1.5 flex w-5 flex-col">
+                      <button
+                        type="button"
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => setProductivity((current) => stepProductivityInput(current, 1))}
+                        className="flex flex-1 items-center justify-center rounded-t text-gray-400 transition hover:text-primary"
+                        aria-label="Increase productivity index"
+                      >
+                        <ChevronUp className="h-3 w-3" strokeWidth={2.25} />
+                      </button>
+                      <button
+                        type="button"
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => setProductivity((current) => stepProductivityInput(current, -1))}
+                        className="flex flex-1 items-center justify-center rounded-b text-gray-400 transition hover:text-primary"
+                        aria-label="Decrease productivity index"
+                      >
+                        <ChevronDown className="h-3 w-3" strokeWidth={2.25} />
+                      </button>
+                    </div>
+                  </div>
+                  {touched && !productivityValid && <p className="text-xs text-red-500">Enter a value up to 2.0.</p>}
                 </div>
               </div>
 
@@ -581,8 +648,7 @@ export function LaborRulesForm({ focusRuleId, onFocusHandled }: LaborRulesFormPr
                     inputMode="decimal"
                     value={rushMultiplier}
                     onChange={(e) => {
-                      const next = e.target.value.replace(/[^\d.]/g, "");
-                      setRushMultiplier(next === "" ? "" : Number(next));
+                      setRushMultiplier(parseDecimalInput(e.target.value));
                     }}
                     className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 pr-8 text-sm outline-none transition focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/20"
                   />

@@ -32,6 +32,14 @@ export type CompanyRulesPayload = {
 
 type RuleMeta = Record<string, unknown>;
 
+function assertLaborRulePayload(body: Record<string, unknown>) {
+  if (body.productivity_index === null || body.productivity_index === undefined || body.productivity_index === "") return;
+  const productivity = Number(body.productivity_index);
+  if (!Number.isFinite(productivity) || productivity <= 0 || productivity > 2) {
+    throw new Error("Productivity Index must be up to 2.0.");
+  }
+}
+
 export async function companyIdFor(request: NextRequest) {
   const session = readSession(request);
   if (!session) return null;
@@ -411,6 +419,7 @@ export async function createRule(companyId: number, kind: RuleKindParam, body: R
         [rule.rows[0].rule_id, category, Number(body.preferred_item_code), body.material_priority, body.fallback_rule]
       );
     } else if (kind === "labor-rules") {
+      assertLaborRulePayload(body);
       const metaBody = {
         treatment_type: body.treatment_type,
         labor_trade: body.labor_trade,
@@ -716,6 +725,7 @@ export async function updateRule(companyId: number, kind: RuleKindParam, ruleId:
         [idForCategory, Number(body.preferred_item_code), body.material_priority, body.fallback_rule, id]
       );
     } else if (kind === "labor-rules" && prefix === "lr") {
+      assertLaborRulePayload(body);
       const metaBody = {
         treatment_type: body.treatment_type,
         labor_trade: body.labor_trade,
