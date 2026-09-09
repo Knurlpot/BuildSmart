@@ -231,6 +231,27 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
       item.unit,
     ].filter(Boolean).join(" · ");
 
+  const materialNameWithSupplier = (
+    itemName: string,
+    supplierName?: string | null,
+    tier: MaterialTreatmentTier = "Practical"
+  ) => (
+    <span className="flex min-w-0 items-center gap-2">
+      <span className="truncate">{itemName}</span>
+      {supplierName ? (
+        <span
+          className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold ring-1 ${
+            tier === "Premium"
+              ? "bg-[#0000CD]/5 text-[#0000CD] ring-[#0000CD]/15"
+              : "bg-orange-50 text-primary ring-primary/15"
+          }`}
+        >
+          {supplierName}
+        </span>
+      ) : null}
+    </span>
+  );
+
   const checkedItems = Object.values(checkedCatalogItems);
   const selectedCatalogKeys = new Set(checkedItems.map((item) => item.catalogKey));
 
@@ -724,7 +745,9 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
                     const nextAvailableTiers = MATERIAL_TREATMENT_TIERS.filter(
                       (tier) => !activeTiersForTreatment(nextTreatment).has(tier)
                     );
-                    setTreatmentTier(nextAvailableTiers[0] ?? "Practical");
+                    setTreatmentTier((currentTier) =>
+                      nextAvailableTiers.includes(currentTier) ? currentTier : nextAvailableTiers[0] ?? "Practical"
+                    );
                   }}
                   className={inputCls}
                   ariaLabel="Treatment Type"
@@ -862,7 +885,7 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
                           className="h-4 w-4 shrink-0 rounded border-gray-300 text-primary focus:ring-2 focus:ring-primary/30"
                         />
                         <div className="min-w-0 flex-1">
-                          <p className="truncate text-sm font-medium text-gray-800">{item.item_name}</p>
+                          <p className="truncate text-sm font-medium text-gray-800">{materialNameWithSupplier(item.item_name, item.supplier_name, treatmentTier)}</p>
                           <p className="truncate text-[11px] text-gray-400">{itemMeta(item)}</p>
                         </div>
                       </label>
@@ -905,7 +928,7 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
                   {checkedItems.map((item) => (
                     <div key={item.catalogKey} className="flex items-center justify-between gap-3 px-3 py-2">
                       <div className="min-w-0">
-                        <p className="truncate text-sm font-semibold text-gray-800">{item.item_name}</p>
+                        <p className="truncate text-sm font-semibold text-gray-800">{materialNameWithSupplier(item.item_name, item.supplier_name, treatmentTier)}</p>
                         <p className="truncate text-[11px] text-gray-400">{itemMeta(item)}</p>
                       </div>
                       <span className="shrink-0 rounded-full bg-gray-50 px-2 py-0.5 text-[10px] font-bold text-gray-500">
@@ -993,7 +1016,7 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
                       onClick={() => setTreatmentTier(tier)}
                       className={`rounded-lg border px-3 py-2 text-xs font-bold transition ${
                         treatmentTier === tier
-                          ? "border-primary bg-orange-50 text-primary"
+                          ? activeTierFilterClass(tier)
                           : "border-gray-200 bg-white text-gray-500 hover:border-gray-300"
                       }`}
                     >
@@ -1071,7 +1094,7 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
                       .map((item) => (
                         <div key={item.catalogKey} className="flex items-center justify-between gap-3 px-3 py-2">
                           <div className="min-w-0">
-                            <p className="truncate text-sm font-semibold text-gray-800">{item.item_name}</p>
+                            <p className="truncate text-sm font-semibold text-gray-800">{materialNameWithSupplier(item.item_name, item.supplier_name, treatmentTier)}</p>
                             <p className="truncate text-[11px] text-gray-400">{itemMeta(item)}</p>
                           </div>
                           <button
@@ -1139,7 +1162,7 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
                               className="h-4 w-4 shrink-0 rounded border-gray-300 text-primary focus:ring-2 focus:ring-primary/30"
                             />
                             <div className="min-w-0 flex-1">
-                              <p className="truncate text-sm font-medium text-gray-800">{item.item_name}</p>
+                              <p className="truncate text-sm font-medium text-gray-800">{materialNameWithSupplier(item.item_name, item.supplier_name, treatmentTier)}</p>
                               <p className="truncate text-[11px] text-gray-400">{itemMeta(item)}</p>
                             </div>
                           </label>
@@ -1244,7 +1267,7 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
                     .map((rule) => (
                       <div key={rule.rule_id} className="flex items-center justify-between gap-4 px-4 py-3">
                         <div className="min-w-0">
-                          <p className="truncate text-sm font-semibold text-gray-800">{rule.preferred_item_name}</p>
+                          <p className="truncate text-sm font-semibold text-gray-800">{materialNameWithSupplier(rule.preferred_item_name, rule.selected_supplier_name, (rule.treatment_tier ?? "Practical") as MaterialTreatmentTier)}</p>
                           <p className="truncate text-xs text-gray-400">{rule.category}</p>
                         </div>
                       </div>

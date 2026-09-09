@@ -562,6 +562,7 @@ export function LaborRulesForm({ focusRuleId, onFocusHandled }: LaborRulesFormPr
                 <div className="flex flex-col gap-1.5">
                   <label htmlFor="labor-productivity-index" className="flex items-center gap-1.5 text-xs font-semibold text-gray-600">
                     <FieldHelp label="Productivity Index" text="Optional efficiency factor for site difficulty or crew speed. Example: 1.0 normal, 0.8 slower, 1.2 faster." />
+                    <span className="text-red-500">*</span>
                   </label>
                   <div className="relative">
                     <input
@@ -608,6 +609,7 @@ export function LaborRulesForm({ focusRuleId, onFocusHandled }: LaborRulesFormPr
                 <div className="flex flex-col gap-1.5">
                   <label htmlFor="labor-productivity-sqm-per-day" className="flex items-center gap-1.5 text-xs font-semibold text-gray-600">
                     <FieldHelp label="Productivity sqm/day" text="Estimated square meters the crew can finish per day, used for duration planning." />
+                    <span className="text-red-500">*</span>
                   </label>
                   <input id="labor-productivity-sqm-per-day" type="text" inputMode="decimal" value={productivitySqmPerDay} onChange={(e) => {
                     const next = e.target.value.replace(/[^\d.]/g, "");
@@ -618,6 +620,7 @@ export function LaborRulesForm({ focusRuleId, onFocusHandled }: LaborRulesFormPr
                 <div className="flex flex-col gap-1.5">
                   <label htmlFor="labor-min-duration-days" className="flex items-center gap-1.5 text-xs font-semibold text-gray-600">
                     <FieldHelp label="Min. Duration Days" text="Smallest practical number of work days for this rule, even if the computed area is low." />
+                    <span className="text-red-500">*</span>
                   </label>
                   <input id="labor-min-duration-days" type="text" inputMode="decimal" value={minDurationDays} onChange={(e) => {
                     const next = e.target.value.replace(/[^\d.]/g, "");
@@ -628,6 +631,7 @@ export function LaborRulesForm({ focusRuleId, onFocusHandled }: LaborRulesFormPr
                 <div className="flex flex-col gap-1.5">
                   <label htmlFor="labor-safety-buffer-days" className="flex items-center gap-1.5 text-xs font-semibold text-gray-600">
                     <FieldHelp label="Safety Buffer Days" text="Extra schedule allowance for curing time, access delays, weather, or coordination risk." />
+                    <span className="text-red-500">*</span>
                   </label>
                   <input id="labor-safety-buffer-days" type="text" inputMode="decimal" value={safetyBufferDays} onChange={(e) => {
                     const next = e.target.value.replace(/[^\d.]/g, "");
