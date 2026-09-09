@@ -33,6 +33,7 @@ type Quotation = {
   updated_by_user_email: string | null;
   project_location: string | null;
   client: {
+    client_id: number;
     client_name: string;
     contact_person: string | null;
     contact_email: string | null;
@@ -147,6 +148,7 @@ export function QuotationDetailView({ quotationId }: { quotationId: string }) {
     ? "project-tier-gradient bg-linear-to-r from-[#0000CD] via-[#4169E1] to-[#0000CD]"
     : "project-tier-gradient bg-linear-to-r from-primary via-orange-400 to-primary";
   const clientName = quotation.client?.client_name ?? "Client not assigned";
+  const backHref = quotation.client?.client_id ? `/clients/${quotation.client.client_id}` : "/projects";
   const initials = clientName.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]?.toUpperCase()).join("") || "CL";
 
   return (
@@ -165,7 +167,7 @@ export function QuotationDetailView({ quotationId }: { quotationId: string }) {
         )}
       </div>
 
-      <button type="button" onClick={() => router.push("/projects")} className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-gray-200 bg-white text-gray-500 transition hover:border-primary hover:text-primary" aria-label="Back to Open Projects">
+      <button type="button" onClick={() => router.push(backHref)} className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-gray-200 bg-white text-gray-500 transition hover:border-primary hover:text-primary" aria-label={quotation.client?.client_id ? "Back to client projects" : "Back to Open Projects"}>
         <ArrowLeft className="h-4 w-4" />
       </button>
 
