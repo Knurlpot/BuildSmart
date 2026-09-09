@@ -55,10 +55,10 @@ export async function POST(request: NextRequest) {
       const quoteResult = await client.query(
         `INSERT INTO quotation (
            company_id, user_id, client_id, project_name, project_location, project_region,
-           input_method, status, total_material_cost, total_service_cost, grand_total
+           input_method, status, total_material_cost, total_service_cost, grand_total, updated_by_user_id
          )
-         VALUES ($1, $2, $3, $4, $5, $6, $7, 'Draft', $8, 0, $8)
-         RETURNING quote_id, company_id, user_id, client_id, project_name, project_location,
+         VALUES ($1, $2, $3, $4, $5, $6, $7, 'Draft', $8, 0, $8, $2)
+         RETURNING quote_id, company_id, user_id, updated_by_user_id, client_id, project_name, project_location,
                    project_region, input_method, status, total_material_cost::float AS total_material_cost,
                    total_service_cost::float AS total_service_cost, grand_total::float AS grand_total,
                    created_at::text AS created_at, updated_at::text AS updated_at`,

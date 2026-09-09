@@ -43,6 +43,12 @@ export async function GET(request: NextRequest, { params }: Params) {
     accepted_tier: "Practical" | "Premium" | null;
     grand_total: number;
     created_at: string;
+    updated_at: string;
+    updated_by_user_name: string | null;
+    updated_by_user_email: string | null;
+    made_by_user_id: number;
+    made_by_user_name: string | null;
+    made_by_user_email: string | null;
   }>(
     `SELECT q.quote_id,
             q.project_name,
@@ -50,13 +56,21 @@ export async function GET(request: NextRequest, { params }: Params) {
             q.status::text AS status,
             q.accepted_tier,
             q.grand_total::float8 AS grand_total,
-            q.created_at::text AS created_at
+            q.created_at::text AS created_at,
+            q.updated_at::text AS updated_at,
+            NULLIF(trim(concat_ws(' ', updater.first_name, updater.last_name)), '') AS updated_by_user_name,
+            updater.email AS updated_by_user_email,
+            q.user_id AS made_by_user_id,
+            NULLIF(trim(concat_ws(' ', creator.first_name, creator.last_name)), '') AS made_by_user_name,
+            creator.email AS made_by_user_email
      FROM quotation q
+     LEFT JOIN users updater ON updater.user_id = COALESCE(q.updated_by_user_id, q.user_id)
+     LEFT JOIN users creator ON creator.user_id = q.user_id
      WHERE q.client_id = $1 AND q.company_id = $2`,
     [id, auth.companyId]
   );
   const projects = quoteResult.rows.sort((a, b) => {
-    const dateSort = new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+    const dateSort = new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime();
     return dateSort !== 0 ? dateSort : b.quote_id - a.quote_id;
   });
   const projectCount = projects.length;

@@ -506,47 +506,50 @@ export function ManageExistingRulesTab({ onViewRule }: ManageExistingRulesTabPro
             </button>
           </div>
         </div>
-        <QueryState
-          isLoading={isLoading || materialRulesLoading}
-          error={error ?? materialRulesError}
-          isEmpty={filteredRules.length === 0}
-          onRetry={() => {
-            refetch();
-            refetchMaterialRules();
-          }}
-          emptyTitle={
-            search.trim()
-              ? "No matching rules"
-              : ruleFilter !== "all"
-                ? `No ${RULE_KIND_LABEL[ruleFilter]} rules`
-                : statusFilter !== "all"
-                  ? `No ${statusFilter.toLowerCase()} rules`
-                  : "No rules configured"
-          }
-          emptyHint={
-            search.trim()
-              ? "Try a different search or clear the filter."
-              : ruleFilter !== "all" || statusFilter !== "all"
-                ? "Choose another filter or add a new rule."
-                : "Configured rules across all categories will appear here once saved."
-          }
-          minHeight={220}
-        >
-          <DataTable
-            columns={columns}
-            data={filteredRules}
-            enablePagination
-            pageSize={50}
-            selectable={{
-              getRowId: (rule) => rule.rule_id,
-              selectedIds: selectedRuleIds,
-              onToggle: toggleRuleSelection,
-              onToggleAll: toggleAllVisibleRules,
-              showHeaderCheckbox: false,
+        <div className="h-[31rem]">
+          <QueryState
+            isLoading={isLoading || materialRulesLoading}
+            error={error ?? materialRulesError}
+            isEmpty={filteredRules.length === 0}
+            onRetry={() => {
+              refetch();
+              refetchMaterialRules();
             }}
-            onRowClick={onViewRule}
-          />
-        </QueryState>
+            emptyTitle={
+              search.trim()
+                ? "No matching rules"
+                : ruleFilter !== "all"
+                  ? `No ${RULE_KIND_LABEL[ruleFilter]} rules`
+                  : statusFilter !== "all"
+                    ? `No ${statusFilter.toLowerCase()} rules`
+                    : "No rules configured"
+            }
+            emptyHint={
+              search.trim()
+                ? "Try a different search or clear the filter."
+                : ruleFilter !== "all" || statusFilter !== "all"
+                  ? "Choose another filter or add a new rule."
+                  : "Configured rules across all categories will appear here once saved."
+            }
+            minHeight={220}
+          >
+            <DataTable
+              columns={columns}
+              data={filteredRules}
+              enablePagination
+              fillHeight
+              pageSize={50}
+              selectable={{
+                getRowId: (rule) => rule.rule_id,
+                selectedIds: selectedRuleIds,
+                onToggle: toggleRuleSelection,
+                onToggleAll: toggleAllVisibleRules,
+                showHeaderCheckbox: false,
+              }}
+              onRowClick={onViewRule}
+            />
+          </QueryState>
+        </div>
       </div>
 
       {disabledIds.size > 0 && (

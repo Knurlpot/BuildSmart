@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { AlertTriangle, CheckCircle2, Filter, Pencil, X, XCircle } from "lucide-react";
+import { AlertTriangle, CheckCircle2, ChevronDown, ChevronUp, Filter, Pencil, X, XCircle } from "lucide-react";
 import { FieldHelp } from "./FieldHelp";
 import { RuleListDetailPanel } from "./RuleListDetailPanel";
+import { SearchableSelect } from "./SearchableSelect";
 import {
   useLaborRules,
   useLaborTradeOptions,
@@ -30,6 +31,40 @@ function rateUnit(scope: LaborRuleScope): string {
   if (scope === "Treatment") return "/sqm";
   if (scope === "Trade") return "/day";
   return "";
+}
+
+function parseDecimalInput(value: string): string {
+  const cleaned = value.replace(/[^\d.]/g, "");
+  const [whole, ...decimalParts] = cleaned.split(".");
+  return decimalParts.length === 0 ? whole : `${whole}.${decimalParts.join("")}`;
+}
+
+function formatProductivityInput(value: string): string {
+  if (value === "") return "";
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) return value;
+  const capped = Math.min(parsed, 2);
+  return Number.isInteger(capped) ? capped.toFixed(1) : String(capped);
+}
+
+function parseProductivityInput(value: string, current: string): string {
+  const next = parseDecimalInput(value);
+  if (next === "" || next === ".") return next;
+  if (/^\d$/.test(next)) {
+    const parsedWhole = Number(next);
+    if (!Number.isFinite(parsedWhole) || parsedWhole > 2) return current;
+    return `${next}.`;
+  }
+  const parsed = Number(next);
+  if (!Number.isFinite(parsed) || parsed > 2) return current;
+  return next;
+}
+
+function stepProductivityInput(value: string, direction: 1 | -1): string {
+  const current = Number(value);
+  const base = Number.isFinite(current) && current > 0 ? current : 0.9;
+  const next = Math.min(2, Math.max(0.1, Math.round((base + direction * 0.1) * 10) / 10));
+  return next.toFixed(1);
 }
 
 interface LaborRulesFormProps {
@@ -74,9 +109,9 @@ export function LaborRulesForm({ focusRuleId, onFocusHandled }: LaborRulesFormPr
   const [region, setRegion] = useState<PhRegion | "">("");
   const [trade, setTrade] = useState("");
   const [workerCount, setWorkerCount] = useState<number | "">("");
-  const [rate, setRate] = useState<number | "">("");
-  const [rushMultiplier, setRushMultiplier] = useState<number | "">("");
-  const [productivity, setProductivity] = useState<number | "">("");
+  const [rate, setRate] = useState("");
+  const [rushMultiplier, setRushMultiplier] = useState("");
+  const [productivity, setProductivity] = useState("");
   const [productivitySqmPerDay, setProductivitySqmPerDay] = useState<number | "">("");
   const [minDurationDays, setMinDurationDays] = useState<number | "">("");
   const [safetyBufferDays, setSafetyBufferDays] = useState<number | "">("");
@@ -95,7 +130,8 @@ export function LaborRulesForm({ focusRuleId, onFocusHandled }: LaborRulesFormPr
   const workerCountValid = workerCount !== "" && Number.isInteger(Number(workerCount)) && Number(workerCount) > 0;
   const rateValid = rate !== "" && isPositiveNumber(Number(rate));
   const rushValid = rushMultiplier === "" || isPercent(Number(rushMultiplier));
-  const productivityValid = productivity === "" || isPositiveNumber(Number(productivity));
+  const productivityValue = Number(productivity);
+  const productivityValid = productivity === "" || (Number.isFinite(productivityValue) && productivityValue > 0 && productivityValue <= 2);
   const productivitySqmValid = productivitySqmPerDay === "" || isPositiveNumber(Number(productivitySqmPerDay));
   const minDurationValid = minDurationDays === "" || isPositiveNumber(Number(minDurationDays));
   const safetyBufferValid = safetyBufferDays === "" || isPositiveNumber(Number(safetyBufferDays));
@@ -134,9 +170,9 @@ export function LaborRulesForm({ focusRuleId, onFocusHandled }: LaborRulesFormPr
     setRegion(r.region ?? "");
     setTrade(r.labor_trade ?? "");
     setWorkerCount(r.worker_count ?? 1);
-    setRate(r.labor_rate);
-    setRushMultiplier(r.rush_multiplier_percentage ?? "");
-    setProductivity(r.productivity_index ?? "");
+    setRate(String(r.labor_rate));
+    setRushMultiplier(r.rush_multiplier_percentage === null ? "" : String(r.rush_multiplier_percentage));
+    setProductivity(r.productivity_index === null ? "" : String(r.productivity_index));
     setProductivitySqmPerDay(r.productivity_sqm_per_day ?? "");
     setMinDurationDays(r.min_duration_days ?? "");
     setSafetyBufferDays(r.safety_buffer_days ?? "");
@@ -321,25 +357,29 @@ export function LaborRulesForm({ focusRuleId, onFocusHandled }: LaborRulesFormPr
                 <div className="grid grid-cols-1 gap-3">
                   <div className="flex flex-col gap-1.5">
                     <label className="text-xs font-semibold text-gray-600">Rule Scope</label>
-                    <select value={pendingScopeFilter} onChange={(e) => setPendingScopeFilter(e.target.value as LaborRuleScope | "")} className={inputCls}>
-                      <option value="">All scopes</option>
-                      {(["Treatment", "General", "Trade"] as LaborRuleScope[]).map((scope) => (
-                        <option key={scope} value={scope}>
-                          {scope}
-                        </option>
-                      ))}
-                    </select>
+                    <SearchableSelect
+                      value={pendingScopeFilter}
+                      onChange={(value) => setPendingScopeFilter(value as LaborRuleScope | "")}
+                      className={inputCls}
+                      placeholder="All scopes"
+                      options={[
+                        { value: "", label: "All scopes" },
+                        ...(["Treatment", "General", "Trade"] as LaborRuleScope[]).map((scope) => ({ value: scope, label: scope })),
+                      ]}
+                    />
                   </div>
                   <div className="flex flex-col gap-1.5">
                     <label className="text-xs font-semibold text-gray-600">Treatment Type</label>
-                    <select value={pendingTreatmentFilter} onChange={(e) => setPendingTreatmentFilter(e.target.value)} className={inputCls}>
-                      <option value="">All treatment types</option>
-                      {treatmentOptions.map((treatment) => (
-                        <option key={treatment} value={treatment}>
-                          {treatment}
-                        </option>
-                      ))}
-                    </select>
+                    <SearchableSelect
+                      value={pendingTreatmentFilter}
+                      onChange={setPendingTreatmentFilter}
+                      className={inputCls}
+                      placeholder="All treatment types"
+                      options={[
+                        { value: "", label: "All treatment types" },
+                        ...treatmentOptions.map((treatment) => ({ value: treatment, label: treatment })),
+                      ]}
+                    />
                   </div>
                 </div>
                 <div className="mt-3 flex justify-end gap-2">
@@ -444,21 +484,17 @@ export function LaborRulesForm({ focusRuleId, onFocusHandled }: LaborRulesFormPr
                     </span>{" "}
                     <span className="text-red-500">*</span>
                   </label>
-                  <select
-                    id="labor-treatment-type"
+                  <SearchableSelect
                     value={treatmentChoice}
-                    onChange={(e) => {
-                      const next = e.target.value;
+                    onChange={(next) => {
                       setTreatmentChoice(next);
                       setTreatmentType(next);
                     }}
                     className={inputCls}
-                  >
-                    <option value="">Select…</option>
-                    {treatmentOptions.map((treatment) => (
-                      <option key={treatment}>{treatment}</option>
-                    ))}
-                  </select>
+                    ariaLabel="Treatment Type"
+                    placeholder="Select..."
+                    options={treatmentOptions.map((treatment) => ({ value: treatment, label: treatment }))}
+                  />
                   {treatmentOptions.length === 0 && (
                     <p className="text-[11px] text-amber-600">
                       Add treatment-tagged Material Rules first.
@@ -475,12 +511,13 @@ export function LaborRulesForm({ focusRuleId, onFocusHandled }: LaborRulesFormPr
                       <FieldHelp label="Labor Trade" text="Used when labor is priced by trade, such as mason, painter, installer, or electrician." />
                       <span className="text-red-500">*</span>
                     </label>
-                    <select value={trade} onChange={(e) => setTrade(e.target.value)} className={inputCls}>
-                      <option value="">Select…</option>
-                      {laborTradeOptions.map((t) => (
-                        <option key={t}>{t}</option>
-                      ))}
-                    </select>
+                    <SearchableSelect
+                      value={trade}
+                      onChange={setTrade}
+                      className={inputCls}
+                      placeholder="Select..."
+                      options={laborTradeOptions.map((t) => ({ value: t, label: t }))}
+                    />
                     {touched && !tradeValid && <p className="text-xs text-red-500">Select a trade.</p>}
                   </div>
                   <div className="flex flex-col gap-1.5">
@@ -488,12 +525,16 @@ export function LaborRulesForm({ focusRuleId, onFocusHandled }: LaborRulesFormPr
                       <FieldHelp label="Region" text="Limits this labor rule to a specific project region when rates vary by location." />
                       <span className="font-normal normal-case text-gray-400">(optional)</span>
                     </label>
-                    <select value={region} onChange={(e) => setRegion(e.target.value as PhRegion)} className={inputCls}>
-                      <option value="">Any region</option>
-                      {PH_REGIONS.map((r) => (
-                        <option key={r}>{r}</option>
-                      ))}
-                    </select>
+                    <SearchableSelect
+                      value={region}
+                      onChange={(value) => setRegion(value as PhRegion)}
+                      className={inputCls}
+                      placeholder="Any region"
+                      options={[
+                        { value: "", label: "Any region" },
+                        ...PH_REGIONS.map((r) => ({ value: r, label: r })),
+                      ]}
+                    />
                   </div>
                 </div>
               )}
@@ -504,8 +545,7 @@ export function LaborRulesForm({ focusRuleId, onFocusHandled }: LaborRulesFormPr
                     <FieldHelp label={`Labor Rate (₱${rateUnit(scope)})`} text="Base labor cost used in the quotation before rush or productivity adjustments." /> <span className="text-red-500">*</span>
                   </label>
                   <input id="labor-rate" type="text" inputMode="decimal" value={rate} onChange={(e) => {
-                    const next = e.target.value.replace(/[^\d.]/g, "");
-                    setRate(next === "" ? "" : Number(next));
+                    setRate(parseDecimalInput(e.target.value));
                   }} className={inputCls} />
                   {touched && !rateValid && <p className="text-xs text-red-500">Must be greater than 0.</p>}
                 </div>
@@ -522,12 +562,46 @@ export function LaborRulesForm({ focusRuleId, onFocusHandled }: LaborRulesFormPr
                 <div className="flex flex-col gap-1.5">
                   <label htmlFor="labor-productivity-index" className="flex items-center gap-1.5 text-xs font-semibold text-gray-600">
                     <FieldHelp label="Productivity Index" text="Optional efficiency factor for site difficulty or crew speed. Example: 1.0 normal, 0.8 slower, 1.2 faster." />
+                    <span className="text-red-500">*</span>
                   </label>
-                  <input id="labor-productivity-index" type="text" inputMode="decimal" value={productivity} onChange={(e) => {
-                    const next = e.target.value.replace(/[^\d.]/g, "");
-                    setProductivity(next === "" ? "" : Number(next));
-                  }} className={inputCls} />
-                  {touched && !productivityValid && <p className="text-xs text-red-500">Must be greater than 0.</p>}
+                  <div className="relative">
+                    <input
+                      id="labor-productivity-index"
+                      type="text"
+                      inputMode="decimal"
+                      value={productivity}
+                      onChange={(e) => setProductivity((current) => parseProductivityInput(e.target.value, current))}
+                      onKeyDown={(e) => {
+                        if (e.key === "Backspace" && /^\d\.$/.test(productivity)) {
+                          e.preventDefault();
+                          setProductivity("");
+                        }
+                      }}
+                      onBlur={() => setProductivity((current) => formatProductivityInput(current))}
+                      className={`${inputCls} pr-9`}
+                    />
+                    <div className="absolute bottom-1.5 right-1.5 top-1.5 flex w-5 flex-col">
+                      <button
+                        type="button"
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => setProductivity((current) => stepProductivityInput(current, 1))}
+                        className="flex flex-1 items-center justify-center rounded-t text-gray-400 transition hover:text-primary"
+                        aria-label="Increase productivity index"
+                      >
+                        <ChevronUp className="h-3 w-3" strokeWidth={2.25} />
+                      </button>
+                      <button
+                        type="button"
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => setProductivity((current) => stepProductivityInput(current, -1))}
+                        className="flex flex-1 items-center justify-center rounded-b text-gray-400 transition hover:text-primary"
+                        aria-label="Decrease productivity index"
+                      >
+                        <ChevronDown className="h-3 w-3" strokeWidth={2.25} />
+                      </button>
+                    </div>
+                  </div>
+                  {touched && !productivityValid && <p className="text-xs text-red-500">Enter a value up to 2.0.</p>}
                 </div>
               </div>
 
@@ -535,6 +609,7 @@ export function LaborRulesForm({ focusRuleId, onFocusHandled }: LaborRulesFormPr
                 <div className="flex flex-col gap-1.5">
                   <label htmlFor="labor-productivity-sqm-per-day" className="flex items-center gap-1.5 text-xs font-semibold text-gray-600">
                     <FieldHelp label="Productivity sqm/day" text="Estimated square meters the crew can finish per day, used for duration planning." />
+                    <span className="text-red-500">*</span>
                   </label>
                   <input id="labor-productivity-sqm-per-day" type="text" inputMode="decimal" value={productivitySqmPerDay} onChange={(e) => {
                     const next = e.target.value.replace(/[^\d.]/g, "");
@@ -545,6 +620,7 @@ export function LaborRulesForm({ focusRuleId, onFocusHandled }: LaborRulesFormPr
                 <div className="flex flex-col gap-1.5">
                   <label htmlFor="labor-min-duration-days" className="flex items-center gap-1.5 text-xs font-semibold text-gray-600">
                     <FieldHelp label="Min. Duration Days" text="Smallest practical number of work days for this rule, even if the computed area is low." />
+                    <span className="text-red-500">*</span>
                   </label>
                   <input id="labor-min-duration-days" type="text" inputMode="decimal" value={minDurationDays} onChange={(e) => {
                     const next = e.target.value.replace(/[^\d.]/g, "");
@@ -555,6 +631,7 @@ export function LaborRulesForm({ focusRuleId, onFocusHandled }: LaborRulesFormPr
                 <div className="flex flex-col gap-1.5">
                   <label htmlFor="labor-safety-buffer-days" className="flex items-center gap-1.5 text-xs font-semibold text-gray-600">
                     <FieldHelp label="Safety Buffer Days" text="Extra schedule allowance for curing time, access delays, weather, or coordination risk." />
+                    <span className="text-red-500">*</span>
                   </label>
                   <input id="labor-safety-buffer-days" type="text" inputMode="decimal" value={safetyBufferDays} onChange={(e) => {
                     const next = e.target.value.replace(/[^\d.]/g, "");
@@ -575,8 +652,7 @@ export function LaborRulesForm({ focusRuleId, onFocusHandled }: LaborRulesFormPr
                     inputMode="decimal"
                     value={rushMultiplier}
                     onChange={(e) => {
-                      const next = e.target.value.replace(/[^\d.]/g, "");
-                      setRushMultiplier(next === "" ? "" : Number(next));
+                      setRushMultiplier(parseDecimalInput(e.target.value));
                     }}
                     className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 pr-8 text-sm outline-none transition focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/20"
                   />

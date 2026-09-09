@@ -370,6 +370,9 @@ export function QuotationGenerationWizard() {
     await discardDraftQuotation();
     router.push("/dashboard");
   };
+  const returnToClientProjects = () => {
+    router.replace(client?.client_id ? `/clients/${client.client_id}` : "/projects");
+  };
 
   let body: React.ReactNode;
   if (isResuming) {
@@ -446,7 +449,7 @@ export function QuotationGenerationWizard() {
         onStructuralRevision={() => setStep(method ?? "method")}
         onBack={() => {
           if (isResumingOpenProject) {
-            router.replace("/projects");
+            returnToClientProjects();
             return;
           }
           setStep("configure");
@@ -483,6 +486,10 @@ export function QuotationGenerationWizard() {
             hasManualLineEdits: draft.hasManualLineEdits,
             updatedAt: new Date().toISOString(),
           });
+          if (isResumingOpenProject) {
+            returnToClientProjects();
+            return;
+          }
           router.replace("/projects");
         }}
         onFinalize={() => {

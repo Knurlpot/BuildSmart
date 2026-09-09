@@ -30,6 +30,12 @@ export interface ClientInsights {
     accepted_tier: "Practical" | "Premium" | null;
     grand_total: number;
     created_at: string;
+    updated_at: string;
+    updated_by_user_name: string | null;
+    updated_by_user_email: string | null;
+    made_by_user_id: number;
+    made_by_user_name: string | null;
+    made_by_user_email: string | null;
   }[];
   mostRecentProject: {
     quote_id: number;
@@ -39,6 +45,12 @@ export interface ClientInsights {
     accepted_tier: "Practical" | "Premium" | null;
     grand_total: number;
     created_at: string;
+    updated_at: string;
+    updated_by_user_name: string | null;
+    updated_by_user_email: string | null;
+    made_by_user_id: number;
+    made_by_user_name: string | null;
+    made_by_user_email: string | null;
   } | null;
 }
 

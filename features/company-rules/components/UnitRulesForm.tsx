@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { AlertTriangle, CheckCircle2, Pencil, X, XCircle } from "lucide-react";
 import { FieldHelp } from "./FieldHelp";
 import { RuleListDetailPanel } from "./RuleListDetailPanel";
+import { SearchableSelect } from "./SearchableSelect";
 import { useUnitRules, useCheckRuleUsage, stagingId } from "@/lib/dev/provisional/useCompanyRulesProvisional";
 import { useEditableRuleList } from "@/lib/dev/provisional/useEditableRuleList";
 import { isPercent, isPositiveNumber } from "@/lib/dev/provisional/ruleValidation";
@@ -281,21 +282,18 @@ export function UnitRulesForm({ focusRuleId, onFocusHandled }: UnitRulesFormProp
                   <FieldHelp label={targetKind === "category" ? "Material Category" : "Item's Category"} text="The category used to find which material quantities this conversion and wastage rule should affect." />
                   <span className="text-red-500">*</span>
                 </label>
-                <select
+                <SearchableSelect
                   value={category}
-                  onChange={(e) => {
-                    setCategory(e.target.value as CategoryType);
+                  onChange={(value) => {
+                    setCategory(value as CategoryType);
                     setItemCode("");
                     setItemSearch("");
                     setItemPickerOpen(false);
                   }}
                   className={inputCls}
-                >
-                  <option value="">Select…</option>
-                  {categoryOptions.map((c) => (
-                    <option key={c}>{c}</option>
-                  ))}
-                </select>
+                  placeholder="Select..."
+                  options={categoryOptions.map((c) => ({ value: c, label: c }))}
+                />
                 {touched && !categoryValid && <p className="text-xs text-red-500">Select a category.</p>}
               </div>
 

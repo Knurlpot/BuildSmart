@@ -291,7 +291,7 @@ export default function SignUpPage() {
       const { company } = await checkCompany(query);
       setMatchedCompany(company);
       setCompanyMode(company ? "join" : "create");
-      setLookupMessage(company ? "Company found. Review it before joining." : "No company found. Continue by creating a new company.");
+      setLookupMessage(company ? "Company found. Review it before joining." : "No company found.");
     } catch (err) {
       setMatchedCompany(null);
       setLookupMessage("");

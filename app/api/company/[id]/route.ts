@@ -9,14 +9,14 @@ async function assertOwnCompany(request: NextRequest, requestedCompanyId: number
   const session = readSession(request);
   if (!session) return null;
 
-  const result = await pool.query<{ company_id: number }>(
-    `SELECT company_id FROM users WHERE user_id = $1 LIMIT 1`,
+  const result = await pool.query<{ company_id: number; user_role: string }>(
+    `SELECT company_id, user_role FROM users WHERE user_id = $1 LIMIT 1`,
     [session.userId]
   );
 
   const currentCompanyId = result.rows[0]?.company_id;
   if (currentCompanyId !== requestedCompanyId) return null;
-  return session.userId;
+  return { userId: session.userId, userRole: result.rows[0].user_role };
 }
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -26,8 +26,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     return NextResponse.json({ error: "Invalid company id" }, { status: 400 });
   }
 
-  const userId = await assertOwnCompany(request, companyId);
-  if (!userId) {
+  const auth = await assertOwnCompany(request, companyId);
+  if (!auth) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -54,9 +54,12 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     return NextResponse.json({ error: "Invalid company id" }, { status: 400 });
   }
 
-  const userId = await assertOwnCompany(request, companyId);
-  if (!userId) {
+  const auth = await assertOwnCompany(request, companyId);
+  if (!auth) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  if (auth.userRole !== "Owner") {
+    return NextResponse.json({ error: "Only company owners can edit company details." }, { status: 403 });
   }
 
   const body = (await request.json()) as Body;

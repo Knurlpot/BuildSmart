@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { AlertTriangle, CheckCircle2, Pencil, X } from "lucide-react";
 import { FieldHelp } from "./FieldHelp";
 import { RuleListDetailPanel } from "./RuleListDetailPanel";
+import { SearchableSelect } from "./SearchableSelect";
 import {
   useScopeTemplates,
   useCheckRuleUsage,
@@ -278,21 +279,19 @@ export function ScopeTemplatesForm({ focusRuleId, onFocusHandled }: ScopeTemplat
                     <FieldHelp label="Treatment Type" text="The service/treatment this scope template represents for quotation setup." />
                     <span className="text-red-500">*</span>
                   </label>
-                  <select
+                  <SearchableSelect
                     value={treatmentChoice}
-                    onChange={(e) => {
-                      const next = e.target.value;
+                    onChange={(next) => {
                       setTreatmentChoice(next);
                       setTreatmentType(next === "Other" ? "" : next);
                     }}
                     className={inputCls}
-                  >
-                    <option value="">Select…</option>
-                    {treatmentOptions.map((treatment) => (
-                      <option key={treatment}>{treatment}</option>
-                    ))}
-                    <option value="Other">Others</option>
-                  </select>
+                    placeholder="Select..."
+                    options={[
+                      ...treatmentOptions.map((treatment) => ({ value: treatment, label: treatment })),
+                      { value: "Other", label: "Others" },
+                    ]}
+                  />
                   {treatmentChoice === "Other" && (
                     <input
                       value={treatmentType}
@@ -309,12 +308,13 @@ export function ScopeTemplatesForm({ focusRuleId, onFocusHandled }: ScopeTemplat
                     <FieldHelp label="Service Specialization" text="Connects this template to the company service specialization that performs the work." />
                     <span className="text-red-500">*</span>
                   </label>
-                  <select value={specialization} onChange={(e) => setSpecialization(e.target.value)} className={inputCls}>
-                    <option value="">Select…</option>
-                    {specializationOptions.map((s) => (
-                      <option key={s}>{s}</option>
-                    ))}
-                  </select>
+                  <SearchableSelect
+                    value={specialization}
+                    onChange={setSpecialization}
+                    className={inputCls}
+                    placeholder="Select..."
+                    options={specializationOptions.map((s) => ({ value: s, label: s }))}
+                  />
                   {specializationOptions.length === 0 && (
                     <p className="text-xs text-gray-400">
                       No specializations found on your company profile. Add one under Account &amp; Company Profile.

@@ -12,6 +12,9 @@ export interface Quotation {
   quote_id: number;
   company_id: number;
   user_id: number;
+  updated_by_user_id?: number | null;
+  updated_by_user_name?: string | null;
+  updated_by_user_email?: string | null;
   // Nullable at the DB level — a quotation can exist without a client on file. Real column
   // (client table + this FK both added together); see types/entities/client.ts.
   client_id?: number | null;

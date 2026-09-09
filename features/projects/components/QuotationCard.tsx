@@ -10,10 +10,16 @@ export interface ClientQuotationCardData {
   accepted_tier: "Practical" | "Premium" | null;
   grand_total: number;
   created_at: string;
+  updated_at?: string;
+  updated_by_user_name?: string | null;
+  updated_by_user_email?: string | null;
+  made_by_user_id?: number;
+  made_by_user_name?: string | null;
+  made_by_user_email?: string | null;
 }
 
-function formatDate(value: string) {
-  const date = new Date(value);
+function formatDate(value: string | undefined) {
+  const date = new Date(value ?? "");
   if (Number.isNaN(date.getTime())) return "Not available";
   return date.toLocaleDateString("en-PH", { month: "short", day: "numeric", year: "numeric" });
 }
@@ -41,6 +47,8 @@ export function QuotationCard({ project, clientName }: { project: ClientQuotatio
   const isPremium = project.status === "Final" && project.accepted_tier === "Premium";
   const isPractical = project.status === "Final" && project.accepted_tier === "Practical";
   const hasTierColor = isPremium || isPractical;
+  const updatedBy = project.updated_by_user_name || project.updated_by_user_email || "Not available";
+  const madeBy = project.made_by_user_name || (project.made_by_user_id ? `User ${project.made_by_user_id}` : "Not available");
 
   const openQuotation = () => {
     router.push(project.status === "Draft" ? `/quotations/new?resumeQuoteId=${project.quote_id}` : `/quotations/${project.quote_id}`);
@@ -96,7 +104,7 @@ export function QuotationCard({ project, clientName }: { project: ClientQuotatio
         </div>
       </div>
 
-      <div className="mx-5 grid grid-cols-3 gap-3 border-t border-gray-100 py-4">
+      <div className="mx-5 grid grid-cols-2 gap-3 border-t border-gray-100 py-4 sm:grid-cols-4">
         <div className="min-w-0">
           <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">Region</p>
           <p className="mt-1 truncate text-xs font-medium text-gray-600">{project.project_region}</p>
@@ -106,8 +114,17 @@ export function QuotationCard({ project, clientName }: { project: ClientQuotatio
           <p className="mt-1 truncate text-xs font-medium text-gray-600">{formatPeso(project.grand_total, project.status)}</p>
         </div>
         <div className="min-w-0">
-          <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">Created</p>
-          <p className="mt-1 truncate text-xs font-medium text-gray-600">{formatDate(project.created_at)}</p>
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">Updated By</p>
+          <p className="mt-1 truncate text-xs font-medium text-gray-600" title={project.updated_by_user_email ?? undefined}>
+            {updatedBy}
+          </p>
+          <p className="mt-0.5 truncate text-[11px] text-gray-400">{formatDate(project.updated_at)}</p>
+        </div>
+        <div className="min-w-0">
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">Made By</p>
+          <p className="mt-1 truncate text-xs font-medium text-gray-600" title={project.made_by_user_email ?? undefined}>
+            {madeBy}
+          </p>
         </div>
       </div>
     </article>

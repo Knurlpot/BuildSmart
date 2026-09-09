@@ -14,10 +14,9 @@ export async function GET(request: NextRequest) {
             COALESCE(q.updated_at, q.created_at)::text AS occurred_at
      FROM quotation q
      WHERE q.company_id = $1
-       AND q.user_id = $2
      ORDER BY occurred_at DESC
      LIMIT 5`,
-    [auth.companyId, auth.userId]
+    [auth.companyId]
   );
 
   return NextResponse.json(result.rows);

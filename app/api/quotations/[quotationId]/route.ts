@@ -13,13 +13,16 @@ export async function GET(request: NextRequest, { params }: Params) {
   if (!Number.isInteger(quoteId)) return NextResponse.json({ error: "Invalid quotation id." }, { status: 400 });
 
   const quoteResult = await pool.query(
-    `SELECT quote_id, company_id, user_id, client_id, project_name, project_location,
-            project_region, input_method, status, accepted_tier, total_material_cost::float AS total_material_cost,
-            total_service_cost::float AS total_service_cost, grand_total::float AS grand_total,
-            created_at::text AS created_at, updated_at::text AS updated_at
-     FROM quotation
-     WHERE quote_id = $1 AND company_id = $2 AND user_id = $3`,
-    [quoteId, auth.companyId, auth.userId]
+    `SELECT q.quote_id, q.company_id, q.user_id, q.updated_by_user_id, q.client_id, q.project_name, q.project_location,
+            q.project_region, q.input_method, q.status, q.accepted_tier, q.total_material_cost::float AS total_material_cost,
+            q.total_service_cost::float AS total_service_cost, q.grand_total::float AS grand_total,
+            trim(concat_ws(' ', updater.first_name, updater.last_name)) AS updated_by_user_name,
+            updater.email AS updated_by_user_email,
+            q.created_at::text AS created_at, q.updated_at::text AS updated_at
+     FROM quotation q
+     LEFT JOIN users updater ON updater.user_id = COALESCE(q.updated_by_user_id, q.user_id)
+     WHERE q.quote_id = $1 AND q.company_id = $2`,
+    [quoteId, auth.companyId]
   );
   const quotation = quoteResult.rows[0];
   if (!quotation) return NextResponse.json({ error: "Quotation not found." }, { status: 404 });
@@ -75,13 +78,13 @@ export async function PATCH(request: NextRequest, { params }: Params) {
 
   const result = await pool.query(
     `UPDATE quotation
-     SET input_method = $1, updated_at = CURRENT_TIMESTAMP
-     WHERE quote_id = $2 AND company_id = $3 AND user_id = $4
-     RETURNING quote_id, company_id, user_id, client_id, project_name, project_location,
+     SET input_method = $1, updated_by_user_id = $2, updated_at = CURRENT_TIMESTAMP
+     WHERE quote_id = $3 AND company_id = $4
+     RETURNING quote_id, company_id, user_id, updated_by_user_id, client_id, project_name, project_location,
                project_region, input_method, status, accepted_tier, total_material_cost::float AS total_material_cost,
                total_service_cost::float AS total_service_cost, grand_total::float AS grand_total,
                created_at::text AS created_at, updated_at::text AS updated_at`,
-    [body.input_method, quoteId, auth.companyId, auth.userId]
+    [body.input_method, auth.userId, quoteId, auth.companyId]
   );
 
   if (!result.rows[0]) return NextResponse.json({ error: "Quotation not found." }, { status: 404 });

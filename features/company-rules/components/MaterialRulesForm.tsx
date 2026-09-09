@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { AlertTriangle, CheckCircle2, Filter, Pencil, Plus, Search, X, XCircle } from "lucide-react";
 import { FieldHelp } from "./FieldHelp";
 import { RuleListDetailPanel } from "./RuleListDetailPanel";
+import { SearchableSelect } from "./SearchableSelect";
 import { useMaterialRules, useCheckRuleUsage, stagingId } from "@/lib/dev/provisional/useCompanyRulesProvisional";
 import { useEditableRuleList } from "@/lib/dev/provisional/useEditableRuleList";
 import { apiClient } from "@/lib/api/client";
@@ -179,33 +180,31 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
   );
   const materialFilterPanel = filtersOpen ? (
     <div className="absolute right-0 top-12 z-30 grid w-full gap-2 rounded-xl border border-gray-200 bg-white p-3 shadow-lg md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto_auto]">
-      <select
+      <SearchableSelect
         value={pendingSupplierFilter}
-        onChange={(e) => setPendingSupplierFilter(e.target.value)}
+        onChange={setPendingSupplierFilter}
         className={`${inputCls} min-w-0`}
         disabled={suppliersLoading}
         aria-label="Filter by supplier"
-      >
-        <option value="">All suppliers</option>
-        {suppliers
+        placeholder="All suppliers"
+        options={[
+          { value: "", label: "All suppliers" },
+          ...suppliers
           .filter((s) => s.status === "Active")
-          .map((supplier) => (
-            <option key={supplier.supplier_id} value={String(supplier.supplier_id)}>
-              {supplier.supplier_name}
-            </option>
-          ))}
-      </select>
-      <select
+          .map((supplier) => ({ value: String(supplier.supplier_id), label: supplier.supplier_name })),
+        ]}
+      />
+      <SearchableSelect
         value={pendingCategoryFilter}
-        onChange={(e) => setPendingCategoryFilter(e.target.value as CategoryType | "")}
+        onChange={(value) => setPendingCategoryFilter(value as CategoryType | "")}
         className={`${inputCls} min-w-0`}
         aria-label="Filter by category"
-      >
-        <option value="">All categories</option>
-        {CATEGORY_TYPES.map((c) => (
-          <option key={c}>{c}</option>
-        ))}
-      </select>
+        placeholder="All categories"
+        options={[
+          { value: "", label: "All categories" },
+          ...CATEGORY_TYPES.map((c) => ({ value: c, label: c })),
+        ]}
+      />
       <button
         type="button"
         onClick={applyFilters}
@@ -231,6 +230,27 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
       item.brand,
       item.unit,
     ].filter(Boolean).join(" · ");
+
+  const materialNameWithSupplier = (
+    itemName: string,
+    supplierName?: string | null,
+    tier: MaterialTreatmentTier = "Practical"
+  ) => (
+    <span className="flex min-w-0 items-center gap-2">
+      <span className="truncate">{itemName}</span>
+      {supplierName ? (
+        <span
+          className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold ring-1 ${
+            tier === "Premium"
+              ? "bg-[#0000CD]/5 text-[#0000CD] ring-[#0000CD]/15"
+              : "bg-orange-50 text-primary ring-primary/15"
+          }`}
+        >
+          {supplierName}
+        </span>
+      ) : null}
+    </span>
+  );
 
   const checkedItems = Object.values(checkedCatalogItems);
   const selectedCatalogKeys = new Set(checkedItems.map((item) => item.catalogKey));
@@ -639,24 +659,22 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
                 </button>
               ))}
             </div>
-            <select
+            <SearchableSelect
               value={listTreatmentFilter}
-              onChange={(e) => {
-                setListTreatmentFilter(e.target.value);
+              onChange={(value) => {
+                setListTreatmentFilter(value);
                 setMode("idle");
                 setSelectedId(null);
                 setSelectedGroup(null);
               }}
               className={`${inputCls} min-h-9 w-full min-w-40 px-2 text-xs sm:w-44`}
               aria-label="Filter material rules by treatment type"
-            >
-              <option value="">All treatment types</option>
-              {materialTreatmentFilterOptions.map((treatment) => (
-                <option key={treatment} value={treatment}>
-                  {treatment}
-                </option>
-              ))}
-            </select>
+              placeholder="All treatment types"
+              options={[
+                { value: "", label: "All treatment types" },
+                ...materialTreatmentFilterOptions.map((treatment) => ({ value: treatment, label: treatment })),
+              ]}
+            />
           </div>
         }
         renderListItem={([, groupRules]) => (
@@ -720,26 +738,22 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
                 <label htmlFor="material-treatment-type" className="flex items-center gap-1.5 text-xs font-semibold text-gray-600">
                   <FieldHelp label="Treatment Type" text="Defines which treatment this group of materials will be used for during quotation generation." /> <span className="text-red-500">*</span>
                 </label>
-                <select
-                  id="material-treatment-type"
+                <SearchableSelect
                   value={treatmentType}
-                  onChange={(e) => {
-                    const nextTreatment = e.target.value;
+                  onChange={(nextTreatment) => {
                     setTreatmentType(nextTreatment);
                     const nextAvailableTiers = MATERIAL_TREATMENT_TIERS.filter(
                       (tier) => !activeTiersForTreatment(nextTreatment).has(tier)
                     );
-                    setTreatmentTier(nextAvailableTiers[0] ?? "Practical");
+                    setTreatmentTier((currentTier) =>
+                      nextAvailableTiers.includes(currentTier) ? currentTier : nextAvailableTiers[0] ?? "Practical"
+                    );
                   }}
                   className={inputCls}
-                >
-                  <option value="">Select...</option>
-                  {availableTreatmentOptions.map((type) => (
-                    <option key={type} value={type}>
-                      {type}
-                    </option>
-                  ))}
-                </select>
+                  ariaLabel="Treatment Type"
+                  placeholder="Select..."
+                  options={availableTreatmentOptions.map((type) => ({ value: type, label: type }))}
+                />
                 {touched && !TREATMENT_OPTIONS.includes(treatmentType as (typeof TREATMENT_OPTIONS)[number]) && (
                   <p className="text-xs text-red-500">Choose one of BuildSmart&apos;s treatment types.</p>
                 )}
@@ -871,7 +885,7 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
                           className="h-4 w-4 shrink-0 rounded border-gray-300 text-primary focus:ring-2 focus:ring-primary/30"
                         />
                         <div className="min-w-0 flex-1">
-                          <p className="truncate text-sm font-medium text-gray-800">{item.item_name}</p>
+                          <p className="truncate text-sm font-medium text-gray-800">{materialNameWithSupplier(item.item_name, item.supplier_name, treatmentTier)}</p>
                           <p className="truncate text-[11px] text-gray-400">{itemMeta(item)}</p>
                         </div>
                       </label>
@@ -914,7 +928,7 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
                   {checkedItems.map((item) => (
                     <div key={item.catalogKey} className="flex items-center justify-between gap-3 px-3 py-2">
                       <div className="min-w-0">
-                        <p className="truncate text-sm font-semibold text-gray-800">{item.item_name}</p>
+                        <p className="truncate text-sm font-semibold text-gray-800">{materialNameWithSupplier(item.item_name, item.supplier_name, treatmentTier)}</p>
                         <p className="truncate text-[11px] text-gray-400">{itemMeta(item)}</p>
                       </div>
                       <span className="shrink-0 rounded-full bg-gray-50 px-2 py-0.5 text-[10px] font-bold text-gray-500">
@@ -971,19 +985,14 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
                   <FieldHelp label="Treatment Type" text="Defines which treatment this group of materials will be used for during quotation generation." />
                   <span className="text-red-500">*</span>
                 </label>
-                <select
-                  id="edit-material-treatment-type"
+                <SearchableSelect
                   value={treatmentType}
-                  onChange={(e) => setTreatmentType(e.target.value)}
+                  onChange={setTreatmentType}
                   className={inputCls}
-                >
-                  <option value="">Select treatment type...</option>
-                  {TREATMENT_OPTIONS.map((type) => (
-                    <option key={type} value={type}>
-                      {type}
-                    </option>
-                  ))}
-                </select>
+                  ariaLabel="Treatment Type"
+                  placeholder="Select treatment type..."
+                  options={TREATMENT_OPTIONS.map((type) => ({ value: type, label: type }))}
+                />
                 {touched && !TREATMENT_OPTIONS.includes(treatmentType as (typeof TREATMENT_OPTIONS)[number]) && (
                   <p className="text-xs text-red-500">Choose one of BuildSmart&apos;s treatment types.</p>
                 )}
@@ -1007,7 +1016,7 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
                       onClick={() => setTreatmentTier(tier)}
                       className={`rounded-lg border px-3 py-2 text-xs font-bold transition ${
                         treatmentTier === tier
-                          ? "border-primary bg-orange-50 text-primary"
+                          ? activeTierFilterClass(tier)
                           : "border-gray-200 bg-white text-gray-500 hover:border-gray-300"
                       }`}
                     >
@@ -1085,7 +1094,7 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
                       .map((item) => (
                         <div key={item.catalogKey} className="flex items-center justify-between gap-3 px-3 py-2">
                           <div className="min-w-0">
-                            <p className="truncate text-sm font-semibold text-gray-800">{item.item_name}</p>
+                            <p className="truncate text-sm font-semibold text-gray-800">{materialNameWithSupplier(item.item_name, item.supplier_name, treatmentTier)}</p>
                             <p className="truncate text-[11px] text-gray-400">{itemMeta(item)}</p>
                           </div>
                           <button
@@ -1153,7 +1162,7 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
                               className="h-4 w-4 shrink-0 rounded border-gray-300 text-primary focus:ring-2 focus:ring-primary/30"
                             />
                             <div className="min-w-0 flex-1">
-                              <p className="truncate text-sm font-medium text-gray-800">{item.item_name}</p>
+                              <p className="truncate text-sm font-medium text-gray-800">{materialNameWithSupplier(item.item_name, item.supplier_name, treatmentTier)}</p>
                               <p className="truncate text-[11px] text-gray-400">{itemMeta(item)}</p>
                             </div>
                           </label>
@@ -1258,7 +1267,7 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
                     .map((rule) => (
                       <div key={rule.rule_id} className="flex items-center justify-between gap-4 px-4 py-3">
                         <div className="min-w-0">
-                          <p className="truncate text-sm font-semibold text-gray-800">{rule.preferred_item_name}</p>
+                          <p className="truncate text-sm font-semibold text-gray-800">{materialNameWithSupplier(rule.preferred_item_name, rule.selected_supplier_name, (rule.treatment_tier ?? "Practical") as MaterialTreatmentTier)}</p>
                           <p className="truncate text-xs text-gray-400">{rule.category}</p>
                         </div>
                       </div>
