@@ -55,7 +55,7 @@ To register for and use BuildSmart, you must:
 BuildSmart operates on a multi-tenant model. Each registered company constitutes a separate tenant with isolated data. By registering a company, you warrant that you are duly authorized to do so on that company's behalf and to bind that company to these Terms.
 
 ### 2.3 User Roles
-Accounts may be assigned roles (Owner, Admin, Estimator, Viewer) carrying differing permissions. Account Owners and Administrators are responsible for the actions of all users they authorize within their company account.
+Accounts may be assigned roles (Owner, Admin, Estimator) carrying differing permissions. Account Owners and Administrators are responsible for the actions of all users they authorize within their company account.
 
 ### 2.4 Account Security
 You are responsible for:

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
@@ -34,8 +34,51 @@ function resolveTitle(pathname: string) {
   return { title: "BuildSmart" };
 }
 
+function normalizeUploadedImageUrl(value?: string | null): string {
+  const trimmed = value?.trim() ?? "";
+  if (!trimmed) return "";
+  if (trimmed.startsWith("public/")) return normalizeUploadedImageUrl(trimmed.slice("public".length));
+  if (trimmed.startsWith("/public/")) return normalizeUploadedImageUrl(trimmed.slice("/public".length));
+  if (
+    trimmed.startsWith("/") ||
+    trimmed.startsWith("http://") ||
+    trimmed.startsWith("https://") ||
+    trimmed.startsWith("data:") ||
+    trimmed.startsWith("blob:")
+  ) {
+    return trimmed;
+  }
+  return `/${trimmed.replace(/^\/+/, "")}`;
+}
+
 interface HeaderProps {
   workflow?: WorkflowHeaderState | null;
+}
+
+function HeaderUploadedImage({
+  src,
+  alt,
+  className,
+  fallback,
+}: {
+  src: string;
+  alt: string;
+  className: string;
+  fallback: React.ReactNode;
+}) {
+  const [failed, setFailed] = useState(false);
+
+  if (failed) return fallback;
+
+  return (
+    // eslint-disable-next-line @next/next/no-img-element -- uploaded images may be local or external URLs
+    <img
+      src={src}
+      alt={alt}
+      className={className}
+      onError={() => setFailed(true)}
+    />
+  );
 }
 
 export default function Header({ workflow }: HeaderProps) {
@@ -51,6 +94,8 @@ export default function Header({ workflow }: HeaderProps) {
   const { data: profile, refetch: refetchProfile } = useFetch<Users>("/api/auth/me");
 
   const companyName = company?.company_name || "BuildSmart";
+  const companyLogoSrc = normalizeUploadedImageUrl(company?.company_logo);
+  const profilePictureSrc = normalizeUploadedImageUrl(profile?.profile_picture);
   const fullName = profile
     ? [profile.first_name, profile.middle_name, profile.last_name].filter(Boolean).join(" ")
     : (currentUser?.email?.split("@")[0] ?? "User");
@@ -109,14 +154,18 @@ export default function Header({ workflow }: HeaderProps) {
           aria-label={`Open ${fullName}'s profile for ${companyName}`}
         >
           <div className="flex min-w-0 items-center gap-2.5 px-1 pr-3">
-            {company?.company_logo ? (
-              // eslint-disable-next-line @next/next/no-img-element -- company logos may use uploaded or external URLs
-              <img
-                src={company.company_logo}
+            {companyLogoSrc ? (
+              <HeaderUploadedImage
+                src={companyLogoSrc}
                 alt={`${companyName} logo`}
                 className={`h-9 w-9 shrink-0 rounded-full bg-white object-contain p-0.5 ${
                   lightHeaderContent ? "ring-2 ring-white/40" : "ring-1 ring-gray-200"
                 }`}
+                fallback={
+                  <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-xs font-extrabold ${lightHeaderContent ? "bg-white text-primary" : "bg-orange-50 text-primary"}`}>
+                    {companyName.slice(0, 2).toUpperCase()}
+                  </div>
+                }
               />
             ) : (
               <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-xs font-extrabold ${lightHeaderContent ? "bg-white text-primary" : "bg-orange-50 text-primary"}`}>
@@ -134,12 +183,16 @@ export default function Header({ workflow }: HeaderProps) {
           </div>
           <div className={`h-7 w-px shrink-0 ${lightHeaderContent ? "bg-white/25" : "bg-gray-200"}`} />
           <div className="pl-2">
-            {profile?.profile_picture ? (
-              // eslint-disable-next-line @next/next/no-img-element -- arbitrary external URL, not a static asset
-              <img
-                src={profile.profile_picture}
+            {profilePictureSrc ? (
+              <HeaderUploadedImage
+                src={profilePictureSrc}
                 alt={`${fullName} profile`}
                 className={`h-10 w-10 shrink-0 rounded-full object-cover ${lightHeaderContent ? "ring-2 ring-white/40" : "ring-2 ring-white shadow-sm"}`}
+                fallback={
+                  <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-sm font-bold ${lightHeaderContent ? "bg-white text-primary" : "bg-primary text-primary-foreground"}`}>
+                    {profileInitials}
+                  </div>
+                }
               />
             ) : (
               <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-sm font-bold ${lightHeaderContent ? "bg-white text-primary" : "bg-primary text-primary-foreground"}`}>

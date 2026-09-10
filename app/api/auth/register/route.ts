@@ -13,6 +13,7 @@ type RegisterBody = {
   password?: string;
   user_role?: string;
   role?: string;
+  invite_code?: string;
   company_id?: number;
   company?: {
     company_name?: string;
@@ -50,12 +51,12 @@ export async function POST(request: NextRequest) {
   const middleName = body.middle_name?.trim() || null;
   const email = body.email?.trim().toLowerCase();
   const password = body.password ?? "";
+  const inviteCode = body.invite_code?.trim().toUpperCase() || "";
   const requestedCompanyId = Number(body.company_id);
-  const companyIdToJoin = Number.isInteger(requestedCompanyId) && requestedCompanyId > 0 ? requestedCompanyId : null;
+  const companyIdFromLegacyPayload = Number.isInteger(requestedCompanyId) && requestedCompanyId > 0 ? requestedCompanyId : null;
   const company = body.company;
-  const allowedUserRoles = new Set(["Owner", "Admin", "Estimator", "Viewer"]);
-  const requestedUserRole = (body.user_role ?? body.role ?? "Owner").toString().trim();
-  const userRole = allowedUserRoles.has(requestedUserRole) ? requestedUserRole : "Owner";
+  const isJoiningCompany = Boolean(inviteCode || companyIdFromLegacyPayload);
+  const userRole = isJoiningCompany ? "Estimator" : "Owner";
 
   if (
     !firstName ||
@@ -67,7 +68,7 @@ export async function POST(request: NextRequest) {
   }
 
   if (
-    !companyIdToJoin &&
+    !isJoiningCompany &&
     (!company?.company_name ||
       !company.company_address ||
       !company.contact_email ||
@@ -98,7 +99,39 @@ export async function POST(request: NextRequest) {
       await client.query("DELETE FROM company WHERE company_id = $1", [existingUserRow.company_id]);
     }
 
-    let companyId = companyIdToJoin;
+    let companyId = companyIdFromLegacyPayload;
+    if (inviteCode) {
+      const inviteResult = await client.query<{
+        invite_id: number;
+        company_id: number;
+        role: "Admin" | "Estimator";
+        max_uses: number;
+        used_count: number;
+      }>(
+        `SELECT invite_id, company_id, role, max_uses, used_count
+           FROM company_invites
+          WHERE code = $1
+            AND is_active = TRUE
+            AND (expires_at IS NULL OR expires_at > NOW())
+            AND used_count < max_uses
+          LIMIT 1
+          FOR UPDATE`,
+        [inviteCode]
+      );
+      const invite = inviteResult.rows[0];
+      if (!invite) {
+        throw new Error("Invite code is invalid or has expired");
+      }
+      companyId = invite.company_id;
+      await client.query(
+        `UPDATE company_invites
+            SET used_count = used_count + 1,
+                is_active = CASE WHEN used_count + 1 >= max_uses THEN FALSE ELSE is_active END
+          WHERE invite_id = $1`,
+        [invite.invite_id]
+      );
+    }
+
     if (companyId) {
       const existingCompany = await client.query<CompanyRow>(
         `SELECT * FROM company WHERE company_id = $1 AND status = 'Active' LIMIT 1`,
