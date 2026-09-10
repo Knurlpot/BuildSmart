@@ -143,22 +143,6 @@ export default function Header({ workflow }: HeaderProps) {
         )}
       </div>
 
-      {/* Offset the desktop center by half the 64px rail so links align with the page center, not the profile card. */}
-      {isDashboard && <nav aria-label="Welcome page" className="order-last flex w-full items-center justify-center gap-5 pb-2 text-xs font-medium text-gray-600 md:absolute md:left-[calc(50%-2rem)] md:top-1/2 md:order-none md:w-auto md:-translate-x-1/2 md:-translate-y-1/2 md:pb-0" onClick={(event) => {
-        if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
-        const link = (event.target as Element).closest<HTMLAnchorElement>('a[href^="#"]');
-        const hash = link?.getAttribute("href");
-        const target = hash && document.getElementById(hash.slice(1));
-        if (!target) return;
-        event.preventDefault();
-        target.scrollIntoView({ behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth", block: "start" });
-        window.history.pushState(null, "", hash);
-      }}>
-        <a className="rounded py-1 hover:text-primary focus-visible:outline-2" href="#how-it-works">How it works</a>
-        <a className="rounded py-1 hover:text-primary focus-visible:outline-2" href="#our-story">Our story</a>
-        <a className="rounded py-1 hover:text-primary focus-visible:outline-2" href="#the-team">The team</a>
-      </nav>}
-
       <div className="relative shrink-0">
         <Link
           href="/account"
