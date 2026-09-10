@@ -404,7 +404,8 @@ export function QuotationGenerationWizard() {
         segments={segments}
         onChange={setSegments}
         onConfirm={() => setStep("configure")}
-        onBack={handleBackToMethod}
+        onBack={isResumingOpenProject ? returnToClientProjects : handleBackToMethod}
+        isDraftProject={isResumingOpenProject}
         floors={blueprintFloors}
         onFloorsChange={setBlueprintFloors}
         originalFloors={originalBlueprintFloors}

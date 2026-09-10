@@ -282,6 +282,7 @@ interface BlueprintUploadPanelProps {
   onConfirm: () => void;
   /** Part H — returns to the input-method choice overlay. */
   onBack: () => void;
+  isDraftProject?: boolean;
   // P2 Part E — floors/originalFloors are lifted to the wizard (QuotationGenerationWizard)
   // rather than owned here. A Structural revision returns to this same step by changing the
   // wizard's `step` state, which unmounts/remounts THIS component — if the scan lived in
@@ -308,6 +309,7 @@ export function BlueprintUploadPanel({
   onChange,
   onConfirm,
   onBack,
+  isDraftProject = false,
   floors,
   onFloorsChange,
   onOriginalFloorsChange,
@@ -625,6 +627,10 @@ export function BlueprintUploadPanel({
   const confirmationDisabled = overlayScanning || isRescanning;
   const isGroupingPhase = floorAllIncludedConfirmed && !confirmedGroupingFloorLevels.has(currentFloor.floor_level);
   const handleReviewBack = () => {
+    if (isDraftProject) {
+      onBack();
+      return;
+    }
     if (isGroupingPhase) {
       const currentFloorDraftIds = new Set(floorIncludedSegments.map((s) => s.draft_id));
       setConfirmedGroupingFloorLevels((current) => {
@@ -662,7 +668,7 @@ export function BlueprintUploadPanel({
         <button
           type="button"
           onClick={handleReviewBack}
-          title={isGroupingPhase ? "Back to confirming segments" : "Back to Upload"}
+          title={isDraftProject ? "Back to client details" : isGroupingPhase ? "Back to confirming segments" : "Back to Upload"}
           className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-gray-200 bg-white text-gray-500 transition hover:border-primary hover:text-primary"
         >
           <ArrowLeft className="h-4 w-4" />
