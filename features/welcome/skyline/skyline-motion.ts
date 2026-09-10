@@ -59,6 +59,24 @@ export const SKYLINE_PARTS = paths.map((part) => ({
   reflection: part.sourceIndex >= 98 && part.sourceIndex < 196,
 }));
 
+// Foreground correction: the exported painter order hides the low palace/fort
+// forms and puts the bridge over the gateway. Promote those complete motifs
+// above other architecture, but retain small ground details in front of them.
+// Use the same logical order for their authored reflection counterparts.
+export function skylinePaintOrder(reflection = false) {
+  const featured: Record<string, number> = {
+    "foreground-49": 2, "foreground-45": 3, "foreground-58": 4,
+  };
+  const priority = (part: (typeof SKYLINE_PARTS)[number]) => {
+    if (part.group?.tower) return 0;
+    if (part.group && featured[part.group.id]) return featured[part.group.id];
+    if (part.group && Math.min(...part.group.sourceIndices) >= 62) return 5;
+    return 1;
+  };
+  return SKYLINE_PARTS.filter((part) => part.group && part.reflection === reflection)
+    .sort((a, b) => priority(a) - priority(b));
+}
+
 export function smoothRange(start: number, end: number, value: number) {
   const t = Math.min(1, Math.max(0, (value - start) / (end - start)));
   return t * t * (3 - 2 * t);
@@ -77,7 +95,9 @@ export function sampleSkylineScene(progress: number, width: number, staticScene 
     introPlacement: staticScene ? 1 : 1 - smoothRange(0.55, 1, p),
     // Continuous responsive reduction (no jump at a device breakpoint).
     travel: 0.42 + 0.58 * smoothRange(420, 1280, width),
-    atmosphere: staticScene ? 0.36 : 0.36 - 0.29 * compression + 0.22 * smoothRange(0.65, 1, p),
+    atmosphere: staticScene ? 0.36 : 0.36 * (1 - smoothRange(0.08, 0.35, p))
+      + 0.012 * smoothRange(0.08, 0.35, p)
+      + 0.568 * smoothRange(0.65, 1, p),
     groundOpacity: 0.04 + foreground * 0.86,
   };
 }

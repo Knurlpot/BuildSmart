@@ -18,7 +18,7 @@ export function useWelcomeMotion(root: RefObject<HTMLDivElement | null>, enabled
     const element = root.current;
     if (!element || !enabled) return;
     const sections = Array.from(element.querySelectorAll<HTMLElement>("[data-reveal]"));
-    const progress = element.querySelector<HTMLElement>("[data-reading-progress]");
+    const progress = document.querySelector<HTMLElement>("[data-app-header] [data-reading-progress]");
     const observer = new IntersectionObserver((entries) => {
       entries.forEach((entry) => {
         if (entry.isIntersecting) {

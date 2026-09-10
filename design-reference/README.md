@@ -92,10 +92,12 @@ been composited; overall atmosphere and reflection alpha also apply to assembled
 layers. Foreground motifs appear through a rising clip boundary, not per-path
 opacity. This prevents rear-building silhouettes showing through front buildings.
 
-Logical grouping does **not** reorder the source artwork. Each root part keeps
-its original position in the SVG painter sequence and receives the transform
-of its logical building/motif. Disconnected details therefore move together
-without changing which shapes overlap in front of them.
+Logical grouping preserves source-data order and gives each part the transform
+of its logical building/motif. The revised runtime painter order deliberately
+places towers behind foreground motifs, then promotes the low heritage/fort
+complex (49), palace-like silhouette plus finials (39–45), and gateway (58)
+above the scenery and architecture that obscured them. Ground ornaments remain
+in front. Reflection parts use the same priorities. No source geometry changes.
 
 ## Reflection correspondence
 
@@ -157,8 +159,12 @@ footer baseline. Reduced-motion keeps the lowered placement stable.
 
 ## Headline lighting and decorative cranes
 
-The readability gradient is attached to the hero heading itself, rather than
-covering the skyline viewport. Two small decorative cranes are added to source
+The readability gradient is a broad, feathered wash originating at the hero's
+left edge, fading fully before the rightmost skyline; there is no heading-box
+pseudo-element. Whole-city opacity holds at 1.2% from 35–65% page scroll, then
+returns smoothly to 58% at the bottom. Reflection alpha is 78% before its shared
+water fade; the footer surface is 40% opaque to leave the reflection visible.
+Two small decorative cranes are added to source
 buildings 2 and 17, anchored at (495,250) and (2650,421). They are new construction
 details, not modifications to the supplied building paths. Each inherits its
 building's translation and painter order. Cable length and load height share

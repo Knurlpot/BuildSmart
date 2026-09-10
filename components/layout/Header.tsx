@@ -86,7 +86,7 @@ export default function Header({ workflow }: HeaderProps) {
   const { currentUser } = useAuth();
   const { title, subtitle } = resolveTitle(pathname);
   const isDashboard = pathname === "/dashboard";
-  const lightHeaderContent = Boolean(workflow) || isDashboard;
+  const lightHeaderContent = Boolean(workflow);
 
   const companyId = currentUser?.companyId;
   const companyEndpoint = companyId !== undefined && companyId !== null ? `/api/company/${companyId}` : null;
@@ -116,11 +116,12 @@ export default function Header({ workflow }: HeaderProps) {
 
   return (
     <header
-      className={`flex h-16 shrink-0 items-center justify-between gap-4 px-6 transition-colors ${
+      data-app-header
+      className={`flex min-h-16 shrink-0 items-center justify-between gap-2 px-3 py-1 sm:gap-4 sm:px-6 ${isDashboard ? "sticky top-0 z-40 flex-wrap" : "h-16"} transition-colors ${
         workflow
           ? "bg-primary shadow-md qg-header-shimmer"
           : isDashboard
-            ? "animate-brand-gradient border-b border-white/15 shadow-md"
+            ? "border-b border-gray-200 bg-white/95 shadow-sm backdrop-blur-md"
             : "border-b border-gray-200 bg-white shadow-sm"
       }`}
     >
@@ -134,6 +135,11 @@ export default function Header({ workflow }: HeaderProps) {
             <div className="hidden h-5 w-px shrink-0 bg-white/20 sm:block" />
             <WorkflowStepper steps={workflow.steps} currentStep={workflow.currentStep} />
           </div>
+        ) : isDashboard ? (
+          <Link href="/dashboard" className="flex shrink-0 items-center gap-2 text-base font-bold tracking-tight text-gray-900 sm:text-lg" aria-label="BuildSmart dashboard">
+            <Image src={logoFrame(13)} alt="" className="h-7 w-7 sm:h-8 sm:w-8" />
+            <span>Build<span className="text-primary">Smart</span></span>
+          </Link>
         ) : (
           <div>
             <h1 className={`text-base font-bold ${isDashboard ? "text-white" : "text-gray-900"}`}>{title}</h1>
@@ -141,6 +147,21 @@ export default function Header({ workflow }: HeaderProps) {
           </div>
         )}
       </div>
+
+      {isDashboard && <nav aria-label="Welcome page" className="order-last flex w-full items-center justify-center gap-5 pb-2 text-xs font-medium text-gray-600 md:order-none md:w-auto md:flex-1 md:pb-0 md:pr-4" onClick={(event) => {
+        if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+        const link = (event.target as Element).closest<HTMLAnchorElement>('a[href^="#"]');
+        const hash = link?.getAttribute("href");
+        const target = hash && document.getElementById(hash.slice(1));
+        if (!target) return;
+        event.preventDefault();
+        target.scrollIntoView({ behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth", block: "start" });
+        window.history.pushState(null, "", hash);
+      }}>
+        <a className="rounded py-1 hover:text-primary focus-visible:outline-2" href="#how-it-works">How it works</a>
+        <a className="rounded py-1 hover:text-primary focus-visible:outline-2" href="#our-story">Our story</a>
+        <a className="rounded py-1 hover:text-primary focus-visible:outline-2" href="#the-team">The team</a>
+      </nav>}
 
       <div className="relative shrink-0">
         <Link
@@ -153,7 +174,7 @@ export default function Header({ workflow }: HeaderProps) {
           title="Profile"
           aria-label={`Open ${fullName}'s profile for ${companyName}`}
         >
-          <div className="flex min-w-0 items-center gap-2.5 px-1 pr-3">
+          <div className={`${isDashboard ? "hidden sm:flex" : "flex"} min-w-0 items-center gap-2.5 px-1 pr-3`}>
             {companyLogoSrc ? (
               <HeaderUploadedImage
                 src={companyLogoSrc}
@@ -181,8 +202,8 @@ export default function Header({ workflow }: HeaderProps) {
               </p>
             </div>
           </div>
-          <div className={`h-7 w-px shrink-0 ${lightHeaderContent ? "bg-white/25" : "bg-gray-200"}`} />
-          <div className="pl-2">
+          <div className={`${isDashboard ? "hidden sm:block" : ""} h-7 w-px shrink-0 ${lightHeaderContent ? "bg-white/25" : "bg-gray-200"}`} />
+          <div className={isDashboard ? "sm:pl-2" : "pl-2"}>
             {profilePictureSrc ? (
               <HeaderUploadedImage
                 src={profilePictureSrc}
@@ -202,6 +223,7 @@ export default function Header({ workflow }: HeaderProps) {
           </div>
         </Link>
       </div>
+      {isDashboard && <span aria-hidden="true" data-reading-progress className="pointer-events-none absolute inset-x-0 bottom-0 h-px origin-left bg-primary" style={{ transform: "scaleX(var(--reading-progress, 0))" }} />}
     </header>
   );
 }

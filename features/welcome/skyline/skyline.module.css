@@ -44,6 +44,12 @@
   stroke-linejoin: round;
 }
 .craneRight { --crane-cycle: 44s; --crane-delay: -19s; }
+.birds { position: absolute; top: 10%; left: 0; width: 100%; height: auto; opacity: .55; }
+.flock { animation: birdGlide 42s ease-in-out infinite alternate; }
+.wings { transform-box: fill-box; transform-origin: center; animation: birdWings 2.4s ease-in-out infinite alternate; }
+@keyframes birdGlide { from { transform: translate(-80px, 12px); } to { transform: translate(130px, -8px); } }
+@keyframes birdWings { from { transform: scaleY(.55); } to { transform: scaleY(1); } }
+.environment[data-crane-motion="off"] :is(.flock, .wings) { animation: none; }
 .hoistCable {
   transform-origin: 0 0;
   animation: cableLift var(--crane-cycle) ease-in-out var(--crane-delay) infinite;
@@ -64,5 +70,5 @@
 
 @media (prefers-reduced-motion: reduce) {
   .artwork [data-building] { transform: none !important; }
-  .hoistCable, .hoistLoad { animation: none; }
+  .hoistCable, .hoistLoad, .flock, .wings { animation: none; }
 }

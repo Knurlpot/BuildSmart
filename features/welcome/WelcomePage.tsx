@@ -3,8 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { type MouseEvent as ReactMouseEvent, useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
-import { ArrowDown, ArrowRight, ArrowUpRight, Check, CircleHelp, Compass, FileText, Layers3, LockKeyhole, LogOut, MapPin, Menu, MoveUpRight, Pause, Play, ScanLine, ShieldCheck, Sparkles, UserRound, X } from "lucide-react";
+import { ArrowDown, ArrowRight, ArrowUpRight, Check, CircleHelp, FileText, Layers3, LockKeyhole, MapPin, MoveUpRight, Pause, Play, ScanLine, ShieldCheck, Sparkles } from "lucide-react";
 import { logoFrame } from "@/components/logo-frames";
 import { NAV_ITEMS } from "@/components/layout/nav-items";
 import { Button } from "@/components/ui/button";
@@ -36,44 +35,6 @@ const team = [
 
 function BrandMark({ large = false }: { large?: boolean }) {
   return <span className={`${styles.brandMark} ${large ? styles.brandMarkLarge : ""}`} aria-hidden="true"><span className={styles.brandHalo} /><Image src={logoFrame(13)} alt="" className={styles.brandEcho} /><Image src={logoFrame(13)} alt="" className={styles.brandSymbol} priority={!large} /></span>;
-}
-
-function WelcomeNav({ motion, reducedMotion, onToggleMotion }: { motion: boolean; reducedMotion: boolean; onToggleMotion: () => void }) {
-  const { currentUser, logout } = useAuth();
-  const [open, setOpen] = useState(false);
-  const [loggingOut, setLoggingOut] = useState(false);
-  const [logoutError, setLogoutError] = useState("");
-  const router = useRouter();
-  const navigation = useRef<HTMLElement>(null);
-  const menuButton = useRef<HTMLButtonElement>(null);
-  useEffect(() => {
-    if (!open) return;
-    const outside = (event: PointerEvent) => { if (event.target instanceof Node && !navigation.current?.contains(event.target)) setOpen(false); };
-    const escape = (event: KeyboardEvent) => { if (event.key === "Escape") { setOpen(false); menuButton.current?.focus(); } };
-    document.addEventListener("pointerdown", outside);
-    document.addEventListener("keydown", escape);
-    return () => { document.removeEventListener("pointerdown", outside); document.removeEventListener("keydown", escape); };
-  }, [open]);
-  async function signOut() {
-    setLoggingOut(true); setLogoutError("");
-    try { await logout(); router.push("/login"); }
-    catch { setLogoutError("Could not sign out. Please try again."); setLoggingOut(false); }
-  }
-  return <header ref={navigation} className={styles.header}>
-    <div className={styles.navInner}>
-      <a className={styles.wordmark} href="#welcome" aria-label="BuildSmart welcome"><BrandMark /><span>Build<span>Smart</span></span></a>
-      <nav className={styles.desktopNav} aria-label="Welcome page"><a href="#how-it-works">How it works</a><a href="#our-story">Our story</a><a href="#the-team">The team</a></nav>
-      <div className={styles.navActions}>
-        <button className={styles.motionToggle} type="button" onClick={onToggleMotion} disabled={reducedMotion} aria-label={reducedMotion ? "Motion disabled by your device preference" : motion ? "Pause page animations" : "Resume page animations"} aria-pressed={!motion} title={reducedMotion ? "Reduced motion is enabled on your device" : motion ? "Pause animations" : "Resume animations"}>{motion ? <Pause size={15} /> : <Play size={15} />}</button>
-        <a href="#workspace" className={styles.navWorkspace}>Your workspace <ArrowUpRight size={15} /></a>
-        <button ref={menuButton} type="button" className={styles.menuButton} onClick={() => setOpen(!open)} aria-expanded={open} aria-controls="welcome-menu" aria-label={open ? "Close account and navigation menu" : "Open account and navigation menu"}>{open ? <X size={20} /> : <Menu size={20} />}</button>
-      </div>
-    </div>
-    {open && <div className={styles.menuPanel} id="welcome-menu"><p className={styles.menuGreeting}>Signed in as <strong>{currentUser?.first_name || currentUser?.email || "BuildSmart user"}</strong></p><nav aria-label="Account and page navigation">
-      <a href="#how-it-works" onClick={() => setOpen(false)}>How it works <ArrowUpRight size={16} /></a><a href="#our-story" onClick={() => setOpen(false)}>Our story <ArrowUpRight size={16} /></a><a href="#the-team" onClick={() => setOpen(false)}>The team <ArrowUpRight size={16} /></a><a href="#workspace" onClick={() => setOpen(false)}>Your workspace <Compass size={16} /></a><Link href="/account">My profile<UserRound size={16} /></Link><button type="button" onClick={signOut} disabled={loggingOut}>{loggingOut ? "Signing out…" : "Log out"}<LogOut size={16} /></button>
-    </nav>{logoutError && <p role="alert" className={styles.menuError}>{logoutError}</p>}</div>}
-    <span className={styles.readingProgress} data-reading-progress />
-  </header>;
 }
 
 function ArchitectureScene() {
@@ -141,8 +102,7 @@ export function WelcomePage() {
   const root = useRef<HTMLDivElement>(null);
   const scrollAnimation = useRef<number | null>(null);
   const reducedMotion = useReducedMotion();
-  const [paused, setPaused] = useState(false);
-  const motion = !reducedMotion && !paused;
+  const motion = !reducedMotion;
   const onboardingStep = currentUser?.onboardingStep ?? 0;
   const ready = onboardingStep >= 2;
   const firstName = currentUser?.first_name?.trim() || currentUser?.email?.split("@")[0] || "builder";
@@ -198,13 +158,12 @@ export function WelcomePage() {
   return <div ref={root} className={styles.welcome} data-motion={motion ? "on" : "off"} onClick={handlePageAnchorClick}>
     <SkylineBackground page={root} enabled={motion} />
     <a className={styles.skipLink} href="#welcome-content">Skip to welcome content</a>
-    <WelcomeNav motion={motion} reducedMotion={reducedMotion} onToggleMotion={() => setPaused(!paused)} />
     <main id="welcome-content">
       <section className={styles.hero} id="welcome"><div className={styles.heroMesh} aria-hidden="true" /><div className={styles.heroGrid} aria-hidden="true" /><div className={styles.heroInner}><div className={styles.heroCopy}>
         <p className={styles.welcomeBack}><span /> Welcome to your next great build, {firstName}.</p>
         <h1>Big visions.<br />Smarter plans.<br /><span>Better builds.</span></h1>
         <p className={styles.heroDescription}>From a first home to a growing skyline. BuildSmart helps you turn project ideas into clearer, more confident construction quotations.</p>
-        <div className={styles.heroActions}><Button asChild className={styles.primaryButton}><Link href={ready ? "/quotations/new" : resolveOnboardingRoute(onboardingStep)}>{ready ? "Start a quotation" : "Set up your workspace"}<ArrowUpRight size={18} /></Link></Button><a href="#our-story" className={styles.textButton}>Meet BuildSmart <ArrowRight size={16} /></a></div>
+        <div className={styles.heroActions}><Button asChild size="lg" className="h-14 max-w-full gap-4 px-7 text-base font-semibold shadow-sm whitespace-normal"><Link href={ready ? "/quotations/new" : resolveOnboardingRoute(onboardingStep)}>{ready ? "Create new project" : "Set up your workspace"}<ArrowUpRight size={20} /></Link></Button><a href="#our-story" className={styles.textButton}>Meet BuildSmart <ArrowRight size={16} /></a></div>
         <p className={styles.heroNote}><ShieldCheck size={14} /> AI-assisted. Built around your judgment.</p>
       </div><ArchitectureScene /></div><div className={styles.heroFoot}><span><MapPin size={13} /> ROOTED IN THE PHILIPPINES</span><a href="#how-it-works">SCROLL TO DISCOVER <ArrowDown size={14} /></a><span>BUILT FOR WHAT&apos;S NEXT</span></div></section>
 

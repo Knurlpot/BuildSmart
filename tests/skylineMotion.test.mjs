@@ -12,7 +12,27 @@ const compiled = ts.transpileModule(fs.readFileSync(motionUrl, "utf8"), {
 });
 const context = { exports: {}, require: createRequire(motionUrl) };
 vm.runInNewContext(compiled.outputText, context);
-const { SKYLINE_PARTS, SKYLINE_GROUPS, sampleSkylineScene, sampleBuilding } = context.exports;
+const { SKYLINE_PARTS, SKYLINE_GROUPS, sampleSkylineScene, sampleBuilding, skylinePaintOrder } = context.exports;
+
+test("featured landmarks render above occluding scenery with corresponding reflection order", () => {
+  for (const reflection of [false, true]) {
+    const parts = skylinePaintOrder(reflection);
+    assert.equal(parts.length, 98);
+    assert.equal(new Set(parts.map(part => part.sourceIndex)).size, 98);
+    const position = id => parts.findIndex(part => part.group.id === id);
+    assert.ok(position('foreground-45') > position('foreground-48'));
+    assert.ok(position('foreground-49') > position('foreground-51'));
+    assert.ok(position('foreground-58') > position('foreground-59'));
+    assert.ok(position('foreground-88') > position('foreground-45'));
+  }
+});
+
+test("middle skyline is nearly invisible until the bottom composition returns", () => {
+  for (const p of [0.35, 0.5, 0.6, 0.65]) {
+    assert.ok(sampleSkylineScene(p, 1440).atmosphere < 0.015);
+  }
+  assert.ok(sampleSkylineScene(1, 1440).atmosphere > 0.5);
+});
 
 test("all 197 original vector paths and blend wrappers survive in painter order", () => {
   const svg = fs.readFileSync(new URL("../design-reference/skyline-full.svg", import.meta.url), "utf8");

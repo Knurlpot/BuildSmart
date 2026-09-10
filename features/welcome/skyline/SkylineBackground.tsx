@@ -1,8 +1,11 @@
 "use client";
 
 import { useEffect, useId, useRef, type RefObject } from "react";
-import { SKYLINE_BASELINE, SKYLINE_GROUPS, SKYLINE_HEIGHT, SKYLINE_PARTS, SKYLINE_WIDTH, sampleBuilding, sampleSkylineScene } from "./skyline-motion";
+import { SKYLINE_BASELINE, SKYLINE_GROUPS, SKYLINE_HEIGHT, SKYLINE_PARTS, SKYLINE_WIDTH, sampleBuilding, sampleSkylineScene, skylinePaintOrder } from "./skyline-motion";
 import styles from "./skyline.module.css";
+
+const uprightParts = skylinePaintOrder();
+const reflectedParts = skylinePaintOrder(true);
 
 // Decorative construction activity, anchored to two source rooftops. These
 // inherit their building's scroll transform; only the cable/load animate locally.
@@ -40,7 +43,7 @@ export function SkylineBackground({ page, enabled }: { page: RefObject<HTMLDivEl
     const baseline = container.querySelector<SVGGElement>("[data-baseline]");
     const foregroundClip = container.querySelector<SVGRectElement>("[data-foreground-clip]");
     const footer = welcome.querySelector("footer");
-    const header = welcome.querySelector("header");
+    const header = document.querySelector("[data-app-header]");
     let frame = 0;
     let pageTop = 0;
     let scrollRange = 1;
@@ -55,7 +58,7 @@ export function SkylineBackground({ page, enabled }: { page: RefObject<HTMLDivEl
       container.style.setProperty("--skyline-ground-opacity", String(scene.groundOpacity));
       container.style.setProperty("--skyline-intro-offset", `${introOffset * scene.introPlacement}px`);
       container.dataset.scrollProgress = scene.progress.toFixed(3);
-      water?.setAttribute("opacity", String(scene.reflection * 0.5));
+      water?.setAttribute("opacity", String(scene.reflection * 0.78));
       baseline?.setAttribute("opacity", String(scene.foreground * 0.65));
       // Reveal solid foreground silhouettes geometrically; alpha per building
       // would expose the buildings underneath during the transition.
@@ -93,6 +96,7 @@ export function SkylineBackground({ page, enabled }: { page: RefObject<HTMLDivEl
     const observer = new ResizeObserver(measure);
     observer.observe(welcome);
     if (footer) observer.observe(footer);
+    if (header) observer.observe(header);
     if (enabled) window.addEventListener("scroll", schedule, { passive: true });
     window.addEventListener("resize", measure);
     return () => {
@@ -121,6 +125,11 @@ export function SkylineBackground({ page, enabled }: { page: RefObject<HTMLDivEl
   return <div ref={environment} className={styles.environment} data-crane-motion={enabled ? "on" : "off"} aria-hidden="true">
     <div className={styles.viewport}>
       <div className={styles.atmosphere}>
+        <svg className={styles.birds} viewBox="0 0 1000 140" fill="none" focusable="false">
+          <g className={styles.flock} stroke="#b87946" strokeWidth="1.6" strokeLinecap="round">
+            {["translate(610 46)", "translate(650 65)", "translate(690 35)"].map((position) => <g key={position} transform={position}><path className={styles.wings} d="M-9-3Q-4-7 0 0Q4-7 9-3" /></g>)}
+          </g>
+        </svg>
         <svg className={styles.artwork} viewBox={`0 0 ${SKYLINE_WIDTH} ${SKYLINE_HEIGHT}`} fill="none" focusable="false">
           <defs>
             <clipPath id={`${uid}-foreground-reveal`} clipPathUnits="userSpaceOnUse">
@@ -138,8 +147,8 @@ export function SkylineBackground({ page, enabled }: { page: RefObject<HTMLDivEl
               <path d="M0 -50H2965V1600H0Z" fill={`url(#${uid}-ground-fade)`} />
             </mask>
             <linearGradient id={`${uid}-water-fade`} x1="0" y1={SKYLINE_BASELINE} x2="0" y2="2050" gradientUnits="userSpaceOnUse">
-              <stop offset="0" stopColor="white" stopOpacity="0.75" />
-              <stop offset="0.4" stopColor="white" stopOpacity="0.2" />
+              <stop offset="0" stopColor="white" stopOpacity="0.95" />
+              <stop offset="0.4" stopColor="white" stopOpacity="0.5" />
               <stop offset="1" stopColor="white" stopOpacity="0" />
             </linearGradient>
             <mask id={`${uid}-reflection-fade`} maskUnits="userSpaceOnUse" x="0" y="1514" width="2965" height="707">
@@ -148,10 +157,10 @@ export function SkylineBackground({ page, enabled }: { page: RefObject<HTMLDivEl
           </defs>
           {/* Mask after compositing: solid front buildings fully occlude those behind. */}
           <g mask={`url(#${uid}-tower-fade)`}>
-            {SKYLINE_PARTS.slice(0, 98).map(renderPart)}
+            {uprightParts.map(renderPart)}
           </g>
-          <g data-reflections mask={`url(#${uid}-reflection-fade)`} opacity="0.35">
-            {SKYLINE_PARTS.slice(98, 196).map(renderPart)}
+          <g data-reflections mask={`url(#${uid}-reflection-fade)`} opacity="0.546">
+            {reflectedParts.map(renderPart)}
           </g>
           {renderPart(SKYLINE_PARTS[196])}
         </svg>
