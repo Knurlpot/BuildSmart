@@ -64,6 +64,9 @@ function peso(value: number) {
   return value.toLocaleString("en-PH", { style: "currency", currency: "PHP" });
 }
 
+
+// For Detailed Project Quotation
+
 export function QuotationDetailView({ quotationId }: { quotationId: string }) {
   const router = useRouter();
   const [quotation, setQuotation] = useState<Quotation | null>(null);

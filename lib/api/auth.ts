@@ -17,8 +17,9 @@ export interface RegisterPayload {
   middle_name?: string;
   email: string; 
   password: string;
-  user_role: Users['user_role'];
+  user_role?: Users['user_role'];
   company_id?: number;
+  invite_code?: string;
   // company
   company?: {
     company_name: string;
@@ -64,6 +65,14 @@ export function checkCompany(query: string) {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ query }),
+  });
+}
+
+export function lookupInviteCode(code: string) {
+  return apiClient<{ company: CompanyLookupResult }>("/api/company-invites/lookup", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ code }),
   });
 }
 

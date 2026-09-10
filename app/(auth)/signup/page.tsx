@@ -3,14 +3,13 @@
 import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Check, ChevronDown, ChevronRight, Eye, EyeOff } from "lucide-react";
+import { Check, ChevronRight, Eye, EyeOff } from "lucide-react";
 import { AuthBrandPanel } from "@/components/auth/AuthBrandPanel";
 import { TermsModal } from "@/components/auth/TermsModal";
 import { SpecializationSelect } from "@/components/forms/SpecializationSelect";
 import { useAuth } from "@/providers/AuthProvider";
-import { checkCompany, type CompanyLookupResult } from "@/lib/api/auth";
+import { lookupInviteCode, type CompanyLookupResult } from "@/lib/api/auth";
 import { specializationsToColumns } from "@/lib/specializations";
-import { USER_ROLES, type Users } from "@/types/entities";
 
 const MAX = {
   firstName: 30,
@@ -32,7 +31,6 @@ interface FormData {
   firstName: string;
   lastName: string;
   middleName: string;
-  userRole: Users["user_role"] | "";
   email: string;
   password: string;
   confirmPassword: string;
@@ -42,14 +40,13 @@ interface FormData {
   companyContactEmail: string;
   companyContactNumber: string;
   specializations: string[];
-  companyLookupEmail: string;
+  inviteCode: string;
 }
 
 const INIT: FormData = {
   firstName: "",
   lastName: "",
   middleName: "",
-  userRole: "",
   email: "",
   password: "",
   confirmPassword: "",
@@ -58,7 +55,7 @@ const INIT: FormData = {
   companyContactEmail: "",
   companyContactNumber: "",
   specializations: [],
-  companyLookupEmail: "",
+  inviteCode: "",
 };
 
 function isValidEmail(v: string) {
@@ -79,13 +76,13 @@ function formatPhNationalNumber(digits: string): string {
   return [digits.slice(0, 3), digits.slice(3, 6), digits.slice(6, 10)].filter(Boolean).join(" ");
 }
 
-// Added "+63" in PH format
+// "+63" in Phil Number format
 function formatPhDisplayNumber(digits: string): string {
   const national = formatPhNationalNumber(digits);
   return national ? `+63 ${national}` : "";
 }
 
-const TOTAL_FIELD_CHECKS = 12;
+const TOTAL_FIELD_CHECKS = 11;
 
 function countValidFields(d: FormData, termsAccepted: boolean): number {
   const checks = [
@@ -94,7 +91,7 @@ function countValidFields(d: FormData, termsAccepted: boolean): number {
     d.middleName.trim().length > 0,
     isValidEmail(d.email),
     d.password.length >= PASSWORD_MIN_LENGTH && d.password === d.confirmPassword,
-    isValidEmail(d.companyLookupEmail),
+    d.inviteCode.trim().length > 0,
     d.companyName.trim().length > 0,
     d.companyAddress.trim().length > 0,
     isValidEmail(d.companyContactEmail),
@@ -112,7 +109,7 @@ function fieldCountToFrame(count: number): number {
 function ProgressBar({ step }: { step: Step }) {
   const steps: { n: Step; label: string }[] = [
     { n: 1, label: "Your Account" },
-    { n: 2, label: "Company Lookup" },
+    { n: 2, label: "Invite Code" },
     { n: 3, label: "Verify & Join" },
   ];
   return (
@@ -159,8 +156,7 @@ export default function SignUpPage() {
   const [form, setForm] = useState<FormData>(INIT);
   const [companyMode, setCompanyMode] = useState<CompanyMode>("join");
   const [matchedCompany, setMatchedCompany] = useState<CompanyLookupResult | null>(null);
-  const [lookupLoading, setLookupLoading] = useState(false);
-  const [lookupMessage, setLookupMessage] = useState("");
+  const [inviteLookupLoading, setInviteLookupLoading] = useState(false);
   const [showPw, setShowPw] = useState(false);
   const [showCPw, setShowCPw] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -187,9 +183,8 @@ export default function SignUpPage() {
       delete n[field as string];
       return n;
     });
-    if (field === "companyLookupEmail") {
+    if (field === "inviteCode") {
       setMatchedCompany(null);
-      setLookupMessage("");
       setCompanyMode("join");
     }
   };
@@ -234,7 +229,6 @@ export default function SignUpPage() {
     const e: Record<string, string> = {};
     if (!form.firstName.trim()) e.firstName = "First name is required";
     if (!form.lastName.trim()) e.lastName = "Last name is required";
-    if (!form.userRole) e.userRole = "Role is required";
     if (!isValidEmail(form.email)) e.email = "Enter a valid email address";
     if (form.password.length < PASSWORD_MIN_LENGTH)
       e.password = `Password must be at least ${PASSWORD_MIN_LENGTH} characters`;
@@ -245,7 +239,7 @@ export default function SignUpPage() {
 
   const validateStep2 = () => {
     const e: Record<string, string> = {};
-    if (!matchedCompany && companyMode === "join") e.companyLookupEmail = "Find a company or choose create new";
+    if (companyMode === "join" && !form.inviteCode.trim()) e.inviteCode = "Enter an invite code or choose create new";
     setErrors(e);
     return Object.keys(e).length === 0;
   };
@@ -253,7 +247,7 @@ export default function SignUpPage() {
   const validateStep3 = () => {
     if (companyMode === "join") {
       const e: Record<string, string> = {};
-      if (!matchedCompany) e.companyLookupEmail = "Select a company to join";
+      if (!form.inviteCode.trim()) e.inviteCode = "Enter an invite code";
       if (!termsAccepted) e.terms = "You must agree to the Terms and Conditions to continue";
       setErrors(e);
       return Object.keys(e).length === 0;
@@ -273,46 +267,48 @@ export default function SignUpPage() {
     return Object.keys(e).length === 0;
   };
 
-  const handleNext = () => {
-    if (step === 1 && validateStep1()) setStep(2);
-    else if (step === 2 && validateStep2()) setStep(3);
-  };
-
-  const handleCompanyLookup = async () => {
-    const query = form.companyLookupEmail.trim();
-    if (!isValidEmail(query)) {
-      setErrors((e) => ({ ...e, companyLookupEmail: "Enter a valid company email" }));
+  const handleNext = async () => {
+    if (step === 1 && validateStep1()) {
+      setStep(2);
       return;
     }
-    setLookupLoading(true);
-    setLookupMessage("");
+
+    if (step !== 2 || !validateStep2()) return;
+    if (companyMode === "create") {
+      setMatchedCompany(null);
+      setStep(3);
+      return;
+    }
+
+    setInviteLookupLoading(true);
     setApiError("");
     try {
-      const { company } = await checkCompany(query);
+      const { company } = await lookupInviteCode(form.inviteCode.trim().toUpperCase());
       setMatchedCompany(company);
-      setCompanyMode(company ? "join" : "create");
-      setLookupMessage(company ? "Company found. Review it before joining." : "No company found.");
+      setStep(3);
     } catch (err) {
       setMatchedCompany(null);
-      setLookupMessage("");
-      setErrors((e) => ({
-        ...e,
-        companyLookupEmail: err instanceof Error ? err.message : "Company lookup failed",
+      setErrors((current) => ({
+        ...current,
+        inviteCode: err instanceof Error ? err.message : "Invite code could not be verified",
       }));
     } finally {
-      setLookupLoading(false);
+      setInviteLookupLoading(false);
     }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!validateStep3()) return;
+    if (!validateStep3()) {
+      if (!termsAccepted) setTermsModalOpen(true);
+      return;
+    }
     setSubmitting(true);
     setApiError("");
     try {
       const companyPayload =
-        companyMode === "join" && matchedCompany
-          ? { company_id: matchedCompany.company_id }
+        companyMode === "join"
+          ? { invite_code: form.inviteCode.trim().toUpperCase() }
           : {
               company: {
                 company_name: form.companyName,
@@ -328,7 +324,6 @@ export default function SignUpPage() {
         middle_name: form.middleName || undefined,
         email: form.email,
         password: form.password,
-        user_role: companyMode === "join" ? form.userRole || "Owner" : "Owner",
         ...companyPayload,
       });
       router.push("/dashboard");
@@ -349,16 +344,8 @@ export default function SignUpPage() {
     `peer w-full rounded-xl border ${
       errors[field] ? "border-red-400 bg-red-50" : "border-gray-200 bg-gray-50"
     } px-4 pb-2.5 pt-5 text-sm outline-none transition focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/20 ${extra}`;
-  const floatingSelectCls = (field: string, active: boolean) =>
-    `peer block w-full box-border appearance-none rounded-xl border ${
-      errors[field] ? "border-red-400 bg-red-50" : "border-gray-200 bg-gray-50"
-    } px-4 pb-2.5 pt-5 pr-12 text-sm outline-none transition focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/20 ${
-      active ? "text-gray-900" : "text-transparent"
-    }`;
   const floatingLabelCls =
     "pointer-events-none absolute left-4 top-2 text-[10px] font-semibold text-gray-500 transition-all peer-placeholder-shown:top-1/2 peer-placeholder-shown:-translate-y-1/2 peer-placeholder-shown:text-sm peer-placeholder-shown:font-medium peer-focus:top-2 peer-focus:translate-y-0 peer-focus:text-[10px] peer-focus:font-semibold peer-focus:text-primary";
-  const floatingSelectLabelCls =
-    "pointer-events-none absolute left-4 top-2 text-[10px] font-semibold text-gray-500 transition-all";
   const phoneActive = phoneFocused || form.companyContactNumber.length > 0;
 
   return (
@@ -461,38 +448,6 @@ export default function SignUpPage() {
                     </div>
                     {errors.lastName && <p className="text-xs text-red-500">{errors.lastName}</p>}
                   </div>
-                </div>
-
-                <div className="flex flex-col gap-1.5">
-                  <div className="relative">
-                    <select
-                      id="signup-user-role"
-                      value={form.userRole}
-                      onChange={(e) => set("userRole", e.target.value as Users["user_role"] | "")}
-                      className={floatingSelectCls("userRole", Boolean(form.userRole))}
-                    >
-                      <option value="" disabled>
-                        Role *
-                      </option>
-                      {USER_ROLES.map((r) => (
-                        <option key={r} value={r} className="text-gray-900">
-                          {r}
-                        </option>
-                      ))}
-                    </select>
-                    {!form.userRole && (
-                      <div className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-sm font-medium text-gray-500">
-                        Role <span className="text-red-500">*</span>
-                      </div>
-                    )}
-                    {form.userRole && (
-                      <label htmlFor="signup-user-role" className={floatingSelectLabelCls}>
-                        Role <span className="text-red-500">*</span>
-                      </label>
-                    )}
-                    <ChevronDown className="pointer-events-none absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-                  </div>
-                  {errors.userRole && <p className="text-xs text-red-500">{errors.userRole}</p>}
                 </div>
 
                 <div className="mt-2">
@@ -613,52 +568,28 @@ export default function SignUpPage() {
             {step === 2 && (
               <>
                 <div>
-                  <h3 className="text-sm font-bold text-gray-900">Company Lookup</h3>
+                  <h3 className="text-sm font-bold text-gray-900">Invite Code</h3>
                   <p className="text-xs text-gray-400">
-                    Search by the company contact email.
+                    Enter the code from your company owner.
                   </p>
                 </div>
 
                 <div className="flex flex-col gap-1.5">
-                  <div className="flex gap-2">
-                    <div className="relative flex-1">
-                      <input
-                        id="signup-company-lookup"
-                        value={form.companyLookupEmail}
-                        onChange={(e) => set("companyLookupEmail", e.target.value)}
-                        placeholder=" "
-                        className={floatingInputCls("companyLookupEmail")}
-                        autoFocus
-                      />
-                      <label htmlFor="signup-company-lookup" className={floatingLabelCls}>
-                        Company Email <span className="text-red-500">*</span>
-                      </label>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={handleCompanyLookup}
-                      disabled={lookupLoading}
-                      className="shrink-0 rounded-xl bg-primary px-5 py-3 text-sm font-bold text-primary-foreground transition hover:bg-(--primary-hover) disabled:opacity-60"
-                    >
-                      {lookupLoading ? "Checking..." : "Check"}
-                    </button>
+                  <div className="relative">
+                    <input
+                      id="signup-invite-code"
+                      value={form.inviteCode}
+                      onChange={(e) => set("inviteCode", e.target.value.toUpperCase())}
+                      placeholder=" "
+                      className={floatingInputCls("inviteCode", "font-mono tracking-wide")}
+                      autoFocus
+                    />
+                    <label htmlFor="signup-invite-code" className={floatingLabelCls}>
+                      Invite Code <span className="text-red-500">*</span>
+                    </label>
                   </div>
-                  {errors.companyLookupEmail && <p className="text-xs text-red-500">{errors.companyLookupEmail}</p>}
-                  {lookupMessage && <p className="text-xs font-medium text-gray-500">{lookupMessage}</p>}
+                  {errors.inviteCode && <p className="text-xs text-red-500">{errors.inviteCode}</p>}
                 </div>
-
-                {matchedCompany && (
-                  <div className="rounded-xl border border-primary/20 bg-primary/5 p-4">
-                    <p className="text-sm font-bold text-gray-900">{matchedCompany.company_name}</p>
-                    <p className="mt-2 text-sm text-gray-600">{matchedCompany.company_address}</p>
-                    <p className="mt-1 text-sm text-gray-600">{matchedCompany.contact_email}</p>
-                    {matchedCompany.specializations.length > 0 && (
-                      <p className="mt-2 text-xs font-semibold text-primary">
-                        {matchedCompany.specializations.join(" / ")}
-                      </p>
-                    )}
-                  </div>
-                )}
 
                 <div className="rounded-xl border border-gray-200 bg-gray-50 p-3">
                   <label className="flex items-start gap-2.5 text-sm text-gray-700">
@@ -686,9 +617,10 @@ export default function SignUpPage() {
                   <button
                     type="button"
                     onClick={handleNext}
+                    disabled={inviteLookupLoading}
                     className="flex flex-2 items-center justify-center gap-2 rounded-xl bg-primary px-6 py-3.5 text-sm font-bold text-primary-foreground shadow-sm transition hover:bg-(--primary-hover)"
                   >
-                    Continue <ChevronRight className="h-4 w-4" />
+                    {inviteLookupLoading ? "Checking..." : "Continue"} <ChevronRight className="h-4 w-4" />
                   </button>
                 </div>
               </>
@@ -702,11 +634,20 @@ export default function SignUpPage() {
                   </h3>
                 </div>
 
-                {companyMode === "join" && matchedCompany && (
+                {companyMode === "join" && (
                   <div className="rounded-xl border border-primary/20 bg-primary/5 p-4">
-                    <p className="text-sm font-bold text-gray-900">{matchedCompany.company_name}</p>
-                    <p className="mt-2 text-sm text-gray-600">{matchedCompany.company_address}</p>
-                    <p className="mt-1 text-sm text-gray-600">{matchedCompany.contact_email}</p>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-primary">Company Match</p>
+                    <p className="mt-2 text-sm font-bold text-gray-900">{matchedCompany?.company_name ?? "Company"}</p>
+                    <p className="mt-2 text-sm text-gray-600">{matchedCompany?.company_address ?? "—"}</p>
+                    <p className="mt-1 text-sm text-gray-600">{matchedCompany?.contact_email ?? "—"}</p>
+                    <p className="mt-1 text-sm text-gray-600">{matchedCompany?.contact_number ?? "—"}</p>
+                    {matchedCompany && matchedCompany.specializations.length > 0 && (
+                      <ul className="mt-2 list-disc space-y-1 pl-5 text-xs font-semibold text-primary">
+                        {matchedCompany.specializations.map((specialization) => (
+                          <li key={specialization}>{specialization}</li>
+                        ))}
+                      </ul>
+                    )}
                   </div>
                 )}
 
@@ -830,19 +771,12 @@ export default function SignUpPage() {
                     <input
                       type="checkbox"
                       checked={termsAccepted}
-                      onChange={(e) => {
-                        setTermsAccepted(e.target.checked);
-                        setErrors((prev) => {
-                          if (!prev.terms) return prev;
-                          const n = { ...prev };
-                          delete n.terms;
-                          return n;
-                        });
-                      }}
+                      readOnly
+                      onClick={() => setTermsModalOpen(true)}
                       className="mt-0.5 h-4 w-4 shrink-0 rounded border-gray-300 text-primary focus:ring-2 focus:ring-primary/30"
                     />
                     <span>
-                      I agree to BuildSmart&apos;s{" "}
+                      {termsAccepted ? "I agree to" : "Open and read"} BuildSmart&apos;s{" "}
                       <button
                         type="button"
                         onClick={() => setTermsModalOpen(true)}

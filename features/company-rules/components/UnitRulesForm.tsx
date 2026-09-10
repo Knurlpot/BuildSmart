@@ -46,7 +46,6 @@ export function UnitRulesForm({ focusRuleId, onFocusHandled }: UnitRulesFormProp
   const [category, setCategory] = useState<CategoryType | "">("");
   const [itemSearch, setItemSearch] = useState("");
   const [itemCode, setItemCode] = useState("");
-  const [itemPickerOpen, setItemPickerOpen] = useState(false);
   const [conversionFactor, setConversionFactor] = useState<number | "">("");
   const [wastage, setWastage] = useState<number | "">("");
   const [touched, setTouched] = useState(false);
@@ -68,23 +67,17 @@ export function UnitRulesForm({ focusRuleId, onFocusHandled }: UnitRulesFormProp
   const formValid = categoryValid && itemValid && factorValid && wastageValid;
 
   const categoryItems = category !== "" ? itemsInCategory(category) : [];
-  const itemQuery = itemSearch.trim().toLowerCase();
-  const relatedItems = (itemQuery
-    ? categoryItems.filter((item) =>
-        [item.item_name, item.brand, item.unit, item.description ?? ""]
-          .join(" ")
-          .toLowerCase()
-          .includes(itemQuery)
-      )
-    : categoryItems
-  ).slice(0, 8);
+  const selectedItem = items.find((item) => String(item.item_code) === itemCode);
+  const itemOptions = categoryItems.map((item) => ({
+    value: String(item.item_code),
+    label: [item.item_name, item.brand, item.unit].filter(Boolean).join(" · "),
+  }));
 
   const resetForm = () => {
     setTargetKind("category");
     setCategory("");
     setItemSearch("");
     setItemCode("");
-    setItemPickerOpen(false);
     setConversionFactor("");
     setWastage("");
     setTouched(false);
@@ -113,7 +106,7 @@ export function UnitRulesForm({ focusRuleId, onFocusHandled }: UnitRulesFormProp
   const buildPayload = () => ({
     category: targetKind === "category" ? (category as CategoryType) : null,
     item_code: targetKind === "item" ? itemCode : null,
-    item_name: targetKind === "item" ? itemSearch : null,
+    item_name: targetKind === "item" ? (selectedItem?.item_name ?? itemSearch) : null,
     conversion_factor: Number(conversionFactor),
     wastage_allowance_percentage: Number(wastage),
   });
@@ -288,7 +281,6 @@ export function UnitRulesForm({ focusRuleId, onFocusHandled }: UnitRulesFormProp
                     setCategory(value as CategoryType);
                     setItemCode("");
                     setItemSearch("");
-                    setItemPickerOpen(false);
                   }}
                   className={inputCls}
                   placeholder="Select..."
@@ -304,50 +296,24 @@ export function UnitRulesForm({ focusRuleId, onFocusHandled }: UnitRulesFormProp
                   ) : items.length === 0 ? (
                     <p className="text-xs text-amber-600">No items in your catalog. Upload a pricelist first.</p>
                   ) : (
-                    <div className="relative flex flex-col gap-1.5">
+                    <div className="flex flex-col gap-1.5">
                       <label className="flex items-center gap-1.5 text-xs font-semibold text-gray-600">
                         <FieldHelp label="Item" text="Specific catalog material that should use this conversion and wastage rule instead of the category default." /> <span className="text-red-500">*</span>
                       </label>
-                      <input
-                        value={itemSearch}
-                        onFocus={() => setItemPickerOpen(true)}
-                        onBlur={() => window.setTimeout(() => setItemPickerOpen(false), 120)}
-                        onChange={(e) => {
-                          const typed = e.target.value;
-                          setItemSearch(typed);
-                          const match = categoryItems.find((i) => i.item_name === typed);
-                          setItemCode(match ? String(match.item_code) : "");
-                          setItemPickerOpen(true);
+                      <SearchableSelect
+                        value={itemCode}
+                        onChange={(value) => {
+                          const item = categoryItems.find((candidate) => String(candidate.item_code) === value);
+                          setItemCode(value);
+                          setItemSearch(item?.item_name ?? "");
                         }}
                         className={inputCls}
+                        placeholder="Select..."
+                        options={itemOptions}
+                        ariaLabel="Specific item"
                       />
-                      {itemPickerOpen && (
-                        <div className="absolute z-20 mt-1 max-h-56 w-full overflow-auto rounded-lg border border-gray-200 bg-white py-1 shadow-lg">
-                          {relatedItems.length > 0 ? (
-                            relatedItems.map((item) => (
-                              <button
-                                key={item.item_code}
-                                type="button"
-                                onMouseDown={(e) => e.preventDefault()}
-                                onClick={() => {
-                                  setItemSearch(item.item_name);
-                                  setItemCode(String(item.item_code));
-                                  setItemPickerOpen(false);
-                                }}
-                                className="flex w-full items-center gap-3 px-3 py-2 text-left text-sm transition hover:bg-orange-50"
-                              >
-                                <span className="min-w-0">
-                                  <span className="block truncate font-medium text-gray-800">{item.item_name}</span>
-                                  <span className="block truncate text-xs text-gray-400">
-                                    {[item.brand, item.unit, item.item_source].filter(Boolean).join(" · ")}
-                                  </span>
-                                </span>
-                              </button>
-                            ))
-                          ) : (
-                            <p className="px-3 py-2 text-xs text-gray-400">No related items in this category.</p>
-                          )}
-                        </div>
+                      {categoryItems.length === 0 && (
+                        <p className="text-xs text-gray-400">No related items in this category.</p>
                       )}
                     </div>
                   )}

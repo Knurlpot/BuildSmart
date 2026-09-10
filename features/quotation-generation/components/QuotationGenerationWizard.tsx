@@ -352,6 +352,10 @@ export function QuotationGenerationWizard() {
 
   const handleBackToMethod = () => setStep("method");
   const handleBackFromConfigure = () => {
+    if (isResumingOpenProject) {
+      returnToClientProjects();
+      return;
+    }
     if (method === "blueprint") {
       setBlueprintFloors(null);
       setOriginalBlueprintFloors(null);
@@ -400,7 +404,8 @@ export function QuotationGenerationWizard() {
         segments={segments}
         onChange={setSegments}
         onConfirm={() => setStep("configure")}
-        onBack={handleBackToMethod}
+        onBack={isResumingOpenProject ? returnToClientProjects : handleBackToMethod}
+        isDraftProject={isResumingOpenProject}
         floors={blueprintFloors}
         onFloorsChange={setBlueprintFloors}
         originalFloors={originalBlueprintFloors}

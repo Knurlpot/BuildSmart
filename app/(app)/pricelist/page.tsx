@@ -10,7 +10,7 @@ import { usePricelistPublishedSource } from "@/hooks/usePricelistPublishedSource
 import { useAuth } from "@/providers/AuthProvider";
 import { advanceOnboardingStep, hasCompletedPricelistStep } from "@/lib/onboarding";
 
-// 
+// Tabs for Manage Pricelist page
 const TABS = [
   { id: "upload", label: "Upload Pricelist", icon: Upload },
   { id: "published", label: "Published Sources", icon: Database },

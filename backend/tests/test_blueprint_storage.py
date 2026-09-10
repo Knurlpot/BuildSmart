@@ -14,7 +14,7 @@ def test_storage_is_optional_when_credentials_are_missing(monkeypatch):
         monkeypatch.delenv(name, raising=False)
 
     assert blueprint_storage.storage_is_configured() is False
-    assert blueprint_storage.persist_blueprint(12, "plan.pdf", b"pdf", "application/pdf") is None
+    assert blueprint_storage.persist_blueprint(12, "plan.dxf", b"dxf", "application/dxf") is None
 
 
 def test_persists_file_when_supabase_is_configured(monkeypatch):
@@ -32,13 +32,13 @@ def test_persists_file_when_supabase_is_configured(monkeypatch):
         return Response()
 
     monkeypatch.setattr(blueprint_storage.httpx, "put", fake_put)
-    stored = blueprint_storage.persist_blueprint(12, "Floor Plan.pdf", b"pdf", "application/pdf")
+    stored = blueprint_storage.persist_blueprint(12, "Floor Plan.dxf", b"dxf", "application/dxf")
 
     assert stored is not None
     assert stored.bucket == "blueprints"
     assert stored.path.startswith("quotations/12/")
-    assert stored.path.endswith(".pdf")
-    assert calls[0][1]["content"] == b"pdf"
+    assert stored.path.endswith(".dxf")
+    assert calls[0][1]["content"] == b"dxf"
     assert calls[0][1]["headers"]["Authorization"] == "Bearer secret"
 
 
@@ -54,7 +54,7 @@ def test_loads_saved_file_for_genuine_rescan(monkeypatch):
             return None
 
     monkeypatch.setattr(blueprint_storage.httpx, "get", lambda *args, **kwargs: Response())
-    assert blueprint_storage.load_blueprint("quotations/12/plan.pdf") == b"saved blueprint"
+    assert blueprint_storage.load_blueprint("quotations/12/plan.dxf") == b"saved blueprint"
 
 
 def test_load_rejects_paths_outside_quotation_prefix(monkeypatch):
@@ -72,7 +72,7 @@ def test_upload_still_extracts_when_storage_is_not_configured(monkeypatch):
         floors=[BlueprintFloor(floor_level="Floor Plan", image_url="data:test", image_width=10, image_height=10, segments=[])]
     )
     monkeypatch.setattr(blueprint_router, "extract_blueprint", lambda _name, _content: extracted)
-    upload = UploadFile(filename="plan.pdf", file=io.BytesIO(b"pdf"))
+    upload = UploadFile(filename="plan.dxf", file=io.BytesIO(b"dxf"))
 
     result = asyncio.run(blueprint_router.extract_uploaded_blueprint(19, upload))
 
@@ -90,11 +90,11 @@ def test_upload_returns_persisted_path_when_storage_is_configured(monkeypatch):
     monkeypatch.setattr(
         blueprint_router,
         "persist_blueprint",
-        lambda *_args: blueprint_storage.StoredBlueprint(path="quotations/19/saved.pdf", bucket="blueprints"),
+        lambda *_args: blueprint_storage.StoredBlueprint(path="quotations/19/saved.dxf", bucket="blueprints"),
     )
-    upload = UploadFile(filename="plan.pdf", file=io.BytesIO(b"pdf"))
+    upload = UploadFile(filename="plan.dxf", file=io.BytesIO(b"dxf"))
 
     result = asyncio.run(blueprint_router.extract_uploaded_blueprint(19, upload))
 
     assert result.persistence_enabled is True
-    assert result.blueprint_file_path == "quotations/19/saved.pdf"
+    assert result.blueprint_file_path == "quotations/19/saved.dxf"

@@ -8,7 +8,7 @@ import { SegmentEditorList } from "./SegmentEditorList";
 import { confidenceBand, createManualSegment, createSegmentFromExtraction, isSegmentIncluded, type DraftSegment, type SegmentPolygon } from "../lib/draftSegment";
 import type { BlueprintExtractionResult, BlueprintFloor } from "@/lib/dev/provisional/quotationGenerationTypes";
 
-const ACCEPTED_EXTENSIONS = [".pdf", ".dxf"];
+const ACCEPTED_EXTENSIONS = [".dxf"];
 const MAX_FILE_BYTES = 25 * 1024 * 1024;
 
 function hasAcceptedExtension(name: string): boolean {
@@ -39,7 +39,7 @@ function blueprintScanWarnings(result: BlueprintExtractionResult): string[] {
   const missingSegmentsWarning =
     detectedSegments === 0
       ? [
-          "No spaces were detected from this blueprint. Add segments manually, upload a vector PDF or DXF, or enable the vision scanner for scanned PDFs.",
+          "No spaces were detected from this blueprint. Add segments manually or upload a DXF blueprint with readable walls, room labels, or room polygons.",
         ]
       : [];
   return [...diagnosticsWarnings, ...missingSegmentsWarning];
@@ -282,6 +282,7 @@ interface BlueprintUploadPanelProps {
   onConfirm: () => void;
   /** Part H — returns to the input-method choice overlay. */
   onBack: () => void;
+  isDraftProject?: boolean;
   // P2 Part E — floors/originalFloors are lifted to the wizard (QuotationGenerationWizard)
   // rather than owned here. A Structural revision returns to this same step by changing the
   // wizard's `step` state, which unmounts/remounts THIS component — if the scan lived in
@@ -308,6 +309,7 @@ export function BlueprintUploadPanel({
   onChange,
   onConfirm,
   onBack,
+  isDraftProject = false,
   floors,
   onFloorsChange,
   onOriginalFloorsChange,
@@ -332,7 +334,7 @@ export function BlueprintUploadPanel({
   const handleFileSelected = (file: File) => {
     setFileTypeError(null);
     if (!hasAcceptedExtension(file.name)) {
-      setFileTypeError(`"${file.name}" isn't a .PDF or .DXF file.`);
+      setFileTypeError(`"${file.name}" isn't a .DXF file.`);
       return;
     }
     if (file.size === 0 || file.size > MAX_FILE_BYTES) {
@@ -495,7 +497,7 @@ export function BlueprintUploadPanel({
                 <p className="text-xs text-gray-400">or click to browse (max 25 MB)</p>
               </div>
               <div className="flex gap-1.5">
-                {["PDF", "DXF"].map((f) => (
+                {["DXF"].map((f) => (
                   <span key={f} className="rounded-full border border-gray-200 bg-white px-2.5 py-0.5 text-[10px] font-bold text-gray-500">
                     {f}
                   </span>
@@ -625,6 +627,10 @@ export function BlueprintUploadPanel({
   const confirmationDisabled = overlayScanning || isRescanning;
   const isGroupingPhase = floorAllIncludedConfirmed && !confirmedGroupingFloorLevels.has(currentFloor.floor_level);
   const handleReviewBack = () => {
+    if (isDraftProject) {
+      onBack();
+      return;
+    }
     if (isGroupingPhase) {
       const currentFloorDraftIds = new Set(floorIncludedSegments.map((s) => s.draft_id));
       setConfirmedGroupingFloorLevels((current) => {
@@ -662,7 +668,7 @@ export function BlueprintUploadPanel({
         <button
           type="button"
           onClick={handleReviewBack}
-          title={isGroupingPhase ? "Back to confirming segments" : "Back to Upload"}
+          title={isDraftProject ? "Back to client details" : isGroupingPhase ? "Back to confirming segments" : "Back to Upload"}
           className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-gray-200 bg-white text-gray-500 transition hover:border-primary hover:text-primary"
         >
           <ArrowLeft className="h-4 w-4" />

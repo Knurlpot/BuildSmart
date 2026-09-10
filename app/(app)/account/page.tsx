@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { AlertTriangle, Pencil, Upload, X } from "lucide-react";
+import { AlertTriangle, Copy, Pencil, Upload, X } from "lucide-react";
 import { RequireAuth } from "@/components/auth/RequireAuth";
 import { useFetch } from "@/hooks/useFetch";
 import { useMutation } from "@/hooks/useMutation";
@@ -54,9 +54,17 @@ const btnCls =
 const cancelBtnCls =
   "w-fit rounded-xl border border-gray-200 px-5 py-2.5 text-sm font-bold text-gray-600 transition hover:bg-gray-50";
 
+type CompanyInvite = {
+  code: string;
+  role: "Estimator";
+  expires_at: string | null;
+};
+
 function normalizeLogoUrl(value?: string | null): string {
   const trimmed = value?.trim() ?? "";
   if (!trimmed) return "";
+  if (trimmed.startsWith("public/")) return normalizeLogoUrl(trimmed.slice("public".length));
+  if (trimmed.startsWith("/public/")) return normalizeLogoUrl(trimmed.slice("/public".length));
   if (
     trimmed.startsWith("/") ||
     trimmed.startsWith("http://") ||
@@ -69,7 +77,7 @@ function normalizeLogoUrl(value?: string | null): string {
   return `/${trimmed.replace(/^\/+/, "")}`;
 }
 
-function getLogoCandidates(value?: string | null): string[] {
+function getLogoCandidates(value?: string | null, fallbackDir = "company-logos"): string[] {
   const trimmed = value?.trim() ?? "";
   if (!trimmed) return [];
 
@@ -79,7 +87,7 @@ function getLogoCandidates(value?: string | null): string[] {
       ? `/api/uploads/company-logo/legacy?path=${encodeURIComponent(direct)}`
       : "";
   const fileName = trimmed.split("/").filter(Boolean).pop() ?? "";
-  const fallbackFromFileName = fileName ? `/uploads/company-logos/${fileName}` : "";
+  const fallbackFromFileName = fileName ? `/uploads/${fallbackDir}/${fileName}` : "";
 
   return [...new Set([legacySvgProxy, direct, fallbackFromFileName].filter(Boolean))];
 }
@@ -88,16 +96,20 @@ function LogoImage({
   value,
   alt,
   className,
+  fallbackDir,
+  fallback,
 }: {
   value?: string | null;
   alt: string;
   className: string;
+  fallbackDir?: string;
+  fallback?: React.ReactNode;
 }) {
-  const candidates = getLogoCandidates(value);
+  const candidates = getLogoCandidates(value, fallbackDir);
   const [index, setIndex] = useState(0);
 
   const src = candidates[index] ?? "";
-  if (!src) return null;
+  if (!src) return fallback ?? null;
 
   return (
     // eslint-disable-next-line @next/next/no-img-element -- supports user-provided local and external image URLs
@@ -106,7 +118,7 @@ function LogoImage({
       alt={alt}
       className={className}
       onError={() => {
-        setIndex((current) => (current + 1 < candidates.length ? current + 1 : current));
+        setIndex((current) => current + 1);
       }}
     />
   );
@@ -218,6 +230,7 @@ function UserProfileSection() {
   const updateCompany = useMutation<Company>();
   const profilePictureUpload = useMutation<{ url: string }>();
   const logoUpload = useMutation<{ url: string }>();
+  const inviteCodeGeneration = useMutation<{ invite: CompanyInvite }>();
 
   const [userForm, setUserForm] = useState<Users>(EMPTY_USER);
   const [companyForm, setCompanyForm] = useState<Company>(EMPTY_COMPANY);
@@ -236,12 +249,17 @@ function UserProfileSection() {
   const [editing, setEditing] = useState(false);
   const [specializationError, setSpecializationError] = useState("");
   const [profilePictureFileName, setProfilePictureFileName] = useState("");
+  const [profilePictureFileError, setProfilePictureFileError] = useState("");
   const [logoFileName, setLogoFileName] = useState("");
+  const [logoFileError, setLogoFileError] = useState("");
+  const [inviteCode, setInviteCode] = useState<CompanyInvite | null>(null);
+  const [inviteCodeCopied, setInviteCodeCopied] = useState(false);
   const profilePictureInputRef = useRef<HTMLInputElement>(null);
   const logoInputRef = useRef<HTMLInputElement>(null);
   const canEditCompany = userData?.user_role === "Owner";
 
   const uploadProfilePicture = async (file: File) => {
+    setProfilePictureFileError("");
     setProfilePictureFileName(file.name);
     const body = new FormData();
     body.append("file", file);
@@ -255,17 +273,28 @@ function UserProfileSection() {
 
   const handleProfilePictureFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) uploadProfilePicture(file);
+    if (!file) return;
+
+    if (!["image/jpeg", "image/png"].includes(file.type)) {
+      setProfilePictureFileError("Only JPG or PNG images are allowed.");
+      setProfilePictureFileName("");
+      e.target.value = "";
+      return;
+    }
+
+    uploadProfilePicture(file);
   };
 
   const removeProfilePicture = () => {
     setUserForm((current) => ({ ...current, profile_picture: "" }));
     setProfilePictureFileName("");
+    setProfilePictureFileError("");
     profilePictureUpload.reset();
   };
 
   const uploadLogoFile = async (file: File) => {
     if (!canEditCompany) return;
+    setLogoFileError("");
     setLogoFileName(file.name);
     const body = new FormData();
     body.append("file", file);
@@ -279,13 +308,23 @@ function UserProfileSection() {
 
   const handleLogoFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) uploadLogoFile(file);
+    if (!file) return;
+
+    if (!["image/jpeg", "image/png"].includes(file.type)) {
+      setLogoFileError("Only JPG or PNG images are allowed.");
+      setLogoFileName("");
+      e.target.value = "";
+      return;
+    }
+
+    uploadLogoFile(file);
   };
 
   const removeLogo = () => {
     if (!canEditCompany) return;
     setCompanyForm((current) => ({ ...current, company_logo: "" }));
     setLogoFileName("");
+    setLogoFileError("");
     logoUpload.reset();
   };
 
@@ -297,7 +336,9 @@ function UserProfileSection() {
     profilePictureUpload.reset();
     logoUpload.reset();
     setProfilePictureFileName("");
+    setProfilePictureFileError("");
     setLogoFileName("");
+    setLogoFileError("");
     setSpecializationError("");
     setEditing(false);
   };
@@ -347,6 +388,18 @@ function UserProfileSection() {
     refetchCompany();
   };
 
+  const generateInviteCode = async () => {
+    setInviteCodeCopied(false);
+    const { invite } = await inviteCodeGeneration.mutate("/api/company-invites", {}, "POST");
+    setInviteCode(invite);
+  };
+
+  const copyInviteCode = async () => {
+    if (!inviteCode?.code) return;
+    await navigator.clipboard.writeText(inviteCode.code);
+    setInviteCodeCopied(true);
+  };
+
   const initials = [userForm.first_name, userForm.last_name]
     .filter(Boolean)
     .map((name) => name?.trim().charAt(0))
@@ -371,6 +424,12 @@ function UserProfileSection() {
                 value={userForm.profile_picture}
                 alt="Profile picture"
                 className="h-20 w-20 shrink-0 rounded-full object-cover shadow-md ring-4 ring-white"
+                fallbackDir="profile-pictures"
+                fallback={
+                  <div className="flex h-20 w-20 shrink-0 items-center justify-center rounded-2xl bg-white text-xl font-bold text-gray-400 shadow-md ring-4 ring-white">
+                    {initials}
+                  </div>
+                }
               />
             ) : (
               <div className="flex h-20 w-20 shrink-0 items-center justify-center rounded-2xl bg-white text-xl font-bold text-gray-400 shadow-md ring-4 ring-white">
@@ -402,6 +461,11 @@ function UserProfileSection() {
                 value={companyForm.company_logo}
                 alt="Company logo"
                 className="h-16 w-16 shrink-0 rounded-2xl border border-gray-200 bg-white object-contain p-1.5 shadow-sm"
+                fallback={
+                  <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-primary/10 text-lg font-bold text-primary">
+                    {companyInitials}
+                  </div>
+                }
               />
             ) : (
               <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-primary/10 text-lg font-bold text-primary">
@@ -421,6 +485,45 @@ function UserProfileSection() {
             <ReadOnlyRow label="Company Contact Number" value={companyForm.contact_number} />
             <ReadOnlyListRow label="Specializations" values={specializationList} />
           </dl>
+          {canEditCompany && (
+            <div className="mt-6 rounded-xl border border-gray-200 bg-gray-50 p-4">
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <p className="text-sm font-bold text-gray-900">Invite Code</p>
+                  <p className="mt-1 text-xs text-gray-500">Generate code for New Users</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={generateInviteCode}
+                  disabled={inviteCodeGeneration.isLoading}
+                  className="w-fit rounded-xl bg-primary px-4 py-2.5 text-sm font-bold text-primary-foreground shadow-sm transition hover:bg-(--primary-hover) disabled:opacity-60"
+                >
+                  {inviteCodeGeneration.isLoading ? "Generating..." : "Generate Invite Code"}
+                </button>
+              </div>
+              {inviteCode && (
+                <div className="mt-4 flex flex-col gap-3 rounded-xl border border-gray-200 bg-white p-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <p className="font-mono text-lg font-bold tracking-wide text-gray-900">{inviteCode.code}</p>
+                    <p className="mt-1 text-xs text-gray-500">
+                      Expires {inviteCode.expires_at ? new Date(inviteCode.expires_at).toLocaleDateString() : "when deactivated"}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={copyInviteCode}
+                    className="flex w-fit items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm font-semibold text-gray-700 transition hover:bg-gray-50"
+                  >
+                    <Copy className="h-4 w-4" />
+                    {inviteCodeCopied ? "Copied" : "Copy"}
+                  </button>
+                </div>
+              )}
+              {inviteCodeGeneration.error && (
+                <p className="mt-3 text-xs text-red-500">Couldn&apos;t generate invite code: {inviteCodeGeneration.error.message}</p>
+              )}
+            </div>
+          )}
         </section>
       </section>
     );
@@ -439,58 +542,6 @@ function UserProfileSection() {
           {/* User Fields */}
           <div>
             <p className="mb-3 text-sm font-semibold text-gray-700">User Information</p>
-            <div className="mb-4 flex flex-col gap-1.5">
-              <span className={labelCls}>Profile Picture</span>
-              {userForm.profile_picture ? (
-                <div className="flex items-center gap-3 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5">
-                  <LogoImage
-                    key={userForm.profile_picture}
-                    value={userForm.profile_picture}
-                    alt="Profile picture preview"
-                    className="h-10 w-10 shrink-0 rounded-full border border-gray-200 object-cover"
-                  />
-                  <span className="flex-1 truncate text-sm text-gray-700">
-                    {profilePictureFileName ? `Selected: ${profilePictureFileName}` : "Profile picture"}
-                  </span>
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => profilePictureInputRef.current?.click()}
-                      className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm font-semibold text-gray-700 transition hover:bg-gray-100"
-                    >
-                      {profilePictureUpload.isLoading ? "Uploading..." : "Change Image"}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={removeProfilePicture}
-                      title="Remove profile picture"
-                      className="shrink-0 text-gray-400 transition hover:text-red-500"
-                    >
-                      <X className="h-4 w-4" />
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => profilePictureInputRef.current?.click()}
-                  className="flex w-full items-center justify-center gap-2 rounded-xl border border-gray-200 bg-gray-50 px-4 py-2.5 text-sm font-semibold text-gray-700 transition hover:bg-gray-100"
-                >
-                  <Upload className="h-4 w-4" />
-                  {profilePictureUpload.isLoading ? "Uploading..." : "Upload Profile Picture"}
-                </button>
-              )}
-              <input
-                ref={profilePictureInputRef}
-                type="file"
-                accept="image/*"
-                onChange={handleProfilePictureFileChange}
-                className="hidden"
-              />
-              {profilePictureUpload.error && (
-                <p className="text-xs text-red-500">Couldn&apos;t upload profile picture: {profilePictureUpload.error.message}</p>
-              )}
-            </div>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <Field label="First Name">
                 <input
@@ -535,6 +586,62 @@ function UserProfileSection() {
                   ))}
                 </select>
               </Field>
+              <div className="flex flex-col gap-1.5">
+                <span className={labelCls}>Profile Picture</span>
+                {userForm.profile_picture ? (
+                  <div className="flex min-h-[42px] items-center gap-3 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5">
+                    <LogoImage
+                      key={userForm.profile_picture}
+                      value={userForm.profile_picture}
+                      alt="Profile picture preview"
+                      className="h-10 w-10 shrink-0 rounded-full border border-gray-200 object-cover"
+                      fallbackDir="profile-pictures"
+                    />
+                    <span className="min-w-0 flex-1 truncate text-sm text-gray-700">
+                      {profilePictureFileName ? `Selected: ${profilePictureFileName}` : "Profile picture"}
+                    </span>
+                    <div className="flex shrink-0 items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => profilePictureInputRef.current?.click()}
+                        className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm font-semibold text-gray-700 transition hover:bg-gray-100"
+                      >
+                        {profilePictureUpload.isLoading ? "Uploading..." : "Change Image"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={removeProfilePicture}
+                        title="Remove profile picture"
+                        className="shrink-0 text-gray-400 transition hover:text-red-500"
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => profilePictureInputRef.current?.click()}
+                    className="flex min-h-[42px] w-full items-center justify-center gap-2 rounded-xl border border-gray-200 bg-gray-50 px-4 py-2.5 text-sm font-semibold text-gray-700 transition hover:bg-gray-100"
+                  >
+                    <Upload className="h-4 w-4" />
+                    {profilePictureUpload.isLoading ? "Uploading..." : "Upload Profile Picture"}
+                  </button>
+                )}
+                <input
+                  ref={profilePictureInputRef}
+                  type="file"
+                  accept="image/jpeg,image/png,.jpg,.jpeg,.png"
+                  onChange={handleProfilePictureFileChange}
+                  className="hidden"
+                />
+                {profilePictureFileError && (
+                  <p className="text-xs text-red-500">{profilePictureFileError}</p>
+                )}
+                {profilePictureUpload.error && (
+                  <p className="text-xs text-red-500">Couldn&apos;t upload profile picture: {profilePictureUpload.error.message}</p>
+                )}
+              </div>
             </div>
           </div>
         </section>
@@ -650,10 +757,13 @@ function UserProfileSection() {
                   <input
                     ref={logoInputRef}
                     type="file"
-                    accept="image/*"
+                    accept="image/jpeg,image/png,.jpg,.jpeg,.png"
                     onChange={handleLogoFileChange}
                     className="hidden"
                   />
+                  {logoFileError && (
+                    <p className="text-xs text-red-500">{logoFileError}</p>
+                  )}
                   {logoUpload.error && (
                     <p className="text-xs text-red-500">Couldn&apos;t upload logo: {logoUpload.error.message}</p>
                   )}

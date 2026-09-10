@@ -21,7 +21,7 @@ export type UserRow = {
   email: string;
   password: string;
   profile_picture: string | null;
-  user_role: "Owner" | "Admin" | "Estimator" | "Viewer";
+  user_role: "Owner" | "Estimator";
   status: "Active" | "Inactive";
   created_at: string;
   failed_login_attempts: number;

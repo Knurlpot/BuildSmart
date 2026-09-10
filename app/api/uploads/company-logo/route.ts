@@ -5,13 +5,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { readSession } from "@/lib/server/session";
 
 const MAX_FILE_SIZE_BYTES = 5 * 1024 * 1024;
-const ALLOWED_IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
+const ALLOWED_IMAGE_TYPES = new Set(["image/jpeg", "image/png"]);
 
 function hasExpectedImageSignature(bytes: Buffer, mimeType: string): boolean {
   if (mimeType === "image/jpeg") return bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
   if (mimeType === "image/png") return bytes.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
-  if (mimeType === "image/webp") return bytes.subarray(0, 4).toString("ascii") === "RIFF" && bytes.subarray(8, 12).toString("ascii") === "WEBP";
-  if (mimeType === "image/gif") return ["GIF87a", "GIF89a"].includes(bytes.subarray(0, 6).toString("ascii"));
   return false;
 }
 
@@ -36,7 +34,7 @@ export async function POST(request: NextRequest) {
     }
 
     if (!ALLOWED_IMAGE_TYPES.has(fileEntry.type)) {
-      return NextResponse.json({ error: "Only JPG, PNG, WebP, or GIF images are allowed" }, { status: 400 });
+      return NextResponse.json({ error: "Only JPG or PNG images are allowed" }, { status: 400 });
     }
 
     if (fileEntry.size === 0) {
