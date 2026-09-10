@@ -135,12 +135,7 @@ export default function Header({ workflow }: HeaderProps) {
             <div className="hidden h-5 w-px shrink-0 bg-white/20 sm:block" />
             <WorkflowStepper steps={workflow.steps} currentStep={workflow.currentStep} />
           </div>
-        ) : isDashboard ? (
-          <Link href="/dashboard" className="flex shrink-0 items-center gap-2 text-base font-bold tracking-tight text-gray-900 sm:text-lg" aria-label="BuildSmart dashboard">
-            <Image src={logoFrame(13)} alt="" className="h-7 w-7 sm:h-8 sm:w-8" />
-            <span>Build<span className="text-primary">Smart</span></span>
-          </Link>
-        ) : (
+        ) : isDashboard ? null : (
           <div>
             <h1 className={`text-base font-bold ${isDashboard ? "text-white" : "text-gray-900"}`}>{title}</h1>
             {subtitle && <p className={`text-xs ${isDashboard ? "text-white/70" : "text-gray-500"}`}>{subtitle}</p>}
@@ -148,7 +143,8 @@ export default function Header({ workflow }: HeaderProps) {
         )}
       </div>
 
-      {isDashboard && <nav aria-label="Welcome page" className="order-last flex w-full items-center justify-center gap-5 pb-2 text-xs font-medium text-gray-600 md:order-none md:w-auto md:flex-1 md:pb-0 md:pr-4" onClick={(event) => {
+      {/* Offset the desktop center by half the 64px rail so links align with the page center, not the profile card. */}
+      {isDashboard && <nav aria-label="Welcome page" className="order-last flex w-full items-center justify-center gap-5 pb-2 text-xs font-medium text-gray-600 md:absolute md:left-[calc(50%-2rem)] md:top-1/2 md:order-none md:w-auto md:-translate-x-1/2 md:-translate-y-1/2 md:pb-0" onClick={(event) => {
         if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
         const link = (event.target as Element).closest<HTMLAnchorElement>('a[href^="#"]');
         const hash = link?.getAttribute("href");
@@ -194,7 +190,7 @@ export default function Header({ workflow }: HeaderProps) {
               </div>
             )}
             <div className="hidden min-w-0 text-left sm:block">
-              <p className={`max-w-44 truncate text-xs font-bold leading-tight ${lightHeaderContent ? "text-white" : "text-gray-900"}`}>
+              <p className={`${isDashboard ? "max-w-24 lg:max-w-44" : "max-w-44"} truncate text-xs font-bold leading-tight ${lightHeaderContent ? "text-white" : "text-gray-900"}`}>
                 {companyName}
               </p>
               <p className={`mt-0.5 text-[9px] font-semibold uppercase tracking-wider ${lightHeaderContent ? "text-white/65" : "text-gray-400"}`}>

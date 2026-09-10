@@ -79,9 +79,8 @@ export default function Sidebar({ collapsed = true, onToggle }: { collapsed?: bo
           <Image src={logoFrame(13)} alt="" className={`h-7 w-7 shrink-0 ${workflow ? "brightness-0 invert" : ""}`} />
           {!compact && <span className={`text-base font-bold ${workflow ? "text-white" : "text-gray-900"}`}>BuildSmart</span>}
         </Link>
+        {onToggle && <button type="button" onClick={() => { onToggle(); if (!collapsed) { setHovered(false); setFocused(false); } }} aria-label={collapsed ? "Keep sidebar open" : "Collapse sidebar"} aria-expanded={!compact} className={`flex shrink-0 items-center justify-center rounded-md ${compact ? "mr-1 h-8 w-5" : "mr-3 h-8 w-8"} ${workflow ? "text-white/80 hover:bg-white/15 hover:text-white" : "text-gray-500 hover:bg-orange-50 hover:text-primary"}`}>{collapsed ? <PanelLeftOpen className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}</button>}
       </div>
-
-      {onToggle && <button type="button" onClick={() => { onToggle(); if (!collapsed) { setHovered(false); setFocused(false); } }} aria-label={collapsed ? "Keep sidebar open" : "Collapse sidebar"} aria-expanded={!compact} className="mx-auto mt-2 flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-gray-500 hover:bg-orange-50 hover:text-primary">{collapsed ? <PanelLeftOpen className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}</button>}
 
       {onboardingStep < 2 && !compact && (
         <div className="mx-3 mt-3 rounded-lg border border-amber-200 bg-amber-50 p-2 text-center">
