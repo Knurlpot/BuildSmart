@@ -14,6 +14,14 @@ const context = { exports: {}, require: createRequire(motionUrl) };
 vm.runInNewContext(compiled.outputText, context);
 const { SKYLINE_PARTS, SKYLINE_GROUPS, sampleSkylineScene, sampleBuilding, skylinePaintOrder } = context.exports;
 
+test("skyline softens through the middle and regains definition at the bottom", () => {
+  assert.equal(sampleSkylineScene(0, 1440).blur, 0);
+  assert.ok(sampleSkylineScene(0.2, 1440).blur > 0);
+  assert.equal(sampleSkylineScene(0.5, 1440).blur, 4);
+  assert.equal(sampleSkylineScene(1, 1440).blur, 0);
+  assert.equal(sampleSkylineScene(0.5, 1440, true).blur, 0);
+});
+
 test("featured landmarks render above occluding scenery with corresponding reflection order", () => {
   for (const reflection of [false, true]) {
     const parts = skylinePaintOrder(reflection);

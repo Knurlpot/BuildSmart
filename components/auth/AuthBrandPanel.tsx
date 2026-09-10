@@ -1,8 +1,10 @@
 import Image from "next/image";
 import { logoFrame } from "@/components/logo-frames";
+import { BrickLogo } from "@/features/welcome/BrickLogo";
 
 interface AuthBrandPanelProps {
   frame: number;
+  animateProgress?: boolean;
   title?: string;
   subtitle?: React.ReactNode;
   footer?: React.ReactNode;
@@ -10,6 +12,7 @@ interface AuthBrandPanelProps {
 
 export function AuthBrandPanel({
   frame,
+  animateProgress = false,
   title = "BuildSmart",
   subtitle,
   footer,
@@ -25,7 +28,7 @@ export function AuthBrandPanel({
         }}
       />
       <div className="relative flex flex-col items-center gap-6">
-        <Image src={logoFrame(frame)} alt="" priority className="h-auto w-32" />
+        {animateProgress ? <BrickLogo motion stage={frame} className="h-[137px] w-32" /> : <Image src={logoFrame(frame)} alt="" priority className="h-auto w-32" />}
         <div className="text-center">
           <h1 className="text-3xl font-extrabold tracking-tight text-white">
             {title}

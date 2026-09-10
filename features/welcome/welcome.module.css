@@ -55,8 +55,8 @@
 .hero h1 > span { color: var(--primary); }
 .heroDescription { max-width: 440px; color: #50564d; font-size: 14px; line-height: 1.9; margin: 25px 0 28px; }
 .heroActions { display: flex; align-items: center; gap: 28px; flex-wrap: wrap; }
-.welcome .primaryButton { display: inline-flex; align-items: center; justify-content: center; gap: 20px; height: auto; min-height: 51px; padding: 14px 22px; border-radius: 10px; background: #b95220; color: #fff; font-size: 12px; font-weight: 650; border: 1px solid #b95220; box-shadow: 0 5px 16px #b9522017; transition: background .25s, transform .25s, box-shadow .25s; white-space: normal; }
-.welcome .primaryButton:hover { background: #9e4117; transform: translateY(-2px); box-shadow: 0 7px 23px #b9522033; }
+.welcome .primaryButton { display: inline-flex; align-items: center; justify-content: center; gap: 20px; height: auto; min-height: 51px; padding: 14px 22px; border-radius: 10px; background: var(--primary); color: var(--primary-foreground); font-size: 12px; font-weight: 650; border: 1px solid transparent; box-shadow: 0 1px 3px #0000000d; transition: background .25s; white-space: normal; }
+.welcome .primaryButton:hover { background: color-mix(in oklab, var(--primary) 80%, transparent); }
 .textButton { display: inline-flex; align-items: center; gap: 13px; font-size: 12px; font-weight: 600; min-height: 44px; }
 .textButton:hover { color: var(--orange); }
 .heroNote { font-size: 12px; color: #565f50; display: flex; align-items: center; gap: 7px; margin-top: 24px; }
@@ -98,12 +98,26 @@
 .welcome h2 span { color: #888e80; }
 .sectionHeading > p { max-width: 330px; margin: 0 0 3px; color: var(--muted); line-height: 1.9; font-size: 12px; }
 .workflow { border-top: 1px solid var(--line); }
-.workflowGrid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 23px; }
-.workflowCard { border: 1px solid var(--line); background: #fdfcf9; border-radius: 16px; padding: 27px 26px 32px; position: relative; overflow: hidden; transition: box-shadow .3s, transform .3s; }
-.workflowCard:hover { transform: translateY(-5px); box-shadow: 0 14px 26px #48412808; }
-.workflowCardTop { display: flex; justify-content: space-between; align-items: center; margin-bottom: 38px; }
-.workflowCardTop > span { color: #989f90; font-size: 11px; }
-.workflowCardTop svg { color: #be7545; }
+.workflowGrid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 23px; align-items: stretch; }
+.workflowCard { isolation: isolate; display: flex; flex-direction: column; min-height: 320px; border: 1px solid #dc8b5340; background: #e59560; border-radius: 16px; padding: 27px 26px 28px; position: relative; overflow: hidden; transition: box-shadow .3s; }
+/* Figma 2604:2723: same-size cards; orange cover retracts to expose right-side video. */
+.workflowWash { position: absolute; inset: 0 -70% 0 0; z-index: -1; pointer-events: none; background: radial-gradient(ellipse at 0% 100%, #e9b087, #e59560 40%, #e07b39 80%); background-size: 125% 125%; mask-image: linear-gradient(90deg, #000 63%, transparent 85%); transition: transform .85s cubic-bezier(.22,.61,.36,1); animation: workflowGradient 18s ease-in-out infinite alternate; }
+.workflowCard[data-step="02"] .workflowWash { background-image: radial-gradient(ellipse at 65% 35%, #e9b087, #e59560 40%, #ef7e2e 80%); animation-delay: -6s; }
+.workflowCard[data-step="03"] .workflowWash { background-image: radial-gradient(ellipse at 12% 100%, #e9b087, #e59560 33%, #e07b39 66%); animation-delay: -12s; }
+@keyframes workflowGradient { from { background-position: 0% 25%; } to { background-position: 85% 80%; } }
+.workflowCard[data-preview="true"] .workflowWash { transform: translateX(-42%); }
+.workflowScrim { position: absolute; inset: 0; z-index: -2; pointer-events: none; background: linear-gradient(90deg, #e59560 0%, #e59560f5 40%, #e59560ce 58%, #e9b08755 78%, transparent 100%); }
+.welcome .workflowCard h3 { width: 76%; font-size: clamp(18px, 1.45vw, 22px); font-weight: 750; color: #302315; letter-spacing: -.5px; line-height: 1.25; text-shadow: 0 1px 6px #f3c39b55; }
+.welcome .workflowCard p { width: 76%; min-height: 4.5em; font-size: 13px; font-weight: 550; line-height: 1.75; color: #36271b; text-shadow: 0 1px 5px #efbd9955; }
+.previewToggle { position: absolute; inset: 0; z-index: 2; width: 100%; height: 100%; border: 0; border-radius: inherit; background: transparent; cursor: pointer; }
+.previewToggle:focus-visible { outline: 2px solid #352417; outline-offset: -5px; }
+.workflowPreview { position: absolute; inset: 0 0 0 30%; z-index: -3; pointer-events: none; }
+.workflowPreview video { display: block; width: 100%; height: 100%; object-fit: cover; object-position: center; }
+.previewError { font-size: 10px; color: #352417; }
+.workflowCard:hover { box-shadow: 0 10px 25px #9e4e2017; }
+.workflowCardTop { display: flex; justify-content: space-between; align-items: center; margin-bottom: 28px; }
+.workflowCardTop > span { color: #513720; font-size: 12px; font-weight: 700; }
+.workflowCardTop svg { color: #563418; }
 .workflowCard h3 { font-size: 17px; letter-spacing: -.6px; font-weight: 600; margin: 0 0 13px; }
 .workflowCard p { font-size: 12px; line-height: 1.9; color: var(--muted); margin: 0; }
 .workflowLine { position: absolute; bottom: 0; left: 26px; right: 26px; height: 2px; background: linear-gradient(90deg, #e0a277, #e0a27700); }
@@ -128,17 +142,19 @@
 .storySignature { border-top: 1px solid var(--line); margin-top: 26px; padding-top: 22px; display: flex; align-items: center; gap: 13px; }
 .storySignature > span:last-child { font-size: 10px; color: #888e80; line-height: 1.8; }
 .storySignature strong { color: #515d48; font-weight: 600; }
-.principle { position: relative; isolation: isolate; overflow: hidden; background: #eef0e9; border-top: 1px solid #e2e7dc; border-bottom: 1px solid #e2e7dc; }
+.principle { position: relative; isolation: isolate; overflow: hidden; background: #f7e5cc; border-top: 1px solid #e9c8a5; border-bottom: 1px solid #e9c8a5; }
 .principleInner { max-width: 1100px; margin: 0 auto; padding: 90px 64px; display: grid; grid-template-columns: .6fr 1fr; gap: 80px; align-items: center; }
 .brandMarkLarge { width: 180px; height: 210px; margin: auto; }
 .brandMarkLarge .brandSymbol { filter: drop-shadow(0 20px 25px #b2704844); }
 .brandMarkLarge .brandHalo { inset: -35%; filter: blur(24px); opacity: .85; background: conic-gradient(from 60deg, #f3c39b00, #e4ac7a8c, #b952205c, #f1be7e80, #f3c39b00); }
 .brandMarkLarge .brandEcho { animation-duration: 9s; filter: blur(13px) saturate(1.8); }
-.principleMesh { position: absolute; inset: 0; z-index: -1; background: radial-gradient(ellipse at 30% 20%, #e8a16430, transparent 60%), radial-gradient(ellipse at 5% 80%, #c46a3730, transparent 45%); animation: meshBreathe 11s ease-in-out infinite alternate; }
+.principleMesh { position: absolute; inset: 0; z-index: -1; background: radial-gradient(ellipse at 28% 28%, #f6a34399, transparent 62%), radial-gradient(ellipse at 5% 85%, #df7b3d66, transparent 52%), radial-gradient(ellipse at 95% 50%, #e7ecd3, transparent 70%); animation: meshBreathe 11s ease-in-out infinite alternate; }
 .principleInner h2 { font-size: clamp(30px, 3vw, 44px); }
-.principleInner > div > p:not(.eyebrow) { max-width: 500px; font-size: 12px; line-height: 1.9; margin-top: 22px; color: #69715f; }
+.welcome .principleInner h2 span { color: #687648; }
+.principleInner .eyebrow { color: #70512d; }
+.principleInner > div > p:not(.eyebrow) { max-width: 500px; font-size: 12px; line-height: 1.9; margin-top: 22px; color: #505640; }
 .trustPills { display: flex; align-items: center; flex-wrap: wrap; gap: 10px 18px; margin-top: 25px; }
-.trustPills span { display: flex; align-items: center; gap: 6px; color: #58664c; font-size: 9px; font-weight: 550; }
+.trustPills span { display: flex; align-items: center; gap: 6px; color: #485c32; font-size: 9px; font-weight: 550; }
 .teamSection { padding-top: 100px; padding-bottom: 82px; }
 .teamGrid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 20px; }
 .teamMonogram { height: 165px; border: 1px solid #e2e3d9; border-radius: 12px; background-color: #efefe7; background-image: linear-gradient(#9d9e8210 1px, transparent 1px), linear-gradient(90deg, #9d9e8210 1px, transparent 1px); background-size: 25px 25px; display: grid; place-items: center; position: relative; transition: background-color .3s; overflow: hidden; }

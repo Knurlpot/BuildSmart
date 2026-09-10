@@ -20,6 +20,7 @@
   position: absolute;
   inset: 0;
   opacity: var(--skyline-atmosphere, 0.36);
+  filter: blur(var(--skyline-blur, 0px));
   background: radial-gradient(ellipse at 85% 40%, #f2c29d33, transparent 70%);
 }
 

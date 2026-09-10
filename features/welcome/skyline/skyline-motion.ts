@@ -92,6 +92,7 @@ export function sampleSkylineScene(progress: number, width: number, staticScene 
     compression,
     foreground,
     reflection,
+    blur: staticScene ? 0 : 4 * smoothRange(0.04, 0.35, p) * (1 - smoothRange(0.65, 1, p)),
     introPlacement: staticScene ? 1 : 1 - smoothRange(0.55, 1, p),
     // Continuous responsive reduction (no jump at a device breakpoint).
     travel: 0.42 + 0.58 * smoothRange(420, 1280, width),

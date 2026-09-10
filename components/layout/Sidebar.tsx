@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import Image from "next/image";
-import { useState } from "react";
 import { Lock, LogOut, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { useAuth } from "@/providers/AuthProvider";
 import { useWorkflowHeaderValue } from "@/providers/WorkflowHeaderProvider";
@@ -51,9 +50,7 @@ export default function Sidebar({ collapsed = true, onToggle }: { collapsed?: bo
   const pathname = usePathname();
   const onboardingStep = currentUser?.onboardingStep ?? 0; 
   const workflow = useWorkflowHeaderValue();
-  const [hovered, setHovered] = useState(false);
-  const [focused, setFocused] = useState(false);
-  const compact = collapsed && !hovered && !focused;
+  const compact = collapsed;
 
   const handleLogout = async () => {
     await logout();
@@ -63,23 +60,31 @@ export default function Sidebar({ collapsed = true, onToggle }: { collapsed?: bo
   return (
     <aside
       aria-label="Main navigation"
-      onFocusCapture={() => setFocused(true)}
-      onBlurCapture={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setFocused(false); }}
-      onKeyDown={(event) => { if (event.key === "Escape") { setHovered(false); setFocused(false); if (!collapsed) onToggle?.(); } }}
-      onMouseEnter={() => collapsed && setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
+      onKeyDown={(event) => { if (event.key === "Escape" && !collapsed) onToggle?.(); }}
       className={`relative flex h-dvh flex-shrink-0 flex-col bg-white shadow-[2px_0_8px_rgba(0,0,0,0.08)] transition-[width] duration-200 motion-reduce:transition-none ${compact ? "w-16" : "w-64"}`}
     >
       <div className={`flex h-16 shrink-0 items-center transition-colors ${workflow ? "bg-primary" : "border-b border-gray-100"}`}>
         <Link
           href="/dashboard"
           aria-label="Go to dashboard"
-          className={`flex h-full min-w-0 flex-1 items-center ${compact ? "justify-center px-0" : "gap-2 px-4"}`}
+          className={`${compact && onToggle ? "hidden" : "flex"} h-full min-w-0 flex-1 items-center ${compact ? "justify-center px-0" : "gap-2 px-4"}`}
         >
           <Image src={logoFrame(13)} alt="" className={`h-7 w-7 shrink-0 ${workflow ? "brightness-0 invert" : ""}`} />
           {!compact && <span className={`text-base font-bold ${workflow ? "text-white" : "text-gray-900"}`}>BuildSmart</span>}
         </Link>
-        {onToggle && <button type="button" onClick={() => { onToggle(); if (!collapsed) { setHovered(false); setFocused(false); } }} aria-label={collapsed ? "Keep sidebar open" : "Collapse sidebar"} aria-expanded={!compact} className={`${compact ? "hidden" : "flex"} mr-3 h-8 w-8 shrink-0 items-center justify-center rounded-md ${workflow ? "text-white/80 hover:bg-white/15 hover:text-white" : "text-gray-500 hover:bg-orange-50 hover:text-primary"}`}>{collapsed ? <PanelLeftOpen className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}</button>}
+        {onToggle && <button
+          type="button"
+          onClick={onToggle}
+          aria-label={compact ? "Expand sidebar" : "Collapse sidebar"}
+          title={compact ? "Expand sidebar" : "Collapse sidebar"}
+          aria-expanded={!compact}
+          className={`group relative flex shrink-0 items-center justify-center rounded-md ${compact ? "h-full w-full" : "mr-3 h-8 w-8"} ${workflow ? "text-white/80 hover:bg-white/15 hover:text-white" : "text-gray-500 hover:bg-orange-50 hover:text-primary"}`}
+        >
+          {compact ? <>
+            <Image src={logoFrame(13)} alt="" className={`h-7 w-7 transition-opacity group-hover:opacity-0 group-focus-visible:opacity-0 motion-reduce:transition-none ${workflow ? "brightness-0 invert" : ""}`} />
+            <PanelLeftOpen className="absolute h-5 w-5 opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100 motion-reduce:transition-none" />
+          </> : <PanelLeftClose className="h-4 w-4" />}
+        </button>}
       </div>
 
       {onboardingStep < 2 && !compact && (

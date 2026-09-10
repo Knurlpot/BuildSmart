@@ -9,14 +9,17 @@ import { WorkflowHeaderProvider, useWorkflowHeaderValue } from "@/providers/Work
 function AppShellBody({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const workflow = useWorkflowHeaderValue();
-  const [sidebarVisible, setSidebarVisible] = useState(false);
-
-  const toggleSidebar = () => setSidebarVisible((visible) => !visible);
-
   const isDashboard = pathname === "/dashboard";
+  const [sidebarState, setSidebarState] = useState({ pathname, visible: !isDashboard });
+  // Reset the default on navigation, while keeping manual toggles on this page.
+  if (sidebarState.pathname !== pathname) {
+    setSidebarState({ pathname, visible: !isDashboard });
+  }
+  const sidebarVisible = sidebarState.pathname === pathname ? sidebarState.visible : !isDashboard;
+  const toggleSidebar = () => setSidebarState({ pathname, visible: !sidebarVisible });
 
   return (
-    <div className={isDashboard ? "min-h-screen w-full bg-gray-50 pl-16" : "flex h-screen w-full overflow-hidden bg-gray-50 pl-16"}>
+    <div className={isDashboard ? "min-h-screen w-full bg-gray-50 pl-16" : `flex h-screen w-full overflow-hidden bg-gray-50 ${sidebarVisible ? "pl-16 md:pl-64" : "pl-16"}`}>
       <div className="fixed inset-y-0 left-0 z-50 w-16">
         <Sidebar collapsed={!sidebarVisible} onToggle={toggleSidebar} />
       </div>

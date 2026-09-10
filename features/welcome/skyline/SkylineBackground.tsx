@@ -55,11 +55,12 @@ export function SkylineBackground({ page, enabled }: { page: RefObject<HTMLDivEl
       const progress = (window.scrollY - pageTop) / scrollRange;
       const scene = sampleSkylineScene(progress, viewportWidth, !enabled);
       container.style.setProperty("--skyline-atmosphere", String(scene.atmosphere));
+      container.style.setProperty("--skyline-blur", `${scene.blur}px`);
       container.style.setProperty("--skyline-ground-opacity", String(scene.groundOpacity));
       container.style.setProperty("--skyline-intro-offset", `${introOffset * scene.introPlacement}px`);
       container.dataset.scrollProgress = scene.progress.toFixed(3);
       water?.setAttribute("opacity", String(scene.reflection * 0.78));
-      baseline?.setAttribute("opacity", String(scene.foreground * 0.65));
+      baseline?.setAttribute("opacity", String(scene.foreground * 0.7));
       // Reveal solid foreground silhouettes geometrically; alpha per building
       // would expose the buildings underneath during the transition.
       foregroundClip?.setAttribute("y", String(1540 - scene.foreground * 650));
@@ -118,6 +119,7 @@ export function SkylineBackground({ page, enabled }: { page: RefObject<HTMLDivEl
       data-building={part.group?.id}
       data-reflection={part.reflection ? "true" : undefined}
       data-baseline={part.sourceIndex === 196 ? "true" : undefined}
+      opacity={part.sourceIndex === 196 ? 0 : undefined}
       clipPath={part.group && !part.group.tower ? `url(#${uid}-${part.reflection ? "reflected-foreground" : "foreground"}-reveal)` : undefined}
     >{source}{part.sourceIndex === 2 && <TowerCrane />}{part.sourceIndex === 17 && <TowerCrane right />}</g>;
   }
@@ -159,10 +161,11 @@ export function SkylineBackground({ page, enabled }: { page: RefObject<HTMLDivEl
           <g mask={`url(#${uid}-tower-fade)`}>
             {uprightParts.map(renderPart)}
           </g>
+          {/* Water sits over the baseline, tying its lower half into the reflection. */}
+          {renderPart(SKYLINE_PARTS[196])}
           <g data-reflections mask={`url(#${uid}-reflection-fade)`} opacity="0.546">
             {reflectedParts.map(renderPart)}
           </g>
-          {renderPart(SKYLINE_PARTS[196])}
         </svg>
       </div>
     </div>

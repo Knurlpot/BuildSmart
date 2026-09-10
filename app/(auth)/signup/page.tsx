@@ -1,10 +1,11 @@
 "use client";
 
-import { useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Check, ChevronRight, Eye, EyeOff } from "lucide-react";
 import { AuthBrandPanel } from "@/components/auth/AuthBrandPanel";
+import { signupLogoStage } from "@/components/auth/signup-logo-progress";
 import { TermsModal } from "@/components/auth/TermsModal";
 import { SpecializationSelect } from "@/components/forms/SpecializationSelect";
 import { useAuth } from "@/providers/AuthProvider";
@@ -82,30 +83,6 @@ function formatPhDisplayNumber(digits: string): string {
   return national ? `+63 ${national}` : "";
 }
 
-const TOTAL_FIELD_CHECKS = 11;
-
-function countValidFields(d: FormData, termsAccepted: boolean): number {
-  const checks = [
-    d.firstName.trim().length > 0,
-    d.lastName.trim().length > 0,
-    d.middleName.trim().length > 0,
-    isValidEmail(d.email),
-    d.password.length >= PASSWORD_MIN_LENGTH && d.password === d.confirmPassword,
-    d.inviteCode.trim().length > 0,
-    d.companyName.trim().length > 0,
-    d.companyAddress.trim().length > 0,
-    isValidEmail(d.companyContactEmail),
-    d.companyContactNumber.length === PH_NATIONAL_NUMBER_LENGTH,
-    d.specializations.length > 0,
-    termsAccepted,
-  ];
-  return checks.filter(Boolean).length;
-}
-
-function fieldCountToFrame(count: number): number {
-  return Math.min(13, Math.round((count / TOTAL_FIELD_CHECKS) * 13));
-}
-
 function ProgressBar({ step }: { step: Step }) {
   const steps: { n: Step; label: string }[] = [
     { n: 1, label: "Your Account" },
@@ -174,7 +151,7 @@ export default function SignUpPage() {
     }
   });
 
-  const filledCount = useMemo(() => countValidFields(form, termsAccepted), [form, termsAccepted]);
+  const logoStage = signupLogoStage(form, companyMode, termsAccepted);
 
   const set = <K extends keyof FormData>(field: K, value: FormData[K]) => {
     setForm((f) => ({ ...f, [field]: value }));
@@ -351,7 +328,8 @@ export default function SignUpPage() {
   return (
     <div className="flex h-screen w-full overflow-hidden">
       <AuthBrandPanel
-        frame={fieldCountToFrame(filledCount)}
+        frame={logoStage}
+        animateProgress
         footer={
           <div className="flex gap-2">
             {([1, 2] as Step[]).map((s) => (
