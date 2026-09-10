@@ -56,7 +56,7 @@ const cancelBtnCls =
 
 type CompanyInvite = {
   code: string;
-  role: "Admin" | "Estimator";
+  role: "Estimator";
   expires_at: string | null;
 };
 

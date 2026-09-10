@@ -9,9 +9,9 @@ export interface Users {
   email: string;
   profile_picture?: string | null;
   // password intentionally omitted — never expose this on the frontend type
-  user_role: 'Owner' | 'Admin' | 'Estimator';
+  user_role: 'Owner' | 'Estimator';
   status: 'Active' | 'Inactive';
   created_at: string;
 }
 
-export const USER_ROLES: Users['user_role'][] = ['Owner', 'Admin', 'Estimator'];
+export const USER_ROLES: Users['user_role'][] = ['Owner', 'Estimator'];

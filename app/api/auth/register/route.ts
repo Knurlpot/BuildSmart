@@ -104,7 +104,7 @@ export async function POST(request: NextRequest) {
       const inviteResult = await client.query<{
         invite_id: number;
         company_id: number;
-        role: "Admin" | "Estimator";
+        role: "Estimator";
         max_uses: number;
         used_count: number;
       }>(

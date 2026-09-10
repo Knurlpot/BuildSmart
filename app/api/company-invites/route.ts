@@ -7,7 +7,7 @@ type InviteRow = {
   invite_id: number;
   company_id: number;
   code: string;
-  role: "Admin" | "Estimator";
+  role: "Estimator";
   max_uses: number;
   used_count: number;
   expires_at: string | null;
