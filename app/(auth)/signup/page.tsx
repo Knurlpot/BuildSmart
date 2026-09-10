@@ -299,7 +299,10 @@ export default function SignUpPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!validateStep3()) return;
+    if (!validateStep3()) {
+      if (!termsAccepted) setTermsModalOpen(true);
+      return;
+    }
     setSubmitting(true);
     setApiError("");
     try {
@@ -639,11 +642,12 @@ export default function SignUpPage() {
                     <p className="mt-1 text-sm text-gray-600">{matchedCompany?.contact_email ?? "—"}</p>
                     <p className="mt-1 text-sm text-gray-600">{matchedCompany?.contact_number ?? "—"}</p>
                     {matchedCompany && matchedCompany.specializations.length > 0 && (
-                      <p className="mt-2 text-xs font-semibold text-primary">
-                        {matchedCompany.specializations.join(" / ")}
-                      </p>
+                      <ul className="mt-2 list-disc space-y-1 pl-5 text-xs font-semibold text-primary">
+                        {matchedCompany.specializations.map((specialization) => (
+                          <li key={specialization}>{specialization}</li>
+                        ))}
+                      </ul>
                     )}
-                    <p className="mt-3 text-xs text-gray-500">Your account will be added to this company as an Estimator.</p>
                   </div>
                 )}
 
@@ -767,19 +771,12 @@ export default function SignUpPage() {
                     <input
                       type="checkbox"
                       checked={termsAccepted}
-                      onChange={(e) => {
-                        setTermsAccepted(e.target.checked);
-                        setErrors((prev) => {
-                          if (!prev.terms) return prev;
-                          const n = { ...prev };
-                          delete n.terms;
-                          return n;
-                        });
-                      }}
+                      readOnly
+                      onClick={() => setTermsModalOpen(true)}
                       className="mt-0.5 h-4 w-4 shrink-0 rounded border-gray-300 text-primary focus:ring-2 focus:ring-primary/30"
                     />
                     <span>
-                      I agree to BuildSmart&apos;s{" "}
+                      {termsAccepted ? "I agree to" : "Open and read"} BuildSmart&apos;s{" "}
                       <button
                         type="button"
                         onClick={() => setTermsModalOpen(true)}

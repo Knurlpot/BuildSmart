@@ -1,12 +1,11 @@
 // Verbatim BuildSmart Terms and Conditions, as provided — do not paraphrase or rewrite
 // this content. The only change from the source file is repairing an em-dash character
 // that came through as a mis-encoded "â" in the original document; wording is untouched.
-// [Insert Date] / [Insert contact email] / [Insert institution...] placeholders are kept
+// [Insert contact email] / [Insert institution...] placeholders are kept
 // exactly as given — filling those in is not a frontend decision.
 export const TERMS_AND_CONDITIONS = `# BUILDSMART — TERMS AND CONDITIONS
 
-**Effective Date:** [Insert Date]
-**Last Updated:** [Insert Date]
+**Effective Date:** Sept. 10, 2026
 
 ---
 
