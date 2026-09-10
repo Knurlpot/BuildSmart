@@ -352,6 +352,10 @@ export function QuotationGenerationWizard() {
 
   const handleBackToMethod = () => setStep("method");
   const handleBackFromConfigure = () => {
+    if (isResumingOpenProject) {
+      returnToClientProjects();
+      return;
+    }
     if (method === "blueprint") {
       setBlueprintFloors(null);
       setOriginalBlueprintFloors(null);

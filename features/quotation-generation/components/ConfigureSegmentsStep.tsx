@@ -1,8 +1,9 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, ArrowLeft, CheckCircle2, Circle, Sparkles, Zap } from "lucide-react";
 import { useSaveSegments, useUpdateQuotationInputMethod } from "@/hooks/useQuotationGeneration";
+import { apiClient } from "@/lib/api/client";
 import { useLaborRules, useMaterialRules } from "@/lib/dev/provisional/useCompanyRulesProvisional";
 import { laborRuleScope } from "@/lib/dev/provisional/companyRulesTypes";
 import { SEGMENT_CONDITION_TAGS, type SegmentConditionTag } from "@/types/entities/segment-tag";
@@ -16,6 +17,8 @@ import {
 
 const inputCls =
   "w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-sm outline-none transition focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/20";
+
+const AUTOSAVE_DELAY_MS = 1200;
 
 interface SegmentConfigFormProps {
   segment: DraftSegment;
@@ -368,6 +371,8 @@ export function ConfigureSegmentsStep({ quoteId, segments, onChange, onSaved, on
   const [selectedId, setSelectedId] = useState<string | null>(segments[0]?.draft_id ?? null);
   const [applyAllOpen, setApplyAllOpen] = useState(false);
   const [applyRevision, setApplyRevision] = useState(0);
+  const [autosaveState, setAutosaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const autosaveVersion = useRef(0);
 
   // 
   const includedSegments = segments.filter(isSegmentIncluded);
@@ -409,6 +414,16 @@ export function ConfigureSegmentsStep({ quoteId, segments, onChange, onSaved, on
     setApplyRevision((r) => r + 1);
   };
 
+  const saveDraftSegments = async () => {
+    if (segments.length === 0) return;
+    await apiClient<{ saved_count: number }>(`/api/quotations/${quoteId}/segments`, {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ segments: segments.map(draftSegmentToPayload) }),
+    });
+  };
+
   const handleSave = async () => {
     if (!allConfigured) return;
     try {
@@ -424,12 +439,48 @@ export function ConfigureSegmentsStep({ quoteId, segments, onChange, onSaved, on
     }
   };
 
+  const handleBack = async () => {
+    try {
+      setAutosaveState("saving");
+      await saveDraftSegments();
+      setAutosaveState("saved");
+    } catch {
+      setAutosaveState("error");
+    } finally {
+      onBack();
+    }
+  };
+
+  useEffect(() => {
+    if (segments.length === 0) return;
+    const version = autosaveVersion.current + 1;
+    autosaveVersion.current = version;
+
+    const timer = window.setTimeout(() => {
+      setAutosaveState("saving");
+      apiClient<{ saved_count: number }>(`/api/quotations/${quoteId}/segments`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ segments: segments.map(draftSegmentToPayload) }),
+      })
+        .then(() => {
+          if (autosaveVersion.current === version) setAutosaveState("saved");
+        })
+        .catch(() => {
+          if (autosaveVersion.current === version) setAutosaveState("error");
+        });
+    }, AUTOSAVE_DELAY_MS);
+
+    return () => window.clearTimeout(timer);
+  }, [quoteId, segments]);
+
   return (
     <div className="flex flex-col gap-4">
       <div className="flex items-start gap-3">
         <button
           type="button"
-          onClick={onBack}
+          onClick={() => void handleBack()}
           title="Back"
           className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-gray-200 bg-white text-gray-500 transition hover:border-primary hover:text-primary"
         >
@@ -440,6 +491,13 @@ export function ConfigureSegmentsStep({ quoteId, segments, onChange, onSaved, on
           <p className="text-xs text-gray-500">
             {configuredCount} of {includedSegments.length} included segments configured.
           </p>
+          {autosaveState !== "idle" && (
+            <p className={`mt-1 text-xs ${autosaveState === "error" ? "text-red-500" : "text-gray-400"}`}>
+              {autosaveState === "saving" && "Saving draft..."}
+              {autosaveState === "saved" && "Draft saved automatically."}
+              {autosaveState === "error" && "Draft autosave failed. Use Save Segments before leaving."}
+            </p>
+          )}
         </div>
       </div>
 

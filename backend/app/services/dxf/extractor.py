@@ -3,7 +3,6 @@ import math
 import os
 import re
 import tempfile
-import re
 import time
 from collections import Counter
 from dataclasses import replace
@@ -877,6 +876,17 @@ def _classify_entity(entity: NormalizedEntity) -> str:
     return "unknown"
 
 
+def _is_non_room_entity(entity: NormalizedEntity) -> bool:
+    return _classify_entity(entity) in {"dimension", "furniture", "door", "window", "stairs", "annotation"}
+
+
+def _is_authoritative_room_source(source: NormalizedEntity | None) -> bool:
+    if source is None:
+        return False
+    signal = f"{source.layer} {source.block_name or ''} {source.entity_type}".lower()
+    return source.entity_type in {"HATCH", "SOLID"} or any(keyword in signal for keyword in ("room", "space", "area"))
+
+
 def _iter_linework(entities: list[NormalizedEntity], include_unknown: bool = True) -> list[LineString]:
     linework: list[LineString] = []
     classified_walls_exist = any(_classify_entity(entity) in {"wall", "stairs"} for entity in entities)
@@ -1083,6 +1093,19 @@ def _room_label_count(polygon: Polygon, labels: list[TextLabel], tolerance: floa
     return sum(1 for label in labels if tested.contains(_label_point(label)) or tested.touches(_label_point(label)))
 
 
+def _entity_overlap_count(polygon: Polygon, entities: list[NormalizedEntity], min_overlap_ratio: float = 0.35) -> int:
+    count = 0
+    for entity in entities:
+        if _is_non_room_entity(entity) or not isinstance(entity.geometry, Polygon):
+            continue
+        if entity.geometry is polygon or entity.geometry.area <= 0:
+            continue
+        overlap_ratio = polygon.intersection(entity.geometry).area / max(entity.geometry.area, 0.000001)
+        if overlap_ratio >= min_overlap_ratio:
+            count += 1
+    return count
+
+
 def _authoritative_polygon_score(polygon: Polygon, source: NormalizedEntity | None) -> tuple[int, float]:
     if source is None:
         return (1, polygon.area)
@@ -1113,9 +1136,12 @@ def _discard_container_polygons(
     candidates: list[tuple[Polygon, NormalizedEntity | None]],
     labels: list[TextLabel],
     tolerance: float,
+    floor_area: float | None = None,
 ) -> list[tuple[Polygon, NormalizedEntity | None]]:
     filtered: list[tuple[Polygon, NormalizedEntity | None]] = []
+    effective_floor_area = max(floor_area or 0, max((polygon.area for polygon, _ in candidates), default=1), 1)
     for polygon, source in candidates:
+        label_count = _room_label_count(polygon, labels, tolerance)
         contained_rooms = [
             other
             for other, _ in candidates
@@ -1125,7 +1151,9 @@ def _discard_container_polygons(
         ]
         # A floor plate/sheet border contains many room labels and smaller room loops.
         # It is useful as context, but it must never become a quote segment.
-        if len(contained_rooms) >= 2 and _room_label_count(polygon, labels, tolerance) >= 2:
+        if len(contained_rooms) >= 2 and label_count >= 2:
+            continue
+        if polygon.area / effective_floor_area > 0.38 and label_count >= 2 and not _is_authoritative_room_source(source):
             continue
         filtered.append((polygon, source))
     return filtered
@@ -1164,7 +1192,9 @@ def _closed_entity_room_candidates(
         label_count = _room_label_count(polygon, labels, label_tolerance)
         # Large closed loops are usually floor plates, tile boundaries, or exterior envelopes.
         # Keep them only if there is a single label and no better evidence later.
-        if _bounds_area(polygon.bounds) / floor_area > 0.45 and label_count != 1 and labels:
+        if _bounds_area(polygon.bounds) / floor_area > 0.38 and (label_count != 1 or not _is_authoritative_room_source(entity)) and labels:
+            continue
+        if not _is_authoritative_room_source(entity) and _entity_overlap_count(polygon, floor_entities) >= 2:
             continue
         candidates.append((polygon, entity))
     return candidates
@@ -1220,13 +1250,15 @@ def _confidence(label: TextLabel | None, polygon: Polygon, printed_area: float |
         score += 25
     if label and polygon.contains(label.point):
         score += 15
+    elif label:
+        score -= 10
     if printed_area:
         relative_error = abs(area_sqm - printed_area) / max(printed_area, 0.01)
         score += max(0, 20 - relative_error * 40)
     if door_validated:
         score += 15  # Doors confirm interior space
     if inferred:
-        score -= 12
+        score -= 18
     if canonical_name(label.text if label else "") in {"void area"}:
         score -= 10
     return round(max(35, min(98, score)), 0)
@@ -1311,6 +1343,86 @@ def _area_boundary_mismatch(area_sqm: float, printed_area: float | None) -> bool
     if printed_area is None:
         return False
     return abs(area_sqm - printed_area) > max(printed_area * 0.75, 12)
+
+
+def _area_error_sqm(polygon: Polygon, printed_area: float, metre_factor: float) -> float:
+    return abs((polygon.area * metre_factor * metre_factor) - printed_area)
+
+
+def _best_connected_area_union(
+    label: TextLabel,
+    polygons: list[Polygon],
+    labels: list[TextLabel],
+    printed_area: float | None,
+    metre_factor: float,
+    bounds: tuple[float, float, float, float],
+) -> Polygon | None:
+    if printed_area is None or not polygons:
+        return None
+    target_area_native = printed_area / max(metre_factor * metre_factor, 0.000001)
+    label_point = _label_point(label)
+    floor_box = box(*bounds)
+    other_label_points = [
+        _label_point(other)
+        for other in labels
+        if other.handle != label.handle and is_room_name_label(other.text)
+    ]
+    cells = [
+        polygon
+        for polygon in polygons
+        if polygon.is_valid
+        and polygon.area > 0
+        and polygon.intersection(floor_box).area / max(polygon.area, 0.000001) >= 0.9
+        and not any(polygon.covers(point) for point in other_label_points)
+        and polygon.area <= target_area_native * 1.35
+    ]
+    if not cells:
+        return None
+
+    cells.sort(key=lambda polygon: (not polygon.covers(label_point), polygon.distance(label_point), _area_error_sqm(polygon, printed_area, metre_factor)))
+    selected = [cells[0]]
+    best = cells[0]
+    best_error = _area_error_sqm(best, printed_area, metre_factor)
+    tolerance = max(printed_area * 0.2, 2)
+    if best_error <= tolerance and len(list(best.exterior.coords)) > 5:
+        return best
+
+    remaining = cells[1:]
+    while remaining:
+        current_union = unary_union(selected)
+        if not isinstance(current_union, Polygon):
+            break
+        adjacent = [
+            polygon
+            for polygon in remaining
+            if current_union.touches(polygon) or current_union.distance(polygon) <= max(math.sqrt(target_area_native) * 0.015, 0.001)
+        ]
+        if not adjacent:
+            break
+        candidate = min(
+            adjacent,
+            key=lambda polygon: _area_error_sqm(unary_union([current_union, polygon]), printed_area, metre_factor),
+        )
+        merged = unary_union([current_union, candidate])
+        if not isinstance(merged, Polygon) or merged.area > target_area_native * 1.45:
+            break
+        merged_error = _area_error_sqm(merged, printed_area, metre_factor)
+        remaining.remove(candidate)
+        if merged_error < best_error:
+            selected.append(candidate)
+            best = merged
+            best_error = merged_error
+            if best_error <= tolerance:
+                break
+            continue
+        if current_union.area < target_area_native:
+            selected.append(candidate)
+            continue
+        break
+
+    if best_error <= max(printed_area * 0.35, 4) and best.covers(label_point):
+        return best
+    return None
 
 
 def _printed_area_corrected_polygon(
@@ -1404,7 +1516,7 @@ def _candidate_spaces_for_floor(
             
             # Door validation boost
             door_valid, door_count = _validate_space_with_doors(polygon, doors)
-            confidence = _space_confidence_from_door_validation(door_count, hatch_confidence + 10)
+            confidence = _space_confidence_from_door_validation(door_count, hatch_confidence * 100)
             
             warnings = ()
             if corrected_boundary:
@@ -1424,7 +1536,7 @@ def _candidate_spaces_for_floor(
             # Door validation
             door_valid, door_count = _validate_space_with_doors(polygon, doors)
             if door_valid or area_sqm >= 3.0:  # Accept if has doors or is reasonable size
-                confidence = _space_confidence_from_door_validation(door_count, hatch_confidence)
+                confidence = _space_confidence_from_door_validation(door_count, hatch_confidence * 100)
                 confidence = _confidence_from_symbol_evidence(confidence, symbol_evidence)
                 warnings = ["Hatch fill detected - no text label."]
                 if symbol_evidence:
@@ -1475,7 +1587,7 @@ def _candidate_spaces_for_floor(
     ]
     candidate_polygons.extend(_closed_entity_room_candidates(floor_entities, labels, bounds, metre_factor, config))
     candidate_polygons = _dedupe_polygons(candidate_polygons, max(config.snap_tolerance_m, drawing_span * 0.0005))
-    candidate_polygons = _discard_container_polygons(candidate_polygons, labels, max(config.snap_tolerance_m, drawing_span * 0.0005))
+    candidate_polygons = _discard_container_polygons(candidate_polygons, labels, max(config.snap_tolerance_m, drawing_span * 0.0005), floor_area)
     diagnostics.candidate_spaces += len(candidate_polygons)
 
     # Add labeled candidates from linework (skipping already-found from hatches)
@@ -1519,22 +1631,33 @@ def _candidate_spaces_for_floor(
             candidates = [polygon for polygon in candidates if polygon.area <= area_limit]
         
         if printed_area:
-            candidates = sorted(candidates, key=lambda polygon: (abs((polygon.area * metre_factor * metre_factor) - printed_area), polygon.distance(label.point), polygon.area))
+            source_by_polygon = {id(polygon): source for polygon, source in candidate_polygons}
+            candidates = sorted(candidates, key=lambda polygon: (abs((polygon.area * metre_factor * metre_factor) - printed_area), not _is_authoritative_room_source(source_by_polygon.get(id(polygon))), _room_label_count(polygon, labels) != 1, polygon.distance(label.point), polygon.area))
             if candidates:
                 closest_area = candidates[0].area * metre_factor * metre_factor
                 if abs(closest_area - printed_area) > max(printed_area * 0.75, 12):
                     candidates = []
         else:
-            candidates = sorted(candidates, key=lambda polygon: (polygon.distance(label.point), polygon.area))
+            source_by_polygon = {id(polygon): source for polygon, source in candidate_polygons}
+            candidates = sorted(candidates, key=lambda polygon: (not _is_authoritative_room_source(source_by_polygon.get(id(polygon))), _room_label_count(polygon, labels) != 1, polygon.distance(label.point), polygon.area))
         used_fallback = False
+        selected_source = None
+        merged_polygon = _best_connected_area_union(label, polygons, labels, printed_area, metre_factor, fallback_bounds)
         if not candidates:
-            polygon = _dimension_fallback_polygon(label, floor_labels, fallback_bounds, drawing_span, metre_factor)
+            polygon = merged_polygon or _dimension_fallback_polygon(label, floor_labels, fallback_bounds, drawing_span, metre_factor)
             if polygon is None:
                 diagnostics.unmatched_labels += 1
                 continue
-            used_fallback = True
+            used_fallback = merged_polygon is None
         else:
             polygon = candidates[0]
+            selected_source = source_by_polygon.get(id(polygon))
+            if merged_polygon is not None and (
+                _area_error_sqm(merged_polygon, printed_area, metre_factor) < _area_error_sqm(polygon, printed_area, metre_factor)
+                or (len(list(merged_polygon.exterior.coords)) > len(list(polygon.exterior.coords)) and _area_error_sqm(merged_polygon, printed_area, metre_factor) <= max(printed_area * 0.25, 3))
+            ):
+                polygon = merged_polygon
+                selected_source = None
 
         corrected_polygon, corrected_boundary = _printed_area_corrected_polygon(label, floor_labels, polygon, fallback_bounds, drawing_span, metre_factor, printed_area)
         if corrected_boundary:
@@ -1554,9 +1677,15 @@ def _candidate_spaces_for_floor(
             # actual room/open-plan shell instead of accepting furniture detail.
             continue
         inferred = used_fallback or not polygon.contains(label.point)
-        confidence = _confidence(label, polygon, printed_area, area_sqm, inferred=inferred)
+        _, door_count = _validate_space_with_doors(polygon, doors)
+        label_count = _room_label_count(polygon, labels)
+        confidence = _confidence(label, polygon, printed_area, area_sqm, inferred=inferred, door_validated=door_count > 0)
+        if not used_fallback and selected_source is not None and _is_authoritative_room_source(selected_source):
+            confidence = max(confidence, 82 if not polygon.contains(label.point) else 88)
         if used_fallback:
             confidence = min(confidence, 60)
+        elif label_count > 1:
+            confidence = min(confidence, 70)
         warnings = ()
         if used_fallback:
             warnings = ("Boundary estimated from the printed area; verify against the walls.",)
@@ -1565,7 +1694,6 @@ def _candidate_spaces_for_floor(
         spaces.append(CandidateSpace(polygon, label, name, canonical_name(name), confidence, inferred, (label.handle,), warnings, printed_area))
         used_keys.add(key)
         used_labels.add(label.handle)
-        _, door_count = _validate_space_with_doors(polygon, doors)
         diagnostics.door_validated_spaces += 1 if door_count > 0 else 0
 
     fallback_indexes = [index for index, space in enumerate(spaces) if space.reported_area_sqm is not None and space.label is not None]
@@ -1810,6 +1938,16 @@ def _to_segment(
     )
 
 
+def _polygon_area(points: list[tuple[float, float]]) -> float:
+    if len(points) < 3:
+        return 0.0
+    total = 0.0
+    for index, (x1, y1) in enumerate(points):
+        x2, y2 = points[(index + 1) % len(points)]
+        total += x1 * y2 - x2 * y1
+    return abs(total) / 2
+
+
 def debug_dxf_blueprint(path: str | Path) -> dict[str, object]:
     import ezdxf
 
@@ -2042,28 +2180,27 @@ def extract_dxf_blueprint(content: bytes, config: DxfExtractionConfig | None = N
                 max(screen_min_x, screen_max_x),
                 max(screen_min_y, screen_max_y),
             )
-        floors.append(
-            BlueprintFloor(
-                floor_id=floor_id,
-                floor_level=region.name,
-                floor_name=region.name,
-                image_url=image_url,
-                image_width=width,
-                image_height=height,
-                focus_bounds=focus_bounds,
-                viewport_bbox=region.bounds,
-                segments=segments,
-                confidence_buckets=confidence_buckets,
-                review_required=bool(
-                    confidence_buckets.medium_confidence
-                    or confidence_buckets.low_confidence
-                    or confidence_buckets.uncertain
-                ),
-                legend=legend,
-                visual_preview_url=image_url,
-                report_page_url=image_url,
-            )
+        floor = BlueprintFloor(
+            floor_id=floor_id,
+            floor_level=region.name,
+            floor_name=region.name,
+            image_url=image_url,
+            image_width=width,
+            image_height=height,
+            focus_bounds=focus_bounds,
+            viewport_bbox=region.bounds,
+            segments=segments,
+            confidence_buckets=confidence_buckets,
+            review_required=bool(
+                confidence_buckets.medium_confidence
+                or confidence_buckets.low_confidence
+                or confidence_buckets.uncertain
+            ),
+            legend=legend,
+            visual_preview_url=image_url,
+            report_page_url=image_url,
         )
+        floors.append(floor)
         floor_region_bounds.append(region.bounds)
 
     populated = [(floor, bounds) for floor, bounds in zip(floors, floor_region_bounds) if floor.segments]
