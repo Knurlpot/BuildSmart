@@ -8,11 +8,11 @@ test("saved blueprint path is linked to the tenant quotation", async () => {
   const calls = [];
   const db = { query: async (...args) => calls.push(args) };
 
-  const linked = await linkBlueprintToQuotation(db, "quotations/42/plan.pdf", 42, 7);
+  const linked = await linkBlueprintToQuotation(db, "quotations/42/plan.dxf", 42, 7);
 
   assert.equal(linked, true);
   assert.match(calls[0][0], /blueprint_file_path = \$1/);
-  assert.deepEqual(calls[0][1], ["quotations/42/plan.pdf", 42, 7]);
+  assert.deepEqual(calls[0][1], ["quotations/42/plan.dxf", 42, 7]);
 });
 
 test("missing storage path leaves the quotation unchanged", async () => {

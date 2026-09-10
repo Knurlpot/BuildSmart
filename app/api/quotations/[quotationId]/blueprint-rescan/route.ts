@@ -27,6 +27,9 @@ export async function POST(request: NextRequest, { params }: Params) {
       { status: 409 },
     );
   }
+  if (!savedPath.toLowerCase().endsWith(".dxf")) {
+    return NextResponse.json({ error: "Saved PDF blueprints can no longer be rescanned. Upload a DXF blueprint." }, { status: 400 });
+  }
 
   try {
     const response = await fetch(`${API_BASE}/blueprints/rescan/${quoteId}`, {

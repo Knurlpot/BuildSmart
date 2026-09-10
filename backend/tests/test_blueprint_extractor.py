@@ -2,9 +2,7 @@ import io
 
 import ezdxf
 import pytest
-from PIL import Image
 
-from app.schemas.blueprint import GeminiDetectedSpace, GeminiFloorExtraction
 from app.services.blueprint_extractor import extract_blueprint
 from app.services.dxf.extractor import _axis_aligned_label_partitions, _close_linework_gaps, _iter_linework
 from app.services.dxf.parser import _should_infer_closed_wall
@@ -335,62 +333,12 @@ def test_unlabeled_dxf_rooms_use_fixture_symbols_for_room_type():
 
 def test_rejects_empty_file():
     with pytest.raises(ValueError, match="empty"):
-        extract_blueprint("floor-plan.pdf", b"")
+        extract_blueprint("floor-plan.dxf", b"")
 
 
-def test_scanned_pdf_without_detected_blueprint_spaces_is_rejected(monkeypatch):
-    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
-    pdf = io.BytesIO()
-    Image.new("RGB", (200, 100), "white").save(pdf, format="PDF")
-
-    with pytest.raises(ValueError, match="No blueprint floor plan or room geometry"):
-        extract_blueprint("floor-plan.pdf", pdf.getvalue())
-
-
-def test_scanned_pdf_uses_gemini_single_floor_space_schema(monkeypatch):
-    pdf = io.BytesIO()
-    Image.new("RGB", (200, 100), "white").save(pdf, format="PDF")
-    monkeypatch.setenv("GEMINI_API_KEY", "test-key")
-
-    def fake_extract(image_bytes: bytes, page_number: int) -> GeminiFloorExtraction:
-        assert image_bytes
-        assert page_number == 1
-        return GeminiFloorExtraction(
-            floor_name="Ground Floor Plan",
-            total_detected_spaces=2,
-            detected_spaces=[
-                GeminiDetectedSpace(
-                    id="space_1",
-                    name="MAIN CORRIDOR",
-                    category="Circulation & Hallways",
-                    color_hex="#9B59B6",
-                    bounding_box_1000=(350, 100, 430, 900),
-                    confidence_score=0.9,
-                ),
-                GeminiDetectedSpace(
-                    id="space_2",
-                    name="UNLABELED_UTILITY_1",
-                    category="Unassigned Utility",
-                    color_hex="#7F8C8D",
-                    bounding_box_1000=(430, 200, 520, 350),
-                    confidence_score=0.85,
-                ),
-            ],
-        )
-
-    monkeypatch.setattr("app.services.blueprint_extractor._extract_pdf_page_with_gemini", fake_extract)
-
-    result = extract_blueprint("floor-plan.pdf", pdf.getvalue())
-
-    floor = result.floors[0]
-    assert floor.floor_level == "Ground Floor Plan"
-    assert [segment.segment_name for segment in floor.segments] == ["MAIN CORRIDOR", "UNLABELED_UTILITY_1"]
-    assert floor.segments[0].category == "Circulation & Hallways"
-    assert floor.segments[0].color_hex == "#9B59B6"
-    assert floor.segments[0].polygon_coords == [(20.0, 35.0), (180.0, 35.0), (180.0, 43.0), (20.0, 43.0)]
-    assert floor.segments[0].confidence_score == 90
-    assert result.diagnostics is not None
-    assert result.diagnostics["source"] == "gemini_vision"
+def test_rejects_pdf_uploads():
+    with pytest.raises(ValueError, match="PDF blueprint uploads are no longer supported"):
+        extract_blueprint("floor-plan.pdf", b"not-empty")
 
 
 def test_rejects_raw_image_uploads():
@@ -399,5 +347,5 @@ def test_rejects_raw_image_uploads():
 
 
 def test_rejects_unknown_file_type():
-    with pytest.raises(ValueError, match="PDF or DXF"):
+    with pytest.raises(ValueError, match="DXF"):
         extract_blueprint("floor-plan.txt", b"not-empty")

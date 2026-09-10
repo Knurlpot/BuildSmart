@@ -6,7 +6,7 @@ import { getNormalizationApiBaseUrl } from "@/lib/server/config";
 
 const API_BASE = getNormalizationApiBaseUrl();
 const MAX_FILE_BYTES = 25 * 1024 * 1024;
-const ALLOWED_EXTENSIONS = new Set(["pdf", "dxf"]);
+const ALLOWED_EXTENSIONS = new Set(["dxf"]);
 
 type Params = { params: Promise<{ quotationId: string }> };
 
@@ -30,7 +30,7 @@ export async function POST(request: NextRequest, { params }: Params) {
 
   const extension = file.name.toLowerCase().split(".").pop() ?? "";
   if (!ALLOWED_EXTENSIONS.has(extension)) {
-    return NextResponse.json({ error: "Upload a PDF or DXF blueprint." }, { status: 400 });
+    return NextResponse.json({ error: "Upload a DXF blueprint." }, { status: 400 });
   }
   if (file.size === 0 || file.size > MAX_FILE_BYTES) {
     return NextResponse.json({ error: "Blueprint files must be between 1 byte and 25 MB." }, { status: 400 });

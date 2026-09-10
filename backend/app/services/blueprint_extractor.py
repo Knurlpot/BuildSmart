@@ -225,7 +225,7 @@ def _extract_scanned_pdf_preview(content: bytes) -> BlueprintExtractionResult:
         )
     detected_spaces = sum(len(floor.segments) for floor in floors)
     if detected_spaces == 0:
-        raise ValueError("No blueprint floor plan or room geometry was detected in this file. Upload a vector PDF or DXF blueprint with readable walls, room labels, or room polygons.")
+        raise ValueError("No blueprint floor plan or room geometry was detected in this file. Upload a DXF blueprint with readable walls, room labels, or room polygons.")
     if gemini_enabled:
         return BlueprintExtractionResult(
             floors=floors,
@@ -851,13 +851,11 @@ def extract_blueprint(filename: str, content: bytes) -> BlueprintExtractionResul
 
     extension = Path(filename).suffix.lower()
     if extension in {".png", ".jpg", ".jpeg", ".bmp"}:
-        raise ValueError("Image uploads are not supported. Upload a vector PDF or DXF blueprint.")
+        raise ValueError("Image uploads are not supported. Upload a DXF blueprint.")
     if extension == ".pdf":
-        result = _extract_pdf(content)
-        result = validate_extraction_geometry(result)
-        return _with_hybrid_structured_json(filename, _with_review_metadata(result))
+        raise ValueError("PDF blueprint uploads are no longer supported. Upload a DXF blueprint.")
     if extension == ".dxf":
         result = _extract_dxf(content)
         result = validate_extraction_geometry(result)
         return _with_hybrid_structured_json(filename, _with_review_metadata(result))
-    raise ValueError("Upload a PDF or DXF blueprint.")
+    raise ValueError("Upload a DXF blueprint.")
