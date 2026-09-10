@@ -16,6 +16,10 @@ screenshots, and these user-requested motion rules.
 - Keep the BuildSmart warm palette. Add soft gradients, shadows, and fading.
 - Reduce movement on tablet/mobile and prevent horizontal overflow.
 - Reduced-motion and the page's pause control show a stable dispersed scene.
+- Revision: lower the introductory skyline so rooftops have clear space below
+  the navigation. Return to the footer baseline continuously near the end.
+- Buildings use fully opaque source fills with no individual alpha, blend, or
+  shadow effects. Fade the assembled city, not each overlapping silhouette.
 
 Implementation mapping and remaining source ambiguities are documented in
 `design-reference/README.md`.

@@ -84,6 +84,14 @@ Other foreground paths remain individual motifs. Major foreground silhouettes
 are 32, 46, 47, 49, 50, 54, 55, 58, 59, and 61. Descriptive names in this document
 identify visual forms, not verified names of actual Manila landmarks.
 
+The presentation uses fully opaque source fills, including the antenna detail
+wrappers. Original alpha/blend metadata remains in the source and generated data,
+but is intentionally not applied at runtime following the user's solid-overlap
+revision. The upright city receives one shared mask **after** its paths have
+been composited; overall atmosphere and reflection alpha also apply to assembled
+layers. Foreground motifs appear through a rising clip boundary, not per-path
+opacity. This prevents rear-building silhouettes showing through front buildings.
+
 Logical grouping does **not** reorder the source artwork. Each root part keeps
 its original position in the SVG painter sequence and receives the transform
 of its logical building/motif. Disconnected details therefore move together
@@ -140,6 +148,23 @@ scale animation. Smaller viewports reduce travel; reduced-motion mode presents
 a stable static composition. The skyline remains a decorative environmental
 layer with no pointer interception, and existing text, navigation, cards,
 buttons, and section layout retain their foreground priority.
+
+Introductory placement puts the tallest rooftop at the navigation height plus
+16% of viewport height (that extra gap is capped at 140px), when lowering is
+needed. This is a vertical placement offset, never a size change. From 55% to
+100% scroll the offset smoothly returns to zero so the reflection meets the
+footer baseline. Reduced-motion keeps the lowered placement stable.
+
+## Headline lighting and decorative cranes
+
+The readability gradient is attached to the hero heading itself, rather than
+covering the skyline viewport. Two small decorative cranes are added to source
+buildings 2 and 17, anchored at (495,250) and (2650,421). They are new construction
+details, not modifications to the supplied building paths. Each inherits its
+building's translation and painter order. Cable length and load height share
+36/44-second eased cycles, with rests at the upper and lower positions. Pause
+and reduced-motion settings show stationary cranes. Their pale orange strokes
+and cream loads share the city layer's overall fade.
 
 ## Preserved ambiguities for design review
 

@@ -26,30 +26,43 @@
 .artwork {
   position: absolute;
   left: 50%;
-  bottom: calc(var(--skyline-footer-height) - var(--skyline-art-width) * 0.23558179);
+  bottom: calc(var(--skyline-footer-height) - var(--skyline-art-width) * 0.23558179 - var(--skyline-intro-offset, 140px));
   width: var(--skyline-art-width);
   height: auto;
   max-width: none;
   /* Layout centering only: building size never changes with scroll. */
   transform: translateX(-50%);
-  filter: drop-shadow(0 5px 7px #8d3f1210);
 }
 
-.contentVeil {
-  position: absolute;
-  inset: 0;
-  background:
-    radial-gradient(ellipse 58% 38% at 46% 38%, #fbfaf7ed 18%, #fbfaf7b0 55%, #fbfaf700 100%),
-    linear-gradient(to bottom, #fbfaf7b0, #fbfaf700 28%);
+.crane {
+  --crane-cycle: 36s;
+  --crane-delay: -5s;
+  fill: none;
+  stroke: #c98e52;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
-
-@media (max-width: 800px) {
-  .contentVeil {
-    background: radial-gradient(ellipse 70% 46% at 45% 36%, #fbfaf7f0 12%, #fbfaf7bf 60%, #fbfaf700 100%);
-  }
-  .artwork { filter: none; }
+.craneRight { --crane-cycle: 44s; --crane-delay: -19s; }
+.hoistCable {
+  transform-origin: 0 0;
+  animation: cableLift var(--crane-cycle) ease-in-out var(--crane-delay) infinite;
+}
+.hoistLoad {
+  transform: translateY(184px);
+  animation: materialLift var(--crane-cycle) ease-in-out var(--crane-delay) infinite;
+}
+.environment[data-crane-motion="off"] :is(.hoistCable, .hoistLoad) { animation: none; }
+@keyframes cableLift {
+  0%, 12%, 100% { transform: scaleY(1); }
+  48%, 62% { transform: scaleY(0.239130435); }
+}
+@keyframes materialLift {
+  0%, 12%, 100% { transform: translateY(184px); }
+  48%, 62% { transform: translateY(44px); }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .artwork [data-building] { transform: none !important; }
+  .hoistCable, .hoistLoad { animation: none; }
 }

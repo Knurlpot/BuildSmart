@@ -74,6 +74,7 @@ export function sampleSkylineScene(progress: number, width: number, staticScene 
     compression,
     foreground,
     reflection,
+    introPlacement: staticScene ? 1 : 1 - smoothRange(0.55, 1, p),
     // Continuous responsive reduction (no jump at a device breakpoint).
     travel: 0.42 + 0.58 * smoothRange(420, 1280, width),
     atmosphere: staticScene ? 0.36 : 0.36 - 0.29 * compression + 0.22 * smoothRange(0.65, 1, p),
@@ -91,6 +92,5 @@ export function sampleBuilding(group: SkylineGroup, scene: ReturnType<typeof sam
     x,
     y,
     reflectedY: -y * group.reflectionRatio,
-    opacity: group.tower ? 0.78 + group.depth * 0.2 - scene.compression * 0.08 : scene.foreground,
   };
 }
