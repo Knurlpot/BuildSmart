@@ -16,10 +16,13 @@ export async function GET(request: NextRequest, { params }: Params) {
     `SELECT q.quote_id, q.company_id, q.user_id, q.updated_by_user_id, q.client_id, q.project_name, q.project_location,
             q.project_region, q.input_method, q.status, q.accepted_tier, q.total_material_cost::float AS total_material_cost,
             q.total_service_cost::float AS total_service_cost, q.grand_total::float AS grand_total,
+            trim(concat_ws(' ', creator.first_name, creator.last_name)) AS created_by_user_name,
+            creator.email AS created_by_user_email,
             trim(concat_ws(' ', updater.first_name, updater.last_name)) AS updated_by_user_name,
             updater.email AS updated_by_user_email,
             q.created_at::text AS created_at, q.updated_at::text AS updated_at
      FROM quotation q
+     LEFT JOIN users creator ON creator.user_id = q.user_id
      LEFT JOIN users updater ON updater.user_id = COALESCE(q.updated_by_user_id, q.user_id)
      WHERE q.quote_id = $1 AND q.company_id = $2`,
     [quoteId, auth.companyId]

@@ -1,3 +1,5 @@
+import type { ProjectSiteCondition } from './site-condition-rule';
+
 export type SegmentSourceMethod = 'Manual' | 'Blueprint' | 'Hybrid';
 export type SegmentStatus = 'Active' | 'Removed';
 
@@ -20,4 +22,6 @@ export interface ProjectSegment {
   work_type: string;
   notes?: string | null;
   status: SegmentStatus;
+  site_conditions?: ProjectSiteCondition[];
+  site_condition_effect_decisions?: Record<string, boolean>;
 }

@@ -1,12 +1,14 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { AlertTriangle, ArrowLeft, CheckCircle2, Circle, Sparkles, Zap } from "lucide-react";
+import { AlertTriangle, ArrowLeft, CheckCircle2, Circle, Plus, Sparkles, Trash2, Zap } from "lucide-react";
 import { useSaveSegments, useUpdateQuotationInputMethod } from "@/hooks/useQuotationGeneration";
 import { apiClient } from "@/lib/api/client";
 import { useLaborRules, useMaterialRules } from "@/lib/dev/provisional/useCompanyRulesProvisional";
 import { laborRuleScope } from "@/lib/dev/provisional/companyRulesTypes";
-import { SEGMENT_CONDITION_TAGS, type SegmentConditionTag } from "@/types/entities/segment-tag";
+import { useSiteConditionRules } from "@/hooks/useSiteConditionRules";
+import { SITE_CONDITION_FIELDS, siteConditionField, type ProjectSiteCondition, type SiteConditionFieldKey, type SiteConditionRule } from "@/types/entities/site-condition-rule";
+import { evaluateSiteConditionRules, isSiteConditionEffectIncluded } from "../lib/siteConditionEngine";
 import {
   computeQuotationInputMethod,
   draftSegmentToPayload,
@@ -24,27 +26,44 @@ interface SegmentConfigFormProps {
   segment: DraftSegment;
   treatmentOptions: string[];
   laborTradeOptions: string[];
+  siteConditionRules: SiteConditionRule[];
   onSave: (patch: Partial<DraftSegment>) => void;
 }
 
 // 
-function SegmentConfigForm({ segment, treatmentOptions, laborTradeOptions, onSave }: SegmentConfigFormProps) {
+function SegmentConfigForm({ segment, treatmentOptions, laborTradeOptions, siteConditionRules, onSave }: SegmentConfigFormProps) {
   const isKnownTreatment = segment.treatment_type !== null && treatmentOptions.includes(segment.treatment_type);
   const [treatmentChoice, setTreatmentChoice] = useState<string>(
     isKnownTreatment ? segment.treatment_type! : segment.treatment_type ? "Other" : ""
   );
   const [customTreatment, setCustomTreatment] = useState(isKnownTreatment ? "" : (segment.treatment_type ?? ""));
+  const availableConditionFields = SITE_CONDITION_FIELDS.filter((field) => !(segment.site_conditions ?? []).some((condition) => condition.field === field.key));
+  const [conditionToAdd, setConditionToAdd] = useState<SiteConditionFieldKey | "">(availableConditionFields[0]?.key ?? "");
+  const effectiveConditionToAdd = conditionToAdd || availableConditionFields[0]?.key || "";
+  const triggeredEffects = evaluateSiteConditionRules({ ...segment, site_conditions: segment.site_conditions ?? [], site_condition_effect_decisions: segment.site_condition_effect_decisions ?? {} }, siteConditionRules);
 
   const commitTreatment = (choice: string, custom: string) => {
     onSave({ treatment_type: choice === "Other" ? custom.trim() || null : choice || null });
   };
 
-  const toggleTag = (tag: SegmentConditionTag) => {
-    onSave({
-      condition_tags: segment.condition_tags.includes(tag)
-        ? segment.condition_tags.filter((t) => t !== tag)
-        : [...segment.condition_tags, tag],
-    });
+  const updateCondition = (field: SiteConditionFieldKey, value: string) => {
+    onSave({ site_conditions: (segment.site_conditions ?? []).map((condition) => condition.field === field ? { ...condition, value } : condition) });
+  };
+
+  const addCondition = () => {
+    if (!effectiveConditionToAdd) return;
+    const definition = siteConditionField(effectiveConditionToAdd);
+    const condition: ProjectSiteCondition = { field: effectiveConditionToAdd, value: definition?.valueType === "number" ? "1" : definition?.options[0] ?? "" };
+    onSave({ site_conditions: [...(segment.site_conditions ?? []), condition] });
+    setConditionToAdd(availableConditionFields.find((field) => field.key !== effectiveConditionToAdd)?.key ?? "");
+  };
+
+  const removeCondition = (field: SiteConditionFieldKey) => {
+    onSave({ site_conditions: (segment.site_conditions ?? []).filter((condition) => condition.field !== field) });
+  };
+
+  const setEffectIncluded = (reviewKey: string, included: boolean) => {
+    onSave({ site_condition_effect_decisions: { ...(segment.site_condition_effect_decisions ?? {}), [reviewKey]: included } });
   };
 
   return (
@@ -145,24 +164,60 @@ function SegmentConfigForm({ segment, treatmentOptions, laborTradeOptions, onSav
         <label className="text-xs font-semibold text-gray-600">
           Site Conditions <span className="font-normal normal-case text-gray-400">(optional)</span>
         </label>
-        <div className="flex flex-wrap gap-1.5">
-          {SEGMENT_CONDITION_TAGS.map((tag) => {
-            const checked = segment.condition_tags.includes(tag);
+        <div className="space-y-2">
+          {(segment.site_conditions ?? []).map((condition) => {
+            const definition = siteConditionField(condition.field);
             return (
-              <button
-                key={tag}
-                type="button"
-                onClick={() => toggleTag(tag)}
-                className={`rounded-full border px-2.5 py-0.5 text-xs font-semibold transition ${
-                  checked ? "border-primary bg-orange-50 text-primary" : "border-gray-200 bg-white text-gray-500 hover:border-gray-300"
-                }`}
-              >
-                {tag}
-              </button>
+              <div key={condition.field} className="grid grid-cols-[minmax(130px,0.8fr)_minmax(160px,1fr)_32px] items-center gap-2">
+                <span className="text-xs font-medium text-gray-600">{definition?.label}</span>
+                {definition?.valueType === "number" ? (
+                  <input type="number" min="0" value={condition.value} onChange={(event) => updateCondition(condition.field, event.target.value)} className={inputCls} />
+                ) : (
+                  <select value={condition.value} onChange={(event) => updateCondition(condition.field, event.target.value)} className={`${inputCls} select-chevron`}>
+                    {definition?.options.map((option) => <option key={option}>{option}</option>)}
+                  </select>
+                )}
+                <button type="button" onClick={() => removeCondition(condition.field)} title="Remove condition" className="flex h-8 w-8 items-center justify-center rounded-lg text-gray-400 hover:bg-red-50 hover:text-red-500"><Trash2 className="h-3.5 w-3.5" /></button>
+              </div>
             );
           })}
+          {availableConditionFields.length > 0 && (
+            <div className="flex gap-2">
+              <select value={effectiveConditionToAdd} onChange={(event) => setConditionToAdd(event.target.value as SiteConditionFieldKey)} className={`${inputCls} select-chevron`}>
+                {availableConditionFields.map((field) => <option key={field.key} value={field.key}>{field.label}</option>)}
+              </select>
+              <button type="button" onClick={addCondition} className="flex shrink-0 items-center gap-1 rounded-lg border border-primary/30 px-3 text-xs font-bold text-primary hover:bg-orange-50"><Plus className="h-3.5 w-3.5" /> Add</button>
+            </div>
+          )}
         </div>
       </div>
+
+      {(segment.site_conditions ?? []).length > 0 && (
+        <div className="rounded-xl border border-blue-100 bg-blue-50/50 p-3">
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-xs font-bold text-gray-800">Triggered adjustments</p>
+            <span className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Estimator review</span>
+          </div>
+          {triggeredEffects.length === 0 ? (
+            <p className="mt-1 text-xs text-gray-500">No active company rule matches these conditions.</p>
+          ) : (
+            <div className="mt-2 space-y-2">
+              {triggeredEffects.map((effect) => {
+                const included = isSiteConditionEffectIncluded(segment, effect.review_key);
+                return (
+                  <label key={effect.review_key} className={`flex cursor-pointer items-start gap-2 rounded-lg border p-2 ${effect.effect_type === "warning" ? "border-amber-200 bg-amber-50" : "border-blue-100 bg-white"}`}>
+                    <input type="checkbox" checked={included} onChange={(event) => setEffectIncluded(effect.review_key, event.target.checked)} className="mt-0.5 h-4 w-4 rounded border-gray-300 text-primary" />
+                    <span className="min-w-0 flex-1">
+                      <span className="flex flex-wrap items-center justify-between gap-1 text-xs font-semibold text-gray-800"><span>{effect.label}</span><span className="text-primary">{effect.computed_amount !== null ? `₱${effect.computed_amount.toLocaleString()}` : effect.effect_type === "productivity" ? `-${effect.percentage ?? 0}% productivity` : effect.effect_type === "schedule" ? `+${effect.schedule_days ?? 0} days` : "Review required"}</span></span>
+                      <span className="block text-[11px] text-gray-500">{effect.rule_name} · {effect.condition_label}: {effect.condition_value}{effect.description ? ` · ${effect.description}` : ""}</span>
+                    </span>
+                  </label>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="flex min-h-0 flex-1 flex-col gap-1.5">
         <label className="text-xs font-semibold text-gray-600">
@@ -195,7 +250,7 @@ interface ApplyToAllPanelProps {
   treatmentOptions: string[];
   laborTradeOptions: string[];
   onOpenChange: (open: boolean) => void;
-  onApply: (patch: Pick<DraftSegment, "treatment_type" | "labor_basis" | "labor_trade" | "condition_tags" | "is_rush">) => void;
+  onApply: (patch: Pick<DraftSegment, "treatment_type" | "labor_basis" | "labor_trade" | "is_rush">) => void;
 }
 
 // 
@@ -204,12 +259,7 @@ interface ApplyToAllPanelProps {
   const [customTreatment, setCustomTreatment] = useState("");
   const [laborBasis, setLaborBasis] = useState<DraftSegment["labor_basis"]>("Auto");
   const [laborTrade, setLaborTrade] = useState("");
-  const [tags, setTags] = useState<SegmentConditionTag[]>([]);
   const [isRush, setIsRush] = useState(false);
-
-  const toggleTag = (tag: SegmentConditionTag) => {
-    setTags((prev) => (prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag]));
-  };
 
   const treatmentValid = treatmentChoice === "Other" ? customTreatment.trim().length > 0 : treatmentChoice !== "";
   const laborValid = laborBasis !== "Trade" || laborTrade.trim().length > 0;
@@ -220,7 +270,6 @@ interface ApplyToAllPanelProps {
       treatment_type: treatmentChoice === "Other" ? customTreatment.trim() : treatmentChoice,
       labor_basis: laborBasis,
       labor_trade: laborBasis === "Trade" ? laborTrade : null,
-      condition_tags: tags,
       is_rush: isRush,
     });
     onOpenChange(false);
@@ -310,29 +359,6 @@ interface ApplyToAllPanelProps {
         )}
       </div>
 
-      <div className="flex flex-col gap-1.5">
-        <label className="text-xs font-semibold text-gray-600">
-          Site Conditions <span className="font-normal normal-case text-gray-400">(optional)</span>
-        </label>
-        <div className="flex flex-wrap gap-2">
-          {SEGMENT_CONDITION_TAGS.map((tag) => {
-            const checked = tags.includes(tag);
-            return (
-              <button
-                key={tag}
-                type="button"
-                onClick={() => toggleTag(tag)}
-                className={`rounded-full border px-3 py-1 text-xs font-semibold transition ${
-                  checked ? "border-primary bg-white text-primary" : "border-gray-200 bg-white text-gray-500 hover:border-gray-300"
-                }`}
-              >
-                {tag}
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
       <label className="flex items-center gap-2.5 text-sm text-gray-700">
         <input
           type="checkbox"
@@ -368,6 +394,7 @@ export function ConfigureSegmentsStep({ quoteId, segments, onChange, onSaved, on
   const { updateInputMethod } = useUpdateQuotationInputMethod();
   const { rules: materialRules } = useMaterialRules();
   const { rules: laborRules } = useLaborRules();
+  const { rules: siteConditionRules } = useSiteConditionRules();
   const [selectedId, setSelectedId] = useState<string | null>(segments[0]?.draft_id ?? null);
   const [applyAllOpen, setApplyAllOpen] = useState(false);
   const [applyRevision, setApplyRevision] = useState(0);
@@ -409,7 +436,7 @@ export function ConfigureSegmentsStep({ quoteId, segments, onChange, onSaved, on
     onChange(segments.map((s) => (s.draft_id === draftId ? { ...s, ...patch } : s)));
   };
 
-  const applyToAll = (patch: Pick<DraftSegment, "treatment_type" | "labor_basis" | "labor_trade" | "condition_tags" | "is_rush">) => {
+  const applyToAll = (patch: Pick<DraftSegment, "treatment_type" | "labor_basis" | "labor_trade" | "is_rush">) => {
     onChange(segments.map((s) => ({ ...s, ...patch })));
     setApplyRevision((r) => r + 1);
   };
@@ -563,6 +590,7 @@ export function ConfigureSegmentsStep({ quoteId, segments, onChange, onSaved, on
               segment={selected}
               treatmentOptions={treatmentOptions}
               laborTradeOptions={laborTradeOptions}
+              siteConditionRules={siteConditionRules}
               onSave={(patch) => updateSegment(selected.draft_id, patch)}
             />
           ) : (

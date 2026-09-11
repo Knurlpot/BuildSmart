@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
-import { Check, Grid3X3, Minus, Move, PenLine, Plus, ZoomIn, ZoomOut, RotateCcw, ScanLine } from "lucide-react";
+import { Check, Grid3X3, Minus, MousePointer2, Move, PenLine, Plus, ZoomIn, ZoomOut, RotateCcw, ScanLine } from "lucide-react";
 import { confidenceBand, type DraftSegment, type SegmentPolygon } from "../lib/draftSegment";
 
 const BAND_COLOR: Record<ReturnType<typeof confidenceBand>, string> = {
@@ -454,9 +454,9 @@ export function BlueprintOverlay({
       {highlightEditingActive && editableSegment && (
         <div className="flex flex-wrap items-center gap-2 rounded-lg border border-orange-200 bg-orange-50 px-3 py-2 text-xs text-gray-700">
           <span className="max-w-48 truncate font-semibold text-gray-800">{editableSegment.segment_name || "Selected room"}</span>
-          <div className="flex overflow-hidden rounded-lg border border-orange-200 bg-white">
+          <div className="flex items-center gap-1">
             {[
-              { id: "move" as const, label: "Move Points", icon: Move, title: "Drag existing corners" },
+              { id: "move" as const, label: "Move Points", icon: MousePointer2, title: "Drag existing corners" },
               { id: "move-shape" as const, label: "Move Shape", icon: Move, title: "Drag the selected highlight as one shape" },
               { id: "add" as const, label: "Add Point", icon: Plus, title: "Click the selected shape to add a corner" },
               { id: "remove" as const, label: "Remove Point", icon: Minus, title: "Click a corner to remove it" },
@@ -467,17 +467,21 @@ export function BlueprintOverlay({
                 <button
                   key={tool.id}
                   type="button"
-                  title={tool.title}
+                  aria-label={tool.label}
+                  title={`${tool.label}: ${tool.title}`}
                   onClick={() => {
                     setHighlightEditTool(tool.id);
                     setDraggingPoint(null);
                     setDraggingShape(null);
                   }}
-                  className={`flex items-center gap-1 border-r border-orange-100 px-2.5 py-1.5 font-semibold last:border-r-0 ${
-                    active ? "bg-primary text-primary-foreground" : "text-gray-600 hover:bg-orange-50"
+                  className={`flex h-8 w-8 items-center justify-center rounded-lg border transition-colors ${
+                    active
+                      ? "border-primary bg-primary text-primary-foreground"
+                      : "border-orange-200 bg-white text-gray-600 hover:bg-orange-100"
                   }`}
                 >
-                  <Icon className="h-3.5 w-3.5" /> {tool.label}
+                  <Icon className="h-4 w-4" />
+                  <span className="sr-only">{tool.label}</span>
                 </button>
               );
             })}

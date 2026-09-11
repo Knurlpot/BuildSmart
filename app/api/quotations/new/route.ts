@@ -73,7 +73,13 @@ export async function POST(request: NextRequest) {
           Number(totalMaterialCost.toFixed(2)),
         ]
       );
-      const quote = quoteResult.rows[0];
+      const creatorResult = await client.query(
+        `SELECT trim(concat_ws(' ', first_name, last_name)) AS created_by_user_name,
+                email AS created_by_user_email
+         FROM users WHERE user_id = $1 LIMIT 1`,
+        [auth.userId]
+      );
+      const quote = { ...quoteResult.rows[0], ...creatorResult.rows[0] };
 
       const insertedItems = [];
       for (const line of pricedLines) {

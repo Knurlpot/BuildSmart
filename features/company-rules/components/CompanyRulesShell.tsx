@@ -5,6 +5,7 @@ import {
   Package,
   Percent,
   Ruler,
+  MapPinned,
   Truck,
   Users,
   Wrench,
@@ -15,6 +16,7 @@ import { LaborRulesForm } from "./LaborRulesForm";
 import { PricingStrategyForm } from "./PricingStrategyForm";
 import { UnitRulesForm } from "./UnitRulesForm";
 import { ManageExistingRulesTab } from "./ManageExistingRulesTab";
+import { SiteConditionRulesForm } from "./SiteConditionRulesForm";
 import { RULE_KIND_TAB, type ExistingRuleSummary } from "@/lib/dev/provisional/companyRulesTypes";
 import {
   useMaterialRules,
@@ -33,6 +35,7 @@ const TABS = [
   { id: "labor-rules", label: "Labor Rules", icon: Users },
   { id: "pricing-strategy", label: "Pricing Strategy", icon: Percent },
   { id: "unit-rules", label: "Unit Rules", icon: Ruler },
+  { id: "site-condition-rules", label: "Site Condition Rules", icon: MapPinned },
   { id: "manage-existing", label: "Manage Existing Rules", icon: Wrench },
 ] as const;
 
@@ -150,6 +153,7 @@ export default function CompanyRulesShell() {
       {activeTab === "unit-rules" && (
         <UnitRulesForm focusRuleId={focusRuleId} onFocusHandled={() => setFocusRuleId(null)} />
       )}
+      {activeTab === "site-condition-rules" && <SiteConditionRulesForm />}
       {activeTab === "manage-existing" && <ManageExistingRulesTab onViewRule={openExistingRule} />}
     </div>
   );
