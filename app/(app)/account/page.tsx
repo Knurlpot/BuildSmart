@@ -7,6 +7,7 @@ import { RequireAuth } from "@/components/auth/RequireAuth";
 import { useFetch } from "@/hooks/useFetch";
 import { useMutation } from "@/hooks/useMutation";
 import { useAuth } from "@/providers/AuthProvider";
+import { imageFileError, IMAGE_UPLOAD_ACCEPT, IMAGE_UPLOAD_HELP } from "@/lib/image-upload-policy";
 import { USER_ROLES, type Company, type Users } from "@/types/entities";
 import {
   Dialog,
@@ -260,12 +261,12 @@ function UserProfileSection() {
 
   const uploadProfilePicture = async (file: File) => {
     setProfilePictureFileError("");
-    setProfilePictureFileName(file.name);
     const body = new FormData();
     body.append("file", file);
     try {
       const { url } = await profilePictureUpload.mutate("/api/uploads/profile-picture", body, "POST");
       setUserForm((current) => ({ ...current, profile_picture: url }));
+      setProfilePictureFileName(file.name);
     } catch {
       // surfaced via profilePictureUpload.error below
     }
@@ -275,13 +276,11 @@ function UserProfileSection() {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    if (!["image/jpeg", "image/png"].includes(file.type)) {
-      setProfilePictureFileError("Only JPG or PNG images are allowed.");
-      setProfilePictureFileName("");
-      e.target.value = "";
-      return;
-    }
-
+    e.target.value = "";
+    profilePictureUpload.reset();
+    const problem = imageFileError(file);
+    setProfilePictureFileError(problem ?? "");
+    if (problem) return;
     uploadProfilePicture(file);
   };
 
@@ -295,12 +294,12 @@ function UserProfileSection() {
   const uploadLogoFile = async (file: File) => {
     if (!canEditCompany) return;
     setLogoFileError("");
-    setLogoFileName(file.name);
     const body = new FormData();
     body.append("file", file);
     try {
       const { url } = await logoUpload.mutate("/api/uploads/company-logo", body, "POST");
       setCompanyForm((current) => ({ ...current, company_logo: url }));
+      setLogoFileName(file.name);
     } catch {
       // surfaced via logoUpload.error below
     }
@@ -310,13 +309,11 @@ function UserProfileSection() {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    if (!["image/jpeg", "image/png"].includes(file.type)) {
-      setLogoFileError("Only JPG or PNG images are allowed.");
-      setLogoFileName("");
-      e.target.value = "";
-      return;
-    }
-
+    e.target.value = "";
+    logoUpload.reset();
+    const problem = imageFileError(file);
+    setLogoFileError(problem ?? "");
+    if (problem) return;
     uploadLogoFile(file);
   };
 
@@ -631,15 +628,18 @@ function UserProfileSection() {
                 <input
                   ref={profilePictureInputRef}
                   type="file"
-                  accept="image/jpeg,image/png,.jpg,.jpeg,.png"
+                  accept={IMAGE_UPLOAD_ACCEPT}
+                  disabled={profilePictureUpload.isLoading}
+                  aria-describedby="profile-image-help"
                   onChange={handleProfilePictureFileChange}
                   className="hidden"
                 />
+                <p id="profile-image-help" className="text-xs text-gray-500">{IMAGE_UPLOAD_HELP}</p>
                 {profilePictureFileError && (
-                  <p className="text-xs text-red-500">{profilePictureFileError}</p>
+                  <p role="alert" className="text-xs text-red-500">{profilePictureFileError}</p>
                 )}
                 {profilePictureUpload.error && (
-                  <p className="text-xs text-red-500">Couldn&apos;t upload profile picture: {profilePictureUpload.error.message}</p>
+                  <p role="alert" className="text-xs text-red-500">Couldn&apos;t upload profile picture: {profilePictureUpload.error.message}</p>
                 )}
               </div>
             </div>
@@ -757,15 +757,18 @@ function UserProfileSection() {
                   <input
                     ref={logoInputRef}
                     type="file"
-                    accept="image/jpeg,image/png,.jpg,.jpeg,.png"
+                    accept={IMAGE_UPLOAD_ACCEPT}
+                    disabled={logoUpload.isLoading}
+                    aria-describedby="company-image-help"
                     onChange={handleLogoFileChange}
                     className="hidden"
                   />
+                  <p id="company-image-help" className="text-xs text-gray-500">{IMAGE_UPLOAD_HELP}</p>
                   {logoFileError && (
-                    <p className="text-xs text-red-500">{logoFileError}</p>
+                    <p role="alert" className="text-xs text-red-500">{logoFileError}</p>
                   )}
                   {logoUpload.error && (
-                    <p className="text-xs text-red-500">Couldn&apos;t upload logo: {logoUpload.error.message}</p>
+                    <p role="alert" className="text-xs text-red-500">Couldn&apos;t upload logo: {logoUpload.error.message}</p>
                   )}
                 </div>
               </div>

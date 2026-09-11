@@ -453,6 +453,7 @@ export function AiNormalizationPanel({ companyId, defaultSupplierMode = "existin
     const mapping = Object.fromEntries(
       NORMALIZATION_FIELDS.map((field) => [field, mappingColumns.find((c) => c.mapped_field === field)!.raw_column])
     ) as Record<NormalizationField, string>;
+    setReviewPagesBySource({});
     resolveColumnMapping(mappingItem.id, mapping);
   };
 
@@ -575,6 +576,7 @@ export function AiNormalizationPanel({ companyId, defaultSupplierMode = "existin
       setSupplierSelectionError("Select an existing supplier before uploading.");
       return;
     }
+    setReviewPagesBySource({});
     enqueueFiles(pendingFiles.map((entry) => entry.file), source, { quarter, year, supplierId });
     setPendingFiles([]);
   };
@@ -751,12 +753,6 @@ export function AiNormalizationPanel({ companyId, defaultSupplierMode = "existin
     ["queued", "uploading", "pending", "processing"].includes(item.status)
   );
   const hasFinishedItems = queue.some((item) => item.status === "done" || item.status === "failed");
-
-  useEffect(() => {
-    if (isQueueBusy) {
-      setReviewPagesBySource({});
-    }
-  }, [isQueueBusy]);
 
   const reviewGroups = useMemo(() => {
     const grouped = new Map<string, PricelistReviewItem[]>();
