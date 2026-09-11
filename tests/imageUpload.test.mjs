@@ -12,12 +12,14 @@ function load(file, mocks = {}) {
     if (name in mocks) return mocks[name];
     if (name === 'server-only') return {};
     if (name === '@/lib/image-upload-policy') return policy;
+    if (name === '@/lib/server/image-storage') return storage;
     return require(name);
   } };
   vm.runInNewContext(ts.transpileModule(fs.readFileSync(file, 'utf8'), { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS, esModuleInterop: true } }).outputText, context);
   return context.exports;
 }
 const policy = load('lib/image-upload-policy.ts');
+const storage = load('lib/server/image-storage.ts');
 const images = load('lib/server/image-upload.ts');
 const file = (bytes, type = 'image/png') => new File([bytes], 'untrusted-name.svg', { type });
 const sample = () => sharp({ create: { width: 8, height: 5, channels: 4, background: '#ed802e80' } }).png().toBuffer();

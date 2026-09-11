@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-const API_BASE = process.env.NEXT_PUBLIC_NORMALIZATION_API_BASE_URL || "http://localhost:8000";
+import { getNormalizationApiBaseUrl } from "@/lib/server/config";
 
 export async function GET(
   request: Request,
@@ -9,7 +9,7 @@ export async function GET(
   try {
     const { companyId } = await params;
 
-    const response = await fetch(`${API_BASE}/pricelist/source-priority/${companyId}`, {
+    const response = await fetch(`${getNormalizationApiBaseUrl()}/pricelist/source-priority/${companyId}`, {
       method: "GET",
       headers: {
         "Content-Type": "application/json",
@@ -26,8 +26,9 @@ export async function GET(
     const data = await response.json();
     return NextResponse.json(data);
   } catch (error) {
+    console.error("API request failed", error);
     return NextResponse.json(
-      { error: `Failed to fetch source priority: ${error instanceof Error ? error.message : String(error)}` },
+      { error: "Failed to fetch source priority. Please try again." },
       { status: 500 }
     );
   }
@@ -41,7 +42,7 @@ export async function POST(
     const { companyId } = await params;
     const body = await request.json();
 
-    const response = await fetch(`${API_BASE}/pricelist/source-priority/${companyId}`, {
+    const response = await fetch(`${getNormalizationApiBaseUrl()}/pricelist/source-priority/${companyId}`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -59,8 +60,9 @@ export async function POST(
     const data = await response.json();
     return NextResponse.json(data);
   } catch (error) {
+    console.error("API request failed", error);
     return NextResponse.json(
-      { error: `Failed to update source priority: ${error instanceof Error ? error.message : String(error)}` },
+      { error: "Failed to update source priority. Please try again." },
       { status: 500 }
     );
   }

@@ -123,8 +123,8 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     return NextResponse.json(updated.rows[0]);
   } catch (error) {
     await client.query("ROLLBACK").catch(() => {});
-    const message = error instanceof Error ? error.message : "Update failed";
-    return NextResponse.json({ error: message }, { status: 400 });
+    console.error("Catalog update failed", error);
+    return NextResponse.json({ error: "Could not update this price record. Please check your input and try again." }, { status: 400 });
   } finally {
     client.release();
   }
@@ -245,8 +245,8 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
     });
   } catch (error) {
     await client.query("ROLLBACK").catch(() => {});
-    const message = error instanceof Error ? error.message : "Delete failed";
-    return NextResponse.json({ error: message }, { status: 400 });
+    console.error("Catalog deletion failed", error);
+    return NextResponse.json({ error: "Could not delete this price record. It may still be referenced by other records." }, { status: 400 });
   } finally {
     client.release();
   }

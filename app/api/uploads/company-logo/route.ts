@@ -16,7 +16,7 @@ export async function POST(request: NextRequest) {
     if (!user || user.user_role !== "Owner" || user.company_id == null) {
       return NextResponse.json({ error: "Only company owners can upload a company logo." }, { status: 403 });
     }
-    return NextResponse.json({ url: await storeImage(request, "company-logos") }, { status: 201 });
+    return NextResponse.json({ url: await storeImage(request, "company-logos", user.company_id) }, { status: 201 });
   } catch (error) {
     if (error instanceof ImageUploadError) return NextResponse.json({ error: error.message }, { status: error.status });
     console.error("Failed to upload company logo", error);

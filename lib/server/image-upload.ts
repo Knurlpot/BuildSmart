@@ -3,6 +3,7 @@ import sharp from "sharp";
 import { randomUUID } from "crypto";
 import { mkdir, writeFile } from "fs/promises";
 import path from "path";
+import { imageStorageRoot } from "@/lib/server/image-storage";
 import { imageFileError, MAX_IMAGE_BYTES, MAX_IMAGE_DIMENSION, MAX_IMAGE_PIXELS } from "@/lib/image-upload-policy";
 
 export class ImageUploadError extends Error {
@@ -65,11 +66,12 @@ export async function prepareImage(file: File): Promise<{ bytes: Buffer; extensi
   }
 }
 
-export async function storeImage(request: Request, directory: "company-logos" | "profile-pictures"): Promise<string> {
+export async function storeImage(request: Request, directory: "company-logos" | "profile-pictures", ownerId: number): Promise<string> {
+  if (!Number.isSafeInteger(ownerId) || ownerId < 1) throw new Error("Invalid upload owner");
   const { bytes, extension } = await prepareImage(await readImageFile(request));
   const name = `${randomUUID()}.${extension}`;
-  const folder = path.join(process.cwd(), "public", "uploads", directory);
+  const folder = path.join(imageStorageRoot(), directory, String(ownerId));
   await mkdir(folder, { recursive: true });
   await writeFile(path.join(folder, name), bytes, { flag: "wx" });
-  return `/uploads/${directory}/${name}`;
+  return `/api/uploads/images/${directory}/${ownerId}/${name}`;
 }

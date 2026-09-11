@@ -86,6 +86,8 @@ export function DataTable<TData>({
     },
   };
 
+  // TanStack Table returns mutable callbacks; leave this hook outside compiler memoization.
+  // eslint-disable-next-line react-hooks/incompatible-library
   const table = useReactTable({
     data,
     columns: selectable ? [selectColumn, ...columns] : columns,

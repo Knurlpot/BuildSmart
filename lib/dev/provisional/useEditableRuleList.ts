@@ -31,6 +31,7 @@ export function useEditableRuleList<T extends { rule_id: string }, P = Partial<T
       return items;
     },
     addCreated(_item: T) {
+      void _item; // Kept for the public hook signature; creation is now server-owned.
       setSupersededNotice(false);
       setSaveError(null);
     },

@@ -10,8 +10,9 @@ export async function GET() {
     );
     return NextResponse.json(result.rows);
   } catch (error) {
+    console.error("API request failed", error);
     return NextResponse.json(
-      { error: `Failed to fetch categories: ${error instanceof Error ? error.message : String(error)}` },
+      { error: "Failed to fetch categories. Please try again." },
       { status: 500 }
     );
   }

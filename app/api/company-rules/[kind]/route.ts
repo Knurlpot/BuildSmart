@@ -19,8 +19,9 @@ export async function POST(
     const body = (await request.json()) as Record<string, unknown>;
     return NextResponse.json(await createRule(companyId, kind as RuleKindParam, body));
   } catch (error) {
+    console.error("API request failed", error);
     return NextResponse.json(
-      { error: `Failed to save rule: ${error instanceof Error ? error.message : String(error)}` },
+      { error: "Failed to save rule. Please try again." },
       { status: 500 }
     );
   }

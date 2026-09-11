@@ -68,9 +68,10 @@ export async function POST(request: NextRequest) {
     await client.query("COMMIT");
     return NextResponse.json({ saved_count: savedCount }, { status: 201 });
   } catch (error) {
-    await client.query("ROLLBACK");
+    await client.query("ROLLBACK").catch(() => {});
+    console.error("Client import failed", error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Could not import clients." },
+      { error: "Could not import clients. Please try again." },
       { status: 500 }
     );
   } finally {

@@ -12,7 +12,14 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    ".cache/**",
+    ".claude/**",
+    ".backend-tools/**",
+    ".npm-cache/**",
+    "backend/**",
   ]),
+  // Node maintenance scripts intentionally use CommonJS; keep their other checks.
+  { files: ["scripts/**/*.cjs"], rules: { "@typescript-eslint/no-require-imports": "off" } },
 ]);
 
 export default eslintConfig;

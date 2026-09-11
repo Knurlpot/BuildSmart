@@ -13,8 +13,9 @@ export async function PATCH(
     const body = (await request.json()) as Record<string, unknown>;
     return NextResponse.json(await updateRule(companyId, kind as RuleKindParam, ruleId, body));
   } catch (error) {
+    console.error("API request failed", error);
     return NextResponse.json(
-      { error: `Failed to update rule: ${error instanceof Error ? error.message : String(error)}` },
+      { error: "Failed to update rule. Please try again." },
       { status: 500 }
     );
   }
@@ -31,8 +32,9 @@ export async function DELETE(
     const { ruleId } = await params;
     return NextResponse.json(await setRuleStatus(companyId, ruleId, "Inactive"));
   } catch (error) {
+    console.error("API request failed", error);
     return NextResponse.json(
-      { error: `Failed to disable rule: ${error instanceof Error ? error.message : String(error)}` },
+      { error: "Failed to disable rule. Please try again." },
       { status: 500 }
     );
   }
