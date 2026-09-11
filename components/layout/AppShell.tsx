@@ -19,11 +19,9 @@ function AppShellBody({ children }: { children: React.ReactNode }) {
   const toggleSidebar = () => setSidebarState({ pathname, visible: !sidebarVisible });
 
   return (
-    <div className={isDashboard ? "min-h-screen w-full bg-gray-50 pl-16" : `flex h-screen w-full overflow-hidden bg-gray-50 ${sidebarVisible ? "pl-16 md:pl-64" : "pl-16"}`}>
-      <div className="fixed inset-y-0 left-0 z-50 w-16">
-        <Sidebar collapsed={!sidebarVisible} onToggle={toggleSidebar} />
-      </div>
-      <div className={isDashboard ? "min-w-0" : "flex min-w-0 flex-1 flex-col overflow-hidden"}>
+    <div className={isDashboard ? "flex min-h-screen w-full bg-gray-50" : "flex h-screen w-full overflow-hidden bg-gray-50"}>
+      <Sidebar collapsed={!sidebarVisible} onToggle={toggleSidebar} />
+      <div className={isDashboard ? "min-w-0 flex-1" : "flex min-w-0 flex-1 flex-col overflow-hidden"}>
         <Header workflow={workflow} />
         {/* Keep the welcome scene on document scroll; workspace pages own their scroller. */}
         {isDashboard ? children : <main className="flex-1 overflow-y-auto p-6">{children}</main>}

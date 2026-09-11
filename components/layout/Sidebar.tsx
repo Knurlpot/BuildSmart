@@ -61,7 +61,7 @@ export default function Sidebar({ collapsed = true, onToggle }: { collapsed?: bo
     <aside
       aria-label="Main navigation"
       onKeyDown={(event) => { if (event.key === "Escape" && !collapsed) onToggle?.(); }}
-      className={`relative flex h-dvh flex-shrink-0 flex-col bg-white shadow-[2px_0_8px_rgba(0,0,0,0.08)] transition-[width] duration-200 motion-reduce:transition-none ${compact ? "w-16" : "w-64"}`}
+      className={`sticky top-0 z-40 flex h-dvh flex-shrink-0 flex-col border-r border-gray-200 bg-white transition-[width] duration-200 motion-reduce:transition-none ${compact ? "w-16" : "w-64"}`}
     >
       <div className={`flex h-16 shrink-0 items-center transition-colors ${workflow ? "bg-primary" : "border-b border-gray-100"}`}>
         <Link
