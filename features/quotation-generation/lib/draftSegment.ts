@@ -4,6 +4,7 @@
 // exactly how (and into which real columns) the provisional fields get folded in.
 import type { SegmentConditionTag } from '@/types/entities/segment-tag';
 import type { SegmentSourceMethod } from '@/types/entities/project-segment';
+import type { ProjectSiteCondition } from '@/types/entities/site-condition-rule';
 import { stagingId, type ExtractedSegment } from '@/lib/dev/provisional/quotationGenerationTypes';
 
 // 'dimensions' = Length × Width (rectangle). 'l_shape' = overall rectangle minus a notch
@@ -65,6 +66,8 @@ export interface DraftSegment {
   labor_trade: string | null;
   is_rush: boolean;
   condition_tags: SegmentConditionTag[];
+  site_conditions: ProjectSiteCondition[];
+  site_condition_effect_decisions: Record<string, boolean>;
   // Maps to the real project_segments.notes column at submit time.
   site_notes: string;
 }
@@ -132,6 +135,8 @@ export function createManualSegment(defaultName = ''): DraftSegment {
     labor_trade: null,
     is_rush: false,
     condition_tags: [],
+    site_conditions: [],
+    site_condition_effect_decisions: {},
     site_notes: '',
   };
 }
@@ -159,6 +164,8 @@ export function createSegmentFromExtraction(extracted: ExtractedSegment, floorLe
     labor_trade: null,
     is_rush: false,
     condition_tags: [],
+    site_conditions: [],
+    site_condition_effect_decisions: {},
     site_notes: '',
   };
 }
@@ -311,6 +318,8 @@ export function mergeSegments(segments: DraftSegment[], newName: string): DraftS
     labor_trade: null,
     is_rush: false,
     condition_tags: [],
+    site_conditions: [],
+    site_condition_effect_decisions: {},
     site_notes: '',
   };
 }
@@ -336,6 +345,8 @@ export interface ProjectSegmentPayload {
   scope_of_work: string;
   work_type: string;
   notes: string | null;
+  site_conditions: ProjectSiteCondition[];
+  site_condition_effect_decisions: Record<string, boolean>;
 }
 
 function segmentPolygonsForStorage(seg: DraftSegment): SegmentPolygon[] {
@@ -381,6 +392,8 @@ export function draftSegmentToPayload(seg: DraftSegment): ProjectSegmentPayload 
     scope_of_work: treatment,
     work_type: treatment,
     notes: seg.site_notes.trim() || null,
+    site_conditions: seg.site_conditions ?? [],
+    site_condition_effect_decisions: seg.site_condition_effect_decisions ?? {},
   };
 }
 

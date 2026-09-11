@@ -12,6 +12,8 @@ export interface Quotation {
   quote_id: number;
   company_id: number;
   user_id: number;
+  created_by_user_name?: string | null;
+  created_by_user_email?: string | null;
   updated_by_user_id?: number | null;
   updated_by_user_name?: string | null;
   updated_by_user_email?: string | null;

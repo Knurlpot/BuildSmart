@@ -5,4 +5,5 @@ export { SupplierRulesForm } from './SupplierRulesForm';
 export { LaborRulesForm } from './LaborRulesForm';
 export { PricingStrategyForm } from './PricingStrategyForm';
 export { UnitRulesForm } from './UnitRulesForm';
+export { SiteConditionRulesForm } from './SiteConditionRulesForm';
 export { ManageExistingRulesTab } from './ManageExistingRulesTab';

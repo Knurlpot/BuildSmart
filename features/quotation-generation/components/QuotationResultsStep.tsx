@@ -18,6 +18,7 @@ import { PROVISIONAL_TIERS, type PricelistBasis, type ProvisionalItemLine, type 
 import { apiClient } from "@/lib/api/client";
 import { useLaborRules, useMaterialRules, usePricingStrategies, useSupplierRules, useUnitRules } from "@/lib/dev/provisional/useCompanyRulesProvisional";
 import { useItemsCatalog } from "@/hooks/useItemsCatalog";
+import { useSiteConditionRules } from "@/hooks/useSiteConditionRules";
 import { usePricelistCatalog } from "@/hooks/usePricelistCatalog";
 import { usePricelistPublishedSource } from "@/hooks/usePricelistPublishedSource";
 import { isSegmentIncluded, type DraftSegment } from "../lib/draftSegment";
@@ -276,6 +277,7 @@ export function QuotationResultsStep({
   const { rules: laborRules } = useLaborRules();
   const { rules: supplierRules } = useSupplierRules();
   const { rules: unitRules } = useUnitRules();
+  const { rules: siteConditionRules } = useSiteConditionRules();
   const { items } = useItemsCatalog();
   const { records: uploadedPrices, load: loadUploadedPrices } = usePricelistCatalog();
   const { dpwhCatalog } = usePricelistPublishedSource();
@@ -345,7 +347,7 @@ export function QuotationResultsStep({
   };
 
   const tierResults = Object.fromEntries(
-    activeTiers.map((tier) => [tier, computeTierResult(tier, effectiveTierItems[tier] ?? [], { segments, materialRules, laborRules, pricingStrategies })])
+    activeTiers.map((tier) => [tier, computeTierResult(tier, effectiveTierItems[tier] ?? [], { segments, materialRules, laborRules, pricingStrategies, siteConditionRules })])
   ) as Partial<Record<ProvisionalTier, ProvisionalQuotationTierResult>>;
 
   const handleAcceptQuotation = async (tier: ProvisionalTier) => {
@@ -477,6 +479,17 @@ export function QuotationResultsStep({
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <div className="flex min-w-0 items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2 shadow-sm">
+            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-orange-50 text-primary">
+              <UserRound className="h-3.5 w-3.5" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-[9px] font-bold uppercase tracking-wider text-gray-400">Created by</p>
+              <p className="max-w-44 truncate text-xs font-semibold text-gray-700" title={quotation.created_by_user_email ?? undefined}>
+                {quotation.created_by_user_name?.trim() || `User #${quotation.user_id}`}
+              </p>
+            </div>
+          </div>
           <button
             type="button"
             onClick={() => setRuleDialogOpen(true)}

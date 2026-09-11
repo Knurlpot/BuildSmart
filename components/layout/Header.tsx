@@ -146,11 +146,7 @@ export default function Header({ workflow }: HeaderProps) {
       <div className="relative shrink-0">
         <Link
           href="/account"
-          className={`flex items-center overflow-hidden rounded-2xl border px-2 py-1.5 shadow-sm transition ${
-            lightHeaderContent
-              ? "border-white/30 bg-white/10 hover:bg-white/15"
-              : "border-gray-200 bg-white hover:border-gray-300 hover:bg-gray-50"
-          }`}
+          className="flex items-center transition-opacity hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
           title="Profile"
           aria-label={`Open ${fullName}'s profile for ${companyName}`}
         >

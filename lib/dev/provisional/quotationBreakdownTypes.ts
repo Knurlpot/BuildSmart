@@ -39,6 +39,7 @@ import type { DraftSegment } from '@/features/quotation-generation/lib/draftSegm
 import type { InputMethod, WizardPhase } from '@/features/quotation-generation/lib/workflowSteps';
 import type { BlueprintFloor } from './quotationGenerationTypes';
 import type { LaborRule, MaterialRuleEntry, QuotationTier } from './companyRulesTypes';
+import type { TriggeredSiteConditionEffect } from '@/types/entities/site-condition-rule';
 
 export type ProvisionalTier = QuotationTier;
 export const PROVISIONAL_TIERS: ProvisionalTier[] = ['Practical', 'Premium'];
@@ -160,6 +161,11 @@ export interface ProvisionalQuotationTierResult {
   warranty_label: string;
   lifespan_label: string;
   material_grade_label: string;
+  site_condition_effects: Array<TriggeredSiteConditionEffect & {
+    segment_draft_id: string;
+    segment_name: string;
+    included: boolean;
+  }>;
 }
 
 // Two tiers, siblings of ONE derivation run — the activity diagram's "Generate Practical

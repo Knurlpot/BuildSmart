@@ -19,6 +19,7 @@ type QuotationItem = {
 
 type Quotation = {
   quote_id: number;
+  user_id: number;
   project_name: string;
   project_region: string;
   status: "Draft" | "Final";
@@ -29,6 +30,8 @@ type Quotation = {
   grand_total: number;
   created_at: string;
   updated_at: string;
+  created_by_user_name: string | null;
+  created_by_user_email: string | null;
   updated_by_user_name: string | null;
   updated_by_user_email: string | null;
   project_location: string | null;
@@ -209,7 +212,7 @@ export function QuotationDetailView({ quotationId }: { quotationId: string }) {
               ["Region", quotation.project_region],
               ["Created", new Date(quotation.created_at).toLocaleDateString("en-PH", { year: "numeric", month: "short", day: "numeric" })],
               ["Last Updated", new Date(quotation.updated_at).toLocaleDateString("en-PH", { year: "numeric", month: "short", day: "numeric" })],
-              ["Saved By", quotation.updated_by_user_name || quotation.updated_by_user_email || "-"],
+              ["Created By", quotation.created_by_user_name || quotation.created_by_user_email || `User #${quotation.user_id}`],
               ["Notes", quotation.client?.notes || "-"],
             ].map(([label, value]) => (
               <div key={label} className="rounded-xl bg-gray-50 p-3"><p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">{label}</p><p className="mt-0.5 text-sm font-medium text-gray-700">{value}</p></div>
