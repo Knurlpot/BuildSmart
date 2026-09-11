@@ -2,6 +2,7 @@
 .drawing { position: relative; display: block; width: 100%; height: 100%; overflow: visible; filter: drop-shadow(0 16px 20px #b2704826); }
 .glow { position: absolute; inset: -35%; z-index: -1; border-radius: 50%; background: radial-gradient(ellipse, #ee9d4980, #edba7c35 50%, transparent 72%); filter: blur(20px); pointer-events: none; }
 .logo[data-progress="true"] .drawing path { transition: opacity 540ms ease, transform 540ms cubic-bezier(.22,.61,.36,1); }
+.logo[data-progress="true"] .drawing { filter: none; }
 .logo[data-progress="true"][data-motion="false"] .drawing path { transition: none; transform: none !important; }
 @media (prefers-reduced-motion: reduce) {
   .logo:not([data-progress]) .drawing path { opacity: 1 !important; transform: none !important; }

@@ -45,8 +45,11 @@ export function BrickLogo({ motion, stage, className = "" }: { motion: boolean; 
   }, [motion, stage]);
 
   return <span ref={root} data-progress={stage !== undefined ? "true" : undefined} data-motion={motion} className={`${styles.logo} ${className}`}>
-    <span className={styles.glow} aria-hidden="true" />
+    {stage === undefined && <span className={styles.glow} aria-hidden="true" />}
     <svg viewBox="0 0 459 490" role="img" aria-label="BuildSmart logo" className={styles.drawing}>
+      {stage !== undefined && <g data-brick-guide opacity={0.1} aria-hidden="true">
+        {bricks.map(brick => <path key={brick.sourceIndex} d={brick.d} fill={brick.fill} />)}
+      </g>}
       {bricks.map(brick => {
         const visible = stage === undefined || brick.stage <= stage;
         return <path key={brick.sourceIndex} data-brick={brick.sourceIndex} d={brick.d} fill={brick.fill}

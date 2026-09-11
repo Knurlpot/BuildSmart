@@ -5,6 +5,8 @@ import vm from 'node:vm';
 import { createRequire } from 'node:module';
 import { execFileSync } from 'node:child_process';
 import ts from 'typescript';
+import { createElement } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
 
 const component = new URL('../features/welcome/BrickLogo.tsx', import.meta.url);
 const require = createRequire(component);
@@ -12,6 +14,17 @@ const context = { exports: {}, require: name => name.endsWith('.css') ? {} : req
 vm.runInNewContext(ts.transpileModule(fs.readFileSync(component, 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX, esModuleInterop: true } }).outputText, context);
 const { brickKeyframes, LOGO_CYCLE_MS } = context.exports;
 const bricks = JSON.parse(fs.readFileSync(new URL('../features/welcome/logo-bricks.json', import.meta.url)));
+
+test('sign-up retains a faint stationary guide behind the animated bricks only', () => {
+  const markup = renderToStaticMarkup(createElement(context.exports.BrickLogo, { motion: true, stage: 0 }));
+  assert.match(markup, /data-brick-guide="true" opacity="0.1"/);
+  assert.equal((markup.match(/<path /g) ?? []).length, 144);
+  assert.equal((markup.match(/data-brick="/g) ?? []).length, 72);
+  assert.equal((markup.match(/opacity:0;/g) ?? []).length, 72);
+  const loop = renderToStaticMarkup(createElement(context.exports.BrickLogo, { motion: false }));
+  assert.doesNotMatch(loop, /data-brick-guide/);
+  assert.equal((loop.match(/<path /g) ?? []).length, 72);
+});
 
 test('all 72 bricks reuse exact sign-up paths, colors and stage order', () => {
   const generated = JSON.parse(execFileSync(process.execPath, ['scripts/generate-logo-bricks.mjs'], { encoding: 'utf8' }));

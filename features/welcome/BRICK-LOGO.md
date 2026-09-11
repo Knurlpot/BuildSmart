@@ -9,4 +9,6 @@
 
 Sign-up reuses the same paths via `BrickLogo`'s optional `stage` prop. It starts empty, then transitions newly revealed bricks over 540ms with short staggered delays. Non-empty fields drive progress (not validity), using only the active join/create branch. Optional middle name can contribute but is not required; specialization selection and terms acceptance contribute too. Additional letters do not restart the animation; clearing a field reduces progress. Completion holds the logo instead of looping. Reduced motion preserves the current progress without transitions. Login retains its static logo. Source SVG assets remain unchanged.
 
+Sign-up's progress mode has no glow or drop shadow. A stationary 10%-opacity copy of the same brick geometry sits behind the animated paths, matching the faint `Field 0.svg` state even before typing. The dashboard loop retains its glow and empty reset.
+
 The SVG supplied as `Group 513.svg` is a multi-logo reference sheet, not substituted for the existing per-stage assets.
