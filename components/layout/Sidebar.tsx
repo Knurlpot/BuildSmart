@@ -9,19 +9,31 @@ import { useWorkflowHeaderValue } from "@/providers/WorkflowHeaderProvider";
 import { logoFrame } from "@/components/logo-frames";
 import { NAV_ITEMS, type NavItem } from "./nav-items";
 
+function CollapsedTooltip({ children }: { children: React.ReactNode }) {
+  return (
+    <span
+      role="tooltip"
+      className="pointer-events-none absolute left-[calc(100%+0.75rem)] top-1/2 z-50 -translate-y-1/2 whitespace-nowrap rounded-xl bg-black px-3.5 py-2 text-sm font-medium leading-none text-white opacity-0 shadow-lg transition-opacity duration-150 group-hover:opacity-100 group-focus-visible:opacity-100 motion-reduce:transition-none"
+    >
+      {children}
+    </span>
+  );
+}
+
 function NavRow({ item, onboardingStep, active, collapsed }: { item: NavItem; onboardingStep: number; active: boolean; collapsed: boolean }) {
   const Icon = item.icon;
   const locked = onboardingStep < item.minStep;
+  const lockedLabel = `Complete setup to unlock ${item.label}`;
 
   if (locked) {
     return (
       <div
-        aria-label={`Complete setup to unlock ${item.label}`}
-        className={`flex cursor-not-allowed select-none items-center rounded-md py-2.5 text-sm font-medium text-gray-400 ${collapsed ? "justify-center px-0" : "gap-2.5 px-3"}`}
-        title={`Complete setup to unlock ${item.label}`}
+        aria-label={lockedLabel}
+        className={`group relative flex cursor-not-allowed select-none items-center rounded-md py-2.5 text-sm font-medium text-gray-400 ${collapsed ? "justify-center px-0" : "gap-2.5 px-3"}`}
       >
         <span className="relative shrink-0"><Icon className="h-4 w-4" /><Lock className="absolute -right-1.5 -bottom-1 h-2.5 w-2.5 rounded-sm bg-white" /></span>
         {!collapsed && <span>{item.label}</span>}
+        {collapsed && <CollapsedTooltip>{lockedLabel}</CollapsedTooltip>}
       </div>
     );
   }
@@ -30,9 +42,8 @@ function NavRow({ item, onboardingStep, active, collapsed }: { item: NavItem; on
     <Link
       href={item.href}
       aria-current={active ? "page" : undefined}
-      title={collapsed ? item.label : undefined}
       aria-label={collapsed ? item.label : undefined}
-      className={`flex items-center rounded-md py-2.5 text-sm font-medium transition-colors ${collapsed ? "justify-center px-0" : "gap-2.5 px-3"} ${
+      className={`group relative flex items-center rounded-md py-2.5 text-sm font-medium transition-colors ${collapsed ? "justify-center px-0" : "gap-2.5 px-3"} ${
         active
           ? "bg-primary text-primary-foreground"
           : "text-gray-600 hover:bg-orange-50 hover:text-primary"
@@ -40,6 +51,7 @@ function NavRow({ item, onboardingStep, active, collapsed }: { item: NavItem; on
     >
       <Icon className="h-4 w-4 flex-shrink-0" />
       {!collapsed && <span>{item.label}</span>}
+      {collapsed && <CollapsedTooltip>{item.label}</CollapsedTooltip>}
     </Link>
   );
 }
@@ -76,13 +88,13 @@ export default function Sidebar({ collapsed = true, onToggle }: { collapsed?: bo
           type="button"
           onClick={onToggle}
           aria-label={compact ? "Expand sidebar" : "Collapse sidebar"}
-          title={compact ? "Expand sidebar" : "Collapse sidebar"}
           aria-expanded={!compact}
           className={`group relative flex shrink-0 items-center justify-center rounded-md ${compact ? "h-full w-full" : "mr-3 h-8 w-8"} ${workflow ? "text-white/80 hover:bg-white/15 hover:text-white" : "text-gray-500 hover:bg-orange-50 hover:text-primary"}`}
         >
           {compact ? <>
             <Image src={logoFrame(13)} alt="" className={`h-7 w-7 transition-opacity group-hover:opacity-0 group-focus-visible:opacity-0 motion-reduce:transition-none ${workflow ? "brightness-0 invert" : ""}`} />
             <PanelLeftOpen className="absolute h-5 w-5 opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100 motion-reduce:transition-none" />
+            <CollapsedTooltip>Expand sidebar</CollapsedTooltip>
           </> : <PanelLeftClose className="h-4 w-4" />}
         </button>}
       </div>
@@ -99,7 +111,7 @@ export default function Sidebar({ collapsed = true, onToggle }: { collapsed?: bo
         </div>
       )}
 
-      <nav className={`flex flex-1 flex-col gap-0.5 overflow-y-auto py-3 ${compact ? "px-2" : "px-3"}`}>
+      <nav className={`flex flex-1 flex-col gap-0.5 overflow-visible py-3 ${compact ? "px-2" : "px-3"}`}>
         {NAV_ITEMS.map((item) => (
           <NavRow key={item.href} item={item} onboardingStep={onboardingStep} active={pathname === item.href} collapsed={compact} />
         ))}
@@ -109,12 +121,12 @@ export default function Sidebar({ collapsed = true, onToggle }: { collapsed?: bo
         <button
           type="button"
           onClick={handleLogout}
-          title={compact ? "Log out" : undefined}
           aria-label="Log out"
-          className={`flex w-full items-center rounded-md py-2.5 text-sm font-medium text-gray-600 hover:bg-red-50 hover:text-red-600 transition-colors ${compact ? "justify-center px-0" : "gap-2.5 px-3"}`}
+          className={`group relative flex w-full items-center rounded-md py-2.5 text-sm font-medium text-gray-600 hover:bg-red-50 hover:text-red-600 transition-colors ${compact ? "justify-center px-0" : "gap-2.5 px-3"}`}
         >
           <LogOut className="h-4 w-4 shrink-0" />
           {!compact && <span>Log out</span>}
+          {compact && <CollapsedTooltip>Log out</CollapsedTooltip>}
         </button>
       </div>
     </aside>
