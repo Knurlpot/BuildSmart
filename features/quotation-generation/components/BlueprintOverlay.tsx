@@ -26,6 +26,8 @@ const AUTO_STRAIGHTEN_TOLERANCE = 12;
 
 const pointsToSvg = (points: [number, number][]) => points.map(([x, y]) => `${x},${y}`).join(" ");
 
+const svgSafeId = (value: string) => value.replace(/[^a-zA-Z0-9_-]/g, "-");
+
 const polygonCenterY = (points: [number, number][]) => {
   if (points.length === 0) return 0;
   return points.reduce((sum, [, y]) => sum + y, 0) / points.length;
@@ -694,42 +696,77 @@ export function BlueprintOverlay({
                 const labelHeight = emphasized ? 82 : 62;
                 const labelX = Math.min(Math.max(x - labelWidth / 2, cropX + 4), cropX + cropWidth - labelWidth - 4);
                 const labelY = Math.min(Math.max(y - labelHeight / 2, cropY + 4), cropY + cropHeight - labelHeight - 4);
+                const glowId = `room-hover-glow-${svgSafeId(seg.draft_id)}`;
+                const glowMaskId = `room-hover-mask-${svgSafeId(seg.draft_id)}`;
+                const glowVisible = hovered || selected;
+                const glowSize = Math.min(360, Math.max(150, 95 + Math.sqrt(Math.max(seg.area_sqm, 1)) * 38));
+                const glowX = x - glowSize / 2;
+                const glowY = y - glowSize / 2;
                 return (
-                  <foreignObject
-                    key={`pin-${seg.draft_id}`}
-                    x={labelX}
-                    y={labelY}
-                    width={labelWidth}
-                    height={labelHeight}
-                    className={labelEditingActive ? "cursor-grab active:cursor-grabbing" : "cursor-pointer"}
-                    onMouseEnter={() => onHoverChange(seg.draft_id)}
-                    onMouseLeave={() => {
-                      if (!labelEditingActive) onHoverChange(null);
-                    }}
-                    onPointerDown={(e) => {
-                      if (!labelEditingActive) return;
-                      e.preventDefault();
-                      e.stopPropagation();
-                      const point = svgPointFromPointer(e);
-                      if (!point) return;
-                      setSelectedEditId(seg.draft_id);
-                      onHoverChange(seg.draft_id);
-                      setDraggingPin({ draftId: seg.draft_id, lastPoint: point });
-                      e.currentTarget.setPointerCapture(e.pointerId);
-                    }}
-                  >
-                    <div
-                      className={`flex h-full w-full flex-col justify-center rounded-lg border-2 bg-white/95 shadow-lg transition-[box-shadow,transform] ${
-                        emphasized ? "px-4 py-3 ring-4 ring-primary/30" : "px-3 py-2"
-                      }`}
-                      style={{ borderColor: color, color }}
+                  <g key={`pin-${seg.draft_id}`}>
+                    <defs>
+                      <linearGradient id={glowId} x1="0" y1="0" x2="1" y2="1">
+                        <stop offset="0%" stopColor={color} stopOpacity="0.1" />
+                        <stop offset="45%" stopColor={color} stopOpacity="0.32" />
+                        <stop offset="100%" stopColor={color} stopOpacity="0.08" />
+                      </linearGradient>
+                      <radialGradient id={glowMaskId}>
+                        <stop offset="0%" stopColor="white" stopOpacity="1" />
+                        <stop offset="56%" stopColor="white" stopOpacity="0.82" />
+                        <stop offset="82%" stopColor="white" stopOpacity="0.22" />
+                        <stop offset="100%" stopColor="white" stopOpacity="0" />
+                      </radialGradient>
+                      <mask id={`${glowMaskId}-fade`} maskUnits="userSpaceOnUse" x={glowX} y={glowY} width={glowSize} height={glowSize}>
+                        <rect x={glowX} y={glowY} width={glowSize} height={glowSize} fill={`url(#${glowMaskId})`} />
+                      </mask>
+                    </defs>
+                    <rect
+                      x={glowX}
+                      y={glowY}
+                      width={glowSize}
+                      height={glowSize}
+                      rx={18}
+                      fill={`url(#${glowId})`}
+                      mask={`url(#${glowMaskId}-fade)`}
+                      opacity={glowVisible ? 1 : 0}
+                      className="transition-opacity"
+                      pointerEvents="none"
+                    />
+                    <foreignObject
+                      x={labelX}
+                      y={labelY}
+                      width={labelWidth}
+                      height={labelHeight}
+                      className={labelEditingActive ? "cursor-grab active:cursor-grabbing" : "cursor-pointer"}
+                      onMouseEnter={() => onHoverChange(seg.draft_id)}
+                      onMouseLeave={() => {
+                        if (!labelEditingActive) onHoverChange(null);
+                      }}
+                      onPointerDown={(e) => {
+                        if (!labelEditingActive) return;
+                        e.preventDefault();
+                        e.stopPropagation();
+                        const point = svgPointFromPointer(e);
+                        if (!point) return;
+                        setSelectedEditId(seg.draft_id);
+                        onHoverChange(seg.draft_id);
+                        setDraggingPin({ draftId: seg.draft_id, lastPoint: point });
+                        e.currentTarget.setPointerCapture(e.pointerId);
+                      }}
                     >
-                      <div className={`${emphasized ? "text-lg" : "text-sm"} truncate font-extrabold leading-tight text-gray-900`}>{seg.segment_name || "Untitled room"}</div>
-                      <div className={`${emphasized ? "text-sm" : "text-xs"} font-bold leading-tight`} style={{ color }}>
-                        {seg.area_sqm.toFixed(1)} sqm
+                      <div
+                        className={`flex h-full w-full flex-col justify-center rounded-lg border-2 bg-white/95 shadow-lg transition-[box-shadow,transform] ${
+                          emphasized ? "px-4 py-3 ring-4 ring-primary/30" : "px-3 py-2"
+                        }`}
+                        style={{ borderColor: color, color }}
+                      >
+                        <div className={`${emphasized ? "text-lg" : "text-sm"} truncate font-extrabold leading-tight text-gray-900`}>{seg.segment_name || "Untitled room"}</div>
+                        <div className={`${emphasized ? "text-sm" : "text-xs"} font-bold leading-tight`} style={{ color }}>
+                          {seg.area_sqm.toFixed(1)} sqm
+                        </div>
                       </div>
-                    </div>
-                  </foreignObject>
+                    </foreignObject>
+                  </g>
                 );
               })}
             </g>
