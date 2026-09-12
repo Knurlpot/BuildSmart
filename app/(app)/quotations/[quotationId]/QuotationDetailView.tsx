@@ -154,6 +154,7 @@ export function QuotationDetailView({ quotationId }: { quotationId: string }) {
     ? "project-tier-gradient bg-linear-to-r from-[#0000CD] via-[#4169E1] to-[#0000CD]"
     : "project-tier-gradient bg-linear-to-r from-primary via-orange-400 to-primary";
   const clientName = quotation.client?.client_name ?? "Client not assigned";
+  const createdBy = quotation.created_by_user_name || quotation.created_by_user_email || `User #${quotation.user_id}`;
   const backHref = quotation.client?.client_id ? `/clients/${quotation.client.client_id}` : "/projects";
   const initials = clientName.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]?.toUpperCase()).join("") || "CL";
 
@@ -212,7 +213,6 @@ export function QuotationDetailView({ quotationId }: { quotationId: string }) {
               ["Region", quotation.project_region],
               ["Created", new Date(quotation.created_at).toLocaleDateString("en-PH", { year: "numeric", month: "short", day: "numeric" })],
               ["Last Updated", new Date(quotation.updated_at).toLocaleDateString("en-PH", { year: "numeric", month: "short", day: "numeric" })],
-              ["Created By", quotation.created_by_user_name || quotation.created_by_user_email || `User #${quotation.user_id}`],
               ["Notes", quotation.client?.notes || "-"],
             ].map(([label, value]) => (
               <div key={label} className="rounded-xl bg-gray-50 p-3"><p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">{label}</p><p className="mt-0.5 text-sm font-medium text-gray-700">{value}</p></div>
@@ -238,6 +238,13 @@ export function QuotationDetailView({ quotationId }: { quotationId: string }) {
                   <p className="mt-0.5 text-xs font-semibold text-gray-800">{value}</p>
                 </div>
               ))}
+            </div>
+            <div className={`flex items-center gap-2.5 rounded-xl p-2.5 ${isPremium ? "bg-[#0000CD]/5" : "bg-orange-50"}`}>
+              <UserRound className={`h-4 w-4 shrink-0 ${isPremium ? "text-[#0000CD]" : "text-primary"}`} />
+              <div className="min-w-0">
+                <p className="text-[9px] font-semibold uppercase tracking-wider text-gray-500">Created By</p>
+                <p className="truncate text-xs font-semibold text-gray-800" title={quotation.created_by_user_email ?? undefined}>{createdBy}</p>
+              </div>
             </div>
             <p className="text-[11px] text-gray-400">Finalized {new Date(quotation.updated_at).toLocaleDateString("en-PH", { year: "numeric", month: "short", day: "numeric" })}</p>
             <div className="flex flex-col gap-2 rounded-xl border border-gray-100 bg-gray-50/60 p-3">
