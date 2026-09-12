@@ -243,7 +243,7 @@ export function QuotationGenerationWizard() {
         setMethod(nextMethod);
         setBlueprintFloors(localDraft?.blueprintFloors ?? null);
         setOriginalBlueprintFloors(localDraft?.originalBlueprintFloors ?? null);
-        setBlueprintFilePath(localDraft?.blueprintFilePath ?? null);
+        setBlueprintFilePath(localDraft?.blueprintFilePath ?? resumeQuotation.blueprint_file_path ?? null);
         setDraftTierItems(localDraft?.tierItems ?? null);
         setDraftPricelistBasis(localDraft?.pricelistBasis ?? null);
         setDraftHasManualLineEdits(Boolean(localDraft?.hasManualLineEdits || localDraft?.tierItems));
@@ -271,7 +271,7 @@ export function QuotationGenerationWizard() {
 
   useEffect(() => {
     if (!quotation || step === "client" || step === "method" || step === "finalized") return;
-    if (step !== "configure" && step !== "generating" && step !== "results") return;
+    if (step !== "blueprint") return;
     writeLocalQuotationDraft({
       quoteId: quotation.quote_id,
       step,

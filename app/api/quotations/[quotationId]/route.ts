@@ -14,7 +14,7 @@ export async function GET(request: NextRequest, { params }: Params) {
 
   const quoteResult = await pool.query(
     `SELECT q.quote_id, q.company_id, q.user_id, q.updated_by_user_id, q.client_id, q.project_name, q.project_location,
-            q.project_region, q.input_method, q.status, q.accepted_tier, q.total_material_cost::float AS total_material_cost,
+            q.project_region, q.input_method, q.blueprint_file_path, q.status, q.accepted_tier, q.total_material_cost::float AS total_material_cost,
             q.total_service_cost::float AS total_service_cost, q.grand_total::float AS grand_total,
             trim(concat_ws(' ', creator.first_name, creator.last_name)) AS created_by_user_name,
             creator.email AS created_by_user_email,
