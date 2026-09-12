@@ -88,6 +88,7 @@ export function SegmentBlueprintPreview({ floors, segments, hoveredId, onHoverCh
         segments={floorSegments}
         hoveredId={hoveredId}
         onHoverChange={onHoverChange}
+        visualMode="labels"
         topLeftOverlay={
           floors.length > 1 ? (
             <div className="flex max-w-full gap-1 overflow-x-auto rounded-lg border border-gray-200 bg-white/95 p-1 shadow-sm backdrop-blur-sm">

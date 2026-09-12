@@ -440,6 +440,62 @@ function matchingUnitRule(rule: MaterialRuleEntry, unitRules: UnitRule[]): UnitR
   return unitRules.find((unitRule) => unitRule.is_active && unitRule.item_code === null && unitRule.category === rule.category) ?? null;
 }
 
+function estimateMaterialQuantity(areaSqm: number, category: MaterialRuleEntry['category'], coveragePerUnit: number, wastagePct: number, itemName: string, unit: string | undefined): number {
+  const safeArea = Math.max(areaSqm, 0);
+  const safeCoverage = Math.max(coveragePerUnit, 0.0001);
+  const wastageFactor = 1 + Math.max(wastagePct, 0) / 100;
+  const normalizedName = itemName.toLowerCase();
+  const normalizedUnit = unit?.toLowerCase() ?? "";
+
+  if (category === 'Paints, Coatings & Sealants') {
+    const estimatedSurfaceArea = safeArea * 3;
+    const coats = normalizedName.includes('topcoat') || normalizedName.includes('latex') || normalizedName.includes('finish') ? 2 : 1;
+    return round2((estimatedSurfaceArea / 28) * coats * 1.1);
+  }
+
+  if (category === 'Plumbing & Pipework' || category === 'Adhesives & Tapes' || category === 'Hardware & Fasteners') {
+    const perimeter = 4 * Math.sqrt(safeArea);
+    return round2(((perimeter * 1.5) / safeCoverage) * wastageFactor);
+  }
+
+  if (category === 'Electrical & Lighting') {
+    if (normalizedName.includes('fixture') || normalizedName.includes('light') || normalizedName.includes('lamp') || normalizedUnit.includes('pc')) {
+      return Math.max(1, Math.ceil(safeArea / 7));
+    }
+    const perimeter = 4 * Math.sqrt(safeArea);
+    return round2(((perimeter * 1.5) / safeCoverage) * wastageFactor);
+  }
+
+  if (category === 'Structural' || category === 'Concrete & Masonry' || category === 'Landscaping & Siteworks') {
+    const volume = safeArea * 0.1 * 1.1;
+    if (normalizedName.includes('cement') || normalizedName.includes('bag')) return round2(volume * 9);
+    return round2(volume);
+  }
+
+  if (category === 'Masonry Units & Blocks') {
+    const wallArea = safeArea * 2.5;
+    return Math.ceil(wallArea * 12.5 * 1.05);
+  }
+
+  if (category === 'Reinforcement & Steel' || category === 'Timber & Lumber') {
+    const gridLength = safeArea / 0.4 + safeArea / 0.6;
+    return round2(gridLength * wastageFactor);
+  }
+
+  if (category === 'HVAC & Mechanical') return round2(safeArea * 600);
+
+  if (category === 'Doors, Windows & Glazing') {
+    if (normalizedName.includes('window')) return safeArea >= 15 ? 2 : 1;
+    return 1;
+  }
+
+  if (category === 'Safety & PPE' || category === 'Tools, Equipment & Consumables' || category === 'Specialty Materials & Systems') {
+    return 1;
+  }
+
+  return round2((safeArea / safeCoverage) * wastageFactor);
+}
+
 function buildCompanyRuleLine(
   seg: DraftSegment,
   rule: MaterialRuleEntry,
@@ -452,7 +508,7 @@ function buildCompanyRuleLine(
 ): ProvisionalItemLine {
   const coverage = unitRule?.conversion_factor ?? 1;
   const wastage = unitRule?.wastage_allowance_percentage ?? 0;
-  const qty = round2(seg.area_sqm * coverage * (1 + wastage / 100));
+  const qty = estimateMaterialQuantity(seg.area_sqm, rule.category, coverage, wastage, rule.preferred_item_name, item?.unit);
   const matchingUploadedPrices = uploadedPrices
     .filter((price) => String(price.item_code) === String(rule.preferred_item_code))
     .sort((a, b) => a.price - b.price);

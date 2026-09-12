@@ -136,8 +136,9 @@ function SegmentCostDeck({ segLines, defaultOpen, hovered, onHoverChange }: { se
                   <span className="font-semibold text-amber-600">No rate on file.</span>
                 ) : line.category === "Material" ? (
                   <>
-                    {line.derived_area_sqm?.toFixed(1)} sqm × {line.derived_coverage_per_sqm?.toFixed(2)} coverage ×{" "}
-                    {(1 + (line.derived_wastage_percentage ?? 0) / 100).toFixed(2)} wastage = <span className="font-semibold text-gray-800">{line.quantity.toFixed(1)} {line.unit}</span>
+                    Category-based estimate from {line.derived_area_sqm?.toFixed(1)} sqm
+                    {line.derived_wastage_percentage ? ` with ${line.derived_wastage_percentage}% wastage` : ""} ={" "}
+                    <span className="font-semibold text-gray-800">{line.quantity.toFixed(1)} {line.unit}</span>
                   </>
                 ) : (
                   <>
@@ -260,7 +261,7 @@ function BoqTab({ items }: { items: ProvisionalItemLine[] }) {
                 ? [
                     <tr key={`${segmentId}-header`} className="border-y border-gray-200 bg-gray-100/80">
                       <td colSpan={7} className="px-3 py-2 text-xs font-bold uppercase tracking-wide text-gray-600">
-                        {lines[0]?.segment_name ?? "Segment"} Materials
+                        {lines[0]?.segment_name ?? "Segment"} {lines[0]?.derived_area_sqm ? `(${lines[0].derived_area_sqm.toFixed(1)} sqm) ` : ""}Materials
                       </td>
                     </tr>,
                   ]

@@ -338,7 +338,7 @@ export function UnitRulesForm({ focusRuleId, onFocusHandled }: UnitRulesFormProp
 
                 <div className="flex flex-col gap-1.5">
                   <label htmlFor="unit-conversion-factor" className="flex items-center gap-1.5 text-xs font-semibold text-gray-600">
-                    <FieldHelp label="Conversion Factor" text="Converts treatment area into material quantity. Formula: area x conversion factor x wastage." /> <span className="text-red-500">*</span>
+                    <FieldHelp label="Coverage Per Unit" text="How many sqm one unit covers. Formula: area ÷ coverage per unit × wastage." /> <span className="text-red-500">*</span>
                   </label>
                   <input id="unit-conversion-factor" type="text" inputMode="decimal" value={conversionFactor} onChange={(e) => {
                     const next = e.target.value.replace(/[^\d.]/g, "");
@@ -416,7 +416,7 @@ export function UnitRulesForm({ focusRuleId, onFocusHandled }: UnitRulesFormProp
               )}
               <dl className="grid grid-cols-2 gap-4 px-4 text-sm">
                 <div>
-                  <dt className="text-xs font-semibold uppercase tracking-wide text-gray-400">Conversion Factor</dt>
+                  <dt className="text-xs font-semibold uppercase tracking-wide text-gray-400">Coverage Per Unit</dt>
                   <dd className="text-gray-700">{selected.conversion_factor}</dd>
                 </div>
                 <div>
