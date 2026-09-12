@@ -39,7 +39,7 @@ function blueprintScanWarnings(result: BlueprintExtractionResult): string[] {
   const missingSegmentsWarning =
     detectedSegments === 0
       ? [
-          "No spaces were detected from this blueprint. Add segments manually or upload a DXF blueprint with readable walls, room labels, or room polygons.",
+          "No spaces were detected from this blueprint. Add rooms manually or upload a DXF blueprint with readable room labels and area text.",
         ]
       : [];
   return [...diagnosticsWarnings, ...missingSegmentsWarning];
@@ -231,7 +231,7 @@ function createManualSegmentForFloor(floor: BlueprintFloor): DraftSegment {
     polygon_coords: polygon,
     polygon_groups: [polygon],
     geometry_flagged: true,
-    geometry_warnings: ["Manual highlight added; adjust the shape before confirming."],
+    geometry_warnings: ["Manual room added; verify the area before confirming."],
     boundary_estimated: true,
     confirmed: false,
   };
@@ -801,7 +801,7 @@ export function BlueprintUploadPanel({
                           : segment.polygon_groups,
                       boundary_estimated: false,
                       geometry_flagged: true,
-                      geometry_warnings: ["Highlight adjusted manually; verify area before continuing."],
+                      geometry_warnings: ["Room label location adjusted manually; verify area before continuing."],
                     }
                   : segment,
               ),
@@ -812,7 +812,7 @@ export function BlueprintUploadPanel({
           isRescanning={isRescanning}
           onScanStateChange={handleOverlayScanStateChange}
           scanOnMount={!floorWasOpened}
-          disableHighlightEditing={floorAllIncludedConfirmed}
+          visualMode="labels"
         />
         <SegmentEditorList
           segments={floorSegments}

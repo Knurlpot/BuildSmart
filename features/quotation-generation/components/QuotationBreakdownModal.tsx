@@ -343,20 +343,6 @@ function CostSummaryTab({ result }: { result: ProvisionalQuotationTierResult }) 
           Missing {unresolvedCount} Rate{unresolvedCount === 1 ? "" : "s"}. Excluded from the Total below.
         </div>
       )}
-      {(result.site_condition_effects ?? []).length > 0 && (
-        <div className="rounded-xl border border-blue-100 bg-blue-50/50 p-4">
-          <p className="text-sm font-bold text-gray-900">Site condition adjustments</p>
-          <p className="text-xs text-gray-500">Only effects included during estimator review are priced into this quotation.</p>
-          <div className="mt-2 space-y-1.5">
-            {(result.site_condition_effects ?? []).map((effect) => (
-              <div key={`${effect.segment_draft_id}:${effect.review_key}`} className="flex items-start justify-between gap-3 rounded-lg bg-white px-3 py-2 text-xs">
-                <span><span className="font-semibold text-gray-800">{effect.label}</span><span className="block text-[11px] text-gray-500">{effect.segment_name} · {effect.rule_name}</span></span>
-                <span className={effect.included ? "font-semibold text-primary" : "font-semibold text-gray-400 line-through"}>{effect.included ? (effect.computed_amount !== null ? fmtPeso(effect.computed_amount) : effect.effect_type === 'productivity' ? `-${effect.percentage ?? 0}% productivity` : effect.effect_type === 'schedule' ? `+${effect.schedule_days ?? 0} days` : 'Included') : 'Excluded'}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
       <div className="rounded-xl border border-gray-100 bg-white p-5 shadow-sm">
         {rows.map((row) => (
           <div key={row.label} className="flex items-center justify-between border-b border-gray-100 py-2.5 last:border-0">

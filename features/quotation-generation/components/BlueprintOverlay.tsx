@@ -31,6 +31,14 @@ const polygonCenterY = (points: [number, number][]) => {
   return points.reduce((sum, [, y]) => sum + y, 0) / points.length;
 };
 
+const polygonCenter = (points: [number, number][]): [number, number] => {
+  if (points.length === 0) return [0, 0];
+  return [
+    points.reduce((sum, [x]) => sum + x, 0) / points.length,
+    points.reduce((sum, [, y]) => sum + y, 0) / points.length,
+  ];
+};
+
 const distanceToSegment = (point: [number, number], start: [number, number], end: [number, number]) => {
   const [px, py] = point;
   const [sx, sy] = start;
@@ -90,6 +98,7 @@ const gridLines = (start: number, end: number, step: number) => {
 };
 
 type HighlightEditTool = "move" | "move-shape" | "add" | "remove";
+type BlueprintVisualMode = "highlights" | "labels";
 
 const segmentPolygons = (segment: DraftSegment): SegmentPolygon[] => {
   if (segment.polygon_groups?.length) return segment.polygon_groups;
@@ -114,6 +123,7 @@ interface BlueprintOverlayProps {
   onScanStateChange?: (scanning: boolean) => void;
   scanOnMount?: boolean;
   disableHighlightEditing?: boolean;
+  visualMode?: BlueprintVisualMode;
   topLeftOverlay?: ReactNode;
   /** Task 7, Part B — Segment Breakdown reuses this exact component (not a rebuild) to
    * preview an already-generated/saved quote's blueprint. Rescan is a destructive EDIT
@@ -160,6 +170,7 @@ export function BlueprintOverlay({
   onScanStateChange,
   scanOnMount = false,
   disableHighlightEditing = false,
+  visualMode = "highlights",
   topLeftOverlay,
   readOnly = false,
 }: BlueprintOverlayProps) {
@@ -168,6 +179,7 @@ export function BlueprintOverlay({
   const [editingHighlights, setEditingHighlights] = useState(false);
   const [draggingPoint, setDraggingPoint] = useState<{ draftId: string; polygonIndex: number; pointIndex: number } | null>(null);
   const [draggingShape, setDraggingShape] = useState<{ draftId: string; polygonIndex: number; lastPoint: [number, number] } | null>(null);
+  const [draggingPin, setDraggingPin] = useState<{ draftId: string; lastPoint: [number, number] } | null>(null);
   const [selectedEditId, setSelectedEditId] = useState<string | null>(null);
   const [selectedEditPolygonIndex, setSelectedEditPolygonIndex] = useState(0);
   const [highlightEditTool, setHighlightEditTool] = useState<HighlightEditTool>("move");
@@ -238,6 +250,8 @@ export function BlueprintOverlay({
   const editablePolygon = editablePolygons[selectedEditPolygonIndex] ?? editablePolygons[0] ?? null;
   const canEditHighlights = !readOnly && !disableHighlightEditing && !!onSegmentPolygonChange;
   const highlightEditingActive = editingHighlights && canEditHighlights;
+  const labelMode = visualMode === "labels";
+  const labelEditingActive = labelMode && highlightEditingActive;
 
   const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
     const rect = containerRef.current?.getBoundingClientRect();
@@ -280,6 +294,22 @@ export function BlueprintOverlay({
   const handleSvgPointerMove = (e: React.PointerEvent<SVGSVGElement>) => {
     const point = svgPointFromPointer(e);
     if (!point) return;
+    if (draggingPin) {
+      const segment = segments.find((seg) => seg.draft_id === draggingPin.draftId);
+      const polygons = segment ? segmentPolygons(segment) : [];
+      if (polygons.length === 0) return;
+      const dx = point[0] - draggingPin.lastPoint[0];
+      const dy = point[1] - draggingPin.lastPoint[1];
+      polygons.forEach((polygon, polygonIndex) => {
+        const moved = polygon.map(([x, y]) => [
+          Math.min(Math.max(x + dx, 0), imageWidth),
+          Math.min(Math.max(y + dy, 0), imageHeight),
+        ] as [number, number]);
+        onSegmentPolygonChange?.(draggingPin.draftId, moved, polygonIndex);
+      });
+      setDraggingPin({ ...draggingPin, lastPoint: point });
+      return;
+    }
     if (draggingPoint) {
       updatePolygonPoint(draggingPoint.draftId, draggingPoint.polygonIndex, draggingPoint.pointIndex, point);
       return;
@@ -313,6 +343,7 @@ export function BlueprintOverlay({
   const handleSvgPointerUp = () => {
     setDraggingPoint(null);
     setDraggingShape(null);
+    setDraggingPin(null);
   };
 
   const handlePolygonDoubleClick = (e: React.MouseEvent<SVGPolygonElement>, segment: DraftSegment) => {
@@ -412,11 +443,12 @@ export function BlueprintOverlay({
                   setEditingHighlights((editing) => !editing);
                   setDraggingPoint(null);
                   setDraggingShape(null);
+                  setDraggingPin(null);
                   setSelectedEditId(null);
                   setHighlightEditTool("move");
                 }}
-                title={highlightEditingActive ? "Finish editing highlights" : "Edit Highlights"}
-                aria-label={highlightEditingActive ? "Finish editing highlights" : "Edit Highlights"}
+                title={highlightEditingActive ? (labelMode ? "Finish editing room labels" : "Finish editing highlights") : (labelMode ? "Edit Room Labels" : "Edit Highlights")}
+                aria-label={highlightEditingActive ? (labelMode ? "Finish editing room labels" : "Finish editing highlights") : (labelMode ? "Edit Room Labels" : "Edit Highlights")}
                 className={`flex h-8 w-8 items-center justify-center rounded-lg border transition ${
                   highlightEditingActive
                     ? "border-primary bg-orange-50 text-primary"
@@ -451,7 +483,7 @@ export function BlueprintOverlay({
         </div>
       )}
 
-      {highlightEditingActive && editableSegment && (
+      {highlightEditingActive && !labelMode && editableSegment && (
         <div className="flex flex-wrap items-center gap-2 rounded-lg border border-orange-200 bg-orange-50 px-3 py-2 text-xs text-gray-700">
           <span className="max-w-48 truncate font-semibold text-gray-800">{editableSegment.segment_name || "Selected room"}</span>
           <div className="flex items-center gap-1">
@@ -566,8 +598,29 @@ export function BlueprintOverlay({
                 if (points.length < 3) return null;
                 const revealed = !scanning || polygonCenterY(points) <= scanLineY;
                 const selected = selectedEditId === seg.draft_id && selectedEditPolygonIndex === polygonIndex;
-                const showOutline = !grouped || highlightEditingActive || selected;
+                const showOutline = !grouped || (highlightEditingActive && !labelMode) || selected;
                 const groupedFillGap = grouped && !highlightEditingActive && revealed;
+
+                if (labelMode) {
+                  return (
+                    <polygon
+                      key={`${seg.draft_id}-${polygonIndex}`}
+                      points={pointsToSvg(points)}
+                      onMouseEnter={() => onHoverChange(seg.draft_id)}
+                      onMouseLeave={() => onHoverChange(null)}
+                      fill="transparent"
+                      stroke="transparent"
+                      strokeWidth={0}
+                      onClick={() => {
+                        if (!labelEditingActive) return;
+                        setSelectedEditId(seg.draft_id);
+                        setSelectedEditPolygonIndex(polygonIndex);
+                        onHoverChange(seg.draft_id);
+                      }}
+                      className={labelEditingActive ? "cursor-grab active:cursor-grabbing" : "cursor-pointer"}
+                    />
+                  );
+                }
 
                 return (
                   <polygon
@@ -624,22 +677,81 @@ export function BlueprintOverlay({
               });
             })}
           </g>
-          <g pointerEvents="none">
-            {groupingSelectionPolygons.map((points, index) =>
-              points.length >= 3 ? (
-                <polygon
-                  key={`grouping-selection-${index}`}
-                  points={pointsToSvg(points)}
-                  fill="#16a34a"
-                  fillOpacity={0.24}
-                  stroke="#16a34a"
-                  strokeWidth={8}
-                  strokeLinejoin="round"
-                />
-              ) : null,
-            )}
-          </g>
-          {highlightEditingActive && editableSegment && editablePolygon && (
+          {labelMode && (
+            <g>
+              {segments.map((seg) => {
+                const polygons = segmentPolygons(seg);
+                if (polygons.length === 0) return null;
+                const band = confidenceBand(seg.confidence_score);
+                const color = seg.confirmed ? BAND_COLOR.high : BAND_COLOR[band];
+                const hovered = hoveredId === seg.draft_id;
+                const [x, y] = polygonCenter(polygons.flat());
+                const revealed = !scanning || y <= scanLineY;
+                if (!revealed) return null;
+                const selected = selectedEditId === seg.draft_id;
+                const emphasized = !labelEditingActive && (hovered || selected);
+                const labelWidth = Math.min(emphasized ? 330 : 260, Math.max(emphasized ? 230 : 178, seg.segment_name.length * (emphasized ? 12 : 9.5) + (emphasized ? 92 : 64)));
+                const labelHeight = emphasized ? 82 : 62;
+                const labelX = Math.min(Math.max(x - labelWidth / 2, cropX + 4), cropX + cropWidth - labelWidth - 4);
+                const labelY = Math.min(Math.max(y - labelHeight / 2, cropY + 4), cropY + cropHeight - labelHeight - 4);
+                return (
+                  <foreignObject
+                    key={`pin-${seg.draft_id}`}
+                    x={labelX}
+                    y={labelY}
+                    width={labelWidth}
+                    height={labelHeight}
+                    className={labelEditingActive ? "cursor-grab active:cursor-grabbing" : "cursor-pointer"}
+                    onMouseEnter={() => onHoverChange(seg.draft_id)}
+                    onMouseLeave={() => {
+                      if (!labelEditingActive) onHoverChange(null);
+                    }}
+                    onPointerDown={(e) => {
+                      if (!labelEditingActive) return;
+                      e.preventDefault();
+                      e.stopPropagation();
+                      const point = svgPointFromPointer(e);
+                      if (!point) return;
+                      setSelectedEditId(seg.draft_id);
+                      onHoverChange(seg.draft_id);
+                      setDraggingPin({ draftId: seg.draft_id, lastPoint: point });
+                      e.currentTarget.setPointerCapture(e.pointerId);
+                    }}
+                  >
+                    <div
+                      className={`flex h-full w-full flex-col justify-center rounded-lg border-2 bg-white/95 shadow-lg transition-[box-shadow,transform] ${
+                        emphasized ? "px-4 py-3 ring-4 ring-primary/30" : "px-3 py-2"
+                      }`}
+                      style={{ borderColor: color, color }}
+                    >
+                      <div className={`${emphasized ? "text-lg" : "text-sm"} truncate font-extrabold leading-tight text-gray-900`}>{seg.segment_name || "Untitled room"}</div>
+                      <div className={`${emphasized ? "text-sm" : "text-xs"} font-bold leading-tight`} style={{ color }}>
+                        {seg.area_sqm.toFixed(1)} sqm
+                      </div>
+                    </div>
+                  </foreignObject>
+                );
+              })}
+            </g>
+          )}
+          {!labelMode && (
+            <g pointerEvents="none">
+              {groupingSelectionPolygons.map((points, index) =>
+                points.length >= 3 ? (
+                  <polygon
+                    key={`grouping-selection-${index}`}
+                    points={pointsToSvg(points)}
+                    fill="#16a34a"
+                    fillOpacity={0.24}
+                    stroke="#16a34a"
+                    strokeWidth={8}
+                    strokeLinejoin="round"
+                  />
+                ) : null,
+              )}
+            </g>
+          )}
+          {highlightEditingActive && !labelMode && editableSegment && editablePolygon && (
             <g>
               {editablePolygon.map(([x, y], index) => (
                 <circle
@@ -697,13 +809,19 @@ export function BlueprintOverlay({
           </div>
         )}
 
-        {highlightEditingActive && !editableSegment && (
+        {highlightEditingActive && labelMode && (
+          <div className="pointer-events-none absolute left-3 top-3 rounded-lg border border-orange-200 bg-white/95 px-3 py-2 text-xs font-semibold text-gray-700 shadow-sm">
+            Drag a room label to place it over the correct room.
+          </div>
+        )}
+
+        {highlightEditingActive && !labelMode && !editableSegment && (
           <div className="pointer-events-none absolute left-3 top-3 rounded-lg border border-orange-200 bg-white/95 px-3 py-2 text-xs font-semibold text-gray-700 shadow-sm">
             Click a room highlight to edit its shape.
           </div>
         )}
 
-        {hoveredSegment && cursor && (
+        {hoveredSegment && cursor && !labelMode && (
           <div
             className="pointer-events-none absolute z-10 flex w-52 flex-col gap-1 rounded-lg border border-white/10 bg-slate-800 p-3 text-xs shadow-2xl"
             style={{ left: tooltipLeft, top: tooltipTop }}

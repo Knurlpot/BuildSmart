@@ -23,8 +23,6 @@ import type {
 import type { Items } from '@/types/entities/items';
 import type { SavedPriceRecord } from '@/hooks/usePricelistCatalog';
 import type { DpwhCatalogRow } from '@/hooks/usePricelistPublishedSource';
-import type { SiteConditionRule } from '@/types/entities/site-condition-rule';
-import { evaluateSiteConditionRules, isSiteConditionEffectIncluded } from '@/features/quotation-generation/lib/siteConditionEngine';
 
 interface SupplierFixture {
   supplier_id: number;
@@ -698,7 +696,8 @@ function deriveSiteConditionContingencyPct(segments: DraftSegment[]): number {
 
   const weightedPoints = included.reduce((sum, segment) => {
     const tagPoints = segment.condition_tags.reduce((tagSum, tag) => tagSum + (SITE_CONDITION_CONTINGENCY_POINTS[tag] ?? 0), 0);
-    return sum + tagPoints * segment.area_sqm;
+    const notePoint = segment.site_notes.trim().length > 0 ? 0.5 : 0;
+    return sum + (tagPoints + notePoint) * segment.area_sqm;
   }, 0);
 
   return Math.min(4, weightedPoints / totalArea);
@@ -820,7 +819,6 @@ export function computeTierResult(
     materialRules?: MaterialRuleEntry[];
     laborRules?: LaborRule[];
     pricingStrategies?: PricingStrategyRule[];
-    siteConditionRules?: SiteConditionRule[];
   }
 ): ProvisionalQuotationTierResult {
   const normalizedTier = normalizeTier(tier);
@@ -829,47 +827,7 @@ export function computeTierResult(
 
   const materialsSubtotal = round2(items.filter((l) => l.category === 'Material').reduce((sum, l) => sum + (l.total_cost ?? 0), 0));
   const rushJobCost = deriveRushJobCost(items, options?.segments ?? [], options?.laborRules);
-  const baseServiceCost = deriveMockServiceCost(items, materialsSubtotal, tier, rushJobCost, options?.segments ?? []);
-  const siteConditionEffects = (options?.segments ?? []).filter(isSegmentIncluded).flatMap((segment) =>
-    evaluateSiteConditionRules(segment, options?.siteConditionRules ?? []).map((effect) => ({
-      ...effect,
-      segment_draft_id: segment.draft_id,
-      segment_name: segment.segment_name,
-      included: isSiteConditionEffectIncluded(segment, effect.review_key),
-    }))
-  );
-  const includedConditionEffects = siteConditionEffects.filter((effect) => effect.included);
-  const automaticEffectAmount = (types: string[]) => {
-    const chargedFixedEffects = new Set<string>();
-    return includedConditionEffects
-      .filter((effect) => types.includes(effect.effect_type) && effect.computed_amount !== null)
-      .reduce((sum, effect) => {
-        if (effect.pricing_method === 'fixed') {
-          if (chargedFixedEffects.has(effect.review_key)) return sum;
-          chargedFixedEffects.add(effect.review_key);
-        }
-        return sum + effect.computed_amount!;
-      }, 0);
-  };
-  const productivityReductions = new Map<string, number>();
-  for (const effect of includedConditionEffects.filter((entry) => entry.effect_type === 'productivity')) {
-    productivityReductions.set(effect.segment_draft_id, Math.min(75, (productivityReductions.get(effect.segment_draft_id) ?? 0) + (effect.percentage ?? 0)));
-  }
-  const productivityCost = items.filter((item) => item.category === 'Labor').reduce((sum, item) => {
-    const reduction = productivityReductions.get(item.segment_draft_id) ?? 0;
-    return sum + (item.total_cost ?? 0) * (reduction > 0 ? (1 / (1 - reduction / 100) - 1) : 0);
-  }, 0);
-  const laborPercentageCost = includedConditionEffects
-    .filter((effect) => effect.pricing_method === 'labor_percentage' && effect.effect_type !== 'productivity')
-    .reduce((sum, effect) => sum + baseServiceCost.labor_cost * ((effect.percentage ?? 0) / 100), 0);
-  const serviceCost: ProvisionalServiceCost = {
-    ...baseServiceCost,
-    labor_cost: round2(baseServiceCost.labor_cost + productivityCost),
-    equipment_cost: round2(baseServiceCost.equipment_cost + automaticEffectAmount(['equipment'])),
-    other_cost: round2(baseServiceCost.other_cost + automaticEffectAmount(['line_item', 'safety']) + laborPercentageCost),
-    subtotal: 0,
-  };
-  serviceCost.subtotal = round2(serviceCost.labor_cost + serviceCost.rush_job_cost + serviceCost.equipment_cost + serviceCost.contingency_cost + serviceCost.other_cost);
+  const serviceCost = deriveMockServiceCost(items, materialsSubtotal, tier, rushJobCost, options?.segments ?? []);
 
   const baseForMarkup = materialsSubtotal + serviceCost.subtotal;
   const ocmAmount = round2(baseForMarkup * (pricingFixture.ocm_percentage / 100));
@@ -898,13 +856,12 @@ export function computeTierResult(
   const templateMinDays = Math.max(0, ...matchedLaborRules.map((rule) => rule.min_duration_days ?? 0));
   const templateBufferDays = Math.max(0, ...matchedLaborRules.map((rule) => rule.safety_buffer_days ?? 0));
   const floorBufferDays = Math.max(0, new Set(includedSegments.map((segment) => segment.floor_level || 'Ground Floor')).size - 1);
-  const siteConditionBufferDays = Math.max(0, ...includedConditionEffects.filter((effect) => effect.effect_type === 'schedule').map((effect) => effect.schedule_days ?? 0));
   const rushAdjustmentDays = includedSegments.some((segment) => segment.is_rush) ? -1 : 0;
   const workDays = productivity !== null
     ? Math.max(1, Math.max(templateMinDays, Math.ceil(area / productivity)) + rushAdjustmentDays)
     : null;
   const durationDays = workDays !== null
-    ? Math.max(workDays, workDays + templateBufferDays + floorBufferDays + siteConditionBufferDays)
+    ? Math.max(workDays, workDays + templateBufferDays + floorBufferDays)
     : null;
   const warrantyYears = Math.max(0, ...matchedMaterialRules.map((rule) => rule.warranty_years ?? 0));
   const lifespanYears = Math.max(0, ...matchedMaterialRules.map((rule) => rule.lifespan_years ?? 0));
@@ -926,7 +883,6 @@ export function computeTierResult(
     warranty_label: warrantyYears > 0 ? `${warrantyYears}-year warranty` : pricingFixture.warranty_label,
     lifespan_label: lifespanYears > 0 ? `${lifespanYears}-year lifespan` : pricingFixture.lifespan_label,
     material_grade_label: pricingFixture.material_grade_label,
-    site_condition_effects: siteConditionEffects,
   };
 }
 

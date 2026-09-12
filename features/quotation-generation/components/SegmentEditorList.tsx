@@ -224,6 +224,7 @@ export function SegmentEditorList({
 }: SegmentEditorListProps) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [newDraftIds, setNewDraftIds] = useState<Set<string>>(new Set());
   const [grouping, setGrouping] = useState(false);
   const [groupName, setGroupName] = useState("");
   const rowRefs = useRef<Map<string, HTMLDivElement>>(new Map());
@@ -245,26 +246,43 @@ export function SegmentEditorList({
     const draft = createNewSegment?.() ?? createManualSegment();
     onChange([...segments, draft]);
     setEditingId(draft.draft_id);
+    setNewDraftIds((current) => new Set(current).add(draft.draft_id));
     onHoverChange?.(draft.draft_id);
   };
 
   const handleSaveRow = (next: DraftSegment) => {
     onChange(segments.map((s) => (s.draft_id === next.draft_id ? next : s)));
+    setNewDraftIds((current) => {
+      const updated = new Set(current);
+      updated.delete(next.draft_id);
+      return updated;
+    });
     setEditingId(null);
   };
 
   const handleCancelRow = (draftId: string) => {
     const seg = segments.find((s) => s.draft_id === draftId);
-    // A blank in-progress add (never named) is dropped entirely on cancel, rather than
-    // left behind as an empty row.
-    if (seg && !seg.segment_name.trim()) {
+    // A brand-new in-progress add is dropped entirely on cancel, so its synced blueprint
+    // label disappears too.
+    if (seg && (newDraftIds.has(draftId) || !seg.segment_name.trim())) {
       onChange(segments.filter((s) => s.draft_id !== draftId));
     }
+    setNewDraftIds((current) => {
+      const updated = new Set(current);
+      updated.delete(draftId);
+      return updated;
+    });
+    onHoverChange?.(null);
     setEditingId(null);
   };
 
   const handleDelete = (draftId: string) => {
     onChange(segments.filter((s) => s.draft_id !== draftId));
+    setNewDraftIds((current) => {
+      const updated = new Set(current);
+      updated.delete(draftId);
+      return updated;
+    });
     setSelectedIds((prev) => {
       const next = new Set(prev);
       next.delete(draftId);
@@ -422,6 +440,12 @@ export function SegmentEditorList({
             const groupSelected = selectedIds.has(seg.draft_id);
             const previousSelected = index > 0 && selectedIds.has(reviewSegments[index - 1].draft_id);
             const nextSelected = index < reviewSegments.length - 1 && selectedIds.has(reviewSegments[index + 1].draft_id);
+            const rowHovered = hoveredId === seg.draft_id;
+            const hoverClass = rowHovered
+              ? seg.confirmed
+                ? "bg-green-50/90 ring-1 ring-inset ring-green-200"
+                : "bg-orange-50/80 ring-1 ring-inset ring-orange-200"
+              : "";
             return editingId === seg.draft_id ? (
               <div key={seg.draft_id} className="p-3">
                 <SegmentRowForm draft={seg} onSave={handleSaveRow} onCancel={() => handleCancelRow(seg.draft_id)} />
@@ -435,9 +459,7 @@ export function SegmentEditorList({
                 }}
                 onMouseEnter={() => onHoverChange?.(seg.draft_id)}
                 onMouseLeave={() => onHoverChange?.(null)}
-                className={`flex items-center gap-3 px-4 py-2.5 transition ${groupSelected ? `border-x-2 border-green-400 bg-green-100/80 ${!previousSelected ? "border-t-2" : ""} ${!nextSelected ? "border-b-2" : ""}` : seg.geometry_flagged && !seg.confirmed ? "bg-red-50/70 ring-1 ring-inset ring-red-200" : ""} ${
-                  hoveredId === seg.draft_id && !seg.confirmed ? "bg-orange-50/60" : ""
-                } ${showIncludeToggle && !seg.included_in_quote ? "opacity-50" : ""}`}
+                className={`flex items-center gap-3 px-4 py-2.5 transition ${groupSelected ? `border-x-2 border-green-400 bg-green-100/80 ${!previousSelected ? "border-t-2" : ""} ${!nextSelected ? "border-b-2" : ""}` : seg.geometry_flagged && !seg.confirmed ? "bg-red-50/70 ring-1 ring-inset ring-red-200" : ""} ${hoverClass} ${showIncludeToggle && !seg.included_in_quote ? "opacity-50" : ""}`}
               >
                 {showConfirmToggle && !allConfirmed && (
                   <button
