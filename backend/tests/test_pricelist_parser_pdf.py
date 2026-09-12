@@ -1,51 +1,39 @@
-from backend.services import extract_material_preview, normalize_material_dataset
+import pandas as pd
+
+from app.services.pricelist_parser import (
+    _parse_price_value,
+    _split_flat_pdf_content,
+    parse_pricelist_file,
+)
 
 
-def test_normalizes_pdf_files_into_material_records(tmp_path, monkeypatch):
-    pdf_file = tmp_path / 'pricelist.pdf'
-    pdf_file.write_bytes(b'%PDF-1.4\n%test\n')
+def test_parses_csv_with_utf8_bom(tmp_path):
+    csv_file = tmp_path / "pricelist.csv"
+    csv_file.write_bytes(b"\xef\xbb\xbf" + b"name,price,unit,supplier\nCement,250,kg,Metro Steel\n")
 
-    monkeypatch.setattr(
-        'backend.services._extract_pdf_rows',
-        lambda path: [{'name': 'Cement', 'price': '250', 'unit': 'kg'}],
-    )
+    frame = parse_pricelist_file(str(csv_file))
 
-    records, skipped_rows = normalize_material_dataset(pdf_file)
-
-    assert skipped_rows == 0
-    assert records[0]['material_name'] == 'CEMENT'
-    assert records[0]['unit'] == 'KG'
-    assert records[0]['unit_price'] == 250.0
+    assert list(frame[["raw_name", "raw_price", "raw_unit"]].iloc[0]) == ["Cement", 250, "kg"]
 
 
-def test_extracts_preview_rows_from_pdf(tmp_path, monkeypatch):
-    pdf_file = tmp_path / 'pricelist.pdf'
-    pdf_file.write_bytes(b'%PDF-1.4\n%test\n')
+def test_parses_excel_pricelist(tmp_path):
+    excel_file = tmp_path / "pricelist.xlsx"
+    pd.DataFrame([{"Material": "Rebar", "Unit Price": 1500, "UOM": "pcs"}]).to_excel(excel_file, index=False)
 
-    monkeypatch.setattr(
-        'backend.services._extract_pdf_rows',
-        lambda path: [
-            {'name': 'Rebar', 'price': '1500', 'unit': 'pcs', 'supplier': 'Metro Steel'},
-        ],
-    )
+    frame = parse_pricelist_file(str(excel_file))
 
-    items, suppliers, columns = extract_material_preview(pdf_file, 'pricelist.pdf')
-
-    assert len(items) == 1
-    assert items[0]['item_name'] == 'Rebar'
-    assert items[0]['price'] == 1500.0
-    assert items[0]['unit'] == 'PC'
-    assert suppliers[0]['supplier_name'] == 'Metro Steel'
-    assert any(column['raw_column'] == 'name' for column in columns)
+    assert frame.iloc[0]["raw_name"] == "Rebar"
+    assert frame.iloc[0]["raw_price"] == 1500
+    assert frame.iloc[0]["raw_unit"] == "pcs"
 
 
-def test_loads_semicolon_csv_with_utf8_bom(tmp_path):
-    csv_file = tmp_path / 'pricelist.csv'
-    csv_file.write_bytes(b'\xef\xbb\xbf' + b'name;price;unit;supplier\nCement;250;kg;Metro Steel\n')
+def test_pdf_flat_content_split_extracts_material_fields():
+    fields = _split_flat_pdf_content("Cement Type 1 40kg bag 250.00")
 
-    from backend.services import _load_material_frame
+    assert fields["raw_name"] == "Cement"
+    assert fields["description"] == "Type 1 40kg bag 250.00"
+    assert fields["raw_brand"] == "Generic"
 
-    frame = _load_material_frame(csv_file)
-    assert list(frame.columns) == ['name', 'price', 'unit', 'supplier']
-    assert frame.iloc[0]['name'] == 'Cement'
-    assert frame.iloc[0]['price'] == 250
+
+def test_price_parser_handles_currency_and_commas():
+    assert _parse_price_value("PHP 1,500.25") == 1500.25

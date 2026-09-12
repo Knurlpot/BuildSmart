@@ -14,3 +14,8 @@ export function getNormalizationApiBaseUrl(): string {
 
   return process.env.NORMALIZATION_API_BASE_URL?.trim() || "http://localhost:8000";
 }
+
+export function getNormalizationApiHeaders(): HeadersInit {
+  const token = process.env.BACKEND_INTERNAL_API_KEY?.trim();
+  return token ? { "X-BuildSmart-Internal-Key": token } : {};
+}

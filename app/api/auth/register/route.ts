@@ -53,9 +53,9 @@ export async function POST(request: NextRequest) {
   const password = body.password ?? "";
   const inviteCode = body.invite_code?.trim().toUpperCase() || "";
   const requestedCompanyId = Number(body.company_id);
-  const companyIdFromLegacyPayload = Number.isInteger(requestedCompanyId) && requestedCompanyId > 0 ? requestedCompanyId : null;
+  const requestedExistingCompanyId = Number.isInteger(requestedCompanyId) && requestedCompanyId > 0 ? requestedCompanyId : null;
   const company = body.company;
-  const isJoiningCompany = Boolean(inviteCode || companyIdFromLegacyPayload);
+  const isJoiningCompany = Boolean(inviteCode || requestedExistingCompanyId);
   const userRole = isJoiningCompany ? "Estimator" : "Owner";
 
   if (
@@ -99,7 +99,11 @@ export async function POST(request: NextRequest) {
       await client.query("DELETE FROM company WHERE company_id = $1", [existingUserRow.company_id]);
     }
 
-    let companyId = companyIdFromLegacyPayload;
+    if (requestedExistingCompanyId && !inviteCode) {
+      throw new Error("A valid invite code is required to join an existing company");
+    }
+
+    let companyId: number | null = null;
     if (inviteCode) {
       const inviteResult = await client.query<{
         invite_id: number;
@@ -121,6 +125,9 @@ export async function POST(request: NextRequest) {
       const invite = inviteResult.rows[0];
       if (!invite) {
         throw new Error("Invite code is invalid or has expired");
+      }
+      if (requestedExistingCompanyId && requestedExistingCompanyId !== invite.company_id) {
+        throw new Error("Invite code does not match the requested company");
       }
       companyId = invite.company_id;
       await client.query(

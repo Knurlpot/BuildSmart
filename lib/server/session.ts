@@ -17,8 +17,6 @@ function getSessionSecret(): string {
   return "buildsmart-dev-secret";
 }
 
-const SECRET = getSessionSecret();
-
 function base64UrlEncode(value: string): string {
   return Buffer.from(value).toString("base64url");
 }
@@ -28,7 +26,7 @@ function base64UrlDecode(value: string): string {
 }
 
 function sign(payload: string): string {
-  return crypto.createHmac("sha256", SECRET).update(payload).digest("base64url");
+  return crypto.createHmac("sha256", getSessionSecret()).update(payload).digest("base64url");
 }
 
 export function createSessionToken(userId: number, onboardingStep = 0): string {

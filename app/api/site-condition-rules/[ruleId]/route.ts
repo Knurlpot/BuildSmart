@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { pool } from "@/lib/server/db";
 import { readSession } from "@/lib/server/session";
 import type { SiteConditionRule } from "@/types/entities/site-condition-rule";
-import { insertSiteConditionEffects, validateSiteConditionRule } from "../route";
+import { insertSiteConditionEffects, validateSiteConditionRule } from "../helpers";
 
 type Params = { params: Promise<{ ruleId: string }> };
 

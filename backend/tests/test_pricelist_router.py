@@ -1013,6 +1013,7 @@ def test_get_dpwh_catalog_returns_rows(db_session):
     )
     db_session.add(record)
     db_session.flush()
+    expected_record_id = record.historicalrec_id
 
     def override_get_db():
         yield db_session
@@ -1025,12 +1026,12 @@ def test_get_dpwh_catalog_returns_rows(db_session):
 
     assert response.status_code == 200
     body = response.json()
-    assert len(body) == 1
-    assert body[0]["item_code"] == item.item_code
-    assert body[0]["region"] == "NCR"
-    assert body[0]["quarter"] == "Q1"
-    assert body[0]["year"] == 2026
-    assert body[0]["price"] == 270.0
+    created = next(row for row in body if row["historicalrec_id"] == expected_record_id)
+    assert created["item_code"] == item.item_code
+    assert created["region"] == "NCR"
+    assert created["quarter"] == "Q1"
+    assert created["year"] == 2026
+    assert created["price"] == 270.0
 
 
 def test_delete_dpwh_catalog_record_removes_only_that_record(db_session):

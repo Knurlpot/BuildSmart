@@ -1,13 +1,6 @@
-// Talks to the FastAPI normalization backend directly, via its OWN base URL
-// (NEXT_PUBLIC_NORMALIZATION_API_BASE_URL) rather than the shared apiClient's
-// global NEXT_PUBLIC_API_BASE_URL — that global var is used by every other
-// apiClient call in the app (auth, company, users, ...), all of which are
-// same-origin Next.js routes. Pointing it at FastAPI broke those elsewhere;
-// this hook deliberately doesn't touch apiClient or its env var.
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-const NORMALIZATION_API_BASE =
-  process.env.NEXT_PUBLIC_NORMALIZATION_API_BASE_URL?.replace(/\/$/, '') || '';
+const NORMALIZATION_API_BASE = '/api/pricelist/backend';
 
 async function normalizationApiClient<T>(endpoint: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${NORMALIZATION_API_BASE}${endpoint}`, options);
@@ -124,9 +117,7 @@ async function uploadPricelistFile(form: FormData): Promise<UploadResponse> {
   try {
     res = await fetch(`${NORMALIZATION_API_BASE}/pricelist/upload`, { method: 'POST', body: form });
   } catch {
-    throw new Error(
-      `Cannot reach the pricelist processing backend at ${NORMALIZATION_API_BASE || 'the configured API URL'}. Make sure FastAPI is running on port 8000.`
-    );
+    throw new Error('Cannot reach the pricelist processing service. Please try again.');
   }
   const body = await res.json().catch(() => null);
 
@@ -188,10 +179,6 @@ export function usePricelistNormalization(companyId?: number | null) {
       setIsLoadingReview(true);
     }
     setReviewError(null);
-    // No `credentials: 'include'` — FastAPI's /pricelist routes have no cookie/session
-    // auth to send (unlike the Next.js routes apiClient calls), and sending it forces
-    // the browser to require Access-Control-Allow-Credentials on a backend that has
-    // no reason to set it.
     const params = new URLSearchParams({ latest_upload_only: 'true' });
     if (companyId != null) params.set('company_id', String(companyId));
     const query = `?${params.toString()}`;

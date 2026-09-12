@@ -43,6 +43,7 @@ type Quotation = {
   finalized_breakdown_snapshot: {
     tier?: ProvisionalTier;
     version_number?: number;
+    finalized_at?: string;
     result?: ProvisionalQuotationTierResult;
     pricelist_basis_at_finalize?: PricelistBasis;
     pricelistBasis?: PricelistBasis;
@@ -83,6 +84,10 @@ type RefreshResult = {
   }>;
   new_total_material_cost: number;
   total_impact: number;
+};
+
+type ErrorResponse = {
+  error?: string;
 };
 
 function peso(value: number) {
@@ -266,8 +271,10 @@ export function QuotationDetailView({ quotationId }: { quotationId: string }) {
         body: JSON.stringify({ locked_item_ids: Array.from(lockedItems), recalculate_totals: true }),
       });
       const text = await response.text();
-      const result = parseJsonOrNull(text) as RefreshResult | null;
-      if (!response.ok || !result) throw new Error(result?.error ?? "Price refresh failed.");
+      const parsed = parseJsonOrNull(text);
+      if (!response.ok) throw new Error((parsed as ErrorResponse | null)?.error ?? "Price refresh failed.");
+      const result = parsed as RefreshResult | null;
+      if (!result) throw new Error("Price refresh failed.");
       await loadQuotation();
       setSelectedBreakdownVersion(null);
       setLockedItems(new Set());

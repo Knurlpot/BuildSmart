@@ -1,4 +1,5 @@
 import logging
+import os
 import time
 from pathlib import Path
 
@@ -12,6 +13,7 @@ from app.services.blueprint_storage import load_blueprint, persist_blueprint, st
 
 router = APIRouter(prefix="/blueprints", tags=["blueprints"])
 logger = logging.getLogger(__name__)
+MAX_BLUEPRINT_BYTES = int(os.environ.get("MAX_BLUEPRINT_UPLOAD_BYTES", str(25 * 1024 * 1024)))
 
 
 @router.post("/extract/{quotation_id}", response_model=BlueprintExtractionResult)
@@ -20,7 +22,16 @@ async def extract_uploaded_blueprint(quotation_id: int, file: UploadFile = File(
     started_at = time.perf_counter()
     logger.info("Blueprint extraction requested quotation_id=%s filename=%s", quotation_id, filename)
     try:
+        content_length = file.headers.get("content-length")
+        if content_length:
+            try:
+                if int(content_length) > MAX_BLUEPRINT_BYTES:
+                    raise HTTPException(status_code=413, detail="Blueprint file is too large.")
+            except ValueError:
+                raise HTTPException(status_code=400, detail="Invalid content length.")
         content = await file.read()
+        if not content or len(content) > MAX_BLUEPRINT_BYTES:
+            raise HTTPException(status_code=413, detail="Blueprint file must be between 1 byte and 25 MB.")
         persistence_enabled = storage_is_configured()
         stored_path = None
         persistence_warning = None
@@ -45,6 +56,8 @@ async def extract_uploaded_blueprint(quotation_id: int, file: UploadFile = File(
         return result
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except HTTPException:
+        raise
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     except Exception as exc:
