@@ -340,6 +340,7 @@ export interface ProjectSegmentPayload {
   scope_of_work: string;
   work_type: string;
   notes: string | null;
+  project_adjustments: ProjectAdjustment[];
 }
 
 function segmentPolygonsForStorage(seg: DraftSegment): SegmentPolygon[] {
@@ -385,6 +386,7 @@ export function draftSegmentToPayload(seg: DraftSegment): ProjectSegmentPayload 
     scope_of_work: treatment,
     work_type: treatment,
     notes: seg.site_notes.trim() || null,
+    project_adjustments: seg.project_adjustments,
   };
 }
 

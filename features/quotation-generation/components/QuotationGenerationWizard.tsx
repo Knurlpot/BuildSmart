@@ -185,7 +185,7 @@ function draftFromSavedSegment(segment: ProjectSegment): DraftSegment {
     labor_trade: null,
     is_rush: false,
     condition_tags: [],
-    project_adjustments: [],
+    project_adjustments: segment.project_adjustments ?? [],
     site_notes: segment.notes ?? "",
   };
 }

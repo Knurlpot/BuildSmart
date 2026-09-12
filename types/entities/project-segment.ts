@@ -1,3 +1,4 @@
+import type { ProjectAdjustment } from './segment-tag';
 import type { ProjectSiteCondition } from './site-condition-rule';
 
 export type SegmentSourceMethod = 'Manual' | 'Blueprint' | 'Hybrid';
@@ -21,6 +22,7 @@ export interface ProjectSegment {
   scope_of_work: string;
   work_type: string;
   notes?: string | null;
+  project_adjustments?: ProjectAdjustment[];
   status: SegmentStatus;
   site_conditions?: ProjectSiteCondition[];
   site_condition_effect_decisions?: Record<string, boolean>;

@@ -7,6 +7,7 @@ import { fmtPeso, recomputeItemLine } from "@/lib/dev/provisional/quotationBreak
 import type { ItemCategory, PricelistBasis, ProvisionalItemLine, ProvisionalQuotationTierResult, ProvisionalTier } from "@/lib/dev/provisional/quotationBreakdownTypes";
 import type { BlueprintFloor } from "@/lib/dev/provisional/quotationGenerationTypes";
 import type { DraftSegment } from "../lib/draftSegment";
+import type { ProjectAdjustment } from "@/types/entities/segment-tag";
 import { SegmentBlueprintPreview } from "./SegmentBlueprintPreview";
 
 type TabId = "segments" | "boq" | "cost-summary" | "benchmarking";
@@ -303,9 +304,16 @@ function BoqTab({ items }: { items: ProvisionalItemLine[] }) {
   );
 }
 
-function CostSummaryTab({ result }: { result: ProvisionalQuotationTierResult }) {
+function CostSummaryTab({ result, segments = [] }: { result: ProvisionalQuotationTierResult; segments?: DraftSegment[] }) {
   const [discountDetailsOpen, setDiscountDetailsOpen] = useState(false);
+  const [siteConditionsOpen, setSiteConditionsOpen] = useState(false);
   const unresolvedCount = result.items.filter((l) => l.unit_price === null).length;
+  const siteConditionDetails = segments.flatMap((segment) =>
+    (segment.project_adjustments ?? []).map((adjustment: ProjectAdjustment) => ({
+      segmentName: segment.segment_name,
+      adjustment,
+    }))
+  );
   const rushJobCost = result.service_cost.rush_job_cost ?? 0;
   const rushPercentage = result.service_cost.labor_cost > 0 ? (rushJobCost / result.service_cost.labor_cost) * 100 : 0;
   const supplierRuleDiscountDetails = result.items.flatMap((line) => {
@@ -353,6 +361,17 @@ function CostSummaryTab({ result }: { result: ProvisionalQuotationTierResult }) 
           <div key={row.label} className="flex items-center justify-between border-b border-gray-100 py-2.5 last:border-0">
             <span className="flex items-center gap-2 text-sm text-gray-500">
               {row.label}
+              {row.label === "Other / Project Adjustments" && siteConditionDetails.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setSiteConditionsOpen(true)}
+                  title="View site conditions"
+                  aria-label="View site conditions"
+                  className="flex h-7 w-7 items-center justify-center rounded-lg border border-orange-200 bg-orange-50 text-primary transition hover:border-orange-300 hover:bg-orange-100"
+                >
+                  <Eye className="h-3.5 w-3.5" />
+                </button>
+              )}
               {row.label === "Discounts" && (
                 <button
                   type="button"
@@ -385,6 +404,30 @@ function CostSummaryTab({ result }: { result: ProvisionalQuotationTierResult }) 
           <span className={`text-2xl font-extrabold ${TIER_ACCENT[result.tier]}`}>{fmtPeso(result.grand_total)}</span>
         </div>
       </div>
+      <Dialog open={siteConditionsOpen} onOpenChange={setSiteConditionsOpen}>
+        <DialogContent className="rounded-2xl border-0 bg-white p-0 shadow-2xl sm:max-w-lg">
+          <div className="border-b border-gray-100 px-6 py-4">
+            <p className="text-lg font-bold text-gray-900">Site Conditions</p>
+            <p className="text-sm text-gray-500">Conditions included in this project quotation.</p>
+          </div>
+          <div className="max-h-[60vh] overflow-y-auto p-6">
+            <div className="flex flex-col gap-3">
+              {siteConditionDetails.map(({ segmentName, adjustment }, index) => {
+                const amount = Number(String(adjustment.amount).replace(/,/g, ""));
+                return (
+                  <div key={`${segmentName}-${adjustment.condition}-${index}`} className="flex items-center justify-between gap-4 rounded-xl border border-gray-100 bg-gray-50/60 p-4">
+                    <div>
+                      <p className="text-sm font-bold text-gray-900">{adjustment.condition}</p>
+                      <p className="text-xs text-gray-500">{segmentName}</p>
+                    </div>
+                    <p className="shrink-0 text-sm font-bold text-gray-800">{fmtPeso(Number.isFinite(amount) ? amount : 0)}</p>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
       <Dialog open={discountDetailsOpen} onOpenChange={setDiscountDetailsOpen}>
         <DialogContent className={`${hasMultipleDiscounts ? "sm:max-w-5xl" : "sm:max-w-lg"} rounded-2xl border-0 bg-white p-0 shadow-2xl`}>
           <div className="border-b border-gray-100 px-6 py-4">
@@ -645,7 +688,7 @@ export function QuotationBreakdownModal({
         <div className="flex-1 overflow-y-auto px-4 pb-4 pt-0">
           {activeTab === "segments" && <SegmentBreakdownTab items={result.items} segments={segments} blueprintFloors={blueprintFloors} />}
           {activeTab === "boq" && <BoqTab items={result.items} />}
-          {activeTab === "cost-summary" && <CostSummaryTab result={result} />}
+          {activeTab === "cost-summary" && <CostSummaryTab result={result} segments={segments} />}
           {activeTab === "benchmarking" && <BenchmarkingTab tier={tier} items={result.items} onItemsChange={onItemsChange} />}
         </div>
       </DialogContent>

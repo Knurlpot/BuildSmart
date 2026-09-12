@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { authContext, isAuthContext, withTransaction } from "../../pricing";
+import type { ProjectAdjustment } from "@/types/entities/segment-tag";
 
 type Params = { params: Promise<{ quotationId: string }> };
 
@@ -18,10 +19,22 @@ type SegmentPayload = {
   scope_of_work: string;
   work_type: string;
   notes: string | null;
+  project_adjustments: ProjectAdjustment[];
 };
 
 type SaveSegmentsPayload = {
   segments?: SegmentPayload[];
+};
+
+type SegmentRow = {
+  segment_id: number;
+  [key: string]: unknown;
+};
+
+type AdjustmentRow = {
+  segment_id: number;
+  condition: string;
+  amount: number;
 };
 
 function badRequest(message: string) {
@@ -30,6 +43,10 @@ function badRequest(message: string) {
 
 function isFiniteNumber(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value);
+}
+
+function adjustmentAmount(value: string): number {
+  return Number(value.replace(/,/g, ""));
 }
 
 function validateSegment(segment: SegmentPayload, index: number): string | null {
@@ -47,6 +64,10 @@ function validateSegment(segment: SegmentPayload, index: number): string | null 
   if (typeof segment.included_in_quote !== "boolean") return `${label} has an invalid included flag.`;
   if (!segment.scope_of_work?.trim()) return `${label} needs a scope of work.`;
   if (!segment.work_type?.trim()) return `${label} needs a work type.`;
+  if (!Array.isArray(segment.project_adjustments)) return `${label} has invalid project adjustments.`;
+  if (segment.project_adjustments.some((adjustment) => !adjustment.condition?.trim() || typeof adjustment.amount !== "string" || !Number.isFinite(adjustmentAmount(adjustment.amount)) || adjustmentAmount(adjustment.amount) < 0)) {
+    return `${label} has invalid project adjustment amounts.`;
+  }
   return null;
 }
 
@@ -65,7 +86,7 @@ export async function GET(request: NextRequest, { params }: Params) {
     );
     if (!quote.rows[0]) return null;
 
-    return client.query(
+    const segments = await client.query<SegmentRow>(
       `SELECT segment_id, quote_id, segment_name, segment_type, source_method, floor_level,
               shape_type, length::float AS length, width::float AS width, area_sqm::float AS area_sqm,
               polygon_coords, confidence_score::float AS confidence_score, included_in_quote,
@@ -75,6 +96,27 @@ export async function GET(request: NextRequest, { params }: Params) {
       ORDER BY segment_id`,
       [quoteId]
     );
+    const adjustments = await client.query<AdjustmentRow>(
+      `SELECT psa.segment_id, psa.condition, psa.amount::float AS amount
+       FROM project_segment_adjustment psa
+       JOIN project_segments ps ON ps.segment_id = psa.segment_id
+       WHERE ps.quote_id = $1
+       ORDER BY psa.project_segment_adjustment_id`,
+      [quoteId]
+    );
+    const adjustmentsBySegment = new Map<number, ProjectAdjustment[]>();
+    for (const adjustment of adjustments.rows) {
+      const current = adjustmentsBySegment.get(adjustment.segment_id) ?? [];
+      current.push({ condition: adjustment.condition as ProjectAdjustment["condition"], amount: adjustment.amount.toFixed(2) });
+      adjustmentsBySegment.set(adjustment.segment_id, current);
+    }
+    return {
+      ...segments,
+      rows: segments.rows.map((segment) => ({
+        ...segment,
+        project_adjustments: adjustmentsBySegment.get(segment.segment_id) ?? [],
+      })),
+    };
   });
 
   if (result === null) return NextResponse.json({ error: "Quotation not found." }, { status: 404 });
@@ -109,13 +151,14 @@ export async function POST(request: NextRequest, { params }: Params) {
       await client.query("DELETE FROM project_segments WHERE quote_id = $1", [quoteId]);
 
       for (const segment of body.segments!) {
-        await client.query(
+        const inserted = await client.query<{ segment_id: number }>(
           `INSERT INTO project_segments (
              quote_id, segment_name, segment_type, source_method, floor_level, shape_type,
              length, width, area_sqm, polygon_coords, confidence_score, included_in_quote,
              scope_of_work, work_type, notes, status
            )
            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, 'Active')
+           RETURNING segment_id
           `,
           [
             quoteId,
@@ -135,6 +178,13 @@ export async function POST(request: NextRequest, { params }: Params) {
             segment.notes?.trim() || null,
           ]
         );
+        for (const adjustment of segment.project_adjustments) {
+          await client.query(
+            `INSERT INTO project_segment_adjustment (segment_id, condition, amount)
+             VALUES ($1, $2, $3)`,
+            [inserted.rows[0].segment_id, adjustment.condition.trim(), adjustmentAmount(adjustment.amount)]
+          );
+        }
       }
 
       await client.query("UPDATE quotation SET updated_by_user_id = $1, updated_at = CURRENT_TIMESTAMP WHERE quote_id = $2", [auth.userId, quoteId]);
