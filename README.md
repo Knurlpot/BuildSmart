@@ -14,7 +14,7 @@ FRONTEND_ORIGIN="http://localhost:3000"
 NORMALIZATION_API_BASE_URL="http://localhost:8000"
 BACKEND_INTERNAL_API_KEY="<shared key for Next.js to call FastAPI; optional in local dev>"
 
-DATABASE_URL's credentials should match your own local Postgres user — "password" above is just a placeholder.
+DATABASE_URL's credentials should match your own local Postgres user — "password" above is just a placeholder. You may use `POSTGRES_URL` instead of `DATABASE_URL`; both the Next.js app and Python backend read `DATABASE_URL` first and then fall back to `POSTGRES_URL`.
 Production deployments must set SESSION_SECRET or NEXTAUTH_SECRET; the app will refuse to use the local development fallback in production.
 The browser no longer calls FastAPI directly. Do not set NEXT_PUBLIC_NORMALIZATION_API_BASE_URL in production; pricelist and blueprint calls go through same-origin Next.js API routes, which forward BACKEND_INTERNAL_API_KEY server-side.
 When GEMINI_API_KEY is set, PDF pricelist uploads run an optional Gemini proofreading pass after table extraction. If Gemini is unavailable or rate-limited, uploads still continue with the normal parser output.
