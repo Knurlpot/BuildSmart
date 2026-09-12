@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useMemo, useRef, useState } from "react";
-import { ArrowLeft, Building2, CalendarDays, FileText, Mail, MapPin, Pencil, Phone, Search, SlidersHorizontal, Trash2, Upload, UserRound, X } from "lucide-react";
+import { ArrowLeft, Building2, CalendarDays, Check, FileText, Mail, MapPin, MoreVertical, Pencil, Phone, Search, SlidersHorizontal, Trash2, Upload, UserRound, X } from "lucide-react";
 import { useParams, useRouter } from "next/navigation";
 import { RequireOnboardingStep } from "@/components/auth/RequireOnboardingStep";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -88,7 +88,7 @@ function ClientDetailsContent() {
   const clientId = Number(params.clientId);
   const validId = Number.isInteger(clientId) ? clientId : null;
   const { data: client, isLoading, error, refetch } = useFetch<Client>(validId !== null ? `/api/clients/${validId}` : null);
-  const { insights, isLoading: insightsLoading } = useClientInsights(validId);
+  const { insights, isLoading: insightsLoading, refetch: refetchInsights } = useClientInsights(validId);
   const [editForm, setEditForm] = useState<ClientForm | null>(null);
   const [editError, setEditError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
@@ -100,6 +100,12 @@ function ClientDetailsContent() {
   const [projectSearch, setProjectSearch] = useState("");
   const [projectStatus, setProjectStatus] = useState<"All" | "Draft" | "Final">("All");
   const [projectFiltersOpen, setProjectFiltersOpen] = useState(false);
+  const [projectActionsOpen, setProjectActionsOpen] = useState(false);
+  const [projectSelectionMode, setProjectSelectionMode] = useState(false);
+  const [selectedProjectIds, setSelectedProjectIds] = useState<Set<number>>(new Set());
+  const [deleteProjectsOpen, setDeleteProjectsOpen] = useState(false);
+  const [deleteProjectsError, setDeleteProjectsError] = useState<string | null>(null);
+  const [isDeletingProjects, setIsDeletingProjects] = useState(false);
 
   const filteredProjects = useMemo(() => {
     const query = projectSearch.trim().toLowerCase();
@@ -108,6 +114,44 @@ function ClientDetailsContent() {
       return matchesSearch && (projectStatus === "All" || project.status === projectStatus);
     });
   }, [insights?.projects, projectSearch, projectStatus]);
+
+  const selectedProjectCount = selectedProjectIds.size;
+
+  const exitProjectSelection = () => {
+    setProjectSelectionMode(false);
+    setSelectedProjectIds(new Set());
+    setDeleteProjectsError(null);
+  };
+
+  const toggleProjectSelection = (quoteId: number) => {
+    setSelectedProjectIds((current) => {
+      const next = new Set(current);
+      if (next.has(quoteId)) next.delete(quoteId);
+      else next.add(quoteId);
+      return next;
+    });
+  };
+
+  const deleteSelectedProjects = async () => {
+    if (selectedProjectIds.size === 0 || isDeletingProjects) return;
+    setIsDeletingProjects(true);
+    setDeleteProjectsError(null);
+    try {
+      await Promise.all(
+        Array.from(selectedProjectIds).map((quoteId) =>
+          apiClient(`/api/quotations/${quoteId}`, { method: "DELETE", credentials: "include" })
+        )
+      );
+      setDeleteProjectsOpen(false);
+      exitProjectSelection();
+      refetch();
+      refetchInsights();
+    } catch (removeError) {
+      setDeleteProjectsError(removeError instanceof Error ? removeError.message : "Could not delete the selected projects.");
+    } finally {
+      setIsDeletingProjects(false);
+    }
+  };
 
   const openEdit = (value: Client) => {
     setEditError(null);
@@ -415,7 +459,61 @@ function ClientDetailsContent() {
               </div>
             )}
           </div>
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setProjectActionsOpen((open) => !open)}
+              aria-label="Project actions"
+              aria-expanded={projectActionsOpen}
+              className="flex h-11 w-11 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-500 shadow-sm transition hover:border-primary hover:text-primary"
+            >
+              <MoreVertical className="h-4 w-4" />
+            </button>
+            {projectActionsOpen && (
+              <div className="absolute right-0 top-[3.25rem] z-20 w-44 rounded-xl border border-gray-200 bg-white p-2 shadow-lg">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setProjectActionsOpen(false);
+                    setProjectSelectionMode(true);
+                    setSelectedProjectIds(new Set());
+                  }}
+                  className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-xs font-semibold text-gray-700 transition hover:bg-orange-50 hover:text-primary"
+                >
+                  <Check className="h-3.5 w-3.5" />
+                  Select
+                </button>
+              </div>
+            )}
+          </div>
         </div>
+
+        {projectSelectionMode && (
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-orange-100 bg-orange-50 px-4 py-3">
+            <p className="text-sm font-semibold text-gray-800">{selectedProjectCount} selected</p>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={exitProjectSelection}
+                className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-semibold text-gray-700 transition hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={selectedProjectCount === 0}
+                onClick={() => {
+                  setDeleteProjectsError(null);
+                  setDeleteProjectsOpen(true);
+                }}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-red-600 px-3 py-2 text-xs font-bold text-white transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+                Delete
+              </button>
+            </div>
+          </div>
+        )}
 
         {insightsLoading ? (
           <p className="mt-4 rounded-2xl border border-gray-100 bg-white p-6 text-sm text-gray-400">Loading projects...</p>
@@ -426,7 +524,34 @@ function ClientDetailsContent() {
         ) : (
           <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
             {filteredProjects.map((project) => (
-              <QuotationCard key={project.quote_id} project={project} clientName={client.client_name} />
+              <div key={project.quote_id} className="relative">
+                {projectSelectionMode && (
+                  <button
+                    type="button"
+                    onClick={() => toggleProjectSelection(project.quote_id)}
+                    aria-label={`${selectedProjectIds.has(project.quote_id) ? "Deselect" : "Select"} ${project.project_name}`}
+                    aria-pressed={selectedProjectIds.has(project.quote_id)}
+                    className="absolute inset-0 z-20 rounded-2xl"
+                  />
+                )}
+                <div
+                  className={projectSelectionMode ? `relative cursor-pointer rounded-2xl ring-offset-2 transition ${selectedProjectIds.has(project.quote_id) ? "ring-2 ring-primary" : "hover:ring-2 hover:ring-orange-200"}` : ""}
+                >
+                  {projectSelectionMode && (
+                    <span
+                      aria-hidden="true"
+                      className={`absolute left-5 top-5 z-10 flex h-5 w-5 items-center justify-center rounded-full border shadow-sm transition ${
+                        selectedProjectIds.has(project.quote_id)
+                          ? "border-primary bg-primary text-white"
+                          : "border-gray-200 bg-white text-gray-300"
+                      }`}
+                    >
+                      {selectedProjectIds.has(project.quote_id) && <Check className="h-3 w-3" />}
+                    </span>
+                  )}
+                  <QuotationCard project={project} clientName={client.client_name} selectionInset={projectSelectionMode} />
+                </div>
+              </div>
             ))}
           </div>
         )}
@@ -442,6 +567,22 @@ function ClientDetailsContent() {
           <DialogFooter>
             <button type="button" disabled={isDeleting} onClick={() => setDeleteOpen(false)} className="rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-50">Cancel</button>
             <button type="button" disabled={isDeleting} onClick={deleteClient} className="rounded-lg bg-red-600 px-4 py-2 text-sm font-bold text-white hover:bg-red-700 disabled:opacity-50">{isDeleting ? "Deleting..." : "Delete Client"}</button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={deleteProjectsOpen} onOpenChange={(open) => !isDeletingProjects && setDeleteProjectsOpen(open)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete selected projects?</DialogTitle>
+            <DialogDescription>
+              Delete {selectedProjectCount} selected quotation project{selectedProjectCount === 1 ? "" : "s"} for {client.client_name}? This cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          {deleteProjectsError && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{deleteProjectsError}</p>}
+          <DialogFooter>
+            <button type="button" disabled={isDeletingProjects} onClick={() => setDeleteProjectsOpen(false)} className="rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-50">Cancel</button>
+            <button type="button" disabled={isDeletingProjects || selectedProjectCount === 0} onClick={deleteSelectedProjects} className="rounded-lg bg-red-600 px-4 py-2 text-sm font-bold text-white hover:bg-red-700 disabled:opacity-50">{isDeletingProjects ? "Deleting..." : "Delete Projects"}</button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

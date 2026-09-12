@@ -270,6 +270,7 @@ export function QuotationGenerationWizard() {
 
   useEffect(() => {
     if (!quotation || step === "client" || step === "method" || step === "finalized") return;
+    if (step !== "configure" && step !== "generating" && step !== "results") return;
     writeLocalQuotationDraft({
       quoteId: quotation.quote_id,
       step,

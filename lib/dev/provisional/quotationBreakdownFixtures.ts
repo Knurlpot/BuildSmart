@@ -236,6 +236,10 @@ function round2(n: number): number {
   return Math.round(n * 100) / 100;
 }
 
+function roundUpMaterialQuantity(n: number): number {
+  return Math.max(0, Math.ceil(n));
+}
+
 function pricingReferenceFor(basis: PricelistBasis): ProvisionalPricingReference {
   // DPWH publishes quarterly (quarter/year present, no recorded_at date); an uploaded/
   // internal pricelist has an upload timestamp instead, no quarter — matches
@@ -362,7 +366,7 @@ function supplierOptionsFor(def: ItemFixtureDef, tier: ProvisionalTier, basis: P
 
 function buildLine(seg: DraftSegment, def: ItemFixtureDef, tier: ProvisionalTier, basis: PricelistBasis): ProvisionalItemLine {
   const normalizedTier = normalizeTier(tier);
-  const qty = round2(seg.area_sqm * def.coverage_factor * (1 + def.wastage_percentage / 100));
+  const qty = roundUpMaterialQuantity(seg.area_sqm * def.coverage_factor * (1 + def.wastage_percentage / 100));
   const basisPrices = basis === 'DPWH' ? def.dpwh : def.uploaded;
   const unitPrice = round2((normalizedTier === 'Practical' ? basisPrices.practical : basisPrices.premium) * TIER_PRICING_FIXTURE[normalizedTier].price_factor);
   const suppliers = supplierOptionsFor(def, tier, basis);
@@ -407,7 +411,7 @@ function buildMissingRuleLine(seg: DraftSegment, basis: PricelistBasis): Provisi
     derived_area_sqm: seg.area_sqm,
     derived_coverage_per_sqm: 1.0,
     derived_wastage_percentage: 10,
-    quantity: round2(seg.area_sqm * 1.1),
+    quantity: roundUpMaterialQuantity(seg.area_sqm * 1.1),
     unit_price: null,
     total_cost: null,
     source_type: basis,
@@ -508,7 +512,7 @@ function buildCompanyRuleLine(
 ): ProvisionalItemLine {
   const coverage = unitRule?.conversion_factor ?? 1;
   const wastage = unitRule?.wastage_allowance_percentage ?? 0;
-  const qty = estimateMaterialQuantity(seg.area_sqm, rule.category, coverage, wastage, rule.preferred_item_name, item?.unit);
+  const qty = roundUpMaterialQuantity(estimateMaterialQuantity(seg.area_sqm, rule.category, coverage, wastage, rule.preferred_item_name, item?.unit));
   const matchingUploadedPrices = uploadedPrices
     .filter((price) => String(price.item_code) === String(rule.preferred_item_code))
     .sort((a, b) => a.price - b.price);
@@ -857,6 +861,7 @@ export function recomputeItemLine(
   if ('quantity' in patch || 'unit_price' in patch || 'selected_supplier_id' in patch || 'item_name' in patch) {
     next.is_overridden = true;
   }
+  if (next.category === 'Material') next.quantity = roundUpMaterialQuantity(next.quantity);
   next.total_cost = next.unit_price !== null ? round2(next.quantity * next.unit_price) : null;
   return next;
 }

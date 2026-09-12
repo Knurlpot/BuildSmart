@@ -17,6 +17,9 @@ interface QuotationBreakdownModalProps {
   pricelistBasis: PricelistBasis;
   onClose: () => void;
   onItemsChange?: (tier: ProvisionalTier, items: ProvisionalItemLine[]) => void;
+  versionOptions?: Array<{ version_number?: number; finalized_at?: string | null }>;
+  selectedVersion?: number | null;
+  onVersionChange?: (version: number) => void;
   // Task 7, Part B — Segment Breakdown's split-view blueprint preview (left half). null/
   // undefined = this quote wasn't blueprint-sourced (Quick Measurement/Manual), OR (some
   // saved projects) no blueprint snapshot was captured — either way the tab degrades to a
@@ -251,7 +254,7 @@ function BoqTab({ items }: { items: ProvisionalItemLine[] }) {
               <th className="px-3 py-2.5 text-right font-semibold text-gray-500">Qty</th>
               <th className="px-3 py-2.5 text-left font-semibold text-gray-500">Unit</th>
               <th className="px-3 py-2.5 text-right font-semibold text-gray-500">Unit Price</th>
-              <th className="px-3 py-2.5 text-left font-semibold text-gray-500">Source</th>
+              <th className="px-3 py-2.5 text-left font-semibold text-gray-500">Source / Supplier</th>
               <th className="px-3 py-2.5 text-right font-semibold text-gray-500">Total</th>
             </tr>
           </thead>
@@ -331,7 +334,8 @@ function CostSummaryTab({ result }: { result: ProvisionalQuotationTierResult }) 
       value: result.service_cost.labor_cost + rushJobCost,
     },
     { label: "Equipment", value: result.service_cost.equipment_cost },
-    { label: "Contingency / Other (PPE, mobilization)", value: result.service_cost.contingency_cost + result.service_cost.other_cost },
+    { label: "Contingency", value: result.service_cost.contingency_cost },
+    { label: "Other (PPE, mobilization)", value: result.service_cost.other_cost },
     { label: `Overhead (OCM, ${fmtPercentRaw(result.ocm_percentage)})`, value: result.ocm_amount },
     { label: `Profit / Markup (${fmtPercentRaw(result.profit_margin_percentage)})`, value: result.profit_amount },
   ];
@@ -553,8 +557,20 @@ function BenchmarkingTab({ tier, items, onItemsChange }: { tier: ProvisionalTier
   );
 }
 
-export function QuotationBreakdownModal({ tier, result, pricelistBasis, onClose, onItemsChange, blueprintFloors, segments }: QuotationBreakdownModalProps) {
+export function QuotationBreakdownModal({
+  tier,
+  result,
+  pricelistBasis,
+  onClose,
+  onItemsChange,
+  blueprintFloors,
+  segments,
+  versionOptions = [],
+  selectedVersion,
+  onVersionChange,
+}: QuotationBreakdownModalProps) {
   const [activeTab, setActiveTab] = useState<TabId>("segments");
+  const activeVersionNumber = selectedVersion ?? versionOptions[0]?.version_number ?? 1;
   const TABS: { id: TabId; label: string; icon: typeof BookOpen }[] = [
     { id: "segments", label: "Segment Breakdown", icon: Layers },
     { id: "boq", label: "Bill of Quantities", icon: BookOpen },
@@ -581,6 +597,20 @@ export function QuotationBreakdownModal({ tier, result, pricelistBasis, onClose,
             <p className="text-xs text-gray-500">Full cost transparency · all prices in Philippine Pesos (₱)</p>
           </div>
           <div className="flex items-center gap-2">
+            {versionOptions.length > 1 && onVersionChange && (
+              <select
+                value={activeVersionNumber}
+                onChange={(event) => onVersionChange(Number(event.target.value))}
+                aria-label="Select breakdown version"
+                className="h-8 rounded-lg border border-gray-200 bg-white px-2 text-xs font-bold text-gray-600 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20"
+              >
+                {versionOptions.map((version) => (
+                  <option key={version.version_number ?? 1} value={version.version_number ?? 1}>
+                    Version {version.version_number ?? 1}
+                  </option>
+                ))}
+              </select>
+            )}
             <div className="flex items-center gap-2">
               <span className="text-xs font-semibold text-gray-500">Pricelist Basis:</span>
               <span className="rounded-lg border border-gray-200 bg-gray-100 px-2.5 py-1 text-xs font-semibold text-gray-500">

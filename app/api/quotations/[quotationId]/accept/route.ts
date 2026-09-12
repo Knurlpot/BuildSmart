@@ -49,6 +49,16 @@ type AcceptQuotationPayload = {
         rush_multiplier_percentage?: number | null;
         productivity_index?: number | null;
         selected_supplier_id?: number | null;
+        supplier_options?: Array<{
+          supplier_id: number;
+          supplier_name: string;
+          brand?: string | null;
+          location?: string | null;
+          unit_price: number;
+          original_unit_price?: number;
+          quantity_available?: number | null;
+          source_type?: "Uploaded" | "DPWH";
+        }>;
       }>;
       materials_subtotal?: number;
       service_cost?: {
@@ -136,6 +146,7 @@ export async function POST(request: NextRequest, { params }: Params) {
       if (!quote.rows[0]) return null;
 
       await client.query("DELETE FROM quotation_items WHERE quote_id = $1", [quoteId]);
+      await client.query("DELETE FROM quotation_breakdown_supplier_options WHERE quote_id = $1", [quoteId]);
       await client.query("DELETE FROM quotation_breakdown_items WHERE quote_id = $1", [quoteId]);
       await client.query("DELETE FROM quotation_breakdown_snapshot WHERE quote_id = $1", [quoteId]);
 
@@ -205,14 +216,14 @@ export async function POST(request: NextRequest, { params }: Params) {
       if (breakdown) {
         await client.query(
           `INSERT INTO quotation_breakdown_snapshot (
-             quote_id, tier, pricelist_basis, materials_subtotal, labor_cost, rush_job_cost,
+             quote_id, version_number, tier, pricelist_basis, materials_subtotal, labor_cost, rush_job_cost,
              equipment_cost, contingency_cost, other_cost, service_subtotal, ocm_percentage,
              ocm_amount, profit_margin_percentage, profit_amount, subtotal_before_vat,
              vat_rate_percentage, vat_taxable_base, vat_amount, vat_inclusive, grand_total,
              timeline_label, warranty_label, lifespan_label, material_grade_label
            )
            VALUES (
-             $1, $2, $3, $4, $5, $6,
+             $1, 1, $2, $3, $4, $5, $6,
              $7, $8, $9, $10, $11,
              $12, $13, $14, $15,
              $16, $17, $18, $19, $20,
@@ -247,22 +258,28 @@ export async function POST(request: NextRequest, { params }: Params) {
         );
 
         for (const [index, line] of (breakdown.items ?? []).entries()) {
+          const selectedSupplier = line.selected_supplier_id === null || line.selected_supplier_id === undefined
+            ? undefined
+            : line.supplier_options?.find((supplier) => String(supplier.supplier_id) === String(line.selected_supplier_id));
+          const supplierByPrice = line.unit_price === null || line.unit_price === undefined
+            ? undefined
+            : line.supplier_options?.find((supplier) => Math.abs(supplier.unit_price - line.unit_price!) < 0.005);
           await client.query(
             `INSERT INTO quotation_breakdown_items (
-               quote_id, line_id, segment_draft_id, segment_name, floor_level, treatment_type,
+               quote_id, version_number, line_id, segment_draft_id, segment_name, floor_level, treatment_type,
                category, item_code, item_name, unit, derived_area_sqm, derived_coverage_per_sqm,
                derived_wastage_percentage, quantity, unit_price, total_cost, source_type,
                is_overridden, price_source, region, brand, quarter, year, recorded_at,
                labor_rule_scope, labor_rule_label, worker_count, rush_multiplier_percentage,
-               productivity_index, selected_supplier_id
+               productivity_index, selected_supplier_id, selected_supplier_name
              )
              VALUES (
-               $1, $2, $3, $4, $5, $6,
+               $1, 1, $2, $3, $4, $5, $6,
                $7, $8, $9, $10, $11, $12,
                $13, $14, $15, $16, $17,
                $18, $19, $20, $21, $22, $23, $24,
                $25, $26, $27, $28,
-               $29, $30
+               $29, $30, $31
              )`,
             [
               quoteId,
@@ -295,8 +312,39 @@ export async function POST(request: NextRequest, { params }: Params) {
               line.rush_multiplier_percentage ?? null,
               line.productivity_index ?? null,
               line.selected_supplier_id ?? null,
+              selectedSupplier?.supplier_name ?? supplierByPrice?.supplier_name ?? null,
             ]
           );
+
+          for (const supplier of line.supplier_options ?? []) {
+            await client.query(
+              `INSERT INTO quotation_breakdown_supplier_options (
+                 quote_id, version_number, line_id, supplier_id, supplier_name, brand, location,
+                 unit_price, original_unit_price, quantity_available, source_type
+               )
+               VALUES ($1, 1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+               ON CONFLICT (quote_id, version_number, line_id, supplier_id) DO UPDATE
+               SET supplier_name = EXCLUDED.supplier_name,
+                   brand = EXCLUDED.brand,
+                   location = EXCLUDED.location,
+                   unit_price = EXCLUDED.unit_price,
+                   original_unit_price = EXCLUDED.original_unit_price,
+                   quantity_available = EXCLUDED.quantity_available,
+                   source_type = EXCLUDED.source_type`,
+              [
+                quoteId,
+                line.line_id ?? `finalized-line-${index + 1}`,
+                supplier.supplier_id,
+                supplier.supplier_name,
+                supplier.brand ?? null,
+                supplier.location ?? null,
+                supplier.unit_price,
+                supplier.original_unit_price ?? null,
+                supplier.quantity_available ?? null,
+                supplier.source_type ?? line.source_type ?? "Uploaded",
+              ]
+            );
+          }
         }
       }
 

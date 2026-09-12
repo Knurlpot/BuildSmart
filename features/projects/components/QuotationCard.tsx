@@ -42,7 +42,7 @@ function initials(name: string) {
     .join("") || "CL";
 }
 
-export function QuotationCard({ project, clientName }: { project: ClientQuotationCardData; clientName: string }) {
+export function QuotationCard({ project, clientName, selectionInset = false }: { project: ClientQuotationCardData; clientName: string; selectionInset?: boolean }) {
   const router = useRouter();
   const isPremium = project.status === "Final" && project.accepted_tier === "Premium";
   const isPractical = project.status === "Final" && project.accepted_tier === "Practical";
@@ -78,7 +78,7 @@ export function QuotationCard({ project, clientName }: { project: ClientQuotatio
               : "bg-white"
         }`}
       >
-        <div className="min-w-0">
+        <div className={`min-w-0 ${selectionInset ? "pl-8" : ""}`}>
           <h2 className={`truncate text-base font-semibold ${hasTierColor ? "text-white" : "text-gray-900 group-hover:text-primary"}`}>
             {project.project_name}
           </h2>

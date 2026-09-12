@@ -58,10 +58,11 @@ export interface UseClientInsightsResult {
   insights: ClientInsights | null;
   isLoading: boolean;
   error: Error | null;
+  refetch: () => void;
 }
 
 export function useClientInsights(clientId: number | null): UseClientInsightsResult {
   const endpoint = clientId !== null ? `/api/clients/${clientId}/insights` : null;
-  const { data, isLoading, error } = useFetch<ClientInsights>(endpoint);
-  return { insights: data, isLoading, error };
+  const { data, isLoading, error, refetch } = useFetch<ClientInsights>(endpoint);
+  return { insights: data, isLoading, error, refetch };
 }
