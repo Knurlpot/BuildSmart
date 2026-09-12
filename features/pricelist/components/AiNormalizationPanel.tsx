@@ -741,10 +741,6 @@ export function AiNormalizationPanel({ companyId, defaultSupplierMode = "existin
     await deleteReviewItems(candidateItems.filter((item) => selectedReviewIds.has(item.review_id)));
   };
 
-  const deleteAllReviewItems = async () => {
-    await deleteReviewItems(reviewItems);
-  };
-
   const handleDeleteReview = (items: PricelistReviewItem[]) => {
     deleteSelectedReviewItems(items).catch(() => {});
   };
@@ -1280,24 +1276,34 @@ export function AiNormalizationPanel({ companyId, defaultSupplierMode = "existin
                       {!isEditingAll && (
                         <button
                           type="button"
-                          onClick={deleteAllReviewItems}
-                          disabled={reviewItems.length === 0 || isBulkDeleting || isBulkApproving}
-                          className="flex items-center gap-1.5 rounded-lg border border-red-100 bg-red-50 px-3 py-1.5 text-xs font-bold text-red-600 transition hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-50"
-                        >
-                          {isBulkDeleting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
-                          {isBulkDeleting ? "Removing…" : "Remove All"}
-                        </button>
-                      )}
-                      {!isEditingAll && (
-                        <button
-                          type="button"
                           onClick={() => handleDeleteReview(pagedItems)}
                           disabled={selectedCount === 0 || isBulkDeleting || isBulkApproving}
-                          aria-label={isBulkDeleting ? "Deleting…" : selectedCount > 0 ? `Delete selected (${selectedCount})` : "Delete"}
-                          title={isBulkDeleting ? "Deleting…" : selectedCount > 0 ? `Delete selected (${selectedCount})` : "Delete"}
-                          className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-600 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+                          aria-label={
+                            isBulkDeleting
+                              ? "Removing…"
+                              : allDisplayedItemsSelected
+                                ? "Remove all"
+                                : selectedCount > 0
+                                  ? `Remove selected (${selectedCount})`
+                                  : "Select items to remove"
+                          }
+                          title={
+                            isBulkDeleting
+                              ? "Removing…"
+                              : allDisplayedItemsSelected
+                                ? "Remove all"
+                                : selectedCount > 0
+                                  ? `Remove selected (${selectedCount})`
+                                  : "Select items to remove"
+                          }
+                          className={`inline-flex h-8 items-center justify-center rounded-lg border transition disabled:cursor-not-allowed disabled:opacity-50 ${
+                            allDisplayedItemsSelected
+                              ? "gap-1.5 border-red-100 bg-red-50 px-3 text-xs font-bold text-red-600 hover:bg-red-100"
+                              : "w-8 border-gray-200 bg-white text-gray-600 hover:bg-gray-50"
+                          }`}
                         >
                           {isBulkDeleting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+                          {allDisplayedItemsSelected && (isBulkDeleting ? "Removing…" : "Remove All")}
                         </button>
                       )}
                     </div>

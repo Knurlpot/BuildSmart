@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { AlertTriangle, ArrowLeft, CheckCircle2, ChevronDown, Circle, Sparkles, Zap } from "lucide-react";
+import { AlertTriangle, ArrowLeft, CheckCircle2, ChevronDown, Circle, Sparkles, X, Zap } from "lucide-react";
 import { useSaveSegments, useUpdateQuotationInputMethod } from "@/hooks/useQuotationGeneration";
 import { apiClient } from "@/lib/api/client";
 import { useLaborRules, useMaterialRules } from "@/lib/dev/provisional/useCompanyRulesProvisional";
@@ -89,7 +89,7 @@ function SegmentConfigForm({ segment, treatmentOptions, laborTradeOptions, onSav
   };
 
   return (
-    <div className="flex h-full flex-col gap-2">
+    <div className="flex min-h-full flex-col gap-2">
       <div className="rounded-xl border border-gray-100 bg-gray-50/60 px-3 py-2">
         <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Segment</p>
         <p className="text-sm font-semibold text-gray-800">{segment.segment_name}</p>
@@ -217,27 +217,39 @@ function SegmentConfigForm({ segment, treatmentOptions, laborTradeOptions, onSav
         {!conditionsOpen && projectAdjustments.length > 0 && (
           <div className="grid gap-2 sm:grid-cols-2">
             {projectAdjustments.map((adjustment) => (
-              <label key={adjustment.condition} className="space-y-1 rounded-lg border border-primary/30 bg-orange-50/40 p-2 text-xs font-semibold text-gray-700">
-                <span>{adjustment.condition}</span>
-                <span className="relative block">
+              <div key={adjustment.condition} className="space-y-1 rounded-lg border-2 border-dashed border-primary/55 bg-orange-50/40 p-2 text-xs font-semibold text-gray-700">
+                <div className="flex items-start justify-between gap-2">
+                  <span>{adjustment.condition}</span>
+                  <button
+                    type="button"
+                    onClick={() => toggleAdjustment(adjustment.condition)}
+                    aria-label={`Remove ${adjustment.condition}`}
+                    title={`Remove ${adjustment.condition}`}
+                    className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-gray-400 transition hover:bg-orange-100 hover:text-primary"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+                <label className="relative block">
                   <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm font-bold text-gray-400">₱</span>
                   <input
                     type="text"
                     inputMode="decimal"
+                    aria-label={`${adjustment.condition} price`}
                     value={adjustment.amount}
                     onChange={(event) => updateAdjustmentAmount(adjustment.condition, event.target.value)}
                     onBlur={() => formatAdjustmentAmount(adjustment.condition, adjustment.amount)}
                     className={priceInputCls}
                     placeholder="0.00"
                   />
-                </span>
-              </label>
+                </label>
+              </div>
             ))}
           </div>
         )}
       </div>
 
-      <div className="flex min-h-0 flex-1 flex-col gap-1.5">
+      <div className="flex flex-col gap-1.5">
         <label className="text-xs font-semibold text-gray-600">
           Notes <span className="font-normal normal-case text-gray-400">(optional)</span>
         </label>
@@ -441,21 +453,33 @@ interface ApplyToAllPanelProps {
         {!conditionsOpen && adjustments.length > 0 && (
           <div className="grid gap-2 sm:grid-cols-2">
             {adjustments.map((adjustment) => (
-              <label key={adjustment.condition} className="space-y-1 rounded-lg border border-primary/30 bg-white p-2 text-xs font-semibold text-gray-700">
-                <span>{adjustment.condition}</span>
-                <span className="relative block">
+              <div key={adjustment.condition} className="space-y-1 rounded-lg border-2 border-dashed border-primary/55 bg-white p-2 text-xs font-semibold text-gray-700">
+                <div className="flex items-start justify-between gap-2">
+                  <span>{adjustment.condition}</span>
+                  <button
+                    type="button"
+                    onClick={() => toggleAdjustment(adjustment.condition)}
+                    aria-label={`Remove ${adjustment.condition}`}
+                    title={`Remove ${adjustment.condition}`}
+                    className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-gray-400 transition hover:bg-orange-50 hover:text-primary"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+                <label className="relative block">
                   <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm font-bold text-gray-400">₱</span>
                   <input
                     type="text"
                     inputMode="decimal"
+                    aria-label={`${adjustment.condition} price`}
                     value={adjustment.amount}
                     onChange={(event) => updateAdjustmentAmount(adjustment.condition, event.target.value)}
                     onBlur={() => formatAdjustmentAmount(adjustment.condition, adjustment.amount)}
                     className={priceInputCls}
                     placeholder="0.00"
                   />
-                </span>
-              </label>
+                </label>
+              </div>
             ))}
           </div>
         )}
@@ -639,8 +663,8 @@ export function ConfigureSegmentsStep({ quoteId, segments, onChange, onSaved, on
       />
 
 
-      <div className="flex h-[450px] overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
-        <div className="flex w-68 shrink-0 flex-col border-r border-gray-100">
+      <div className="flex h-[600px] gap-4">
+        <div className="flex w-68 shrink-0 flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
           <div className="flex min-h-14 items-center justify-between gap-2 border-b border-gray-100 px-4 py-2.5">
             <p className="text-xs font-bold uppercase tracking-wider text-gray-400">Segments ({segments.length})</p>
             <button
@@ -651,8 +675,9 @@ export function ConfigureSegmentsStep({ quoteId, segments, onChange, onSaved, on
               <Zap className="h-3.5 w-3.5" /> Apply to All
             </button>
           </div>
-          <div className="flex-1 divide-y divide-gray-50 overflow-y-auto">
-            {segments.map((seg) => {
+          <div className="min-h-0 flex-1 p-2">
+            <div className="h-full divide-y divide-gray-50 overflow-y-auto pr-2 [scrollbar-gutter:stable]">
+              {segments.map((seg) => {
               const included = isSegmentIncluded(seg);
               const configured = isSegmentConfigured(seg);
               const isSelected = seg.draft_id === selectedId;
@@ -681,21 +706,24 @@ export function ConfigureSegmentsStep({ quoteId, segments, onChange, onSaved, on
                   </div>
                 </button>
               );
-            })}
+              })}
+            </div>
           </div>
         </div>
-        <div className="flex-1 overflow-y-auto p-4">
-          {selected ? (
-            <SegmentConfigForm
-              key={`${selected.draft_id}-${treatmentOptionsKey}-${applyRevision}`}
-              segment={selected}
-              treatmentOptions={treatmentOptions}
-              laborTradeOptions={laborTradeOptions}
-              onSave={(patch) => updateSegment(selected.draft_id, patch)}
-            />
-          ) : (
-            <div className="flex h-full items-center justify-center text-sm text-gray-400">No segments to configure.</div>
-          )}
+        <div className="min-w-0 flex-1 overflow-hidden rounded-2xl border border-gray-200 bg-white p-2 shadow-sm">
+          <div className="h-full overflow-y-auto p-3 pr-4 sm:p-4 sm:pr-5 [scrollbar-gutter:stable]">
+            {selected ? (
+              <SegmentConfigForm
+                key={`${selected.draft_id}-${treatmentOptionsKey}-${applyRevision}`}
+                segment={selected}
+                treatmentOptions={treatmentOptions}
+                laborTradeOptions={laborTradeOptions}
+                onSave={(patch) => updateSegment(selected.draft_id, patch)}
+              />
+            ) : (
+              <div className="flex h-full items-center justify-center text-sm text-gray-400">No segments to configure.</div>
+            )}
+          </div>
         </div>
       </div>
 

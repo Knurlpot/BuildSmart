@@ -119,6 +119,64 @@ def test_upload_same_file_for_different_supplier_is_not_marked_already_processed
     assert second_response.json() == {"task_id": "different-supplier-task"}
 
 
+def test_upload_same_file_for_same_supplier_returns_already_processed(db_session):
+    supplier_id = _insert_supplier(db_session, "Duplicate Upload Supplier")
+    company_id = db_session.execute(
+        text(
+            "INSERT INTO company (company_name, company_address, contact_email, contact_number, specialization_1) "
+            "VALUES ('Duplicate Upload Co', 'Test Address', 'duplicate-upload@example.com', '09170000000', 'General Contractor') "
+            "RETURNING company_id"
+        )
+    ).scalar_one()
+
+    def override_get_db():
+        yield db_session
+
+    fake_result = SimpleNamespace(id="first-upload-task")
+    app.dependency_overrides[get_db] = override_get_db
+    try:
+        with patch.object(pricelist_router.normalize_price_list, "delay", return_value=fake_result) as mock_delay:
+            with FIXTURE.open("rb") as f:
+                first_response = client.post(
+                    "/pricelist/upload",
+                    files={"file": ("sample_pricelist.csv", f, "text/csv")},
+                    data={
+                        "source": "Supplier",
+                        "supplier_id": str(supplier_id),
+                        "company_id": str(company_id),
+                        "effective_date": "2026-08-17",
+                    },
+                )
+            with FIXTURE.open("rb") as f:
+                duplicate_response = client.post(
+                    "/pricelist/upload",
+                    files={"file": ("sample_pricelist.csv", f, "text/csv")},
+                    data={
+                        "source": "Supplier",
+                        "supplier_id": str(supplier_id),
+                        "company_id": str(company_id),
+                        "effective_date": "2026-08-17",
+                    },
+                )
+
+            saved_path = Path(mock_delay.call_args.args[0])
+            saved_path.unlink(missing_ok=True)
+    finally:
+        del app.dependency_overrides[get_db]
+
+    assert first_response.status_code == 200
+    assert duplicate_response.status_code == 200
+    duplicate_body = duplicate_response.json()
+    assert isinstance(duplicate_body["upload_id"], int)
+    assert duplicate_body == {
+        "status": "already_approved",
+        "message": "This price list was already uploaded for this supplier and effective date.",
+        "upload_id": duplicate_body["upload_id"],
+        "allow_skip_review": True,
+    }
+    assert mock_delay.call_count == 1
+
+
 def test_upload_with_unrecognized_columns_returns_structured_422():
     # "Foo"/"Bar" give zero header signal and aren't generic-named (unlike
     # "Column1" etc, which the parser's content-based inference gate treats

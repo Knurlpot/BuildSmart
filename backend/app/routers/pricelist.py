@@ -11,6 +11,7 @@ from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, UploadF
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import delete, func, select, text
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.celery_app import celery_app
@@ -87,6 +88,38 @@ class UploadResponse(BaseModel):
     upload_id: int | None = None
     allow_skip_review: bool | None = None
     records_imported: int | None = None
+
+
+def _find_existing_upload(
+    db: Session,
+    *,
+    company_id: int,
+    file_hash: str,
+    supplier_id: int | None,
+    effective_date: date,
+) -> PriceListUpload | None:
+    query = (
+        select(PriceListUpload)
+        .where(PriceListUpload.company_id == company_id)
+        .where(PriceListUpload.file_hash == file_hash)
+        .where(PriceListUpload.effective_date == effective_date)
+    )
+    query = query.where(
+        PriceListUpload.supplier_id.is_(None)
+        if supplier_id is None
+        else PriceListUpload.supplier_id == supplier_id
+    )
+    return db.execute(query.order_by(PriceListUpload.upload_id.desc())).scalars().first()
+
+
+def _duplicate_upload_response(upload: PriceListUpload) -> UploadResponse:
+    return UploadResponse(
+        status="already_approved",
+        message="This price list was already uploaded for this supplier and effective date.",
+        upload_id=upload.upload_id,
+        allow_skip_review=True,
+        records_imported=upload.records_imported,
+    )
 
 
 class MissingColumnsResponse(BaseModel):
@@ -610,11 +643,22 @@ async def upload_pricelist(
     period_quarter, period_year = quarter or default_quarter, year or default_year
     upload_effective_date = _parse_effective_date(effective_date, period_quarter, period_year)
     is_pdf_upload = dest.suffix.lower() == ".pdf"
-    file_hash = f"pending-{file_upload_token}" if is_pdf_upload else calculate_file_hash(dest)
-    file_size = None if is_pdf_upload else calculate_file_size(dest)
+    file_hash = calculate_file_hash(dest)
+    file_size = calculate_file_size(dest)
     db_upload: PriceListUpload | None = None
 
     if company_id is not None:
+        existing_upload = _find_existing_upload(
+            db,
+            company_id=company_id,
+            file_hash=file_hash,
+            supplier_id=supplier_id,
+            effective_date=upload_effective_date,
+        )
+        if existing_upload is not None:
+            dest.unlink(missing_ok=True)
+            return _duplicate_upload_response(existing_upload)
+
         db_upload = PriceListUpload(
             company_id=company_id,
             file_name=file.filename or "unknown",
@@ -628,7 +672,21 @@ async def upload_pricelist(
             processing_status="pending",
         )
         db.add(db_upload)
-        db.commit()
+        try:
+            db.commit()
+        except IntegrityError:
+            db.rollback()
+            existing_upload = _find_existing_upload(
+                db,
+                company_id=company_id,
+                file_hash=file_hash,
+                supplier_id=supplier_id,
+                effective_date=upload_effective_date,
+            )
+            if existing_upload is None:
+                raise
+            dest.unlink(missing_ok=True)
+            return _duplicate_upload_response(existing_upload)
         db.refresh(db_upload)
 
     if not is_pdf_upload:
