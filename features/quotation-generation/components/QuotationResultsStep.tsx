@@ -370,6 +370,14 @@ export function QuotationResultsStep({
           total_material_cost: result.materials_subtotal,
           total_service_cost: result.service_cost.subtotal,
           grand_total: result.grand_total,
+          finalized_breakdown_snapshot: {
+            tier,
+            result,
+            pricelist_basis_at_finalize: pricelistBasis,
+            segments,
+            blueprintFloors,
+            finalized_at: new Date().toISOString(),
+          },
         }),
       });
       saveFinalizedQuotation({

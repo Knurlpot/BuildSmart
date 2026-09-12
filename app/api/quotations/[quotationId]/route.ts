@@ -64,8 +64,125 @@ export async function GET(request: NextRequest, { params }: Params) {
         [quotation.client_id, auth.companyId]
       )
     : null;
+  const breakdownSnapshot = await pool.query(
+    `SELECT quote_id, tier, pricelist_basis,
+            materials_subtotal::float AS materials_subtotal,
+            labor_cost::float AS labor_cost,
+            rush_job_cost::float AS rush_job_cost,
+            equipment_cost::float AS equipment_cost,
+            contingency_cost::float AS contingency_cost,
+            other_cost::float AS other_cost,
+            service_subtotal::float AS service_subtotal,
+            ocm_percentage::float AS ocm_percentage,
+            ocm_amount::float AS ocm_amount,
+            profit_margin_percentage::float AS profit_margin_percentage,
+            profit_amount::float AS profit_amount,
+            subtotal_before_vat::float AS subtotal_before_vat,
+            vat_rate_percentage::float AS vat_rate_percentage,
+            vat_taxable_base::float AS vat_taxable_base,
+            vat_amount::float AS vat_amount,
+            vat_inclusive,
+            grand_total::float AS grand_total,
+            timeline_label, warranty_label, lifespan_label, material_grade_label,
+            finalized_at::text AS finalized_at
+     FROM quotation_breakdown_snapshot
+     WHERE quote_id = $1
+     LIMIT 1`,
+    [quoteId]
+  );
+  const breakdownItems = await pool.query(
+    `SELECT line_id, segment_draft_id, segment_name, floor_level, treatment_type,
+            category, item_code, item_name, unit,
+            derived_area_sqm::float AS derived_area_sqm,
+            derived_coverage_per_sqm::float AS derived_coverage_per_sqm,
+            derived_wastage_percentage::float AS derived_wastage_percentage,
+            quantity::float AS quantity,
+            unit_price::float AS unit_price,
+            total_cost::float AS total_cost,
+            source_type, is_overridden, price_source, region, brand, quarter, year,
+            recorded_at::text AS recorded_at,
+            labor_rule_scope, labor_rule_label, worker_count,
+            rush_multiplier_percentage::float AS rush_multiplier_percentage,
+            productivity_index::float AS productivity_index,
+            selected_supplier_id
+     FROM quotation_breakdown_items
+     WHERE quote_id = $1
+     ORDER BY breakdown_item_id`,
+    [quoteId]
+  );
+  const savedSnapshot = breakdownSnapshot.rows[0];
+  const finalizedBreakdownSnapshot = savedSnapshot
+    ? {
+        tier: savedSnapshot.tier,
+        pricelist_basis_at_finalize: savedSnapshot.pricelist_basis,
+        finalized_at: savedSnapshot.finalized_at,
+        result: {
+          tier: savedSnapshot.tier,
+          items: breakdownItems.rows.map((line) => ({
+            line_id: line.line_id,
+            segment_draft_id: line.segment_draft_id,
+            segment_name: line.segment_name,
+            floor_level: line.floor_level,
+            treatment_type: line.treatment_type,
+            category: line.category,
+            item_code: line.item_code,
+            item_name: line.item_name,
+            unit: line.unit,
+            derived_area_sqm: line.derived_area_sqm,
+            derived_coverage_per_sqm: line.derived_coverage_per_sqm,
+            derived_wastage_percentage: line.derived_wastage_percentage,
+            quantity: line.quantity,
+            unit_price: line.unit_price,
+            total_cost: line.total_cost,
+            source_type: line.source_type,
+            is_overridden: line.is_overridden,
+            pricing_reference: {
+              price_source: line.price_source,
+              region: line.region,
+              brand: line.brand,
+              quarter: line.quarter,
+              year: line.year,
+              recorded_at: line.recorded_at,
+              confidence: null,
+            },
+            labor_rule_scope: line.labor_rule_scope,
+            labor_rule_label: line.labor_rule_label,
+            worker_count: line.worker_count,
+            rush_multiplier_percentage: line.rush_multiplier_percentage,
+            productivity_index: line.productivity_index,
+            supplier_options: [],
+            selected_supplier_id: line.selected_supplier_id,
+          })),
+          materials_subtotal: savedSnapshot.materials_subtotal,
+          service_cost: {
+            labor_cost: savedSnapshot.labor_cost,
+            rush_job_cost: savedSnapshot.rush_job_cost,
+            equipment_cost: savedSnapshot.equipment_cost,
+            contingency_cost: savedSnapshot.contingency_cost,
+            other_cost: savedSnapshot.other_cost,
+            subtotal: savedSnapshot.service_subtotal,
+          },
+          ocm_percentage: savedSnapshot.ocm_percentage,
+          ocm_amount: savedSnapshot.ocm_amount,
+          profit_margin_percentage: savedSnapshot.profit_margin_percentage,
+          profit_amount: savedSnapshot.profit_amount,
+          subtotal_before_vat: savedSnapshot.subtotal_before_vat,
+          vat: {
+            rate_percentage: savedSnapshot.vat_rate_percentage,
+            taxable_base: savedSnapshot.vat_taxable_base,
+            amount: savedSnapshot.vat_amount,
+          },
+          vat_inclusive: savedSnapshot.vat_inclusive,
+          grand_total: savedSnapshot.grand_total,
+          timeline_label: savedSnapshot.timeline_label,
+          warranty_label: savedSnapshot.warranty_label,
+          lifespan_label: savedSnapshot.lifespan_label,
+          material_grade_label: savedSnapshot.material_grade_label,
+        },
+      }
+    : null;
 
-  return NextResponse.json({ ...quotation, client: client?.rows[0] ?? null, items: items.rows });
+  return NextResponse.json({ ...quotation, finalized_breakdown_snapshot: finalizedBreakdownSnapshot, client: client?.rows[0] ?? null, items: items.rows });
 }
 
 export async function PATCH(request: NextRequest, { params }: Params) {

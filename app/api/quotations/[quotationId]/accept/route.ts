@@ -19,6 +19,64 @@ type AcceptQuotationPayload = {
   total_material_cost: number;
   total_service_cost: number;
   grand_total: number;
+  finalized_breakdown_snapshot?: {
+    tier?: "Practical" | "Premium";
+    pricelist_basis_at_finalize?: "Uploaded" | "DPWH";
+    result?: {
+      items?: Array<AcceptedQuotationLine & {
+        line_id?: string;
+        segment_draft_id?: string;
+        segment_name?: string;
+        floor_level?: string;
+        treatment_type?: string | null;
+        item_name?: string;
+        unit?: string;
+        derived_area_sqm?: number | null;
+        derived_coverage_per_sqm?: number | null;
+        derived_wastage_percentage?: number | null;
+        is_overridden?: boolean;
+        pricing_reference?: {
+          price_source?: "DPWH" | "PSA" | "Supplier" | "Internal";
+          region?: string | null;
+          brand?: string | null;
+          quarter?: "Q1" | "Q2" | "Q3" | "Q4" | null;
+          year?: number | null;
+          recorded_at?: string | null;
+        };
+        labor_rule_scope?: "Treatment" | "Trade" | "General";
+        labor_rule_label?: string;
+        worker_count?: number | null;
+        rush_multiplier_percentage?: number | null;
+        productivity_index?: number | null;
+        selected_supplier_id?: number | null;
+      }>;
+      materials_subtotal?: number;
+      service_cost?: {
+        labor_cost?: number;
+        rush_job_cost?: number;
+        equipment_cost?: number;
+        contingency_cost?: number;
+        other_cost?: number;
+        subtotal?: number;
+      };
+      ocm_percentage?: number;
+      ocm_amount?: number;
+      profit_margin_percentage?: number;
+      profit_amount?: number;
+      subtotal_before_vat?: number;
+      vat?: {
+        rate_percentage?: number;
+        taxable_base?: number;
+        amount?: number;
+      };
+      vat_inclusive?: boolean;
+      grand_total?: number;
+      timeline_label?: string;
+      warranty_label?: string;
+      lifespan_label?: string;
+      material_grade_label?: string;
+    };
+  };
 };
 
 function badRequest(message: string) {
@@ -78,6 +136,8 @@ export async function POST(request: NextRequest, { params }: Params) {
       if (!quote.rows[0]) return null;
 
       await client.query("DELETE FROM quotation_items WHERE quote_id = $1", [quoteId]);
+      await client.query("DELETE FROM quotation_breakdown_items WHERE quote_id = $1", [quoteId]);
+      await client.query("DELETE FROM quotation_breakdown_snapshot WHERE quote_id = $1", [quoteId]);
 
       const insertedItems = [];
       for (const line of aggregatedCatalogItems) {
@@ -141,6 +201,104 @@ export async function POST(request: NextRequest, { params }: Params) {
           auth.companyId,
         ]
       );
+      const breakdown = body.finalized_breakdown_snapshot?.result;
+      if (breakdown) {
+        await client.query(
+          `INSERT INTO quotation_breakdown_snapshot (
+             quote_id, tier, pricelist_basis, materials_subtotal, labor_cost, rush_job_cost,
+             equipment_cost, contingency_cost, other_cost, service_subtotal, ocm_percentage,
+             ocm_amount, profit_margin_percentage, profit_amount, subtotal_before_vat,
+             vat_rate_percentage, vat_taxable_base, vat_amount, vat_inclusive, grand_total,
+             timeline_label, warranty_label, lifespan_label, material_grade_label
+           )
+           VALUES (
+             $1, $2, $3, $4, $5, $6,
+             $7, $8, $9, $10, $11,
+             $12, $13, $14, $15,
+             $16, $17, $18, $19, $20,
+             $21, $22, $23, $24
+           )`,
+          [
+            quoteId,
+            body.finalized_breakdown_snapshot?.tier ?? body.tier,
+            body.finalized_breakdown_snapshot?.pricelist_basis_at_finalize ?? "Uploaded",
+            breakdown.materials_subtotal ?? body.total_material_cost,
+            breakdown.service_cost?.labor_cost ?? 0,
+            breakdown.service_cost?.rush_job_cost ?? 0,
+            breakdown.service_cost?.equipment_cost ?? 0,
+            breakdown.service_cost?.contingency_cost ?? 0,
+            breakdown.service_cost?.other_cost ?? 0,
+            breakdown.service_cost?.subtotal ?? body.total_service_cost,
+            breakdown.ocm_percentage ?? 0,
+            breakdown.ocm_amount ?? 0,
+            breakdown.profit_margin_percentage ?? 0,
+            breakdown.profit_amount ?? 0,
+            breakdown.subtotal_before_vat ?? body.total_material_cost + body.total_service_cost,
+            breakdown.vat?.rate_percentage ?? 0,
+            breakdown.vat?.taxable_base ?? breakdown.subtotal_before_vat ?? body.total_material_cost + body.total_service_cost,
+            breakdown.vat?.amount ?? 0,
+            breakdown.vat_inclusive ?? false,
+            breakdown.grand_total ?? body.grand_total,
+            breakdown.timeline_label ?? "",
+            breakdown.warranty_label ?? "",
+            breakdown.lifespan_label ?? "",
+            breakdown.material_grade_label ?? "",
+          ]
+        );
+
+        for (const [index, line] of (breakdown.items ?? []).entries()) {
+          await client.query(
+            `INSERT INTO quotation_breakdown_items (
+               quote_id, line_id, segment_draft_id, segment_name, floor_level, treatment_type,
+               category, item_code, item_name, unit, derived_area_sqm, derived_coverage_per_sqm,
+               derived_wastage_percentage, quantity, unit_price, total_cost, source_type,
+               is_overridden, price_source, region, brand, quarter, year, recorded_at,
+               labor_rule_scope, labor_rule_label, worker_count, rush_multiplier_percentage,
+               productivity_index, selected_supplier_id
+             )
+             VALUES (
+               $1, $2, $3, $4, $5, $6,
+               $7, $8, $9, $10, $11, $12,
+               $13, $14, $15, $16, $17,
+               $18, $19, $20, $21, $22, $23, $24,
+               $25, $26, $27, $28,
+               $29, $30
+             )`,
+            [
+              quoteId,
+              line.line_id ?? `finalized-line-${index + 1}`,
+              line.segment_draft_id ?? "saved-finalized-quotation",
+              line.segment_name ?? "Saved Quotation",
+              line.floor_level ?? "Finalized Project",
+              line.treatment_type ?? null,
+              line.category ?? "Material",
+              String(line.item_code),
+              line.item_name ?? String(line.item_code),
+              line.unit ?? "unit",
+              line.derived_area_sqm ?? null,
+              line.derived_coverage_per_sqm ?? null,
+              line.derived_wastage_percentage ?? null,
+              Number(line.quantity ?? 0),
+              line.unit_price,
+              line.total_cost,
+              line.source_type ?? "Uploaded",
+              line.is_overridden ?? false,
+              line.pricing_reference?.price_source ?? "Internal",
+              line.pricing_reference?.region ?? null,
+              line.pricing_reference?.brand ?? null,
+              line.pricing_reference?.quarter ?? null,
+              line.pricing_reference?.year ?? null,
+              line.pricing_reference?.recorded_at ?? null,
+              line.labor_rule_scope ?? null,
+              line.labor_rule_label ?? null,
+              line.worker_count ?? null,
+              line.rush_multiplier_percentage ?? null,
+              line.productivity_index ?? null,
+              line.selected_supplier_id ?? null,
+            ]
+          );
+        }
+      }
 
       return {
         ...result.rows[0],

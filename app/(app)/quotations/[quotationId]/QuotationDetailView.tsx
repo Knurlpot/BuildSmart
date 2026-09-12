@@ -5,6 +5,16 @@ import { useRouter } from "next/navigation";
 import { AlertCircle, ArrowLeft, Award, Clock, History, Mail, MapPin, Phone, RefreshCw, Shield, Star, TrendingDown, UserRound } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { QuotationBreakdownModal } from "@/features/quotation-generation/components/QuotationBreakdownModal";
+import type { DraftSegment } from "@/features/quotation-generation/lib/draftSegment";
+import type { BlueprintFloor } from "@/lib/dev/provisional/quotationGenerationTypes";
+import type {
+  ItemCategory,
+  PricelistBasis,
+  ProvisionalItemLine,
+  ProvisionalQuotationTierResult,
+  ProvisionalTier,
+} from "@/lib/dev/provisional/quotationBreakdownTypes";
 
 type QuotationItem = {
   quote_item_id: number;
@@ -28,6 +38,14 @@ type Quotation = {
   total_material_cost: number;
   total_service_cost: number;
   grand_total: number;
+  finalized_breakdown_snapshot: {
+    tier?: ProvisionalTier;
+    result?: ProvisionalQuotationTierResult;
+    pricelist_basis_at_finalize?: PricelistBasis;
+    pricelistBasis?: PricelistBasis;
+    segments?: DraftSegment[];
+    blueprintFloors?: BlueprintFloor[] | null;
+  } | null;
   created_at: string;
   updated_at: string;
   created_by_user_name: string | null;
@@ -65,6 +83,96 @@ type RefreshResult = {
 
 function peso(value: number) {
   return value.toLocaleString("en-PH", { style: "currency", currency: "PHP" });
+}
+
+const SAVED_QUOTATION_PRICELIST_BASIS: PricelistBasis = "Uploaded";
+const SAVED_QUOTATION_VAT_RATE = 12;
+
+function getSavedQuotationTier(tier: Quotation["accepted_tier"]): ProvisionalTier {
+  return tier === "Premium" ? "Premium" : "Practical";
+}
+
+function getSavedItemCategory(itemName: string): ItemCategory {
+  const normalized = itemName.toLowerCase();
+  return normalized.includes("labor") || normalized.includes("labour") ? "Labor" : "Material";
+}
+
+function toSavedBreakdownLine(item: QuotationItem): ProvisionalItemLine {
+  const category = getSavedItemCategory(item.item_name);
+
+  return {
+    line_id: `saved-quote-item-${item.quote_item_id}`,
+    segment_draft_id: "saved-finalized-quotation",
+    segment_name: "Saved Quotation",
+    floor_level: "Finalized Project",
+    treatment_type: null,
+    category,
+    item_code: `QUOTE-${item.quote_item_id}`,
+    item_name: item.item_name,
+    unit: "unit",
+    derived_area_sqm: null,
+    derived_coverage_per_sqm: null,
+    derived_wastage_percentage: null,
+    quantity: item.quantity,
+    unit_price: item.unit_cost,
+    total_cost: item.total_cost,
+    source_type: SAVED_QUOTATION_PRICELIST_BASIS,
+    is_overridden: item.is_price_locked,
+    pricing_reference: {
+      price_source: "Internal",
+      region: null,
+      brand: null,
+      quarter: null,
+      year: null,
+      recorded_at: item.last_refreshed_at,
+      confidence: null,
+    },
+    supplier_options: [],
+    selected_supplier_id: null,
+  };
+}
+
+function createSavedBreakdownResult(quotation: Quotation, tier: ProvisionalTier): ProvisionalQuotationTierResult {
+  const items = quotation.items.map(toSavedBreakdownLine);
+  const laborCost = items
+    .filter((item) => item.category === "Labor")
+    .reduce((sum, item) => sum + (item.total_cost ?? 0), 0);
+  const serviceSubtotal = quotation.total_service_cost;
+  const knownSubtotal = quotation.total_material_cost + quotation.total_service_cost;
+  const vatBaseFromGrandTotal = quotation.grand_total / (1 + SAVED_QUOTATION_VAT_RATE / 100);
+  const vatAmount = Math.max(quotation.grand_total - vatBaseFromGrandTotal, 0);
+  const profitAmount = Math.max(vatBaseFromGrandTotal - knownSubtotal, 0);
+  const subtotalBeforeVat = knownSubtotal + profitAmount;
+
+  return {
+    tier,
+    items,
+    materials_subtotal: quotation.total_material_cost,
+    service_cost: {
+      labor_cost: laborCost,
+      rush_job_cost: 0,
+      equipment_cost: 0,
+      contingency_cost: 0,
+      other_cost: Math.max(serviceSubtotal - laborCost, 0),
+      subtotal: serviceSubtotal,
+    },
+    ocm_percentage: 0,
+    ocm_amount: 0,
+    profit_margin_percentage: knownSubtotal > 0 ? (profitAmount / knownSubtotal) * 100 : 0,
+    profit_amount: profitAmount,
+    subtotal_before_vat: subtotalBeforeVat,
+    vat: {
+      rate_percentage: SAVED_QUOTATION_VAT_RATE,
+      taxable_base: subtotalBeforeVat,
+      amount: vatAmount,
+    },
+    vat_inclusive: vatAmount > 0,
+    grand_total: quotation.grand_total,
+    timeline_label: "Not saved",
+    warranty_label: "Not saved",
+    lifespan_label: "Not saved",
+    material_grade_label: tier === "Premium" ? "Premium" : "Standard",
+  };
 }
 
 
@@ -150,6 +258,11 @@ export function QuotationDetailView({ quotationId }: { quotationId: string }) {
 
   const isPremium = quotation.accepted_tier === "Premium";
   const tier = quotation.accepted_tier ?? "Quotation";
+  const breakdownTier = getSavedQuotationTier(quotation.accepted_tier);
+  const savedBreakdown = quotation.finalized_breakdown_snapshot;
+  const breakdownResult = savedBreakdown?.result ?? createSavedBreakdownResult(quotation, breakdownTier);
+  const displayedBreakdownTier = savedBreakdown?.tier ?? breakdownTier;
+  const displayedPricelistBasis = savedBreakdown?.pricelist_basis_at_finalize ?? savedBreakdown?.pricelistBasis ?? SAVED_QUOTATION_PRICELIST_BASIS;
   const tierGradient = isPremium
     ? "project-tier-gradient bg-linear-to-r from-[#0000CD] via-[#4169E1] to-[#0000CD]"
     : "project-tier-gradient bg-linear-to-r from-primary via-orange-400 to-primary";
@@ -255,22 +368,16 @@ export function QuotationDetailView({ quotationId }: { quotationId: string }) {
         </section>
       </div>
 
-      <Dialog open={showBreakdown} onOpenChange={setShowBreakdown}>
-        <DialogContent className="max-w-4xl">
-          <DialogHeader><DialogTitle>{tier} Quotation Breakdown</DialogTitle></DialogHeader>
-          <div className="max-h-[60vh] overflow-auto rounded-xl border border-gray-100">
-            <table className="w-full text-sm">
-              <thead className="sticky top-0 border-b bg-gray-50 text-gray-500"><tr><th className="px-4 py-3 text-left">Item</th><th className="px-4 py-3 text-right">Qty</th><th className="px-4 py-3 text-right">Unit Cost</th><th className="px-4 py-3 text-right">Total</th></tr></thead>
-              <tbody>{quotation.items.map((item) => <tr key={item.quote_item_id} className="border-b last:border-0"><td className="px-4 py-3 font-medium text-gray-900">{item.item_name}</td><td className="px-4 py-3 text-right">{item.quantity}</td><td className="px-4 py-3 text-right">{peso(item.unit_cost)}</td><td className="px-4 py-3 text-right font-semibold">{peso(item.total_cost)}</td></tr>)}</tbody>
-            </table>
-          </div>
-          <div className="grid gap-3 sm:grid-cols-3">
-            <div className="rounded-xl bg-gray-50 p-3"><p className="text-[10px] uppercase tracking-wider text-gray-400">Materials</p><p className="mt-1 font-semibold">{peso(quotation.total_material_cost)}</p></div>
-            <div className="rounded-xl bg-gray-50 p-3"><p className="text-[10px] uppercase tracking-wider text-gray-400">Services</p><p className="mt-1 font-semibold">{peso(quotation.total_service_cost)}</p></div>
-            <div className="rounded-xl bg-gray-50 p-3"><p className="text-[10px] uppercase tracking-wider text-gray-400">Grand Total</p><p className="mt-1 font-semibold">{peso(quotation.grand_total)}</p></div>
-          </div>
-        </DialogContent>
-      </Dialog>
+      {showBreakdown && (
+        <QuotationBreakdownModal
+          tier={displayedBreakdownTier}
+          result={breakdownResult}
+          pricelistBasis={displayedPricelistBasis}
+          onClose={() => setShowBreakdown(false)}
+          blueprintFloors={savedBreakdown?.blueprintFloors ?? null}
+          segments={savedBreakdown?.segments ?? []}
+        />
+      )}
 
       <Dialog open={showRefreshConfirm} onOpenChange={setShowRefreshConfirm}>
         <DialogContent>
