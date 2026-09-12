@@ -38,7 +38,7 @@ import type { HistoricalPriceRecord, MaterialPriceVariance } from '@/types/entit
 import { useFetch } from './useFetch';
 import { useMutation } from './useMutation';
 
-const BACKEND_API_BASE = process.env.NEXT_PUBLIC_NORMALIZATION_API_BASE_URL?.replace(/\/$/, '') || '';
+const BACKEND_API_BASE = '/api/pricelist/backend';
 
 function formatApiErrorDetail(detail: unknown): string | null {
   if (!detail) return null;
@@ -61,8 +61,6 @@ function formatApiErrorDetail(detail: unknown): string | null {
 
 async function backendApiClient<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
   const res = await fetch(`${BACKEND_API_BASE}${endpoint}`, {
-    mode: 'cors',
-    credentials: 'omit',
     headers: {
       Accept: 'application/json',
       ...(options.headers ?? {}),

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { authContext, isAuthContext, withTransaction } from "../../pricing";
-import { SITE_CONDITION_FIELDS, type ProjectSiteCondition } from "@/types/entities/site-condition-rule";
+import type { ProjectAdjustment } from "@/types/entities/segment-tag";
 
 type Params = { params: Promise<{ quotationId: string }> };
 
@@ -19,12 +19,22 @@ type SegmentPayload = {
   scope_of_work: string;
   work_type: string;
   notes: string | null;
-  site_conditions?: ProjectSiteCondition[];
-  site_condition_effect_decisions?: Record<string, boolean>;
+  project_adjustments: ProjectAdjustment[];
 };
 
 type SaveSegmentsPayload = {
   segments?: SegmentPayload[];
+};
+
+type SegmentRow = {
+  segment_id: number;
+  [key: string]: unknown;
+};
+
+type AdjustmentRow = {
+  segment_id: number;
+  condition: string;
+  amount: number;
 };
 
 function badRequest(message: string) {
@@ -35,7 +45,9 @@ function isFiniteNumber(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value);
 }
 
-const conditionFields = new Set(SITE_CONDITION_FIELDS.map((field) => field.key));
+function adjustmentAmount(value: string): number {
+  return Number(value.replace(/,/g, ""));
+}
 
 function validateSegment(segment: SegmentPayload, index: number): string | null {
   const label = `Segment ${index + 1}`;
@@ -52,15 +64,9 @@ function validateSegment(segment: SegmentPayload, index: number): string | null 
   if (typeof segment.included_in_quote !== "boolean") return `${label} has an invalid included flag.`;
   if (!segment.scope_of_work?.trim()) return `${label} needs a scope of work.`;
   if (!segment.work_type?.trim()) return `${label} needs a work type.`;
-  if (!Array.isArray(segment.site_conditions ?? [])) return `${label} has invalid site conditions.`;
-  const seenFields = new Set<string>();
-  for (const condition of segment.site_conditions ?? []) {
-    if (!conditionFields.has(condition.field) || !condition.value?.trim()) return `${label} has an invalid site condition.`;
-    if (seenFields.has(condition.field)) return `${label} has a duplicate site condition.`;
-    seenFields.add(condition.field);
-  }
-  if (segment.site_condition_effect_decisions && Object.values(segment.site_condition_effect_decisions).some((value) => typeof value !== "boolean")) {
-    return `${label} has invalid site-condition review decisions.`;
+  if (!Array.isArray(segment.project_adjustments)) return `${label} has invalid project adjustments.`;
+  if (segment.project_adjustments.some((adjustment) => !adjustment.condition?.trim() || typeof adjustment.amount !== "string" || !Number.isFinite(adjustmentAmount(adjustment.amount)) || adjustmentAmount(adjustment.amount) < 0)) {
+    return `${label} has invalid project adjustment amounts.`;
   }
   return null;
 }
@@ -80,45 +86,41 @@ export async function GET(request: NextRequest, { params }: Params) {
     );
     if (!quote.rows[0]) return null;
 
-    const segments = await client.query(
+    const segments = await client.query<SegmentRow>(
       `SELECT segment_id, quote_id, segment_name, segment_type, source_method, floor_level,
               shape_type, length::float AS length, width::float AS width, area_sqm::float AS area_sqm,
               polygon_coords, confidence_score::float AS confidence_score, included_in_quote,
               scope_of_work, work_type, notes, status
        FROM project_segments
        WHERE quote_id = $1
-       ORDER BY segment_id`,
+      ORDER BY segment_id`,
       [quoteId]
     );
-    const conditions = await client.query(
-      `SELECT psc.segment_id, psc.condition_field, psc.condition_value
-       FROM project_site_condition psc
-       JOIN project_segments ps ON ps.segment_id = psc.segment_id
-       WHERE ps.quote_id = $1 ORDER BY psc.project_site_condition_id`,
+    const adjustments = await client.query<AdjustmentRow>(
+      `SELECT psa.segment_id, psa.condition, psa.amount::float AS amount
+       FROM project_segment_adjustment psa
+       JOIN project_segments ps ON ps.segment_id = psa.segment_id
+       WHERE ps.quote_id = $1
+       ORDER BY psa.project_segment_adjustment_id`,
       [quoteId]
     );
-    const reviews = await client.query(
-      `SELECT pscr.segment_id, pscr.site_condition_rule_id, pscr.effect_key, pscr.included
-       FROM project_site_condition_effect_review pscr
-       JOIN project_segments ps ON ps.segment_id = pscr.segment_id
-       WHERE ps.quote_id = $1`,
-      [quoteId]
-    );
-    return segments.rows.map((segment) => ({
-      ...segment,
-      site_conditions: conditions.rows
-        .filter((condition) => condition.segment_id === segment.segment_id)
-        .map((condition) => ({ field: condition.condition_field, value: condition.condition_value })),
-      site_condition_effect_decisions: Object.fromEntries(
-        reviews.rows
-          .filter((review) => review.segment_id === segment.segment_id)
-          .map((review) => [`scr-${review.site_condition_rule_id}:${review.effect_key}`, Boolean(review.included)])
-      ),
-    }));
+    const adjustmentsBySegment = new Map<number, ProjectAdjustment[]>();
+    for (const adjustment of adjustments.rows) {
+      const current = adjustmentsBySegment.get(adjustment.segment_id) ?? [];
+      current.push({ condition: adjustment.condition as ProjectAdjustment["condition"], amount: adjustment.amount.toFixed(2) });
+      adjustmentsBySegment.set(adjustment.segment_id, current);
+    }
+    return {
+      ...segments,
+      rows: segments.rows.map((segment) => ({
+        ...segment,
+        project_adjustments: adjustmentsBySegment.get(segment.segment_id) ?? [],
+      })),
+    };
   });
 
   if (result === null) return NextResponse.json({ error: "Quotation not found." }, { status: 404 });
-  return NextResponse.json({ segments: result });
+  return NextResponse.json({ segments: result.rows });
 }
 
 export async function POST(request: NextRequest, { params }: Params) {
@@ -156,7 +158,8 @@ export async function POST(request: NextRequest, { params }: Params) {
              scope_of_work, work_type, notes, status
            )
            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, 'Active')
-           RETURNING segment_id`,
+           RETURNING segment_id
+          `,
           [
             quoteId,
             segment.segment_name.trim(),
@@ -175,21 +178,11 @@ export async function POST(request: NextRequest, { params }: Params) {
             segment.notes?.trim() || null,
           ]
         );
-        const segmentId = inserted.rows[0].segment_id;
-        for (const condition of segment.site_conditions ?? []) {
+        for (const adjustment of segment.project_adjustments) {
           await client.query(
-            `INSERT INTO project_site_condition (segment_id, condition_field, condition_value) VALUES ($1, $2, $3)`,
-            [segmentId, condition.field, condition.value.trim()]
-          );
-        }
-        for (const [reviewKey, included] of Object.entries(segment.site_condition_effect_decisions ?? {})) {
-          const match = /^scr-(\d+):(.+)$/.exec(reviewKey);
-          if (!match) continue;
-          await client.query(
-            `INSERT INTO project_site_condition_effect_review (segment_id, site_condition_rule_id, effect_key, included)
-             SELECT $1, site_condition_rule_id, $3, $4 FROM site_condition_rule
-             WHERE site_condition_rule_id = $2 AND company_id = $5`,
-            [segmentId, Number(match[1]), match[2], included, auth.companyId]
+            `INSERT INTO project_segment_adjustment (segment_id, condition, amount)
+             VALUES ($1, $2, $3)`,
+            [inserted.rows[0].segment_id, adjustment.condition.trim(), adjustmentAmount(adjustment.amount)]
           );
         }
       }

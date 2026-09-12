@@ -1,9 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { authContext, isAuthContext } from "../../pricing";
 import { pool } from "@/lib/server/db";
-import { getNormalizationApiBaseUrl } from "@/lib/server/config";
-
-const API_BASE = getNormalizationApiBaseUrl();
+import { getNormalizationApiBaseUrl, getNormalizationApiHeaders } from "@/lib/server/config";
 
 type Params = { params: Promise<{ quotationId: string }> };
 
@@ -32,9 +30,10 @@ export async function POST(request: NextRequest, { params }: Params) {
   }
 
   try {
-    const response = await fetch(`${API_BASE}/blueprints/rescan/${quoteId}`, {
+    const apiBase = getNormalizationApiBaseUrl();
+    const response = await fetch(`${apiBase}/blueprints/rescan/${quoteId}`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...getNormalizationApiHeaders() },
       body: JSON.stringify({ blueprint_file_path: savedPath }),
     });
     const body = await response.json().catch(() => null);

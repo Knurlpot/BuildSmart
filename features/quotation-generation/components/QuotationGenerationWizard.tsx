@@ -185,8 +185,7 @@ function draftFromSavedSegment(segment: ProjectSegment): DraftSegment {
     labor_trade: null,
     is_rush: false,
     condition_tags: [],
-    site_conditions: segment.site_conditions ?? [],
-    site_condition_effect_decisions: segment.site_condition_effect_decisions ?? {},
+    project_adjustments: segment.project_adjustments ?? [],
     site_notes: segment.notes ?? "",
   };
 }
@@ -238,17 +237,13 @@ export function QuotationGenerationWizard() {
         setQuotation(resumeQuotation);
         setClient(resumeQuotation.client);
         const savedDrafts = savedSegments.segments.map(draftFromSavedSegment);
-        const drafts = (localDraft?.segments?.length ? localDraft.segments : savedDrafts).map((segment) => ({
-          ...segment,
-          site_conditions: segment.site_conditions ?? [],
-          site_condition_effect_decisions: segment.site_condition_effect_decisions ?? {},
-        }));
+        const drafts = localDraft?.segments?.length ? localDraft.segments : savedDrafts;
         setSegments(drafts);
         const nextMethod = localDraft?.method ?? (resumeQuotation.input_method === "Blueprint" ? "blueprint" : "quick");
         setMethod(nextMethod);
         setBlueprintFloors(localDraft?.blueprintFloors ?? null);
         setOriginalBlueprintFloors(localDraft?.originalBlueprintFloors ?? null);
-        setBlueprintFilePath(localDraft?.blueprintFilePath ?? null);
+        setBlueprintFilePath(localDraft?.blueprintFilePath ?? resumeQuotation.blueprint_file_path ?? null);
         setDraftTierItems(localDraft?.tierItems ?? null);
         setDraftPricelistBasis(localDraft?.pricelistBasis ?? null);
         setDraftHasManualLineEdits(Boolean(localDraft?.hasManualLineEdits || localDraft?.tierItems));
@@ -276,6 +271,7 @@ export function QuotationGenerationWizard() {
 
   useEffect(() => {
     if (!quotation || step === "client" || step === "method" || step === "finalized") return;
+    if (step !== "blueprint") return;
     writeLocalQuotationDraft({
       quoteId: quotation.quote_id,
       step,

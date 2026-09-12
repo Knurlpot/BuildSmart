@@ -1,4 +1,4 @@
-import shutil
+import os
 import uuid
 from datetime import date, datetime
 from pathlib import Path
@@ -32,6 +32,7 @@ router = APIRouter(prefix="/pricelist", tags=["pricelist"])
 # Next.js side), so this is a new local directory scoped to the backend, gitignored.
 UPLOAD_DIR = Path(__file__).resolve().parents[2] / "uploads"
 UPLOAD_DIR.mkdir(exist_ok=True)
+MAX_PRICELIST_BYTES = int(os.environ.get("MAX_PRICELIST_UPLOAD_BYTES", str(25 * 1024 * 1024)))
 
 TASK_STATE_MAP = {
     "PENDING": "pending",
@@ -40,6 +41,21 @@ TASK_STATE_MAP = {
     "SUCCESS": "done",
     "FAILURE": "failed",
 }
+
+
+def _copy_upload_with_limit(file: UploadFile, dest: Path, max_bytes: int = MAX_PRICELIST_BYTES) -> None:
+    total = 0
+    with dest.open("wb") as out:
+        while chunk := file.file.read(1024 * 1024):
+            total += len(chunk)
+            if total > max_bytes:
+                out.close()
+                dest.unlink(missing_ok=True)
+                raise HTTPException(status_code=413, detail="Uploaded file is too large.")
+            out.write(chunk)
+    if total == 0:
+        dest.unlink(missing_ok=True)
+        raise HTTPException(status_code=400, detail="Uploaded file is empty.")
 
 
 def _default_period() -> tuple[str, int]:
@@ -588,8 +604,7 @@ async def upload_pricelist(
     suffix = Path(file.filename).suffix
     file_upload_token = str(uuid.uuid4())
     dest = UPLOAD_DIR / f"{file_upload_token}{suffix}"
-    with dest.open("wb") as out:
-        shutil.copyfileobj(file.file, out)
+    _copy_upload_with_limit(file, dest)
 
     default_quarter, default_year = _default_period()
     period_quarter, period_year = quarter or default_quarter, year or default_year
@@ -980,8 +995,7 @@ async def normalize_pricelist_file(
 ):
     suffix = Path(file.filename).suffix
     dest = UPLOAD_DIR / f"normalize-{uuid.uuid4()}{suffix}"
-    with dest.open("wb") as out:
-        shutil.copyfileobj(file.file, out)
+    _copy_upload_with_limit(file, dest)
 
     df = parse_pricelist_file(str(dest))
     records = normalize_pricelist_dataframe(df, source_agency=source, region=region)

@@ -23,8 +23,6 @@ import type {
 import type { Items } from '@/types/entities/items';
 import type { SavedPriceRecord } from '@/hooks/usePricelistCatalog';
 import type { DpwhCatalogRow } from '@/hooks/usePricelistPublishedSource';
-import type { SiteConditionRule } from '@/types/entities/site-condition-rule';
-import { evaluateSiteConditionRules, isSiteConditionEffectIncluded } from '@/features/quotation-generation/lib/siteConditionEngine';
 
 interface SupplierFixture {
   supplier_id: number;
@@ -238,6 +236,10 @@ function round2(n: number): number {
   return Math.round(n * 100) / 100;
 }
 
+function roundUpMaterialQuantity(n: number): number {
+  return Math.max(0, Math.ceil(n));
+}
+
 function pricingReferenceFor(basis: PricelistBasis): ProvisionalPricingReference {
   // DPWH publishes quarterly (quarter/year present, no recorded_at date); an uploaded/
   // internal pricelist has an upload timestamp instead, no quarter — matches
@@ -364,7 +366,7 @@ function supplierOptionsFor(def: ItemFixtureDef, tier: ProvisionalTier, basis: P
 
 function buildLine(seg: DraftSegment, def: ItemFixtureDef, tier: ProvisionalTier, basis: PricelistBasis): ProvisionalItemLine {
   const normalizedTier = normalizeTier(tier);
-  const qty = round2(seg.area_sqm * def.coverage_factor * (1 + def.wastage_percentage / 100));
+  const qty = roundUpMaterialQuantity(seg.area_sqm * def.coverage_factor * (1 + def.wastage_percentage / 100));
   const basisPrices = basis === 'DPWH' ? def.dpwh : def.uploaded;
   const unitPrice = round2((normalizedTier === 'Practical' ? basisPrices.practical : basisPrices.premium) * TIER_PRICING_FIXTURE[normalizedTier].price_factor);
   const suppliers = supplierOptionsFor(def, tier, basis);
@@ -409,7 +411,7 @@ function buildMissingRuleLine(seg: DraftSegment, basis: PricelistBasis): Provisi
     derived_area_sqm: seg.area_sqm,
     derived_coverage_per_sqm: 1.0,
     derived_wastage_percentage: 10,
-    quantity: round2(seg.area_sqm * 1.1),
+    quantity: roundUpMaterialQuantity(seg.area_sqm * 1.1),
     unit_price: null,
     total_cost: null,
     source_type: basis,
@@ -442,6 +444,62 @@ function matchingUnitRule(rule: MaterialRuleEntry, unitRules: UnitRule[]): UnitR
   return unitRules.find((unitRule) => unitRule.is_active && unitRule.item_code === null && unitRule.category === rule.category) ?? null;
 }
 
+function estimateMaterialQuantity(areaSqm: number, category: MaterialRuleEntry['category'], coveragePerUnit: number, wastagePct: number, itemName: string, unit: string | undefined): number {
+  const safeArea = Math.max(areaSqm, 0);
+  const safeCoverage = Math.max(coveragePerUnit, 0.0001);
+  const wastageFactor = 1 + Math.max(wastagePct, 0) / 100;
+  const normalizedName = itemName.toLowerCase();
+  const normalizedUnit = unit?.toLowerCase() ?? "";
+
+  if (category === 'Paints, Coatings & Sealants') {
+    const estimatedSurfaceArea = safeArea * 3;
+    const coats = normalizedName.includes('topcoat') || normalizedName.includes('latex') || normalizedName.includes('finish') ? 2 : 1;
+    return round2((estimatedSurfaceArea / 28) * coats * 1.1);
+  }
+
+  if (category === 'Plumbing & Pipework' || category === 'Adhesives & Tapes' || category === 'Hardware & Fasteners') {
+    const perimeter = 4 * Math.sqrt(safeArea);
+    return round2(((perimeter * 1.5) / safeCoverage) * wastageFactor);
+  }
+
+  if (category === 'Electrical & Lighting') {
+    if (normalizedName.includes('fixture') || normalizedName.includes('light') || normalizedName.includes('lamp') || normalizedUnit.includes('pc')) {
+      return Math.max(1, Math.ceil(safeArea / 7));
+    }
+    const perimeter = 4 * Math.sqrt(safeArea);
+    return round2(((perimeter * 1.5) / safeCoverage) * wastageFactor);
+  }
+
+  if (category === 'Structural' || category === 'Concrete & Masonry' || category === 'Landscaping & Siteworks') {
+    const volume = safeArea * 0.1 * 1.1;
+    if (normalizedName.includes('cement') || normalizedName.includes('bag')) return round2(volume * 9);
+    return round2(volume);
+  }
+
+  if (category === 'Masonry Units & Blocks') {
+    const wallArea = safeArea * 2.5;
+    return Math.ceil(wallArea * 12.5 * 1.05);
+  }
+
+  if (category === 'Reinforcement & Steel' || category === 'Timber & Lumber') {
+    const gridLength = safeArea / 0.4 + safeArea / 0.6;
+    return round2(gridLength * wastageFactor);
+  }
+
+  if (category === 'HVAC & Mechanical') return round2(safeArea * 600);
+
+  if (category === 'Doors, Windows & Glazing') {
+    if (normalizedName.includes('window')) return safeArea >= 15 ? 2 : 1;
+    return 1;
+  }
+
+  if (category === 'Safety & PPE' || category === 'Tools, Equipment & Consumables' || category === 'Specialty Materials & Systems') {
+    return 1;
+  }
+
+  return round2((safeArea / safeCoverage) * wastageFactor);
+}
+
 function buildCompanyRuleLine(
   seg: DraftSegment,
   rule: MaterialRuleEntry,
@@ -454,7 +512,7 @@ function buildCompanyRuleLine(
 ): ProvisionalItemLine {
   const coverage = unitRule?.conversion_factor ?? 1;
   const wastage = unitRule?.wastage_allowance_percentage ?? 0;
-  const qty = round2(seg.area_sqm * coverage * (1 + wastage / 100));
+  const qty = roundUpMaterialQuantity(estimateMaterialQuantity(seg.area_sqm, rule.category, coverage, wastage, rule.preferred_item_name, item?.unit));
   const matchingUploadedPrices = uploadedPrices
     .filter((price) => String(price.item_code) === String(rule.preferred_item_code))
     .sort((a, b) => a.price - b.price);
@@ -683,25 +741,16 @@ export function retargetItemLinesBasis(
  * contingency_cost/other_cost are NOT itemized per segment — see quotationBreakdownTypes.ts
  * ProvisionalServiceCost). labor_cost always equals the sum of this tier's Labor-category
  * item lines, so the summary and the BOQ never disagree. */
-const SITE_CONDITION_CONTINGENCY_POINTS: Record<string, number> = {
-  'Heavy-Rain Exposure': 1.5,
-  'High Foot Traffic': 1,
-  'Crack-prone Surface': 2,
-  'Moisture Prone Area': 1.5,
-};
-
-function deriveSiteConditionContingencyPct(segments: DraftSegment[]): number {
-  const included = segments.filter(isSegmentIncluded);
-  if (included.length === 0) return 0;
-  const totalArea = included.reduce((sum, segment) => sum + segment.area_sqm, 0);
-  if (totalArea <= 0) return 0;
-
-  const weightedPoints = included.reduce((sum, segment) => {
-    const tagPoints = segment.condition_tags.reduce((tagSum, tag) => tagSum + (SITE_CONDITION_CONTINGENCY_POINTS[tag] ?? 0), 0);
-    return sum + tagPoints * segment.area_sqm;
-  }, 0);
-
-  return Math.min(4, weightedPoints / totalArea);
+function deriveProjectAdjustmentCost(segments: DraftSegment[]): number {
+  return round2(
+    segments
+      .filter(isSegmentIncluded)
+      .flatMap((segment) => segment.project_adjustments ?? [])
+      .reduce((sum, adjustment) => {
+        const amount = Number(String(adjustment.amount).replace(/^[p₱]/i, "").replace(/,/g, ""));
+        return sum + Math.max(0, amount || 0);
+      }, 0)
+  );
 }
 
 function deriveMockServiceCost(items: ProvisionalItemLine[], materialsSubtotal: number, tier: ProvisionalTier, rushJobCost = 0, segments: DraftSegment[] = []): ProvisionalServiceCost {
@@ -709,11 +758,11 @@ function deriveMockServiceCost(items: ProvisionalItemLine[], materialsSubtotal: 
   const laborCost = round2(items.filter((l) => l.category === 'Labor').reduce((sum, l) => sum + (l.total_cost ?? 0), 0));
   const equipmentPct = normalizedTier === 'Practical' ? 0.06 : 0.08;
   const baseContingencyPct = normalizedTier === 'Practical' ? 0.04 : 0.05;
-  const contingencyPct = baseContingencyPct + deriveSiteConditionContingencyPct(segments) / 100;
+  const contingencyPct = baseContingencyPct;
   const otherPct = normalizedTier === 'Practical' ? 0.03 : 0.035; // PPE, mobilization
   const equipmentCost = round2(materialsSubtotal * equipmentPct);
   const contingencyCost = round2(materialsSubtotal * contingencyPct);
-  const otherCost = round2(materialsSubtotal * otherPct);
+  const otherCost = round2(materialsSubtotal * otherPct + deriveProjectAdjustmentCost(segments));
   return {
     labor_cost: laborCost,
     rush_job_cost: round2(rushJobCost),
@@ -802,6 +851,7 @@ export function recomputeItemLine(
   if ('quantity' in patch || 'unit_price' in patch || 'selected_supplier_id' in patch || 'item_name' in patch) {
     next.is_overridden = true;
   }
+  if (next.category === 'Material') next.quantity = roundUpMaterialQuantity(next.quantity);
   next.total_cost = next.unit_price !== null ? round2(next.quantity * next.unit_price) : null;
   return next;
 }
@@ -820,7 +870,6 @@ export function computeTierResult(
     materialRules?: MaterialRuleEntry[];
     laborRules?: LaborRule[];
     pricingStrategies?: PricingStrategyRule[];
-    siteConditionRules?: SiteConditionRule[];
   }
 ): ProvisionalQuotationTierResult {
   const normalizedTier = normalizeTier(tier);
@@ -829,47 +878,7 @@ export function computeTierResult(
 
   const materialsSubtotal = round2(items.filter((l) => l.category === 'Material').reduce((sum, l) => sum + (l.total_cost ?? 0), 0));
   const rushJobCost = deriveRushJobCost(items, options?.segments ?? [], options?.laborRules);
-  const baseServiceCost = deriveMockServiceCost(items, materialsSubtotal, tier, rushJobCost, options?.segments ?? []);
-  const siteConditionEffects = (options?.segments ?? []).filter(isSegmentIncluded).flatMap((segment) =>
-    evaluateSiteConditionRules(segment, options?.siteConditionRules ?? []).map((effect) => ({
-      ...effect,
-      segment_draft_id: segment.draft_id,
-      segment_name: segment.segment_name,
-      included: isSiteConditionEffectIncluded(segment, effect.review_key),
-    }))
-  );
-  const includedConditionEffects = siteConditionEffects.filter((effect) => effect.included);
-  const automaticEffectAmount = (types: string[]) => {
-    const chargedFixedEffects = new Set<string>();
-    return includedConditionEffects
-      .filter((effect) => types.includes(effect.effect_type) && effect.computed_amount !== null)
-      .reduce((sum, effect) => {
-        if (effect.pricing_method === 'fixed') {
-          if (chargedFixedEffects.has(effect.review_key)) return sum;
-          chargedFixedEffects.add(effect.review_key);
-        }
-        return sum + effect.computed_amount!;
-      }, 0);
-  };
-  const productivityReductions = new Map<string, number>();
-  for (const effect of includedConditionEffects.filter((entry) => entry.effect_type === 'productivity')) {
-    productivityReductions.set(effect.segment_draft_id, Math.min(75, (productivityReductions.get(effect.segment_draft_id) ?? 0) + (effect.percentage ?? 0)));
-  }
-  const productivityCost = items.filter((item) => item.category === 'Labor').reduce((sum, item) => {
-    const reduction = productivityReductions.get(item.segment_draft_id) ?? 0;
-    return sum + (item.total_cost ?? 0) * (reduction > 0 ? (1 / (1 - reduction / 100) - 1) : 0);
-  }, 0);
-  const laborPercentageCost = includedConditionEffects
-    .filter((effect) => effect.pricing_method === 'labor_percentage' && effect.effect_type !== 'productivity')
-    .reduce((sum, effect) => sum + baseServiceCost.labor_cost * ((effect.percentage ?? 0) / 100), 0);
-  const serviceCost: ProvisionalServiceCost = {
-    ...baseServiceCost,
-    labor_cost: round2(baseServiceCost.labor_cost + productivityCost),
-    equipment_cost: round2(baseServiceCost.equipment_cost + automaticEffectAmount(['equipment'])),
-    other_cost: round2(baseServiceCost.other_cost + automaticEffectAmount(['line_item', 'safety']) + laborPercentageCost),
-    subtotal: 0,
-  };
-  serviceCost.subtotal = round2(serviceCost.labor_cost + serviceCost.rush_job_cost + serviceCost.equipment_cost + serviceCost.contingency_cost + serviceCost.other_cost);
+  const serviceCost = deriveMockServiceCost(items, materialsSubtotal, tier, rushJobCost, options?.segments ?? []);
 
   const baseForMarkup = materialsSubtotal + serviceCost.subtotal;
   const ocmAmount = round2(baseForMarkup * (pricingFixture.ocm_percentage / 100));
@@ -898,13 +907,12 @@ export function computeTierResult(
   const templateMinDays = Math.max(0, ...matchedLaborRules.map((rule) => rule.min_duration_days ?? 0));
   const templateBufferDays = Math.max(0, ...matchedLaborRules.map((rule) => rule.safety_buffer_days ?? 0));
   const floorBufferDays = Math.max(0, new Set(includedSegments.map((segment) => segment.floor_level || 'Ground Floor')).size - 1);
-  const siteConditionBufferDays = Math.max(0, ...includedConditionEffects.filter((effect) => effect.effect_type === 'schedule').map((effect) => effect.schedule_days ?? 0));
   const rushAdjustmentDays = includedSegments.some((segment) => segment.is_rush) ? -1 : 0;
   const workDays = productivity !== null
     ? Math.max(1, Math.max(templateMinDays, Math.ceil(area / productivity)) + rushAdjustmentDays)
     : null;
   const durationDays = workDays !== null
-    ? Math.max(workDays, workDays + templateBufferDays + floorBufferDays + siteConditionBufferDays)
+    ? Math.max(workDays, workDays + templateBufferDays + floorBufferDays)
     : null;
   const warrantyYears = Math.max(0, ...matchedMaterialRules.map((rule) => rule.warranty_years ?? 0));
   const lifespanYears = Math.max(0, ...matchedMaterialRules.map((rule) => rule.lifespan_years ?? 0));
@@ -926,7 +934,6 @@ export function computeTierResult(
     warranty_label: warrantyYears > 0 ? `${warrantyYears}-year warranty` : pricingFixture.warranty_label,
     lifespan_label: lifespanYears > 0 ? `${lifespanYears}-year lifespan` : pricingFixture.lifespan_label,
     material_grade_label: pricingFixture.material_grade_label,
-    site_condition_effects: siteConditionEffects,
   };
 }
 

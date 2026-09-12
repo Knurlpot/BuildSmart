@@ -25,6 +25,26 @@ export const SEGMENT_CONDITION_TAGS = [
 ] as const;
 export type SegmentConditionTag = (typeof SEGMENT_CONDITION_TAGS)[number];
 
+export const PROJECT_ADJUSTMENT_OPTIONS = [
+  'Scaffolding',
+  'Restricted Site Access',
+  'Heavy Traffic / Delivery Restrictions',
+  'Occupied / Operational site',
+  'Weather-exposed Work',
+  'Flood / Waterlogging Exposure',
+  'Limited Staging / Storage Space',
+  'Temporary Protection Required',
+  'Special equipment required',
+  'Permit / access coordination',
+  'Other special condition',
+] as const;
+export type ProjectAdjustmentOption = (typeof PROJECT_ADJUSTMENT_OPTIONS)[number];
+
+export interface ProjectAdjustment {
+  condition: ProjectAdjustmentOption;
+  amount: string;
+}
+
 export interface SegmentTag {
   tag_id: number;
   segment_id: number;

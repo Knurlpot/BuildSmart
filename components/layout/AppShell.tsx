@@ -10,13 +10,8 @@ function AppShellBody({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const workflow = useWorkflowHeaderValue();
   const isDashboard = pathname === "/dashboard";
-  const [sidebarState, setSidebarState] = useState({ pathname, visible: !isDashboard });
-  // Reset the default on navigation, while keeping manual toggles on this page.
-  if (sidebarState.pathname !== pathname) {
-    setSidebarState({ pathname, visible: !isDashboard });
-  }
-  const sidebarVisible = sidebarState.pathname === pathname ? sidebarState.visible : !isDashboard;
-  const toggleSidebar = () => setSidebarState({ pathname, visible: !sidebarVisible });
+  const [sidebarVisible, setSidebarVisible] = useState(() => !isDashboard);
+  const toggleSidebar = () => setSidebarVisible((visible) => !visible);
 
   return (
     <div className={isDashboard ? "flex min-h-screen w-full bg-gray-50" : "flex h-screen w-full overflow-hidden bg-gray-50"}>

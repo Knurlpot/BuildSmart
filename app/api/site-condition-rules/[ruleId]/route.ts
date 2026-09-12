@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { pool } from "@/lib/server/db";
 import { readSession } from "@/lib/server/session";
 import type { SiteConditionRule } from "@/types/entities/site-condition-rule";
-import { validateSiteConditionRule } from "../route";
+import { insertSiteConditionEffects, validateSiteConditionRule } from "../helpers";
 
 type Params = { params: Promise<{ ruleId: string }> };
 
@@ -26,14 +26,30 @@ export async function PATCH(request: NextRequest, { params }: Params) {
   const body = (await request.json().catch(() => null)) as Partial<SiteConditionRule> | null;
   const error = body ? validateSiteConditionRule(body) : "Invalid request body.";
   if (error || !body) return NextResponse.json({ error }, { status: 400 });
-  const result = await pool.query(
-    `UPDATE site_condition_rule SET rule_name = $1, condition_field = $2, operator = $3,
-       trigger_value = $4, scope_of_work = $5, effects = $6::jsonb, updated_at = CURRENT_TIMESTAMP
-     WHERE site_condition_rule_id = $7 AND company_id = $8 RETURNING site_condition_rule_id`,
-    [body.rule_name!.trim(), body.condition_field, body.operator, String(body.trigger_value).trim(), body.scope_of_work?.trim() || null, JSON.stringify(body.effects), auth.id, auth.companyId]
-  );
-  if (!result.rows[0]) return NextResponse.json({ error: "Rule not found." }, { status: 404 });
-  return NextResponse.json({ ok: true });
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const result = await client.query(
+      `UPDATE site_condition_rule SET rule_name = $1, condition_field = $2, operator = $3,
+         trigger_value = $4, scope_of_work = $5, updated_at = CURRENT_TIMESTAMP
+       WHERE site_condition_rule_id = $6 AND company_id = $7 RETURNING site_condition_rule_id`,
+      [body.rule_name!.trim(), body.condition_field, body.operator, String(body.trigger_value).trim(), body.scope_of_work?.trim() || null, auth.id, auth.companyId]
+    );
+    if (!result.rows[0]) {
+      await client.query("ROLLBACK");
+      return NextResponse.json({ error: "Rule not found." }, { status: 404 });
+    }
+    await client.query("DELETE FROM site_condition_rule_effect WHERE site_condition_rule_id = $1", [auth.id]);
+    await insertSiteConditionEffects(client, auth.id, body.effects!);
+    await client.query("COMMIT");
+    return NextResponse.json({ ok: true });
+  } catch (err) {
+    await client.query("ROLLBACK");
+    console.error("Unable to update site condition rule", err);
+    return NextResponse.json({ error: "Unable to update site condition rule." }, { status: 500 });
+  } finally {
+    client.release();
+  }
 }
 
 export async function DELETE(request: NextRequest, { params }: Params) {

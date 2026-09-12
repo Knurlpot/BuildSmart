@@ -2,9 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { authContext, isAuthContext } from "../../pricing";
 import { pool } from "@/lib/server/db";
 import { linkBlueprintToQuotation } from "@/lib/server/blueprintPersistence.mjs";
-import { getNormalizationApiBaseUrl } from "@/lib/server/config";
+import { getNormalizationApiBaseUrl, getNormalizationApiHeaders } from "@/lib/server/config";
 
-const API_BASE = getNormalizationApiBaseUrl();
 const MAX_FILE_BYTES = 25 * 1024 * 1024;
 const ALLOWED_EXTENSIONS = new Set(["dxf"]);
 
@@ -39,8 +38,10 @@ export async function POST(request: NextRequest, { params }: Params) {
   const outgoing = new FormData();
   outgoing.append("file", file, file.name);
   try {
-    const response = await fetch(`${API_BASE}/blueprints/extract/${quoteId}`, {
+    const apiBase = getNormalizationApiBaseUrl();
+    const response = await fetch(`${apiBase}/blueprints/extract/${quoteId}`, {
       method: "POST",
+      headers: getNormalizationApiHeaders(),
       body: outgoing,
       cache: "no-store",
     });

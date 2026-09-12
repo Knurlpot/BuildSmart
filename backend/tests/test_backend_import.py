@@ -1,4 +1,4 @@
-from backend.main import app
+from app.main import app
 
 
 def test_backend_app_imports() -> None:

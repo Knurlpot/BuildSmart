@@ -231,24 +231,9 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
       item.unit,
     ].filter(Boolean).join(" · ");
 
-  const materialNameWithSupplier = (
-    itemName: string,
-    supplierName?: string | null,
-    tier: MaterialTreatmentTier = "Practical"
-  ) => (
+  const materialNameWithSupplier = (itemName: string) => (
     <span className="flex min-w-0 items-center gap-2">
       <span className="truncate">{itemName}</span>
-      {supplierName ? (
-        <span
-          className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold ring-1 ${
-            tier === "Premium"
-              ? "bg-[#0000CD]/5 text-[#0000CD] ring-[#0000CD]/15"
-              : "bg-orange-50 text-primary ring-primary/15"
-          }`}
-        >
-          {supplierName}
-        </span>
-      ) : null}
     </span>
   );
 
@@ -885,7 +870,7 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
                           className="h-4 w-4 shrink-0 rounded border-gray-300 text-primary focus:ring-2 focus:ring-primary/30"
                         />
                         <div className="min-w-0 flex-1">
-                          <p className="truncate text-sm font-medium text-gray-800">{materialNameWithSupplier(item.item_name, item.supplier_name, treatmentTier)}</p>
+                          <p className="truncate text-sm font-medium text-gray-800">{materialNameWithSupplier(item.item_name)}</p>
                           <p className="truncate text-[11px] text-gray-400">{itemMeta(item)}</p>
                         </div>
                       </label>
@@ -928,7 +913,7 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
                   {checkedItems.map((item) => (
                     <div key={item.catalogKey} className="flex items-center justify-between gap-3 px-3 py-2">
                       <div className="min-w-0">
-                        <p className="truncate text-sm font-semibold text-gray-800">{materialNameWithSupplier(item.item_name, item.supplier_name, treatmentTier)}</p>
+                        <p className="truncate text-sm font-semibold text-gray-800">{materialNameWithSupplier(item.item_name)}</p>
                         <p className="truncate text-[11px] text-gray-400">{itemMeta(item)}</p>
                       </div>
                       <span className="shrink-0 rounded-full bg-gray-50 px-2 py-0.5 text-[10px] font-bold text-gray-500">
@@ -1094,7 +1079,7 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
                       .map((item) => (
                         <div key={item.catalogKey} className="flex items-center justify-between gap-3 px-3 py-2">
                           <div className="min-w-0">
-                            <p className="truncate text-sm font-semibold text-gray-800">{materialNameWithSupplier(item.item_name, item.supplier_name, treatmentTier)}</p>
+                            <p className="truncate text-sm font-semibold text-gray-800">{materialNameWithSupplier(item.item_name)}</p>
                             <p className="truncate text-[11px] text-gray-400">{itemMeta(item)}</p>
                           </div>
                           <button
@@ -1162,7 +1147,7 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
                               className="h-4 w-4 shrink-0 rounded border-gray-300 text-primary focus:ring-2 focus:ring-primary/30"
                             />
                             <div className="min-w-0 flex-1">
-                              <p className="truncate text-sm font-medium text-gray-800">{materialNameWithSupplier(item.item_name, item.supplier_name, treatmentTier)}</p>
+                              <p className="truncate text-sm font-medium text-gray-800">{materialNameWithSupplier(item.item_name)}</p>
                               <p className="truncate text-[11px] text-gray-400">{itemMeta(item)}</p>
                             </div>
                           </label>
@@ -1267,7 +1252,7 @@ export function MaterialRulesForm({ focusRuleId, onFocusHandled }: MaterialRules
                     .map((rule) => (
                       <div key={rule.rule_id} className="flex items-center justify-between gap-4 px-4 py-3">
                         <div className="min-w-0">
-                          <p className="truncate text-sm font-semibold text-gray-800">{materialNameWithSupplier(rule.preferred_item_name, rule.selected_supplier_name, (rule.treatment_tier ?? "Practical") as MaterialTreatmentTier)}</p>
+                          <p className="truncate text-sm font-semibold text-gray-800">{materialNameWithSupplier(rule.preferred_item_name)}</p>
                           <p className="truncate text-xs text-gray-400">{rule.category}</p>
                         </div>
                       </div>

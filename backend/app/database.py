@@ -10,7 +10,10 @@ from sqlalchemy.orm import DeclarativeBase, sessionmaker
 # .env lives at the repo root (shared with the Next.js frontend), one level up from backend/.
 load_dotenv(Path(__file__).resolve().parents[2] / ".env")
 
-DATABASE_URL = os.environ["DATABASE_URL"]
+DATABASE_URL = os.environ.get("DATABASE_URL") or os.environ.get("POSTGRES_URL")
+
+if not DATABASE_URL:
+    raise RuntimeError("DATABASE_URL or POSTGRES_URL is required")
 
 engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)

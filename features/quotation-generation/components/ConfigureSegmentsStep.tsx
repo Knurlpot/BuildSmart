@@ -1,14 +1,12 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { AlertTriangle, ArrowLeft, CheckCircle2, Circle, Plus, Sparkles, Trash2, Zap } from "lucide-react";
+import { AlertTriangle, ArrowLeft, CheckCircle2, ChevronDown, Circle, Sparkles, Zap } from "lucide-react";
 import { useSaveSegments, useUpdateQuotationInputMethod } from "@/hooks/useQuotationGeneration";
 import { apiClient } from "@/lib/api/client";
 import { useLaborRules, useMaterialRules } from "@/lib/dev/provisional/useCompanyRulesProvisional";
 import { laborRuleScope } from "@/lib/dev/provisional/companyRulesTypes";
-import { useSiteConditionRules } from "@/hooks/useSiteConditionRules";
-import { SITE_CONDITION_FIELDS, siteConditionField, type ProjectSiteCondition, type SiteConditionFieldKey, type SiteConditionRule } from "@/types/entities/site-condition-rule";
-import { evaluateSiteConditionRules, isSiteConditionEffectIncluded } from "../lib/siteConditionEngine";
+import { PROJECT_ADJUSTMENT_OPTIONS, type ProjectAdjustmentOption } from "@/types/entities/segment-tag";
 import {
   computeQuotationInputMethod,
   draftSegmentToPayload,
@@ -19,51 +17,75 @@ import {
 
 const inputCls =
   "w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-sm outline-none transition focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/20";
+const priceInputCls = `${inputCls} appearance-none pl-8 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none`;
 
 const AUTOSAVE_DELAY_MS = 1200;
+
+function cleanCurrencyInput(value: string): string {
+  const withoutPrefix = value.replace(/^[p₱]/i, "").replace(/,/g, "");
+  if (withoutPrefix !== "" && !/^\d*\.?\d{0,2}$/.test(withoutPrefix)) return "";
+  return withoutPrefix;
+}
+
+function formatCurrencyWhileTyping(value: string): string {
+  if (value === "") return "";
+  const [integerPart = "", decimalPart] = value.split(".");
+  const formattedInteger = Number(integerPart || "0").toLocaleString("en-PH");
+  return decimalPart === undefined ? formattedInteger : `${formattedInteger}.${decimalPart}`;
+}
+
+function formatPesoInput(value: string | number): string | "" {
+  const numeric = Number(String(value).replace(/^[p₱]/i, "").replace(/,/g, ""));
+  if (!Number.isFinite(numeric) || numeric <= 0) return "";
+  return numeric.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
 
 interface SegmentConfigFormProps {
   segment: DraftSegment;
   treatmentOptions: string[];
   laborTradeOptions: string[];
-  siteConditionRules: SiteConditionRule[];
   onSave: (patch: Partial<DraftSegment>) => void;
 }
 
 // 
-function SegmentConfigForm({ segment, treatmentOptions, laborTradeOptions, siteConditionRules, onSave }: SegmentConfigFormProps) {
+function SegmentConfigForm({ segment, treatmentOptions, laborTradeOptions, onSave }: SegmentConfigFormProps) {
   const isKnownTreatment = segment.treatment_type !== null && treatmentOptions.includes(segment.treatment_type);
+  const projectAdjustments = segment.project_adjustments ?? [];
+  const [conditionsOpen, setConditionsOpen] = useState(false);
   const [treatmentChoice, setTreatmentChoice] = useState<string>(
     isKnownTreatment ? segment.treatment_type! : segment.treatment_type ? "Other" : ""
   );
   const [customTreatment, setCustomTreatment] = useState(isKnownTreatment ? "" : (segment.treatment_type ?? ""));
-  const availableConditionFields = SITE_CONDITION_FIELDS.filter((field) => !(segment.site_conditions ?? []).some((condition) => condition.field === field.key));
-  const [conditionToAdd, setConditionToAdd] = useState<SiteConditionFieldKey | "">(availableConditionFields[0]?.key ?? "");
-  const effectiveConditionToAdd = conditionToAdd || availableConditionFields[0]?.key || "";
-  const triggeredEffects = evaluateSiteConditionRules({ ...segment, site_conditions: segment.site_conditions ?? [], site_condition_effect_decisions: segment.site_condition_effect_decisions ?? {} }, siteConditionRules);
 
   const commitTreatment = (choice: string, custom: string) => {
     onSave({ treatment_type: choice === "Other" ? custom.trim() || null : choice || null });
   };
 
-  const updateCondition = (field: SiteConditionFieldKey, value: string) => {
-    onSave({ site_conditions: (segment.site_conditions ?? []).map((condition) => condition.field === field ? { ...condition, value } : condition) });
+  const toggleAdjustment = (condition: ProjectAdjustmentOption) => {
+    const selected = projectAdjustments.some((adjustment) => adjustment.condition === condition);
+    onSave({
+      project_adjustments: selected
+        ? projectAdjustments.filter((adjustment) => adjustment.condition !== condition)
+        : [...projectAdjustments, { condition, amount: "" }],
+    });
   };
 
-  const addCondition = () => {
-    if (!effectiveConditionToAdd) return;
-    const definition = siteConditionField(effectiveConditionToAdd);
-    const condition: ProjectSiteCondition = { field: effectiveConditionToAdd, value: definition?.valueType === "number" ? "1" : definition?.options[0] ?? "" };
-    onSave({ site_conditions: [...(segment.site_conditions ?? []), condition] });
-    setConditionToAdd(availableConditionFields.find((field) => field.key !== effectiveConditionToAdd)?.key ?? "");
+  const updateAdjustmentAmount = (condition: ProjectAdjustmentOption, value: string) => {
+    const cleaned = cleanCurrencyInput(value);
+    if (value !== "" && cleaned === "") return;
+    onSave({
+      project_adjustments: projectAdjustments.map((adjustment) =>
+        adjustment.condition === condition ? { ...adjustment, amount: formatCurrencyWhileTyping(cleaned) } : adjustment
+      ),
+    });
   };
 
-  const removeCondition = (field: SiteConditionFieldKey) => {
-    onSave({ site_conditions: (segment.site_conditions ?? []).filter((condition) => condition.field !== field) });
-  };
-
-  const setEffectIncluded = (reviewKey: string, included: boolean) => {
-    onSave({ site_condition_effect_decisions: { ...(segment.site_condition_effect_decisions ?? {}), [reviewKey]: included } });
+  const formatAdjustmentAmount = (condition: ProjectAdjustmentOption, value: string | number) => {
+    onSave({
+      project_adjustments: projectAdjustments.map((adjustment) =>
+        adjustment.condition === condition ? { ...adjustment, amount: formatPesoInput(value) } : adjustment
+      ),
+    });
   };
 
   return (
@@ -162,62 +184,58 @@ function SegmentConfigForm({ segment, treatmentOptions, laborTradeOptions, siteC
 
       <div className="flex flex-col gap-1.5">
         <label className="text-xs font-semibold text-gray-600">
-          Site Conditions <span className="font-normal normal-case text-gray-400">(optional)</span>
+          Site Conditions &amp; Project Adjustments <span className="font-normal normal-case text-gray-400">(optional)</span>
         </label>
-        <div className="space-y-2">
-          {(segment.site_conditions ?? []).map((condition) => {
-            const definition = siteConditionField(condition.field);
-            return (
-              <div key={condition.field} className="grid grid-cols-[minmax(130px,0.8fr)_minmax(160px,1fr)_32px] items-center gap-2">
-                <span className="text-xs font-medium text-gray-600">{definition?.label}</span>
-                {definition?.valueType === "number" ? (
-                  <input type="number" min="0" value={condition.value} onChange={(event) => updateCondition(condition.field, event.target.value)} className={inputCls} />
-                ) : (
-                  <select value={condition.value} onChange={(event) => updateCondition(condition.field, event.target.value)} className={`${inputCls} select-chevron`}>
-                    {definition?.options.map((option) => <option key={option}>{option}</option>)}
-                  </select>
-                )}
-                <button type="button" onClick={() => removeCondition(condition.field)} title="Remove condition" className="flex h-8 w-8 items-center justify-center rounded-lg text-gray-400 hover:bg-red-50 hover:text-red-500"><Trash2 className="h-3.5 w-3.5" /></button>
-              </div>
-            );
-          })}
-          {availableConditionFields.length > 0 && (
-            <div className="flex gap-2">
-              <select value={effectiveConditionToAdd} onChange={(event) => setConditionToAdd(event.target.value as SiteConditionFieldKey)} className={`${inputCls} select-chevron`}>
-                {availableConditionFields.map((field) => <option key={field.key} value={field.key}>{field.label}</option>)}
-              </select>
-              <button type="button" onClick={addCondition} className="flex shrink-0 items-center gap-1 rounded-lg border border-primary/30 px-3 text-xs font-bold text-primary hover:bg-orange-50"><Plus className="h-3.5 w-3.5" /> Add</button>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {(segment.site_conditions ?? []).length > 0 && (
-        <div className="rounded-xl border border-blue-100 bg-blue-50/50 p-3">
-          <div className="flex items-center justify-between gap-2">
-            <p className="text-xs font-bold text-gray-800">Triggered adjustments</p>
-            <span className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Estimator review</span>
-          </div>
-          {triggeredEffects.length === 0 ? (
-            <p className="mt-1 text-xs text-gray-500">No active company rule matches these conditions.</p>
-          ) : (
-            <div className="mt-2 space-y-2">
-              {triggeredEffects.map((effect) => {
-                const included = isSiteConditionEffectIncluded(segment, effect.review_key);
+        <div className="relative">
+          <button
+            type="button"
+            onClick={() => setConditionsOpen((open) => !open)}
+            className="flex w-full items-center justify-between gap-3 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-left text-sm text-gray-700 transition hover:border-gray-300"
+          >
+            <span>{projectAdjustments.length > 0 ? `${projectAdjustments.length} selected` : "Select site conditions"}</span>
+            <ChevronDown className={`h-4 w-4 shrink-0 text-gray-400 transition ${conditionsOpen ? "rotate-180" : ""}`} />
+          </button>
+          {conditionsOpen && (
+            <div className="absolute z-20 mt-1 max-h-72 w-full overflow-y-auto rounded-lg border border-gray-200 bg-white p-2 shadow-lg">
+              {PROJECT_ADJUSTMENT_OPTIONS.map((condition) => {
+                const checked = projectAdjustments.some((item) => item.condition === condition);
                 return (
-                  <label key={effect.review_key} className={`flex cursor-pointer items-start gap-2 rounded-lg border p-2 ${effect.effect_type === "warning" ? "border-amber-200 bg-amber-50" : "border-blue-100 bg-white"}`}>
-                    <input type="checkbox" checked={included} onChange={(event) => setEffectIncluded(effect.review_key, event.target.checked)} className="mt-0.5 h-4 w-4 rounded border-gray-300 text-primary" />
-                    <span className="min-w-0 flex-1">
-                      <span className="flex flex-wrap items-center justify-between gap-1 text-xs font-semibold text-gray-800"><span>{effect.label}</span><span className="text-primary">{effect.computed_amount !== null ? `₱${effect.computed_amount.toLocaleString()}` : effect.effect_type === "productivity" ? `-${effect.percentage ?? 0}% productivity` : effect.effect_type === "schedule" ? `+${effect.schedule_days ?? 0} days` : "Review required"}</span></span>
-                      <span className="block text-[11px] text-gray-500">{effect.rule_name} · {effect.condition_label}: {effect.condition_value}{effect.description ? ` · ${effect.description}` : ""}</span>
-                    </span>
+                  <label key={condition} className="flex cursor-pointer items-start gap-2 rounded-md px-2 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-50">
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={() => toggleAdjustment(condition)}
+                      className="mt-0.5 h-4 w-4 rounded border-gray-300 text-primary focus:ring-2 focus:ring-primary/30"
+                    />
+                    <span className="leading-5">{condition}</span>
                   </label>
                 );
               })}
             </div>
           )}
         </div>
-      )}
+        {!conditionsOpen && projectAdjustments.length > 0 && (
+          <div className="grid gap-2 sm:grid-cols-2">
+            {projectAdjustments.map((adjustment) => (
+              <label key={adjustment.condition} className="space-y-1 rounded-lg border border-primary/30 bg-orange-50/40 p-2 text-xs font-semibold text-gray-700">
+                <span>{adjustment.condition}</span>
+                <span className="relative block">
+                  <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm font-bold text-gray-400">₱</span>
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    value={adjustment.amount}
+                    onChange={(event) => updateAdjustmentAmount(adjustment.condition, event.target.value)}
+                    onBlur={() => formatAdjustmentAmount(adjustment.condition, adjustment.amount)}
+                    className={priceInputCls}
+                    placeholder="0.00"
+                  />
+                </span>
+              </label>
+            ))}
+          </div>
+        )}
+      </div>
 
       <div className="flex min-h-0 flex-1 flex-col gap-1.5">
         <label className="text-xs font-semibold text-gray-600">
@@ -250,7 +268,7 @@ interface ApplyToAllPanelProps {
   treatmentOptions: string[];
   laborTradeOptions: string[];
   onOpenChange: (open: boolean) => void;
-  onApply: (patch: Pick<DraftSegment, "treatment_type" | "labor_basis" | "labor_trade" | "is_rush">) => void;
+  onApply: (patch: Pick<DraftSegment, "treatment_type" | "labor_basis" | "labor_trade" | "project_adjustments" | "is_rush">) => void;
 }
 
 // 
@@ -259,7 +277,35 @@ interface ApplyToAllPanelProps {
   const [customTreatment, setCustomTreatment] = useState("");
   const [laborBasis, setLaborBasis] = useState<DraftSegment["labor_basis"]>("Auto");
   const [laborTrade, setLaborTrade] = useState("");
+  const [adjustments, setAdjustments] = useState<DraftSegment["project_adjustments"]>([]);
   const [isRush, setIsRush] = useState(false);
+  const [conditionsOpen, setConditionsOpen] = useState(false);
+
+  const toggleAdjustment = (condition: ProjectAdjustmentOption) => {
+    setAdjustments((prev) =>
+      prev.some((adjustment) => adjustment.condition === condition)
+        ? prev.filter((adjustment) => adjustment.condition !== condition)
+        : [...prev, { condition, amount: "" }]
+    );
+  };
+
+  const updateAdjustmentAmount = (condition: ProjectAdjustmentOption, value: string) => {
+    const cleaned = cleanCurrencyInput(value);
+    if (value !== "" && cleaned === "") return;
+    setAdjustments((prev) =>
+      prev.map((adjustment) =>
+        adjustment.condition === condition ? { ...adjustment, amount: formatCurrencyWhileTyping(cleaned) } : adjustment
+      )
+    );
+  };
+
+  const formatAdjustmentAmount = (condition: ProjectAdjustmentOption, value: string | number) => {
+    setAdjustments((prev) =>
+      prev.map((adjustment) =>
+        adjustment.condition === condition ? { ...adjustment, amount: formatPesoInput(value) } : adjustment
+      )
+    );
+  };
 
   const treatmentValid = treatmentChoice === "Other" ? customTreatment.trim().length > 0 : treatmentChoice !== "";
   const laborValid = laborBasis !== "Trade" || laborTrade.trim().length > 0;
@@ -270,6 +316,7 @@ interface ApplyToAllPanelProps {
       treatment_type: treatmentChoice === "Other" ? customTreatment.trim() : treatmentChoice,
       labor_basis: laborBasis,
       labor_trade: laborBasis === "Trade" ? laborTrade : null,
+      project_adjustments: adjustments,
       is_rush: isRush,
     });
     onOpenChange(false);
@@ -359,6 +406,61 @@ interface ApplyToAllPanelProps {
         )}
       </div>
 
+      <div className="flex flex-col gap-1.5">
+        <label className="text-xs font-semibold text-gray-600">
+          Site Conditions &amp; Project Adjustments <span className="font-normal normal-case text-gray-400">(optional)</span>
+        </label>
+        <div className="relative">
+          <button
+            type="button"
+            onClick={() => setConditionsOpen((open) => !open)}
+            className="flex w-full items-center justify-between gap-3 rounded-lg border border-gray-200 bg-white px-3 py-2 text-left text-sm text-gray-700 transition hover:border-gray-300"
+          >
+            <span>{adjustments.length > 0 ? `${adjustments.length} selected` : "Select site conditions"}</span>
+            <ChevronDown className={`h-4 w-4 shrink-0 text-gray-400 transition ${conditionsOpen ? "rotate-180" : ""}`} />
+          </button>
+          {conditionsOpen && (
+            <div className="absolute z-20 mt-1 max-h-72 w-full overflow-y-auto rounded-lg border border-gray-200 bg-white p-2 shadow-lg">
+              {PROJECT_ADJUSTMENT_OPTIONS.map((condition) => {
+                const checked = adjustments.some((item) => item.condition === condition);
+                return (
+                  <label key={condition} className="flex cursor-pointer items-start gap-2 rounded-md px-2 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-50">
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={() => toggleAdjustment(condition)}
+                      className="mt-0.5 h-4 w-4 rounded border-gray-300 text-primary focus:ring-2 focus:ring-primary/30"
+                    />
+                    <span className="leading-5">{condition}</span>
+                  </label>
+                );
+              })}
+            </div>
+          )}
+        </div>
+        {!conditionsOpen && adjustments.length > 0 && (
+          <div className="grid gap-2 sm:grid-cols-2">
+            {adjustments.map((adjustment) => (
+              <label key={adjustment.condition} className="space-y-1 rounded-lg border border-primary/30 bg-white p-2 text-xs font-semibold text-gray-700">
+                <span>{adjustment.condition}</span>
+                <span className="relative block">
+                  <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm font-bold text-gray-400">₱</span>
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    value={adjustment.amount}
+                    onChange={(event) => updateAdjustmentAmount(adjustment.condition, event.target.value)}
+                    onBlur={() => formatAdjustmentAmount(adjustment.condition, adjustment.amount)}
+                    className={priceInputCls}
+                    placeholder="0.00"
+                  />
+                </span>
+              </label>
+            ))}
+          </div>
+        )}
+      </div>
+
       <label className="flex items-center gap-2.5 text-sm text-gray-700">
         <input
           type="checkbox"
@@ -394,7 +496,6 @@ export function ConfigureSegmentsStep({ quoteId, segments, onChange, onSaved, on
   const { updateInputMethod } = useUpdateQuotationInputMethod();
   const { rules: materialRules } = useMaterialRules();
   const { rules: laborRules } = useLaborRules();
-  const { rules: siteConditionRules } = useSiteConditionRules();
   const [selectedId, setSelectedId] = useState<string | null>(segments[0]?.draft_id ?? null);
   const [applyAllOpen, setApplyAllOpen] = useState(false);
   const [applyRevision, setApplyRevision] = useState(0);
@@ -436,7 +537,7 @@ export function ConfigureSegmentsStep({ quoteId, segments, onChange, onSaved, on
     onChange(segments.map((s) => (s.draft_id === draftId ? { ...s, ...patch } : s)));
   };
 
-  const applyToAll = (patch: Pick<DraftSegment, "treatment_type" | "labor_basis" | "labor_trade" | "is_rush">) => {
+  const applyToAll = (patch: Pick<DraftSegment, "treatment_type" | "labor_basis" | "labor_trade" | "project_adjustments" | "is_rush">) => {
     onChange(segments.map((s) => ({ ...s, ...patch })));
     setApplyRevision((r) => r + 1);
   };
@@ -590,7 +691,6 @@ export function ConfigureSegmentsStep({ quoteId, segments, onChange, onSaved, on
               segment={selected}
               treatmentOptions={treatmentOptions}
               laborTradeOptions={laborTradeOptions}
-              siteConditionRules={siteConditionRules}
               onSave={(patch) => updateSegment(selected.draft_id, patch)}
             />
           ) : (

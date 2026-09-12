@@ -7,6 +7,7 @@ import { fmtPeso, recomputeItemLine } from "@/lib/dev/provisional/quotationBreak
 import type { ItemCategory, PricelistBasis, ProvisionalItemLine, ProvisionalQuotationTierResult, ProvisionalTier } from "@/lib/dev/provisional/quotationBreakdownTypes";
 import type { BlueprintFloor } from "@/lib/dev/provisional/quotationGenerationTypes";
 import type { DraftSegment } from "../lib/draftSegment";
+import type { ProjectAdjustment } from "@/types/entities/segment-tag";
 import { SegmentBlueprintPreview } from "./SegmentBlueprintPreview";
 
 type TabId = "segments" | "boq" | "cost-summary" | "benchmarking";
@@ -17,6 +18,9 @@ interface QuotationBreakdownModalProps {
   pricelistBasis: PricelistBasis;
   onClose: () => void;
   onItemsChange?: (tier: ProvisionalTier, items: ProvisionalItemLine[]) => void;
+  versionOptions?: Array<{ version_number?: number; finalized_at?: string | null }>;
+  selectedVersion?: number | null;
+  onVersionChange?: (version: number) => void;
   // Task 7, Part B — Segment Breakdown's split-view blueprint preview (left half). null/
   // undefined = this quote wasn't blueprint-sourced (Quick Measurement/Manual), OR (some
   // saved projects) no blueprint snapshot was captured — either way the tab degrades to a
@@ -136,8 +140,9 @@ function SegmentCostDeck({ segLines, defaultOpen, hovered, onHoverChange }: { se
                   <span className="font-semibold text-amber-600">No rate on file.</span>
                 ) : line.category === "Material" ? (
                   <>
-                    {line.derived_area_sqm?.toFixed(1)} sqm × {line.derived_coverage_per_sqm?.toFixed(2)} coverage ×{" "}
-                    {(1 + (line.derived_wastage_percentage ?? 0) / 100).toFixed(2)} wastage = <span className="font-semibold text-gray-800">{line.quantity.toFixed(1)} {line.unit}</span>
+                    Category-based estimate from {line.derived_area_sqm?.toFixed(1)} sqm
+                    {line.derived_wastage_percentage ? ` with ${line.derived_wastage_percentage}% wastage` : ""} ={" "}
+                    <span className="font-semibold text-gray-800">{line.quantity.toFixed(1)} {line.unit}</span>
                   </>
                 ) : (
                   <>
@@ -250,7 +255,7 @@ function BoqTab({ items }: { items: ProvisionalItemLine[] }) {
               <th className="px-3 py-2.5 text-right font-semibold text-gray-500">Qty</th>
               <th className="px-3 py-2.5 text-left font-semibold text-gray-500">Unit</th>
               <th className="px-3 py-2.5 text-right font-semibold text-gray-500">Unit Price</th>
-              <th className="px-3 py-2.5 text-left font-semibold text-gray-500">Source</th>
+              <th className="px-3 py-2.5 text-left font-semibold text-gray-500">Source / Supplier</th>
               <th className="px-3 py-2.5 text-right font-semibold text-gray-500">Total</th>
             </tr>
           </thead>
@@ -260,7 +265,7 @@ function BoqTab({ items }: { items: ProvisionalItemLine[] }) {
                 ? [
                     <tr key={`${segmentId}-header`} className="border-y border-gray-200 bg-gray-100/80">
                       <td colSpan={7} className="px-3 py-2 text-xs font-bold uppercase tracking-wide text-gray-600">
-                        {lines[0]?.segment_name ?? "Segment"} Materials
+                        {lines[0]?.segment_name ?? "Segment"} {lines[0]?.derived_area_sqm ? `(${lines[0].derived_area_sqm.toFixed(1)} sqm) ` : ""}Materials
                       </td>
                     </tr>,
                   ]
@@ -299,9 +304,16 @@ function BoqTab({ items }: { items: ProvisionalItemLine[] }) {
   );
 }
 
-function CostSummaryTab({ result }: { result: ProvisionalQuotationTierResult }) {
+function CostSummaryTab({ result, segments = [] }: { result: ProvisionalQuotationTierResult; segments?: DraftSegment[] }) {
   const [discountDetailsOpen, setDiscountDetailsOpen] = useState(false);
+  const [siteConditionsOpen, setSiteConditionsOpen] = useState(false);
   const unresolvedCount = result.items.filter((l) => l.unit_price === null).length;
+  const siteConditionDetails = segments.flatMap((segment) =>
+    (segment.project_adjustments ?? []).map((adjustment: ProjectAdjustment) => ({
+      segmentName: segment.segment_name,
+      adjustment,
+    }))
+  );
   const rushJobCost = result.service_cost.rush_job_cost ?? 0;
   const rushPercentage = result.service_cost.labor_cost > 0 ? (rushJobCost / result.service_cost.labor_cost) * 100 : 0;
   const supplierRuleDiscountDetails = result.items.flatMap((line) => {
@@ -330,7 +342,8 @@ function CostSummaryTab({ result }: { result: ProvisionalQuotationTierResult }) 
       value: result.service_cost.labor_cost + rushJobCost,
     },
     { label: "Equipment", value: result.service_cost.equipment_cost },
-    { label: "Contingency / Other (PPE, mobilization)", value: result.service_cost.contingency_cost + result.service_cost.other_cost },
+    { label: "Contingency", value: result.service_cost.contingency_cost },
+    { label: "Other / Project Adjustments", value: result.service_cost.other_cost },
     { label: `Overhead (OCM, ${fmtPercentRaw(result.ocm_percentage)})`, value: result.ocm_amount },
     { label: `Profit / Markup (${fmtPercentRaw(result.profit_margin_percentage)})`, value: result.profit_amount },
   ];
@@ -343,25 +356,22 @@ function CostSummaryTab({ result }: { result: ProvisionalQuotationTierResult }) 
           Missing {unresolvedCount} Rate{unresolvedCount === 1 ? "" : "s"}. Excluded from the Total below.
         </div>
       )}
-      {(result.site_condition_effects ?? []).length > 0 && (
-        <div className="rounded-xl border border-blue-100 bg-blue-50/50 p-4">
-          <p className="text-sm font-bold text-gray-900">Site condition adjustments</p>
-          <p className="text-xs text-gray-500">Only effects included during estimator review are priced into this quotation.</p>
-          <div className="mt-2 space-y-1.5">
-            {(result.site_condition_effects ?? []).map((effect) => (
-              <div key={`${effect.segment_draft_id}:${effect.review_key}`} className="flex items-start justify-between gap-3 rounded-lg bg-white px-3 py-2 text-xs">
-                <span><span className="font-semibold text-gray-800">{effect.label}</span><span className="block text-[11px] text-gray-500">{effect.segment_name} · {effect.rule_name}</span></span>
-                <span className={effect.included ? "font-semibold text-primary" : "font-semibold text-gray-400 line-through"}>{effect.included ? (effect.computed_amount !== null ? fmtPeso(effect.computed_amount) : effect.effect_type === 'productivity' ? `-${effect.percentage ?? 0}% productivity` : effect.effect_type === 'schedule' ? `+${effect.schedule_days ?? 0} days` : 'Included') : 'Excluded'}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
       <div className="rounded-xl border border-gray-100 bg-white p-5 shadow-sm">
         {rows.map((row) => (
           <div key={row.label} className="flex items-center justify-between border-b border-gray-100 py-2.5 last:border-0">
             <span className="flex items-center gap-2 text-sm text-gray-500">
               {row.label}
+              {row.label === "Other / Project Adjustments" && siteConditionDetails.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setSiteConditionsOpen(true)}
+                  title="View site conditions"
+                  aria-label="View site conditions"
+                  className="flex h-7 w-7 items-center justify-center rounded-lg border border-orange-200 bg-orange-50 text-primary transition hover:border-orange-300 hover:bg-orange-100"
+                >
+                  <Eye className="h-3.5 w-3.5" />
+                </button>
+              )}
               {row.label === "Discounts" && (
                 <button
                   type="button"
@@ -394,6 +404,30 @@ function CostSummaryTab({ result }: { result: ProvisionalQuotationTierResult }) 
           <span className={`text-2xl font-extrabold ${TIER_ACCENT[result.tier]}`}>{fmtPeso(result.grand_total)}</span>
         </div>
       </div>
+      <Dialog open={siteConditionsOpen} onOpenChange={setSiteConditionsOpen}>
+        <DialogContent className="rounded-2xl border-0 bg-white p-0 shadow-2xl sm:max-w-lg">
+          <div className="border-b border-gray-100 px-6 py-4">
+            <p className="text-lg font-bold text-gray-900">Site Conditions</p>
+            <p className="text-sm text-gray-500">Conditions included in this project quotation.</p>
+          </div>
+          <div className="max-h-[60vh] overflow-y-auto p-6">
+            <div className="flex flex-col gap-3">
+              {siteConditionDetails.map(({ segmentName, adjustment }, index) => {
+                const amount = Number(String(adjustment.amount).replace(/,/g, ""));
+                return (
+                  <div key={`${segmentName}-${adjustment.condition}-${index}`} className="flex items-center justify-between gap-4 rounded-xl border border-gray-100 bg-gray-50/60 p-4">
+                    <div>
+                      <p className="text-sm font-bold text-gray-900">{adjustment.condition}</p>
+                      <p className="text-xs text-gray-500">{segmentName}</p>
+                    </div>
+                    <p className="shrink-0 text-sm font-bold text-gray-800">{fmtPeso(Number.isFinite(amount) ? amount : 0)}</p>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
       <Dialog open={discountDetailsOpen} onOpenChange={setDiscountDetailsOpen}>
         <DialogContent className={`${hasMultipleDiscounts ? "sm:max-w-5xl" : "sm:max-w-lg"} rounded-2xl border-0 bg-white p-0 shadow-2xl`}>
           <div className="border-b border-gray-100 px-6 py-4">
@@ -566,8 +600,20 @@ function BenchmarkingTab({ tier, items, onItemsChange }: { tier: ProvisionalTier
   );
 }
 
-export function QuotationBreakdownModal({ tier, result, pricelistBasis, onClose, onItemsChange, blueprintFloors, segments }: QuotationBreakdownModalProps) {
+export function QuotationBreakdownModal({
+  tier,
+  result,
+  pricelistBasis,
+  onClose,
+  onItemsChange,
+  blueprintFloors,
+  segments,
+  versionOptions = [],
+  selectedVersion,
+  onVersionChange,
+}: QuotationBreakdownModalProps) {
   const [activeTab, setActiveTab] = useState<TabId>("segments");
+  const activeVersionNumber = selectedVersion ?? versionOptions[0]?.version_number ?? 1;
   const TABS: { id: TabId; label: string; icon: typeof BookOpen }[] = [
     { id: "segments", label: "Segment Breakdown", icon: Layers },
     { id: "boq", label: "Bill of Quantities", icon: BookOpen },
@@ -594,6 +640,20 @@ export function QuotationBreakdownModal({ tier, result, pricelistBasis, onClose,
             <p className="text-xs text-gray-500">Full cost transparency · all prices in Philippine Pesos (₱)</p>
           </div>
           <div className="flex items-center gap-2">
+            {versionOptions.length > 1 && onVersionChange && (
+              <select
+                value={activeVersionNumber}
+                onChange={(event) => onVersionChange(Number(event.target.value))}
+                aria-label="Select breakdown version"
+                className="h-8 rounded-lg border border-gray-200 bg-white px-2 text-xs font-bold text-gray-600 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20"
+              >
+                {versionOptions.map((version) => (
+                  <option key={version.version_number ?? 1} value={version.version_number ?? 1}>
+                    Version {version.version_number ?? 1}
+                  </option>
+                ))}
+              </select>
+            )}
             <div className="flex items-center gap-2">
               <span className="text-xs font-semibold text-gray-500">Pricelist Basis:</span>
               <span className="rounded-lg border border-gray-200 bg-gray-100 px-2.5 py-1 text-xs font-semibold text-gray-500">
@@ -628,7 +688,7 @@ export function QuotationBreakdownModal({ tier, result, pricelistBasis, onClose,
         <div className="flex-1 overflow-y-auto px-4 pb-4 pt-0">
           {activeTab === "segments" && <SegmentBreakdownTab items={result.items} segments={segments} blueprintFloors={blueprintFloors} />}
           {activeTab === "boq" && <BoqTab items={result.items} />}
-          {activeTab === "cost-summary" && <CostSummaryTab result={result} />}
+          {activeTab === "cost-summary" && <CostSummaryTab result={result} segments={segments} />}
           {activeTab === "benchmarking" && <BenchmarkingTab tier={tier} items={result.items} onItemsChange={onItemsChange} />}
         </div>
       </DialogContent>

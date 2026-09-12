@@ -18,7 +18,6 @@ import { PROVISIONAL_TIERS, type PricelistBasis, type ProvisionalItemLine, type 
 import { apiClient } from "@/lib/api/client";
 import { useLaborRules, useMaterialRules, usePricingStrategies, useSupplierRules, useUnitRules } from "@/lib/dev/provisional/useCompanyRulesProvisional";
 import { useItemsCatalog } from "@/hooks/useItemsCatalog";
-import { useSiteConditionRules } from "@/hooks/useSiteConditionRules";
 import { usePricelistCatalog } from "@/hooks/usePricelistCatalog";
 import { usePricelistPublishedSource } from "@/hooks/usePricelistPublishedSource";
 import { isSegmentIncluded, type DraftSegment } from "../lib/draftSegment";
@@ -277,7 +276,6 @@ export function QuotationResultsStep({
   const { rules: laborRules } = useLaborRules();
   const { rules: supplierRules } = useSupplierRules();
   const { rules: unitRules } = useUnitRules();
-  const { rules: siteConditionRules } = useSiteConditionRules();
   const { items } = useItemsCatalog();
   const { records: uploadedPrices, load: loadUploadedPrices } = usePricelistCatalog();
   const { dpwhCatalog } = usePricelistPublishedSource();
@@ -347,7 +345,7 @@ export function QuotationResultsStep({
   };
 
   const tierResults = Object.fromEntries(
-    activeTiers.map((tier) => [tier, computeTierResult(tier, effectiveTierItems[tier] ?? [], { segments, materialRules, laborRules, pricingStrategies, siteConditionRules })])
+    activeTiers.map((tier) => [tier, computeTierResult(tier, effectiveTierItems[tier] ?? [], { segments, materialRules, laborRules, pricingStrategies })])
   ) as Partial<Record<ProvisionalTier, ProvisionalQuotationTierResult>>;
 
   const handleAcceptQuotation = async (tier: ProvisionalTier) => {
@@ -372,6 +370,14 @@ export function QuotationResultsStep({
           total_material_cost: result.materials_subtotal,
           total_service_cost: result.service_cost.subtotal,
           grand_total: result.grand_total,
+          finalized_breakdown_snapshot: {
+            tier,
+            result,
+            pricelist_basis_at_finalize: pricelistBasis,
+            segments,
+            blueprintFloors,
+            finalized_at: new Date().toISOString(),
+          },
         }),
       });
       saveFinalizedQuotation({

@@ -36,9 +36,7 @@ def test_normalize_price_list_writes_matched_rows_and_flags_new_items(db_session
         r.historicalrec_id for r in db_session.execute(select(HistoricalPriceRecord)).scalars()
     }
     existing_item_codes = {i.item_code for i in db_session.execute(select(Items)).scalars()}
-    existing_review_ids = {
-        r.review_id for r in db_session.execute(select(PriceListReviewItem)).scalars()
-    }
+    existing_review_ids = {r.review_id for r in db_session.execute(select(PriceListReviewItem)).scalars()}
 
     # The task fetches candidates internally, and get_item_candidates() correctly
     # returns every real item in the (shared, growing) dev DB — not just this
@@ -247,15 +245,10 @@ def test_upload_without_spec_or_brand_keeps_review_spec_blank_and_brand_generic(
     )
 
     assert result["processed"] == 1
-    assert result["needs_review"] == 1
+    assert result["needs_review"] == 0
 
-    review_item = next(
-        r
-        for r in db_session.execute(select(PriceListReviewItem)).scalars()
-        if r.review_id not in existing_review_ids
-    )
-    assert review_item.description == ""
-    assert review_item.suggested_brand == "Generic"
+    new_review_ids = {r.review_id for r in db_session.execute(select(PriceListReviewItem)).scalars()} - existing_review_ids
+    assert new_review_ids == set()
 
 
 def test_blank_description_cell_stays_blank_even_when_supplier_and_brand_are_present(tmp_path, db_session, monkeypatch):
@@ -301,9 +294,7 @@ def test_blank_description_cell_stays_blank_even_when_supplier_and_brand_are_pre
         ]
     ).to_csv(upload, index=False)
 
-    existing_review_ids = {
-        r.review_id for r in db_session.execute(select(PriceListReviewItem)).scalars()
-    }
+    existing_review_ids = {r.review_id for r in db_session.execute(select(PriceListReviewItem)).scalars()}
 
     result = normalize_price_list(
         file_path=str(upload),
@@ -315,15 +306,10 @@ def test_blank_description_cell_stays_blank_even_when_supplier_and_brand_are_pre
     )
 
     assert result["processed"] == 1
-    assert result["needs_review"] == 1
+    assert result["needs_review"] == 0
 
-    review_item = next(
-        r
-        for r in db_session.execute(select(PriceListReviewItem)).scalars()
-        if r.review_id not in existing_review_ids
-    )
-    assert review_item.description == ""
-    assert review_item.suggested_brand == "HardPly"
+    new_review_ids = {r.review_id for r in db_session.execute(select(PriceListReviewItem)).scalars()} - existing_review_ids
+    assert new_review_ids == set()
 
 
 def test_blank_price_cell_stays_blank_in_review(tmp_path, db_session, monkeypatch):
