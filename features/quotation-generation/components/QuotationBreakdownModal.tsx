@@ -335,7 +335,7 @@ function CostSummaryTab({ result }: { result: ProvisionalQuotationTierResult }) 
     },
     { label: "Equipment", value: result.service_cost.equipment_cost },
     { label: "Contingency", value: result.service_cost.contingency_cost },
-    { label: "Other (PPE, mobilization)", value: result.service_cost.other_cost },
+    { label: "Other / Project Adjustments", value: result.service_cost.other_cost },
     { label: `Overhead (OCM, ${fmtPercentRaw(result.ocm_percentage)})`, value: result.ocm_amount },
     { label: `Profit / Markup (${fmtPercentRaw(result.profit_margin_percentage)})`, value: result.profit_amount },
   ];

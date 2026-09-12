@@ -1,12 +1,12 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { AlertTriangle, ArrowLeft, CheckCircle2, Circle, Sparkles, Zap } from "lucide-react";
+import { AlertTriangle, ArrowLeft, CheckCircle2, ChevronDown, Circle, Sparkles, Zap } from "lucide-react";
 import { useSaveSegments, useUpdateQuotationInputMethod } from "@/hooks/useQuotationGeneration";
 import { apiClient } from "@/lib/api/client";
 import { useLaborRules, useMaterialRules } from "@/lib/dev/provisional/useCompanyRulesProvisional";
 import { laborRuleScope } from "@/lib/dev/provisional/companyRulesTypes";
-import { SEGMENT_CONDITION_TAGS, type SegmentConditionTag } from "@/types/entities/segment-tag";
+import { PROJECT_ADJUSTMENT_OPTIONS, type ProjectAdjustmentOption } from "@/types/entities/segment-tag";
 import {
   computeQuotationInputMethod,
   draftSegmentToPayload,
@@ -17,8 +17,28 @@ import {
 
 const inputCls =
   "w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-sm outline-none transition focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/20";
+const priceInputCls = `${inputCls} appearance-none pl-8 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none`;
 
 const AUTOSAVE_DELAY_MS = 1200;
+
+function cleanCurrencyInput(value: string): string {
+  const withoutPrefix = value.replace(/^[p₱]/i, "").replace(/,/g, "");
+  if (withoutPrefix !== "" && !/^\d*\.?\d{0,2}$/.test(withoutPrefix)) return "";
+  return withoutPrefix;
+}
+
+function formatCurrencyWhileTyping(value: string): string {
+  if (value === "") return "";
+  const [integerPart = "", decimalPart] = value.split(".");
+  const formattedInteger = Number(integerPart || "0").toLocaleString("en-PH");
+  return decimalPart === undefined ? formattedInteger : `${formattedInteger}.${decimalPart}`;
+}
+
+function formatPesoInput(value: string | number): string | "" {
+  const numeric = Number(String(value).replace(/^[p₱]/i, "").replace(/,/g, ""));
+  if (!Number.isFinite(numeric) || numeric <= 0) return "";
+  return numeric.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
 
 interface SegmentConfigFormProps {
   segment: DraftSegment;
@@ -30,6 +50,8 @@ interface SegmentConfigFormProps {
 // 
 function SegmentConfigForm({ segment, treatmentOptions, laborTradeOptions, onSave }: SegmentConfigFormProps) {
   const isKnownTreatment = segment.treatment_type !== null && treatmentOptions.includes(segment.treatment_type);
+  const projectAdjustments = segment.project_adjustments ?? [];
+  const [conditionsOpen, setConditionsOpen] = useState(false);
   const [treatmentChoice, setTreatmentChoice] = useState<string>(
     isKnownTreatment ? segment.treatment_type! : segment.treatment_type ? "Other" : ""
   );
@@ -39,11 +61,30 @@ function SegmentConfigForm({ segment, treatmentOptions, laborTradeOptions, onSav
     onSave({ treatment_type: choice === "Other" ? custom.trim() || null : choice || null });
   };
 
-  const toggleTag = (tag: SegmentConditionTag) => {
+  const toggleAdjustment = (condition: ProjectAdjustmentOption) => {
+    const selected = projectAdjustments.some((adjustment) => adjustment.condition === condition);
     onSave({
-      condition_tags: segment.condition_tags.includes(tag)
-        ? segment.condition_tags.filter((t) => t !== tag)
-        : [...segment.condition_tags, tag],
+      project_adjustments: selected
+        ? projectAdjustments.filter((adjustment) => adjustment.condition !== condition)
+        : [...projectAdjustments, { condition, amount: "" }],
+    });
+  };
+
+  const updateAdjustmentAmount = (condition: ProjectAdjustmentOption, value: string) => {
+    const cleaned = cleanCurrencyInput(value);
+    if (value !== "" && cleaned === "") return;
+    onSave({
+      project_adjustments: projectAdjustments.map((adjustment) =>
+        adjustment.condition === condition ? { ...adjustment, amount: formatCurrencyWhileTyping(cleaned) } : adjustment
+      ),
+    });
+  };
+
+  const formatAdjustmentAmount = (condition: ProjectAdjustmentOption, value: string | number) => {
+    onSave({
+      project_adjustments: projectAdjustments.map((adjustment) =>
+        adjustment.condition === condition ? { ...adjustment, amount: formatPesoInput(value) } : adjustment
+      ),
     });
   };
 
@@ -143,25 +184,57 @@ function SegmentConfigForm({ segment, treatmentOptions, laborTradeOptions, onSav
 
       <div className="flex flex-col gap-1.5">
         <label className="text-xs font-semibold text-gray-600">
-          Site Conditions <span className="font-normal normal-case text-gray-400">(optional)</span>
+          Site Conditions &amp; Project Adjustments <span className="font-normal normal-case text-gray-400">(optional)</span>
         </label>
-        <div className="flex flex-wrap gap-1.5">
-          {SEGMENT_CONDITION_TAGS.map((tag) => {
-            const checked = segment.condition_tags.includes(tag);
-            return (
-              <button
-                key={tag}
-                type="button"
-                onClick={() => toggleTag(tag)}
-                className={`rounded-full border px-2.5 py-0.5 text-xs font-semibold transition ${
-                  checked ? "border-primary bg-orange-50 text-primary" : "border-gray-200 bg-white text-gray-500 hover:border-gray-300"
-                }`}
-              >
-                {tag}
-              </button>
-            );
-          })}
+        <div className="relative">
+          <button
+            type="button"
+            onClick={() => setConditionsOpen((open) => !open)}
+            className="flex w-full items-center justify-between gap-3 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-left text-sm text-gray-700 transition hover:border-gray-300"
+          >
+            <span>{projectAdjustments.length > 0 ? `${projectAdjustments.length} selected` : "Select site conditions"}</span>
+            <ChevronDown className={`h-4 w-4 shrink-0 text-gray-400 transition ${conditionsOpen ? "rotate-180" : ""}`} />
+          </button>
+          {conditionsOpen && (
+            <div className="absolute z-20 mt-1 max-h-72 w-full overflow-y-auto rounded-lg border border-gray-200 bg-white p-2 shadow-lg">
+              {PROJECT_ADJUSTMENT_OPTIONS.map((condition) => {
+                const checked = projectAdjustments.some((item) => item.condition === condition);
+                return (
+                  <label key={condition} className="flex cursor-pointer items-start gap-2 rounded-md px-2 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-50">
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={() => toggleAdjustment(condition)}
+                      className="mt-0.5 h-4 w-4 rounded border-gray-300 text-primary focus:ring-2 focus:ring-primary/30"
+                    />
+                    <span className="leading-5">{condition}</span>
+                  </label>
+                );
+              })}
+            </div>
+          )}
         </div>
+        {!conditionsOpen && projectAdjustments.length > 0 && (
+          <div className="grid gap-2 sm:grid-cols-2">
+            {projectAdjustments.map((adjustment) => (
+              <label key={adjustment.condition} className="space-y-1 rounded-lg border border-primary/30 bg-orange-50/40 p-2 text-xs font-semibold text-gray-700">
+                <span>{adjustment.condition}</span>
+                <span className="relative block">
+                  <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm font-bold text-gray-400">₱</span>
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    value={adjustment.amount}
+                    onChange={(event) => updateAdjustmentAmount(adjustment.condition, event.target.value)}
+                    onBlur={() => formatAdjustmentAmount(adjustment.condition, adjustment.amount)}
+                    className={priceInputCls}
+                    placeholder="0.00"
+                  />
+                </span>
+              </label>
+            ))}
+          </div>
+        )}
       </div>
 
       <div className="flex min-h-0 flex-1 flex-col gap-1.5">
@@ -195,7 +268,7 @@ interface ApplyToAllPanelProps {
   treatmentOptions: string[];
   laborTradeOptions: string[];
   onOpenChange: (open: boolean) => void;
-  onApply: (patch: Pick<DraftSegment, "treatment_type" | "labor_basis" | "labor_trade" | "condition_tags" | "is_rush">) => void;
+  onApply: (patch: Pick<DraftSegment, "treatment_type" | "labor_basis" | "labor_trade" | "project_adjustments" | "is_rush">) => void;
 }
 
 // 
@@ -204,11 +277,34 @@ interface ApplyToAllPanelProps {
   const [customTreatment, setCustomTreatment] = useState("");
   const [laborBasis, setLaborBasis] = useState<DraftSegment["labor_basis"]>("Auto");
   const [laborTrade, setLaborTrade] = useState("");
-  const [tags, setTags] = useState<SegmentConditionTag[]>([]);
+  const [adjustments, setAdjustments] = useState<DraftSegment["project_adjustments"]>([]);
   const [isRush, setIsRush] = useState(false);
+  const [conditionsOpen, setConditionsOpen] = useState(false);
 
-  const toggleTag = (tag: SegmentConditionTag) => {
-    setTags((prev) => (prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag]));
+  const toggleAdjustment = (condition: ProjectAdjustmentOption) => {
+    setAdjustments((prev) =>
+      prev.some((adjustment) => adjustment.condition === condition)
+        ? prev.filter((adjustment) => adjustment.condition !== condition)
+        : [...prev, { condition, amount: "" }]
+    );
+  };
+
+  const updateAdjustmentAmount = (condition: ProjectAdjustmentOption, value: string) => {
+    const cleaned = cleanCurrencyInput(value);
+    if (value !== "" && cleaned === "") return;
+    setAdjustments((prev) =>
+      prev.map((adjustment) =>
+        adjustment.condition === condition ? { ...adjustment, amount: formatCurrencyWhileTyping(cleaned) } : adjustment
+      )
+    );
+  };
+
+  const formatAdjustmentAmount = (condition: ProjectAdjustmentOption, value: string | number) => {
+    setAdjustments((prev) =>
+      prev.map((adjustment) =>
+        adjustment.condition === condition ? { ...adjustment, amount: formatPesoInput(value) } : adjustment
+      )
+    );
   };
 
   const treatmentValid = treatmentChoice === "Other" ? customTreatment.trim().length > 0 : treatmentChoice !== "";
@@ -220,7 +316,7 @@ interface ApplyToAllPanelProps {
       treatment_type: treatmentChoice === "Other" ? customTreatment.trim() : treatmentChoice,
       labor_basis: laborBasis,
       labor_trade: laborBasis === "Trade" ? laborTrade : null,
-      condition_tags: tags,
+      project_adjustments: adjustments,
       is_rush: isRush,
     });
     onOpenChange(false);
@@ -312,25 +408,57 @@ interface ApplyToAllPanelProps {
 
       <div className="flex flex-col gap-1.5">
         <label className="text-xs font-semibold text-gray-600">
-          Site Conditions <span className="font-normal normal-case text-gray-400">(optional)</span>
+          Site Conditions &amp; Project Adjustments <span className="font-normal normal-case text-gray-400">(optional)</span>
         </label>
-        <div className="flex flex-wrap gap-2">
-          {SEGMENT_CONDITION_TAGS.map((tag) => {
-            const checked = tags.includes(tag);
-            return (
-              <button
-                key={tag}
-                type="button"
-                onClick={() => toggleTag(tag)}
-                className={`rounded-full border px-3 py-1 text-xs font-semibold transition ${
-                  checked ? "border-primary bg-white text-primary" : "border-gray-200 bg-white text-gray-500 hover:border-gray-300"
-                }`}
-              >
-                {tag}
-              </button>
-            );
-          })}
+        <div className="relative">
+          <button
+            type="button"
+            onClick={() => setConditionsOpen((open) => !open)}
+            className="flex w-full items-center justify-between gap-3 rounded-lg border border-gray-200 bg-white px-3 py-2 text-left text-sm text-gray-700 transition hover:border-gray-300"
+          >
+            <span>{adjustments.length > 0 ? `${adjustments.length} selected` : "Select site conditions"}</span>
+            <ChevronDown className={`h-4 w-4 shrink-0 text-gray-400 transition ${conditionsOpen ? "rotate-180" : ""}`} />
+          </button>
+          {conditionsOpen && (
+            <div className="absolute z-20 mt-1 max-h-72 w-full overflow-y-auto rounded-lg border border-gray-200 bg-white p-2 shadow-lg">
+              {PROJECT_ADJUSTMENT_OPTIONS.map((condition) => {
+                const checked = adjustments.some((item) => item.condition === condition);
+                return (
+                  <label key={condition} className="flex cursor-pointer items-start gap-2 rounded-md px-2 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-50">
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={() => toggleAdjustment(condition)}
+                      className="mt-0.5 h-4 w-4 rounded border-gray-300 text-primary focus:ring-2 focus:ring-primary/30"
+                    />
+                    <span className="leading-5">{condition}</span>
+                  </label>
+                );
+              })}
+            </div>
+          )}
         </div>
+        {!conditionsOpen && adjustments.length > 0 && (
+          <div className="grid gap-2 sm:grid-cols-2">
+            {adjustments.map((adjustment) => (
+              <label key={adjustment.condition} className="space-y-1 rounded-lg border border-primary/30 bg-white p-2 text-xs font-semibold text-gray-700">
+                <span>{adjustment.condition}</span>
+                <span className="relative block">
+                  <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm font-bold text-gray-400">₱</span>
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    value={adjustment.amount}
+                    onChange={(event) => updateAdjustmentAmount(adjustment.condition, event.target.value)}
+                    onBlur={() => formatAdjustmentAmount(adjustment.condition, adjustment.amount)}
+                    className={priceInputCls}
+                    placeholder="0.00"
+                  />
+                </span>
+              </label>
+            ))}
+          </div>
+        )}
       </div>
 
       <label className="flex items-center gap-2.5 text-sm text-gray-700">
@@ -409,7 +537,7 @@ export function ConfigureSegmentsStep({ quoteId, segments, onChange, onSaved, on
     onChange(segments.map((s) => (s.draft_id === draftId ? { ...s, ...patch } : s)));
   };
 
-  const applyToAll = (patch: Pick<DraftSegment, "treatment_type" | "labor_basis" | "labor_trade" | "condition_tags" | "is_rush">) => {
+  const applyToAll = (patch: Pick<DraftSegment, "treatment_type" | "labor_basis" | "labor_trade" | "project_adjustments" | "is_rush">) => {
     onChange(segments.map((s) => ({ ...s, ...patch })));
     setApplyRevision((r) => r + 1);
   };
