@@ -261,8 +261,8 @@ function ReviewItemRow({
       <tr>
         {checkboxCell}
         <td className="py-2 pr-4 font-medium text-gray-800">
-          <div className="flex min-w-[14rem] flex-col gap-1">
-            <span>{item.raw_name}</span>
+          <div className="flex min-w-[14rem] flex-col gap-1.5">
+            <span className="block leading-snug">{item.raw_name}</span>
             <span className="inline-flex w-fit rounded-full border border-gray-200 bg-gray-50 px-2 py-0.5 text-[10px] font-bold text-gray-600">
               Confidence {confidencePercent}%
             </span>

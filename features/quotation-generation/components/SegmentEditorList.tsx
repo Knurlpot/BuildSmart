@@ -457,8 +457,6 @@ export function SegmentEditorList({
                   if (el) rowRefs.current.set(seg.draft_id, el);
                   else rowRefs.current.delete(seg.draft_id);
                 }}
-                onMouseEnter={() => onHoverChange?.(seg.draft_id)}
-                onMouseLeave={() => onHoverChange?.(null)}
                 className={`flex items-center gap-3 px-4 py-2.5 transition ${groupSelected ? `border-x-2 border-green-400 bg-green-100/80 ${!previousSelected ? "border-t-2" : ""} ${!nextSelected ? "border-b-2" : ""}` : seg.geometry_flagged && !seg.confirmed ? "bg-red-50/70 ring-1 ring-inset ring-red-200" : ""} ${hoverClass} ${showIncludeToggle && !seg.included_in_quote ? "opacity-50" : ""}`}
               >
                 {showConfirmToggle && !allConfirmed && (
@@ -485,7 +483,13 @@ export function SegmentEditorList({
                   />
                 )}
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-semibold text-gray-800">{seg.segment_name || "Untitled segment"}</p>
+                  <p
+                    className="truncate text-sm font-semibold text-gray-800"
+                    onMouseEnter={() => onHoverChange?.(seg.draft_id)}
+                    onMouseLeave={() => onHoverChange?.(null)}
+                  >
+                    {seg.segment_name || "Untitled segment"}
+                  </p>
                   <p className="text-xs text-gray-400">
                     {seg.floor_level || "—"} · {seg.area_sqm.toFixed(1)} sqm
                   </p>

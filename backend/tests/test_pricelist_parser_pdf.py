@@ -1,5 +1,6 @@
 import pandas as pd
 
+from app.services import pricelist_parser
 from app.services.pricelist_parser import (
     _parse_price_value,
     _split_flat_pdf_content,
@@ -37,3 +38,41 @@ def test_pdf_flat_content_split_extracts_material_fields():
 
 def test_price_parser_handles_currency_and_commas():
     assert _parse_price_value("PHP 1,500.25") == 1500.25
+
+
+def test_pdf_parser_recovers_price_collapsed_into_material_name(monkeypatch, tmp_path):
+    pdf_file = tmp_path / "metro-hardware.pdf"
+    pdf_file.write_bytes(b"%PDF-1.4")
+    monkeypatch.setattr(
+        pricelist_parser,
+        "_parse_pdf",
+        lambda _path: pd.DataFrame(
+            [
+                {
+                    "MATERIAL NAME": "Eagle Portland Cement Type 1 40kg bag, standard grey cement for general structural use bag ₱215.00 Cement",
+                    "DESCRIPTION": "",
+                    "UOM": "",
+                    "UNIT PRICE": "",
+                },
+                {
+                    "MATERIAL NAME": "Deformed Bar Grade 33 (10mm) 6 meters length standard rebar pc ₱170.00 Steel",
+                    "DESCRIPTION": "",
+                    "UOM": "",
+                    "UNIT PRICE": "",
+                },
+                {
+                    "MATERIAL NAME": "40kg bag, blended hydraulic cement for masonry & Pozzolan Cement bag Holcim ₱200.00 plastering",
+                    "DESCRIPTION": "",
+                    "UOM": "",
+                    "UNIT PRICE": "",
+                },
+            ]
+        ),
+    )
+
+    frame = parse_pricelist_file(str(pdf_file))
+
+    assert list(frame["raw_unit"]) == ["bag", "pc", "bag"]
+    assert list(frame["raw_price"]) == [215, 170, 200]
+    assert frame.iloc[2]["raw_name"] == "Pozzolan Cement"
+    assert "blended hydraulic cement" in frame.iloc[2]["description"]

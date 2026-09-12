@@ -1571,6 +1571,53 @@ def _finalize_pdf_fallback_frame(df: pd.DataFrame) -> pd.DataFrame:
     return df.reset_index(drop=True)
 
 
+def _recover_embedded_pdf_price_fields(df: pd.DataFrame) -> pd.DataFrame:
+    """Recover supplier PDFs whose table extraction collapsed unit/price into item text."""
+    if df.empty or "raw_name" not in df.columns:
+        return df
+
+    recovered = df.copy()
+    for index, row in recovered.iterrows():
+        raw_name = _sanitize_text(row.get("raw_name"))
+        if not raw_name:
+            continue
+        existing_price = _parse_price_value_with_ocr_cents(row.get("raw_price")) if "raw_price" in recovered.columns else None
+        if existing_price is not None:
+            continue
+        parsed = _parse_simple_pricelist_ocr_line(raw_name)
+        if not parsed:
+            continue
+        cleaned = _clean_recovered_pdf_name(parsed["raw_name"])
+        recovered.at[index, "raw_name"] = cleaned["raw_name"] or parsed["raw_name"]
+        recovered.at[index, "raw_unit"] = parsed["raw_unit"]
+        recovered.at[index, "raw_price"] = parsed["raw_price"]
+        if "raw_brand" in recovered.columns and _sanitize_text(row.get("raw_brand")) in {"", "Generic"}:
+            recovered.at[index, "raw_brand"] = parsed.get("raw_brand") or "Generic"
+        if "description" in recovered.columns and not _sanitize_text(row.get("description")):
+            recovered.at[index, "description"] = cleaned["description"] or parsed.get("description") or ""
+    return recovered
+
+
+def _clean_recovered_pdf_name(value: Any) -> dict[str, str]:
+    text = _sanitize_text(value)
+    if not text:
+        return {"raw_name": "", "description": ""}
+
+    ampersand_match = re.search(r"\s&\s(?P<name>[A-Z][A-Za-z0-9 /\"().-]*(?:Cement|Grout|Lime|Adhesive|Plywood|Board|Pipe|Valve|Hose|Sink|Wire|Sheet|Shingles)\b(?:\s*-\s*(?:Premium|Standard|Industrial|Reinforced|Local))?)\s*$", text, re.I)
+    if ampersand_match:
+        name = ampersand_match.group("name").strip(" -:;,.|")
+        description = text[: ampersand_match.start()].strip(" -:;,.|")
+        return {"raw_name": name, "description": description}
+
+    dash_match = re.search(r"\s-\s(?P<name>[A-Z][A-Za-z0-9 /\"().-]*(?:Cement|Grout|Lime|Adhesive|Plywood|Board|Pipe|Valve|Hose|Sink|Wire|Sheet|Shingles)\b(?:\s*-\s*(?:Premium|Standard|Industrial|Reinforced|Local))?)\s*$", text, re.I)
+    if dash_match and dash_match.start() > 12:
+        name = dash_match.group("name").strip(" -:;,.|")
+        description = text[: dash_match.start()].strip(" -:;,.|")
+        return {"raw_name": name, "description": description}
+
+    return {"raw_name": text, "description": ""}
+
+
 def _is_metadata_column(column: Any) -> bool:
     key = _header_key(column)
     if key in {_header_key(value) for value in REQUIRED_COLUMNS | {"description", "raw_brand", "color", "location"}}:
@@ -1767,6 +1814,9 @@ def parse_pricelist_file(file_path: str, column_mapping: Mapping[str, str] | Non
     if "location" in df.columns:
         df["location"] = df["location"].map(_sanitize_text)
     df["raw_unit"] = df["raw_unit"].map(_sanitize_text)
+    if suffix == ".pdf":
+        df = _recover_embedded_pdf_price_fields(df)
+        df["raw_unit"] = df["raw_unit"].map(_sanitize_text)
     df["raw_price"] = df["raw_price"].map(_parse_price_value_with_ocr_cents)
     df = df[~df.apply(lambda row: _is_non_material_row(row["raw_name"], row["raw_price"], require_price=False), axis=1)]
 

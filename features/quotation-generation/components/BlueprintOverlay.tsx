@@ -608,8 +608,12 @@ export function BlueprintOverlay({
                     <polygon
                       key={`${seg.draft_id}-${polygonIndex}`}
                       points={pointsToSvg(points)}
-                      onMouseEnter={() => onHoverChange(seg.draft_id)}
-                      onMouseLeave={() => onHoverChange(null)}
+                      onMouseEnter={() => {
+                        if (labelEditingActive) onHoverChange(seg.draft_id);
+                      }}
+                      onMouseLeave={() => {
+                        if (labelEditingActive) onHoverChange(null);
+                      }}
                       fill="transparent"
                       stroke="transparent"
                       strokeWidth={0}
@@ -699,9 +703,11 @@ export function BlueprintOverlay({
                 const glowId = `room-hover-glow-${svgSafeId(seg.draft_id)}`;
                 const glowMaskId = `room-hover-mask-${svgSafeId(seg.draft_id)}`;
                 const glowVisible = hovered || selected;
+                const labelVisible = glowVisible || labelEditingActive;
                 const glowSize = Math.min(360, Math.max(150, 95 + Math.sqrt(Math.max(seg.area_sqm, 1)) * 38));
                 const glowX = x - glowSize / 2;
                 const glowY = y - glowSize / 2;
+                if (!labelVisible) return null;
                 return (
                   <g key={`pin-${seg.draft_id}`}>
                     <defs>
